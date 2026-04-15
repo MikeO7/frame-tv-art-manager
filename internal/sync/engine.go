@@ -513,7 +513,7 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 
 		switch tv.Status {
 		case "ok":
-			sb.WriteString(fmt.Sprintf("║    Status:     ✔ Art Mode                        ║\n"))
+			sb.WriteString("║    Status:     ✔ Art Mode                        ║\n")
 			sb.WriteString(fmt.Sprintf("║    Uploaded:   %-3d new  │  Deleted: %-3d            ║\n", tv.Uploaded, tv.Deleted))
 			sb.WriteString(fmt.Sprintf("║    Total:      %-3d images on TV                   ║\n", tv.TotalImages))
 			if tv.Brightness != "" {
@@ -523,7 +523,7 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 				sb.WriteString(fmt.Sprintf("║    Slideshow:  %-35s║\n", tv.Slideshow))
 			}
 		case "backoff":
-			sb.WriteString(fmt.Sprintf("║    Status:     ⏸ Backing off (unreachable)        ║\n"))
+			sb.WriteString("║    Status:     ⏸ Backing off (unreachable)        ║\n")
 		default:
 			sb.WriteString(fmt.Sprintf("║    Status:     %-35s║\n", tv.Status))
 		}

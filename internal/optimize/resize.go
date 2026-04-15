@@ -22,18 +22,18 @@ import (
 
 // Config holds image optimization settings.
 type Config struct {
-	Enabled    bool
-	MaxWidth   int
-	MaxHeight  int
+	Enabled     bool
+	MaxWidth    int
+	MaxHeight   int
 	JPEGQuality int
 }
 
 // DefaultConfig returns sensible defaults for Frame TV display.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:    true,
-		MaxWidth:   3840,
-		MaxHeight:  2160,
+		Enabled:     true,
+		MaxWidth:    3840,
+		MaxHeight:   2160,
 		JPEGQuality: 92,
 	}
 }
@@ -150,6 +150,11 @@ func fitDimensions(origW, origH, maxW, maxH int) (int, int) {
 	ratio := ratioW
 	if ratioH < ratioW {
 		ratio = ratioH
+	}
+
+	// Never upscale.
+	if ratio > 1.0 {
+		ratio = 1.0
 	}
 
 	newW := int(float64(origW) * ratio)

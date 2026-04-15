@@ -17,20 +17,20 @@ import (
 type Status struct {
 	mu sync.RWMutex
 
-	StartedAt    time.Time
-	LastSyncAt   time.Time
-	LastSyncOK   bool
-	SyncCount    int
-	TVStatuses   map[string]TVStatus
+	StartedAt  time.Time
+	LastSyncAt time.Time
+	LastSyncOK bool
+	SyncCount  int
+	TVStatuses map[string]TVStatus
 }
 
 // TVStatus tracks per-TV health information.
 type TVStatus struct {
-	IP          string `json:"ip"`
-	LastSeen    string `json:"last_seen"`
-	ImageCount  int    `json:"image_count"`
-	ArtMode     bool   `json:"art_mode"`
-	Status      string `json:"status"` // "ok", "unreachable", "backoff"
+	IP         string `json:"ip"`
+	LastSeen   string `json:"last_seen"`
+	ImageCount int    `json:"image_count"`
+	ArtMode    bool   `json:"art_mode"`
+	Status     string `json:"status"` // "ok", "unreachable", "backoff"
 }
 
 // NewStatus creates a new health status tracker.
@@ -113,11 +113,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	defer s.status.mu.RUnlock()
 
 	resp := map[string]any{
-		"status":      "ok",
-		"uptime":      time.Since(s.status.StartedAt).Round(time.Second).String(),
-		"last_sync":   s.status.LastSyncAt.Format(time.RFC3339),
+		"status":       "ok",
+		"uptime":       time.Since(s.status.StartedAt).Round(time.Second).String(),
+		"last_sync":    s.status.LastSyncAt.Format(time.RFC3339),
 		"last_sync_ok": s.status.LastSyncOK,
-		"sync_count":  s.status.SyncCount,
+		"sync_count":   s.status.SyncCount,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -130,13 +130,13 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	defer s.status.mu.RUnlock()
 
 	resp := map[string]any{
-		"status":      "ok",
-		"uptime":      time.Since(s.status.StartedAt).Round(time.Second).String(),
-		"started_at":  s.status.StartedAt.Format(time.RFC3339),
-		"last_sync":   s.status.LastSyncAt.Format(time.RFC3339),
+		"status":       "ok",
+		"uptime":       time.Since(s.status.StartedAt).Round(time.Second).String(),
+		"started_at":   s.status.StartedAt.Format(time.RFC3339),
+		"last_sync":    s.status.LastSyncAt.Format(time.RFC3339),
 		"last_sync_ok": s.status.LastSyncOK,
-		"sync_count":  s.status.SyncCount,
-		"tvs":         s.status.TVStatuses,
+		"sync_count":   s.status.SyncCount,
+		"tvs":          s.status.TVStatuses,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -93,10 +93,10 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 			"connection_id": time.Now().UnixNano() % (4 * 1024 * 1024 * 1024),
 			"id":            id,
 		},
-		"image_date":          time.Now().Format("2006:01:02 15:04:05"),
-		"matte_id":            req.Matte,
-		"portrait_matte_id":   req.Matte,
-		"file_size":           req.FileSize,
+		"image_date":        time.Now().Format("2006:01:02 15:04:05"),
+		"matte_id":          req.Matte,
+		"portrait_matte_id": req.Matte,
+		"file_size":         req.FileSize,
 	}
 
 	payload, err := ArtAppRequest(artReq)

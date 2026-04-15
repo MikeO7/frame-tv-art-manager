@@ -146,9 +146,6 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType string) (string,
 	}
 
 	matte := c.cfg.MatteStyle
-	if matte == "none" {
-		matte = "none"
-	}
 
 	// Register the image_added listener BEFORE sending the upload request,
 	// so we don't miss the response if it arrives quickly.

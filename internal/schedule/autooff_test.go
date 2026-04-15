@@ -11,12 +11,12 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 	utc := "UTC"
 
 	tests := []struct {
-		name      string
-		offTime   string
-		grace     float64
-		tz        string
-		now       time.Time
-		want      bool
+		name    string
+		offTime string
+		grace   float64
+		tz      string
+		now     time.Time
+		want    bool
 	}{
 		{
 			name:    "empty off time",

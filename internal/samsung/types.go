@@ -7,7 +7,7 @@ type DeviceInfo struct {
 	ModelName       string `json:"modelName"`
 	FirmwareVersion string `json:"firmwareVersion"`
 	FrameTVSupport  string `json:"FrameTVSupport"` // "true" or "false"
-	PowerState      string `json:"PowerState"`      // "on" or "off"
+	PowerState      string `json:"PowerState"`     // "on" or "off"
 }
 
 // IsFrameTV returns true if the device reports Frame TV support.
@@ -63,16 +63,16 @@ type DeviceInfoResponse struct {
 
 // ArtResponse is the raw d2d.service.message.event data envelope.
 type ArtResponse struct {
-	Event      string `json:"event"`
-	RequestID  string `json:"request_id"`
-	ID         string `json:"id"`
-	ErrorCode  int    `json:"error_code,omitempty"`
+	Event     string `json:"event"`
+	RequestID string `json:"request_id"`
+	ID        string `json:"id"`
+	ErrorCode int    `json:"error_code,omitempty"`
 
 	// Fields vary by request type — parsed individually per command.
-	ContentList string          `json:"content_list,omitempty"`
-	ContentID   string          `json:"content_id,omitempty"`
-	Value       string          `json:"value,omitempty"`
-	ConnInfo    string          `json:"conn_info,omitempty"`
-	Status      string          `json:"status,omitempty"`
-	RequestData string          `json:"request_data,omitempty"`
+	ContentList string `json:"content_list,omitempty"`
+	ContentID   string `json:"content_id,omitempty"`
+	Value       string `json:"value,omitempty"`
+	ConnInfo    string `json:"conn_info,omitempty"`
+	Status      string `json:"status,omitempty"`
+	RequestData string `json:"request_data,omitempty"`
 }

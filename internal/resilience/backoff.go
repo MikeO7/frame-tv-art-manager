@@ -27,8 +27,8 @@ type Backoff struct {
 }
 
 type tvState struct {
-	failures    int
-	lastFailure time.Time
+	failures     int
+	lastFailure  time.Time
 	backoffUntil time.Time
 }
 
