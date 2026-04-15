@@ -1,0 +1,64 @@
+services:
+  frame-tv-art-manager:
+    image: mikeo/frame-tv-art-manager
+    build: .
+    restart: unless-stopped
+    environment:
+      # Comma-separated list of TV IP addresses (REQUIRED)
+      TV_IPS: "192.168.1.100"
+
+      # How often to sync artwork (minutes)
+      SYNC_INTERVAL_MINUTES: "5"
+
+      # Client identity for WebSocket handshake.
+      # A stable name prevents Allow/Deny popups on reconnect.
+      CLIENT_NAME: "FrameTVArtworkSync"
+
+      # Matte/border style: "none" for full-screen,
+      # or "style_color" like "shadowbox_polar", "modern_apricot"
+      MATTE_STYLE: "none"
+
+      # Log level: debug, info, warn, error
+      LOG_LEVEL: "info"
+
+      # Remove images on TV that aren't in the artwork folder
+      REMOVE_UNKNOWN_IMAGES: "false"
+
+      # --- Optional: Wake-on-LAN ---
+      # TV_MAC: "AA:BB:CC:DD:EE:FF"
+
+      # --- Optional: REST Gate (art mode detection before connecting) ---
+      # Not all firmware supports this. If your TV returns 404 on
+      # GET /ms/art regardless of mode, leave this disabled.
+      # ENABLE_REST_GATE: "false"
+
+      # --- Optional: Slideshow Control ---
+      # Uncomment to override TV's slideshow settings:
+      # SLIDESHOW_ENABLED: "true"
+      # SLIDESHOW_INTERVAL: "15"    # minutes (e.g. 3, 15, 60, 720, 1440)
+      # SLIDESHOW_TYPE: "shuffle"   # shuffle or sequential
+
+      # --- Optional: Brightness Control (choose one) ---
+      #
+      # Manual brightness (fixed value):
+      # BRIGHTNESS: "5"
+      #
+      # Solar-based brightness (automatic):
+      # SOLAR_BRIGHTNESS_ENABLED: "true"
+      # LOCATION_LATITUDE: "42.3601"
+      # LOCATION_LONGITUDE: "-71.0589"
+      # LOCATION_TIMEZONE: "America/New_York"
+      # BRIGHTNESS_MIN: "2"
+      # BRIGHTNESS_MAX: "10"
+
+      # --- Optional: Auto-Off ---
+      # Turn off TVs at a specific time (only when in art mode).
+      # Requires LOCATION_TIMEZONE to be set.
+      # AUTO_OFF_TIME: "22:00"
+      # AUTO_OFF_GRACE_HOURS: "2"
+    volumes:
+      # Mount your local artwork folder (read-only is fine)
+      - ./artwork:/artwork:ro
+
+      # Persist TV authentication tokens and sync mappings
+      - ./tokens:/tokens

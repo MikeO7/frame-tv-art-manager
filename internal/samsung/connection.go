@@ -1,0 +1,384 @@
+package samsung
+
+import (
+	"context"
+	"crypto/tls"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+)
+
+// Connection manages a single WSS connection to a Samsung Frame TV endpoint.
+//
+// The TV uses two WebSocket endpoints:
+//   - "com.samsung.art-app"       — for art management (upload, list, select, etc.)
+//   - "samsung.remote.control"    — for remote key commands (power off)
+//
+// Each endpoint requires its own Connection instance, but they share the
+// same token file for authentication.
+type Connection struct {
+	host      string
+	port      int
+	endpoint  string
+	name      string // client identity sent in WebSocket URL
+	tokenFile string
+	timeout   time.Duration
+	logger    *slog.Logger
+
+	mu       sync.Mutex
+	conn     *websocket.Conn
+	closed   bool
+	recvDone chan struct{}
+
+	// pending tracks outstanding art API requests by request ID.
+	// When a response arrives, the raw JSON is sent to the channel.
+	pendingMu sync.Mutex
+	pending   map[string]chan json.RawMessage
+}
+
+// NewConnection creates a new WebSocket connection manager. It does not
+// connect automatically — call Open() to establish the connection.
+func NewConnection(host string, port int, endpoint, name, tokenFile string, timeout time.Duration, logger *slog.Logger) *Connection {
+	return &Connection{
+		host:      host,
+		port:      port,
+		endpoint:  endpoint,
+		name:      name,
+		tokenFile: tokenFile,
+		timeout:   timeout,
+		logger:    logger,
+		pending:   make(map[string]chan json.RawMessage),
+	}
+}
+
+// Open establishes the WSS connection, performs the handshake, and starts
+// the background receive loop. On first connection, the TV will show an
+// Allow/Deny prompt — the user must accept within the timeout period.
+//
+// The handshake sequence for the art endpoint is:
+//  1. Dial wss://<host>:8002/api/v2/channels/<endpoint>?name=<b64>&token=<tok>
+//  2. Receive ms.channel.connect event → extract and save token
+//  3. Receive ms.channel.ready event → connection is live
+//
+// For the remote control endpoint, only step 1-2 is needed.
+func (c *Connection) Open(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != nil {
+		return nil // already connected
+	}
+
+	token := c.readToken()
+	wsURL := c.formatURL(token)
+	c.logger.Debug("dialing WebSocket", "url", wsURL)
+
+	dialer := websocket.Dialer{
+		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Samsung TVs use self-signed certs
+		HandshakeTimeout: c.timeout,
+	}
+
+	conn, _, err := dialer.DialContext(ctx, wsURL, nil)
+	if err != nil {
+		return fmt.Errorf("websocket dial: %w", err)
+	}
+
+	// Read the first message — expect ms.channel.connect.
+	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+		conn.Close()
+		return fmt.Errorf("set read deadline: %w", err)
+	}
+
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("read handshake: %w", err)
+	}
+
+	var resp wsResponse
+	if err := json.Unmarshal(msg, &resp); err != nil {
+		conn.Close()
+		return fmt.Errorf("parse handshake: %w", err)
+	}
+
+	switch resp.Event {
+	case "ms.channel.connect":
+		c.extractAndSaveToken(resp.Data)
+	case "ms.channel.unauthorized":
+		conn.Close()
+		return ErrUnauthorized
+	case "ms.channel.timeOut":
+		conn.Close()
+		return ErrTimeout
+	default:
+		conn.Close()
+		return fmt.Errorf("%w: unexpected event %q", ErrConnectionFailure, resp.Event)
+	}
+
+	// For the art endpoint, also wait for ms.channel.ready.
+	if c.endpoint == "com.samsung.art-app" {
+		if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+			conn.Close()
+			return fmt.Errorf("set read deadline: %w", err)
+		}
+
+		_, msg, err = conn.ReadMessage()
+		if err != nil {
+			conn.Close()
+			return fmt.Errorf("read channel ready: %w", err)
+		}
+
+		var readyResp wsResponse
+		if err := json.Unmarshal(msg, &readyResp); err != nil {
+			conn.Close()
+			return fmt.Errorf("parse channel ready: %w", err)
+		}
+
+		if readyResp.Event != "ms.channel.ready" {
+			conn.Close()
+			return fmt.Errorf("%w: expected ms.channel.ready, got %q", ErrConnectionFailure, readyResp.Event)
+		}
+	}
+
+	// Clear the read deadline for the recv loop.
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		conn.Close()
+		return fmt.Errorf("clear read deadline: %w", err)
+	}
+
+	c.conn = conn
+	c.closed = false
+	c.recvDone = make(chan struct{})
+	go c.recvLoop()
+
+	c.logger.Info("WebSocket connected", "endpoint", c.endpoint, "host", c.host)
+	return nil
+}
+
+// Close shuts down the WebSocket connection and waits for the recv loop to exit.
+func (c *Connection) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn == nil {
+		return nil
+	}
+
+	c.closed = true
+	err := c.conn.Close()
+	c.conn = nil
+
+	// Wait for recv loop to finish.
+	if c.recvDone != nil {
+		<-c.recvDone
+	}
+
+	// Cancel all pending requests.
+	c.pendingMu.Lock()
+	for id, ch := range c.pending {
+		close(ch)
+		delete(c.pending, id)
+	}
+	c.pendingMu.Unlock()
+
+	return err
+}
+
+// IsAlive returns true if the connection is open and not closed.
+func (c *Connection) IsAlive() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn != nil && !c.closed
+}
+
+// SendAndWait sends a JSON payload and waits for a response matching the
+// given request ID. Returns the raw d2d event data JSON.
+func (c *Connection) SendAndWait(ctx context.Context, payload []byte, requestID string, timeout time.Duration) (json.RawMessage, error) {
+	ch := make(chan json.RawMessage, 1)
+
+	c.pendingMu.Lock()
+	c.pending[requestID] = ch
+	c.pendingMu.Unlock()
+
+	defer func() {
+		c.pendingMu.Lock()
+		delete(c.pending, requestID)
+		c.pendingMu.Unlock()
+	}()
+
+	if err := c.Send(payload); err != nil {
+		return nil, err
+	}
+
+	select {
+	case data, ok := <-ch:
+		if !ok {
+			return nil, ErrNotConnected
+		}
+		return data, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("%w: waiting for response %s", ErrTimeout, requestID)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// SendAndWaitEvent sends a payload and waits for a response matching
+// a specific event name (e.g. "image_added") instead of a request ID.
+func (c *Connection) SendAndWaitEvent(ctx context.Context, payload []byte, eventName string, timeout time.Duration) (json.RawMessage, error) {
+	return c.SendAndWait(ctx, payload, eventName, timeout)
+}
+
+// Send writes a JSON text message to the WebSocket.
+func (c *Connection) Send(payload []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+
+	return c.conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+// --- internal ---
+
+// recvLoop reads messages from the WebSocket and routes them to pending
+// request channels based on request_id or event name.
+func (c *Connection) recvLoop() {
+	defer close(c.recvDone)
+
+	for {
+		_, msg, err := c.conn.ReadMessage()
+		if err != nil {
+			if !c.closed {
+				c.logger.Debug("recv loop error", "error", err)
+			}
+			return
+		}
+
+		var resp wsResponse
+		if err := json.Unmarshal(msg, &resp); err != nil {
+			c.logger.Debug("recv: unparseable message", "error", err)
+			continue
+		}
+
+		// Route d2d.service.message.event to pending requests.
+		if resp.Event == "d2d.service.message.event" {
+			c.routeD2DEvent(resp.Data)
+		}
+	}
+}
+
+// routeD2DEvent parses the inner data JSON of a d2d event and routes it
+// to the correct pending request channel.
+func (c *Connection) routeD2DEvent(dataRaw json.RawMessage) {
+	var inner struct {
+		RequestID string `json:"request_id"`
+		ID        string `json:"id"`
+		Event     string `json:"event"`
+	}
+	if err := json.Unmarshal(dataRaw, &inner); err != nil {
+		c.logger.Debug("d2d event: parse failed", "error", err)
+		return
+	}
+
+	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
+
+	// Try matching by request_id first, then event name.
+	keys := []string{inner.RequestID, inner.ID, inner.Event}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if ch, ok := c.pending[key]; ok {
+			select {
+			case ch <- dataRaw:
+			default:
+			}
+			return
+		}
+	}
+}
+
+// formatURL builds the WebSocket URL for the specified endpoint.
+func (c *Connection) formatURL(token string) string {
+	b64Name := base64.StdEncoding.EncodeToString([]byte(c.name))
+	u := url.URL{
+		Scheme: "wss",
+		Host:   fmt.Sprintf("%s:%d", c.host, c.port),
+		Path:   fmt.Sprintf("/api/v2/channels/%s", c.endpoint),
+	}
+	q := u.Query()
+	q.Set("name", b64Name)
+	if token != "" {
+		q.Set("token", token)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// readToken reads the saved auth token from the token file.
+// Returns empty string if the file doesn't exist yet.
+func (c *Connection) readToken() string {
+	data, err := os.ReadFile(c.tokenFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// extractAndSaveToken pulls the token from a ms.channel.connect response
+// and writes it to the token file.
+func (c *Connection) extractAndSaveToken(data json.RawMessage) {
+	var d struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(data, &d); err != nil || d.Token == "" {
+		return
+	}
+
+	c.logger.Info("new auth token received", "token", d.Token[:min(len(d.Token), 8)]+"...")
+	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0600); err != nil {
+		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
+	}
+}
+
+// wsResponse is the top-level WebSocket message envelope from the TV.
+type wsResponse struct {
+	Event string          `json:"event"`
+	Data  json.RawMessage `json:"data"`
+}
+
+// ArtAppRequest builds the outer WebSocket message for an art API request.
+func ArtAppRequest(data map[string]any) ([]byte, error) {
+	inner, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	outer := map[string]any{
+		"method": "ms.channel.emit",
+		"params": map[string]any{
+			"event": "art_app_request",
+			"to":    "host",
+			"data":  string(inner),
+		},
+	}
+	return json.Marshal(outer)
+}
+
+// NewRequestID generates a new UUID string for art API request correlation.
+func NewRequestID() string {
+	return uuid.New().String()
+}
