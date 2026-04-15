@@ -55,7 +55,7 @@ func TestBrightnessFromElevation(t *testing.T) {
 			elevation: 60,
 			min:       0,
 			max:       50,
-			want:      35, // approximately
+			want:      33, // approximately 0.7^(airmass^0.678) * 50
 		},
 	}
 
