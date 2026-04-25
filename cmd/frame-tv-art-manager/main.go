@@ -20,6 +20,28 @@ var (
 )
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--help", "-h":
+			fmt.Println("Frame TV Art Manager")
+			fmt.Println("\nUsage:")
+			fmt.Println("  frame-tv-art-manager [command] [flags]")
+			fmt.Println("\nCommands:")
+			fmt.Println("  sync       Run the sync loop (default)")
+			fmt.Println("  diagnose   Run connection diagnostics")
+			fmt.Println("\nFlags:")
+			fmt.Println("  --dry-run     Run with dry-run (no changes made)")
+			fmt.Println("  --help, -h    Show help")
+			fmt.Println("  --version, -v Show version")
+			os.Exit(0)
+		case "--version", "-v":
+			fmt.Printf("Frame TV Art Manager\nVersion: %s\nCommit: %s\nBuild Date: %s\n", Version, Commit, BuildDate)
+			os.Exit(0)
+		case "--dry-run":
+			os.Setenv("DRY_RUN", "true")
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)

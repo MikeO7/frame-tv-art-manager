@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -82,6 +83,11 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
 	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic during sync cycle: %v\n%s", r, string(debug.Stack()))
+			e.logger.Error("recovered from panic in sync cycle", "error", err)
+			syncErrors = append(syncErrors, err)
+		}
 		if e.health != nil {
 			e.health.RecordSync(err == nil && len(syncErrors) == 0)
 		}
