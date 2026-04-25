@@ -79,7 +79,14 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 }
 
 // RunOnce performs a single sync cycle for all configured TVs.
-func (e *Engine) RunOnce(ctx context.Context) error {
+func (e *Engine) RunOnce(ctx context.Context) (err error) {
+	var syncErrors []error
+	defer func() {
+		if e.health != nil {
+			e.health.RecordSync(err == nil && len(syncErrors) == 0)
+		}
+	}()
+
 	e.cycleNum++
 	startTime := time.Now()
 	e.logger.Info("starting sync cycle",
@@ -127,7 +134,6 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 	)
 
 	// Step 3: Sync each TV sequentially.
-	var syncErrors []error
 	tvSummaries := make([]tvSyncSummary, 0, len(e.cfg.TVIPs))
 
 	for _, ip := range e.cfg.TVIPs {
@@ -164,12 +170,6 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 			}
 		}
 		tvSummaries = append(tvSummaries, summary)
-	}
-
-	// Record sync result for health endpoint.
-	syncOK := len(syncErrors) == 0
-	if e.health != nil {
-		e.health.RecordSync(syncOK)
 	}
 
 	// Print summary.
@@ -330,7 +330,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 
 		mapping.Set(filename, contentID)
 		if err := mapping.Save(); err != nil {
-			log.Warn("failed to save mapping", "error", err)
+			log.Error("failed to save mapping", "error", err)
 		}
 		log.Info("uploaded", "file", filename, "content_id", contentID)
 		summary.Uploaded++
@@ -359,7 +359,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 						mapping.Delete(filename)
 					}
 					if err := mapping.Save(); err != nil {
-						log.Warn("failed to save mapping after delete", "error", err)
+						log.Error("failed to save mapping after delete", "error", err)
 					}
 					log.Info("deleted tracked images", "count", len(idsToDelete))
 				}
