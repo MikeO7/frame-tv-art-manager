@@ -34,7 +34,7 @@ func TestLoader_DownloadsImage(t *testing.T) {
 	// Serve a fake JPEG.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
-		w.Write([]byte("fake-jpeg-data"))
+		_, _ = w.Write([]byte("fake-jpeg-data"))
 	}))
 	defer srv.Close()
 
@@ -66,7 +66,7 @@ func TestLoader_DownloadsImage(t *testing.T) {
 func TestLoader_SkipsComments(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
-		w.Write([]byte("data"))
+		_, _ = w.Write([]byte("data"))
 	}))
 	defer srv.Close()
 
