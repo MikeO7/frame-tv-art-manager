@@ -53,7 +53,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go engine.RunLoop(ctx)
+	go func() {
+		_ = engine.RunLoop(ctx)
+	}()
 
 	healthServer := health.NewServer(8080, healthStatus, logger)
 	go healthServer.Start()
@@ -64,5 +66,5 @@ func main() {
 
 	logger.Info("Shutting down...")
 	cancel()
-	healthServer.Shutdown(context.Background())
+	_ = healthServer.Shutdown(context.Background())
 }
