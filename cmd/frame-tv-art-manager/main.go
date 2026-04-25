@@ -20,6 +20,19 @@ var (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--help", "-h":
+			fmt.Println("Usage: frame-tv-art-manager")
+			fmt.Println("Configuration is provided entirely via environment variables.")
+			fmt.Println("See README.md for details.")
+			os.Exit(0)
+		case "--version", "-v":
+			fmt.Printf("frame-tv-art-manager version %s (commit %s) built on %s\n", Version, Commit, BuildDate)
+			os.Exit(0)
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
