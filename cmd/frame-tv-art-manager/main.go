@@ -20,6 +20,12 @@ var (
 )
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
+		fmt.Printf("Frame TV Art Manager v%s\n", Version)
+		fmt.Println("Usage: configure via environment variables. See documentation.")
+		os.Exit(0)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
