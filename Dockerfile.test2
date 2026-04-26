@@ -1,0 +1,7 @@
+FROM golang:1.24-alpine
+COPY test_setuid2.go /src/
+WORKDIR /src
+RUN CGO_ENABLED=0 go build -o test_setuid2 test_setuid2.go
+FROM scratch
+COPY --from=0 /src/test_setuid2 /
+CMD ["/test_setuid2"]
