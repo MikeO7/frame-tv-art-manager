@@ -80,6 +80,15 @@ func (m *Mapping) Delete(filename string) {
 	delete(m.data, filename)
 }
 
+// DeleteBatch removes multiple filenames from the mapping in a single operation.
+func (m *Mapping) DeleteBatch(filenames []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, filename := range filenames {
+		delete(m.data, filename)
+	}
+}
+
 // GetContentID returns the content_id for a filename, and whether it exists.
 func (m *Mapping) GetContentID(filename string) (string, bool) {
 	m.mu.RLock()
