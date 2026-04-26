@@ -168,19 +168,20 @@ func (c *Connection) Open(ctx context.Context) error {
 // Close shuts down the WebSocket connection and waits for the recv loop to exit.
 func (c *Connection) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.conn == nil {
+		c.mu.Unlock()
 		return nil
 	}
 
 	c.closed.Store(true)
 	err := c.conn.Close()
 	c.conn = nil
+	recvDone := c.recvDone
+	c.mu.Unlock()
 
 	// Wait for recv loop to finish.
-	if c.recvDone != nil {
-		<-c.recvDone
+	if recvDone != nil {
+		<-recvDone
 	}
 
 	// Cancel all pending requests.
@@ -260,7 +261,13 @@ func (c *Connection) recvLoop() {
 	defer close(c.recvDone)
 
 	for {
-		_, msg, err := c.conn.ReadMessage()
+		c.mu.Lock()
+		conn := c.conn
+		c.mu.Unlock()
+		if conn == nil {
+			return
+		}
+		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			if !c.closed.Load() {
 				c.logger.Debug("recv loop error", "error", err)
@@ -291,9 +298,22 @@ func (c *Connection) routeD2DEvent(dataRaw json.RawMessage) {
 		ID        string `json:"id"`
 		Event     string `json:"event"`
 	}
+
 	if err := json.Unmarshal(dataRaw, &inner); err != nil {
-		c.logger.Debug("d2d event: parse failed", "error", err)
-		return
+		// Sometimes the data is sent as an escaped JSON string instead of a raw object.
+		var str string
+		if strErr := json.Unmarshal(dataRaw, &str); strErr == nil {
+			if unmarshalErr := json.Unmarshal([]byte(str), &inner); unmarshalErr == nil {
+				// Reassign dataRaw to the unescaped bytes so downstream parsers work correctly.
+				dataRaw = []byte(str)
+				err = nil
+			}
+		}
+
+		if err != nil {
+			c.logger.Debug("d2d event: parse failed", "error", err)
+			return
+		}
 	}
 
 	c.pendingMu.Lock()
