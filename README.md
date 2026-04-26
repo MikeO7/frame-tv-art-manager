@@ -14,7 +14,8 @@ A Go service that synchronizes artwork from a local directory to one or more Sam
 - **Auto-off** — power off TVs at a scheduled time
 - **Wake-on-LAN** — wake sleeping TVs before syncing
 - **Dry-run mode** — preview all operations without touching your TV
-- **Diagnostics** — built-in connection diagnostic tool
+- **Detailed logging** — structured JSON logs with WebSocket tracing for easy debugging
+- **Robust testing** — 100% handshake coverage with mock TV servers
 - **Tiny Docker image** — ~8MB scratch container (vs ~150MB for Python)
 
 ## Quick Start

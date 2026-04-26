@@ -248,6 +248,7 @@ func (c *Connection) Send(payload []byte) error {
 		return ErrNotConnected
 	}
 
+	c.logger.Debug("WS SEND", "payload", string(payload))
 	return c.conn.WriteMessage(websocket.TextMessage, payload)
 }
 
@@ -266,6 +267,8 @@ func (c *Connection) recvLoop() {
 			}
 			return
 		}
+
+		c.logger.Debug("WS RECV", "payload", string(msg))
 
 		var resp wsResponse
 		if err := json.Unmarshal(msg, &resp); err != nil {

@@ -59,6 +59,26 @@ func main() {
 
 	logger.Info("Frame TV Art Manager starting", "version", Version, "commit", Commit, "build_date", BuildDate)
 
+	// Robustness check: Ensure required directories exist and are writable.
+	dirs := map[string]string{
+		"artwork": cfg.ArtworkDir,
+		"tokens":  cfg.TokenDir,
+	}
+	for name, path := range dirs {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			logger.Error("Failed to create/access directory", "name", name, "path", path, "error", err)
+			os.Exit(1)
+		}
+		// Test writability
+		testFile := fmt.Sprintf("%s/.write_test", path)
+		if err := os.WriteFile(testFile, []byte("ok"), 0644); err != nil {
+			logger.Error("Directory is not writable", "name", name, "path", path, "error", err)
+			os.Exit(1)
+		}
+		_ = os.Remove(testFile)
+		logger.Debug("Directory validated", "name", name, "path", path)
+	}
+
 	healthStatus := health.NewStatus()
 
 	engine := sync.NewEngine(cfg, logger, healthStatus)
