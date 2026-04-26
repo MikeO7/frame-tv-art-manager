@@ -31,4 +31,3 @@ COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
 VOLUME ["/artwork", "/tokens"]
 
 ENTRYPOINT ["/frame-tv-art-manager"]
-CMD ["sync"]

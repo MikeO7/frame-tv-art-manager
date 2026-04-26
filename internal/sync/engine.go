@@ -314,12 +314,13 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 			continue
 		}
 
-		_ = sanitize.Filename(filename)
-		filePath := filepath.Join(e.cfg.ArtworkDir, filename)
+		displayName := filename
+		filename = sanitize.Filename(filename)
+		filePath := filepath.Join(e.cfg.ArtworkDir, displayName) // use original for disk path
 		fileType := FileTypeFromExt(filename)
-		matte := matteConfig.GetMatte(filename, e.cfg.MatteStyle)
+		matte := matteConfig.GetMatte(displayName, e.cfg.MatteStyle)
 
-		log.Info("uploading", "file", filename, "matte", matte)
+		log.Info("uploading", "file", displayName, "sanitized", filename, "matte", matte)
 
 		contentID, err := client.Upload(ctx, filePath, fileType)
 		if err != nil {

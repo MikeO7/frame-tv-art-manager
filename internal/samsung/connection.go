@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ type Connection struct {
 
 	mu       sync.Mutex
 	conn     *websocket.Conn
-	closed   bool
+	closed   atomic.Bool
 	recvDone chan struct{}
 
 	// pending tracks outstanding art API requests by request ID.
@@ -156,7 +157,7 @@ func (c *Connection) Open(ctx context.Context) error {
 	}
 
 	c.conn = conn
-	c.closed = false
+	c.closed.Store(false)
 	c.recvDone = make(chan struct{})
 	go c.recvLoop()
 
@@ -173,7 +174,7 @@ func (c *Connection) Close() error {
 		return nil
 	}
 
-	c.closed = true
+	c.closed.Store(true)
 	err := c.conn.Close()
 	c.conn = nil
 
@@ -197,7 +198,7 @@ func (c *Connection) Close() error {
 func (c *Connection) IsAlive() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.conn != nil && !c.closed
+	return c.conn != nil && !c.closed.Load()
 }
 
 // SendAndWait sends a JSON payload and waits for a response matching the
@@ -260,7 +261,7 @@ func (c *Connection) recvLoop() {
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
-			if !c.closed {
+			if !c.closed.Load() {
 				c.logger.Debug("recv loop error", "error", err)
 			}
 			return

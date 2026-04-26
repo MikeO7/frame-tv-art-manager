@@ -18,7 +18,7 @@ import (
 //
 // File format: { "sunset.jpg": "MY_F0001_abc123", ... }
 type Mapping struct {
-	mu   gosync.Mutex
+	mu   gosync.RWMutex
 	path string
 	data map[string]string // filename → content_id
 }
@@ -82,16 +82,16 @@ func (m *Mapping) Delete(filename string) {
 
 // GetContentID returns the content_id for a filename, and whether it exists.
 func (m *Mapping) GetContentID(filename string) (string, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	id, ok := m.data[filename]
 	return id, ok
 }
 
 // GetFilename returns the filename for a content_id, and whether it exists.
 func (m *Mapping) GetFilename(contentID string) (string, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	for f, id := range m.data {
 		if id == contentID {
 			return f, true
@@ -102,8 +102,8 @@ func (m *Mapping) GetFilename(contentID string) (string, bool) {
 
 // AllContentIDs returns a copy of the full filename→content_id map.
 func (m *Mapping) AllContentIDs() map[string]string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	out := make(map[string]string, len(m.data))
 	for k, v := range m.data {
 		out[k] = v
@@ -113,8 +113,8 @@ func (m *Mapping) AllContentIDs() map[string]string {
 
 // TrackedFilenames returns the set of filenames that have known content IDs.
 func (m *Mapping) TrackedFilenames() map[string]struct{} {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	out := make(map[string]struct{}, len(m.data))
 	for k := range m.data {
 		out[k] = struct{}{}

@@ -70,7 +70,7 @@ func main() {
 		_ = engine.RunLoop(ctx)
 	}()
 
-	healthServer := health.NewServer(8080, healthStatus, logger)
+	healthServer := health.NewServer(cfg.HealthPort, healthStatus, logger)
 	go healthServer.Start()
 
 	quit := make(chan os.Signal, 1)

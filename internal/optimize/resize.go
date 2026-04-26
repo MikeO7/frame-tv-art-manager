@@ -13,10 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	// Use stdlib image decoding + golang.org/x/image for high-quality resize.
-	_ "image/jpeg"
-	_ "image/png"
-
 	"golang.org/x/image/draw"
 )
 
