@@ -329,13 +329,17 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		}
 
 		mapping.Set(filename, contentID)
-		if err := mapping.Save(); err != nil {
-			log.Error("failed to save mapping", "error", err)
-		}
 		log.Info("uploaded", "file", filename, "content_id", contentID)
 		summary.Uploaded++
 
 		time.Sleep(e.cfg.UploadDelay)
+	}
+
+	// Batch save mapping after all uploads
+	if summary.Uploaded > 0 && !e.cfg.DryRun {
+		if err := mapping.Save(); err != nil {
+			log.Error("failed to save mapping after uploads", "error", err)
+		}
 	}
 
 	// Delete tracked images no longer in local directory.
