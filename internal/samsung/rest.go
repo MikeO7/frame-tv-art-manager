@@ -20,7 +20,7 @@ func FetchDeviceInfo(ctx context.Context, host string, port int, timeout time.Du
 	client := &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Samsung self-signed cert
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Required: Samsung TVs use self-signed certs for local REST; verification would prevent connection.
 		},
 	}
 

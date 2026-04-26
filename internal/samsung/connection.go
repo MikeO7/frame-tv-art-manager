@@ -84,7 +84,7 @@ func (c *Connection) Open(ctx context.Context) error {
 	c.logger.Debug("dialing WebSocket", "url", wsURL)
 
 	dialer := websocket.Dialer{
-		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Samsung TVs use self-signed certs
+		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Required: Samsung TVs use self-signed certs for local WSS; verification would prevent connection.
 		HandshakeTimeout: c.timeout,
 	}
 
