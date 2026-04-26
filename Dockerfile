@@ -11,7 +11,7 @@ RUN go mod download
 
 # Build the binary.
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /frame-tv-art-manager ./cmd/frame-tv-art-manager
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /frame-tv-art-manager ./cmd/frame-tv-art-manager
 
 # Runtime stage — minimal distroless image.
 # gcr.io/distroless/static is specifically for statically linked Go binaries.

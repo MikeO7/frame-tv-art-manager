@@ -57,6 +57,7 @@ jobs:
 
     - name: Build binary
       run: |
+        go mod tidy
         go build -v \
           -ldflags="-s -w -X main.Version=ci -X main.Commit=${{ github.sha }} -X main.BuildDate=$(date -u +%Y-%m-%d)" \
           -o frame-tv-art-manager \
