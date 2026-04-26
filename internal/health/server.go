@@ -87,8 +87,9 @@ func (s *Server) Start() {
 	mux.HandleFunc("/status", s.handleStatus)
 
 	s.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", s.port),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
