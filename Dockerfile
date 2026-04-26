@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache tzdata
 
@@ -13,21 +13,17 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /frame-tv-art-manager ./cmd/frame-tv-art-manager
 
-# Runtime stage — minimal scratch image.
-FROM scratch
-
-# Copy CA certificates for HTTPS (TV uses self-signed, but we need the
-# root CAs for potential future use and for time zone data).
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-
-# Copy timezone data for solar brightness calculations.
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+# Runtime stage — minimal distroless image.
+# gcr.io/distroless/static is specifically for statically linked Go binaries.
+# It contains CA certificates and timezone data.
+FROM gcr.io/distroless/static-debian12:latest
 
 # Copy the binary.
 COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
 
 # Create default directories.
 # (These will be overridden by volume mounts in docker-compose.)
+# Note: Distroless doesn't have a shell, but it handles VOLUME and ENTRYPOINT.
 VOLUME ["/artwork", "/tokens"]
 
 ENTRYPOINT ["/frame-tv-art-manager"]
