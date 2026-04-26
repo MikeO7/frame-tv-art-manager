@@ -176,7 +176,7 @@ func (c *Connection) Close() error {
 
 	c.closed.Store(true)
 	err := c.conn.Close()
-	c.conn = nil
+
 
 	// Wait for recv loop to finish.
 	if c.recvDone != nil {
