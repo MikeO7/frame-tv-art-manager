@@ -163,7 +163,7 @@ func Load() (*Config, error) {
 		TokenDir:            envStr("TOKEN_DIR", "/tokens"),
 		SyncIntervalMin:     envInt("SYNC_INTERVAL_MINUTES", 5),
 		MatteStyle:          envStr("MATTE_STYLE", "none"),
-		ClientName:          envStr("CLIENT_NAME", "FrameTVArtworkSync"),
+		ClientName:          envStr("CLIENT_NAME", "Frame Art Manager"),
 		DryRun:              envBool("DRY_RUN", false),
 		LogLevel:            strings.ToLower(envStr("LOG_LEVEL", "info")),
 		SlideshowEnabled:    envBool("SLIDESHOW_ENABLED", false),

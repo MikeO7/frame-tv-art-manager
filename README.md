@@ -89,7 +89,7 @@ All configuration is via environment variables. See [`.env.example`](.env.exampl
 | Variable | Default | Description |
 |---|---|---|
 | `SYNC_INTERVAL_MINUTES` | `5` | Minutes between sync cycles |
-| `CLIENT_NAME` | `FrameTVArtworkSync` | WebSocket client identity |
+| `CLIENT_NAME` | `Frame Art Manager` | WebSocket client identity |
 | `MATTE_STYLE` | `none` | Artwork border style |
 | `LOG_LEVEL` | `info` | Logging verbosity |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Delete untracked images on TV |

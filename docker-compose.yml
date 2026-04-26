@@ -7,22 +7,13 @@ services:
       # Comma-separated list of TV IP addresses (REQUIRED)
       TV_IPS: "192.168.1.100"
 
-      # How often to sync artwork (minutes)
-      SYNC_INTERVAL_MINUTES: "5"
+      # --- Optional Settings (uncomment to customize) ---
 
-      # Client identity for WebSocket handshake.
-      # A stable name prevents Allow/Deny popups on reconnect.
-      CLIENT_NAME: "FrameTVArtworkSync"
-
-      # Matte/border style: "none" for full-screen,
-      # or "style_color" like "shadowbox_polar", "modern_apricot"
-      MATTE_STYLE: "none"
-
-      # Log level: debug, info, warn, error
-      LOG_LEVEL: "info"
-
-      # Remove images on TV that aren't in the artwork folder
-      REMOVE_UNKNOWN_IMAGES: "false"
+      # SYNC_INTERVAL_MINUTES: "5"
+      # CLIENT_NAME: "Frame Art Manager"
+      # MATTE_STYLE: "none"
+      # LOG_LEVEL: "info"
+      # REMOVE_UNKNOWN_IMAGES: "false"
 
       # --- Optional: Wake-on-LAN ---
       # TV_MAC: "AA:BB:CC:DD:EE:FF"
