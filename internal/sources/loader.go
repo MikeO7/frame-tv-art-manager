@@ -176,7 +176,13 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 		"file", filename,
 	)
 
-	resp, err := l.client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)")
+
+	resp, err := l.client.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("HTTP GET: %w", err)
 	}
@@ -322,7 +328,13 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 
 // downloadToFile is a helper that downloads a URL directly to a path.
 func (l *Loader) downloadToFile(url string, destPath string) (bool, error) {
-	resp, err := l.client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("User-Agent", "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)")
+
+	resp, err := l.client.Do(req)
 	if err != nil {
 		return false, err
 	}
