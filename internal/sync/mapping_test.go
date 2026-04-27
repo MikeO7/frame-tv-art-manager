@@ -37,6 +37,28 @@ func TestMapping_Delete(t *testing.T) {
 	m.Delete("nonexistent.jpg")
 }
 
+func TestMapping_DeleteBatch(t *testing.T) {
+	m := &Mapping{
+		data: map[string]string{
+			"test1.jpg": "id1",
+			"test2.jpg": "id2",
+			"test3.jpg": "id3",
+		},
+	}
+
+	m.DeleteBatch([]string{"test1.jpg", "test2.jpg", "nonexistent.jpg"})
+
+	if _, ok := m.data["test1.jpg"]; ok {
+		t.Error("expected test1.jpg to be deleted")
+	}
+	if _, ok := m.data["test2.jpg"]; ok {
+		t.Error("expected test2.jpg to be deleted")
+	}
+	if _, ok := m.data["test3.jpg"]; !ok {
+		t.Error("expected test3.jpg to be preserved")
+	}
+}
+
 func TestMapping_GetContentID(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{

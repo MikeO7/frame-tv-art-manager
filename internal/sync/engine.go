@@ -372,9 +372,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 				if err := client.DeleteImages(ctx, idsToDelete); err != nil {
 					log.Error("batch delete failed", "error", err)
 				} else {
-					for filename := range toDelete {
-						mapping.Delete(filename)
-					}
+					mapping.DeleteBatch(setToSlice(toDelete))
 					if err := mapping.Save(); err != nil {
 						log.Error("failed to save mapping after delete", "error", err)
 					}
