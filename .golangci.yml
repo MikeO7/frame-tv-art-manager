@@ -1,3 +1,5 @@
+version: 1.52.2
+
 linters:
   default: standard
   enable:
