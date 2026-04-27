@@ -197,7 +197,7 @@ func Load() (*Config, error) {
 		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
-		SmartCropEnabled:    envBool("SMART_CROP_ENABLED", true),
+		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", true),
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 92),
 		HealthPort:          envInt("HEALTH_PORT", 0),
 		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,
@@ -311,14 +311,21 @@ func envInt(key string, def int) int {
 }
 
 func envBool(key string) bool {
+	return envBoolWithDefault(key, false)
+}
+
+func envBoolWithDefault(key string, def bool) bool {
 	v := strings.ToLower(os.Getenv(key))
+	if v == "" {
+		return def
+	}
 	switch v {
 	case "true", "1", "yes":
 		return true
 	case "false", "0", "no":
 		return false
 	default:
-		return false
+		return def
 	}
 }
 

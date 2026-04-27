@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/image/draw"
 	"github.com/muesli/smartcrop"
-	"github.com/nfnt/resize"
+	"github.com/muesli/smartcrop/nfnt"
 )
 
 // Config holds image optimization settings.
@@ -64,7 +64,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 		return false, fmt.Errorf("open image: %w", err)
 	}
 
-	img, format, err := image.Decode(f)
+	img, _, err := image.Decode(f)
 	_ = f.Close()
 	if err != nil {
 		return false, fmt.Errorf("decode image: %w", err)
@@ -101,7 +101,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 			"target_aspect", "16:9",
 		)
 		
-		analyzer := smartcrop.NewAnalyzer(resize.NewDefaultResizer())
+		analyzer := smartcrop.NewAnalyzer(nfnt.NewDefaultResizer())
 		topCrop, err := analyzer.FindBestCrop(img, cfg.MaxWidth, cfg.MaxHeight)
 		if err != nil {
 			return false, fmt.Errorf("find best crop: %w", err)
@@ -200,7 +200,9 @@ func ValidateImage(path string) error {
 	return err
 }
 
-// fitDimensions calculates new width and height...
+// fitDimensions calculates new width and height that fit within
+// maxW×maxH while preserving the aspect ratio.
+func fitDimensions(origW, origH, maxW, maxH int) (int, int) {
 	ratioW := float64(maxW) / float64(origW)
 	ratioH := float64(maxH) / float64(origH)
 
