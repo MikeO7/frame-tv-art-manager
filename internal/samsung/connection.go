@@ -297,16 +297,24 @@ func (c *Connection) recvLoop() {
 	}
 }
 
-// routeD2DEvent parses the inner data JSON of a d2d event and routes it
-// to the correct pending request channel.
 func (c *Connection) routeD2DEvent(dataRaw json.RawMessage) {
+	// Some TVs (like the 2024 model) send 'data' as a JSON-encoded string.
+	// Others send it as a raw JSON object. We try to handle both.
+	var dataToParse []byte = dataRaw
+
+	var dataStr string
+	if err := json.Unmarshal(dataRaw, &dataStr); err == nil {
+		// It was a string! Use the unwrapped string content for parsing.
+		dataToParse = []byte(dataStr)
+	}
+
 	var inner struct {
 		RequestID string `json:"request_id"`
 		ID        string `json:"id"`
 		Event     string `json:"event"`
 	}
-	if err := json.Unmarshal(dataRaw, &inner); err != nil {
-		c.logger.Debug("d2d event: parse failed", "error", err)
+	if err := json.Unmarshal(dataToParse, &inner); err != nil {
+		c.logger.Debug("d2d event: parse failed", "error", err, "raw", string(dataRaw))
 		return
 	}
 
@@ -321,7 +329,7 @@ func (c *Connection) routeD2DEvent(dataRaw json.RawMessage) {
 		}
 		if ch, ok := c.pending[key]; ok {
 			select {
-			case ch <- dataRaw:
+			case ch <- dataToParse:
 			default:
 			}
 			return
