@@ -108,7 +108,11 @@ func main() {
 				"  #   - photo:L9W_5q57_V8\n\n" +
 				"  # --- 🔗 Direct URLs ---\n" +
 				"  # direct:\n" +
-				"  #   - https://example.com/artwork.jpg\n"
+				"  #   - https://example.com/artwork.jpg\n\n" +
+				"# 🔍 How to find IDs:\n" +
+				"# - Unsplash Photo: unsplash.com/photos/abc123 -> abc123\n" +
+				"# - Unsplash Collection: unsplash.com/collections/123/nature -> 123\n" +
+				"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n"
 			if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0644); err != nil {
 				logger.Warn("Failed to bootstrap sources file", "error", err)
 			}

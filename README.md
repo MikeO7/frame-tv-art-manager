@@ -128,6 +128,16 @@ Simply add these lines to your `sources.txt`:
 | **Unsplash** | `unsplash:photo:L9W_5q57_V8` | A specific high-res photo by its ID. |
 | **Direct** | `https://example.com/art.jpg` | Any direct link to a JPEG or PNG image. |
 
+### 🔍 How to find IDs
+
+Finding the right ID is easy—just look at the URL in your browser:
+
+| Provider | URL Example | ID to use |
+|---|---|---|
+| **Unsplash Photo** | `unsplash.com/photos/L9W_5q57_V8` | `L9W_5q57_V8` |
+| **Unsplash Collection** | `unsplash.com/collections/225444/nature` | `225444` |
+| **Art Institute** | `artic.edu/artworks/12345/monet-oil` | `12345` |
+
 ### 🛠 Configuration for APIs
 
 | Variable | Default | Description |
@@ -136,7 +146,7 @@ Simply add these lines to your `sources.txt`:
 | `NASA_API_KEY` | `DEMO_KEY` | Optional for NASA. Defaults to a shared demo key. |
 
 > [!TIP]
-> **Pro Tip**: The manager is smart. It only downloads *new* images and automatically tracks Unsplash downloads to comply with their TOS. If you remove a line from `sources.txt`, the image stays in your folder until you manually delete it.
+> **Pro Tip**: The manager is smart. It only downloads *new* images and automatically tracks Unsplash downloads to comply with their TOS. If you remove a line from `sources.yaml`, the image stays in your folder until you manually delete it.
 
 ## 🛡️ Robustness & Reliability
 
