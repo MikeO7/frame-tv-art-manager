@@ -129,6 +129,7 @@ Simply create a `sources.yaml` file:
 #   # pixabay:
 #   #   - search:nature     # 10 high-res photos from Pixabay
 #   #   - editors_choice    # 10 hand-picked photos from Pixabay
+#   #   - user:12345        # Latest 50 photos from a specific artist
 #
 #   # --- 🔗 Direct URLs (Any JPEG/PNG) ---
 #   # direct:
@@ -152,6 +153,7 @@ Simply add these lines to your `sources.txt`:
 | **Pexels** | `pexels:photo:12345` | A specific high-resolution photo by its ID. |
 | **Pixabay** | `pixabay:search:nature` | Top 10 results for a keyword (e.g. "nature"). |
 | **Pixabay** | `pixabay:editors_choice` | 10 hand-picked "Editor's Choice" photos. |
+| **Pixabay** | `pixabay:user:12345` | Up to 50 latest photos from a specific artist. |
 | **Pixabay** | `pixabay:photo:12345` | A specific high-resolution photo by its ID. |
 | **Direct** | `https://example.com/art.jpg` | Any direct web link to a JPEG or PNG image. |
 | **Direct** | `direct:https://example.com/art.jpg` | Explicit direct link (for use in YAML providers map). |
@@ -167,6 +169,7 @@ Finding the right ID is easy—just look at the URL in your browser:
 | **Art Institute** | `artic.edu/artworks/12345/monet-oil` | `12345` |
 | **Pexels Photo** | `pexels.com/photo/landscape-12345` | `12345` |
 | **Pixabay Photo** | `pixabay.com/photos/landscape-12345/` | `12345` |
+| **Pixabay User** | `pixabay.com/users/name-12345/` | `12345` |
 
 ### 🛠 Configuration for APIs
 

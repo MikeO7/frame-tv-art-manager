@@ -572,6 +572,15 @@ func (l *Loader) handlePixabayLine(line string) (int, error) {
 			return 0, err
 		}
 		urls = []string{p}
+	case "user":
+		if len(parts) < 3 {
+			return 0, fmt.Errorf("pixabay user requires an ID: %s", line)
+		}
+		p, err := l.pixabay.User(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		urls = p
 	default:
 		return 0, fmt.Errorf("unknown pixabay type: %s", parts[1])
 	}

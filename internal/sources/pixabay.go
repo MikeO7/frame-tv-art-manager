@@ -62,6 +62,12 @@ func (c *PixabayClient) FetchPhoto(ctx context.Context, photoID string) (string,
 	return urls[0], nil
 }
 
+// User retrieves the latest photos from a specific Pixabay user.
+func (c *PixabayClient) User(ctx context.Context, userID string) ([]string, error) {
+	u := fmt.Sprintf("https://pixabay.com/api/?key=%s&user_id=%s&per_page=50&image_type=photo", c.apiKey, userID)
+	return c.fetchPhotoList(ctx, u)
+}
+
 func (c *PixabayClient) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
