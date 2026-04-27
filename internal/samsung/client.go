@@ -2,6 +2,7 @@ package samsung
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
