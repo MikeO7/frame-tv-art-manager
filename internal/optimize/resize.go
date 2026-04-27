@@ -125,6 +125,9 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 		return false, fmt.Errorf("rename optimized file: %w", err)
 	}
 
+	// Ensure inclusive permissions for Mac access.
+	_ = os.Chmod(path, 0644)
+
 	if origStat != nil && newStat != nil {
 		logger.Info("image optimized",
 			"file", filepath.Base(path),

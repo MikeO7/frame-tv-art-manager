@@ -160,6 +160,9 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 		return false, fmt.Errorf("rename temp file: %w", err)
 	}
 
+	// Ensure inclusive permissions for Mac access.
+	_ = os.Chmod(destPath, 0644)
+
 	l.logger.Info("downloaded source image",
 		"file", filename,
 		"size_bytes", written,
