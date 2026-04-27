@@ -85,6 +85,29 @@ func main() {
 		logger.Debug("Directory validated", "name", name, "path", path)
 	}
 
+	// Bootstrap sources file if missing
+	if cfg.SourcesFile != "" {
+		if _, err := os.Stat(cfg.SourcesFile); os.IsNotExist(err) {
+			logger.Info("Creating example sources file (all commented out)", "path", cfg.SourcesFile)
+			template := "# ==========================================\n" +
+				"# Frame TV Art Manager - Source List\n" +
+				"# ==========================================\n" +
+				"# Uncomment the lines below to enable them.\n\n" +
+				"sources:\n" +
+				"  # --- 🚀 NASA ---\n" +
+				"  # - nasa:apod\n" +
+				"  # - nasa:search:nebula\n\n" +
+				"  # --- 🎨 Art Institute of Chicago ---\n" +
+				"  # - artic:search:impressionism\n" +
+				"  # - artic:search:monet\n\n" +
+				"  # --- 📸 Unsplash ---\n" +
+				"  # - unsplash:collection:225444\n"
+			if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0644); err != nil {
+				logger.Warn("Failed to bootstrap sources file", "error", err)
+			}
+		}
+	}
+
 	healthStatus := health.NewStatus()
 
 	engine := sync.NewEngine(cfg, logger, healthStatus)

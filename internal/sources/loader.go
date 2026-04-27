@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -70,34 +72,20 @@ func (l *Loader) Sync() (int, error) {
 		return 0, nil
 	}
 
-	f, err := os.Open(l.sourcesFile)
+	urls, err := l.loadSources()
 	if err != nil {
-		if os.IsNotExist(err) {
-			l.logger.Debug("no sources file found", "path", l.sourcesFile)
-			return 0, nil
-		}
-		return 0, fmt.Errorf("open sources file: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	var urls []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		urls = append(urls, line)
+		return 0, err
 	}
 
-	if err := scanner.Err(); err != nil {
-		return 0, fmt.Errorf("read sources file: %w", err)
+	if len(urls) == 0 {
+		return 0, nil
 	}
 
 	l.logger.Info("processing image sources", "urls", len(urls))
 
 	downloaded := 0
 	for _, line := range urls {
+		// Existing source processing logic...
 		if strings.HasPrefix(line, "unsplash:") {
 			count, err := l.handleUnsplashLine(line)
 			if err != nil {
@@ -467,6 +455,60 @@ func (l *Loader) handleArticLine(line string) (int, error) {
 	}
 
 	return downloaded, nil
+}
+
+// loadSources reads the sources file (TXT or YAML) and returns a list of source strings.
+func (l *Loader) loadSources() ([]string, error) {
+	ext := strings.ToLower(filepath.Ext(l.sourcesFile))
+	if ext == ".yaml" || ext == ".yml" {
+		return l.loadYamlSources()
+	}
+	return l.loadTxtSources()
+}
+
+func (l *Loader) loadTxtSources() ([]string, error) {
+	f, err := os.Open(l.sourcesFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	var urls []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		urls = append(urls, line)
+	}
+	return urls, scanner.Err()
+}
+
+func (l *Loader) loadYamlSources() ([]string, error) {
+	data, err := os.ReadFile(l.sourcesFile)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try to parse as a simple list first
+	var list []string
+	if err := yaml.Unmarshal(data, &list); err == nil && len(list) > 0 {
+		return list, nil
+	}
+
+	// Try to parse as a structured map with a "sources" key
+	var structured struct {
+		Sources []string `yaml:"sources"`
+	}
+	if err := yaml.Unmarshal(data, &structured); err == nil {
+		return structured.Sources, nil
+	}
+
+	return nil, fmt.Errorf("invalid YAML sources format")
 }
 
 // truncateURL shortens a URL for logging readability.

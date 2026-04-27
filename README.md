@@ -94,11 +94,23 @@ On the first connection, the TV will display an authorization prompt. Select **A
 | `UNSPLASH_ACCESS_KEY` | *(unset)* | Your Unsplash API key. |
 | `NASA_API_KEY` | `DEMO_KEY` | Your NASA API key (defaults to demo). |
 
-## 📂 Image Sources (`sources.txt`)
+## 📂 Image Sources (`sources.yaml` or `sources.txt`)
 
-The manager can automatically download and curate images from world-class APIs. To enable this, create a `sources.txt` file in your data folder and set `ARTWORK_SOURCES_FILE=/data/sources.txt`.
+The manager can automatically download and curate images from world-class APIs. To enable this, create a `sources.yaml` (recommended) or `sources.txt` file in your data folder and set `ARTWORK_SOURCES_FILE=/data/sources.txt`.
 
-### 🧪 Source Cookbook (Examples)
+### 🧪 Source Cookbook (YAML Example)
+
+Simply create a `sources.yaml` file:
+
+```yaml
+# sources.yaml
+sources:
+  - nasa:apod
+  - artic:search:monet
+  - unsplash:collection:225444
+```
+
+### 🧪 Source Cookbook (Legacy TXT Example)
 
 Simply add these lines to your `sources.txt`:
 
