@@ -41,6 +41,7 @@ type Loader struct {
 	maxImages   int
 	maxSizeMB   int
 	index       map[string]string // hash -> filename (content deduplication)
+	prefixMap   map[string]string // prefix -> filename (idempotency check)
 	visited     map[string]bool   // filename -> true (cleanup tracking)
 }
 
@@ -186,13 +187,14 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 	}
 
 	filename := l.urlToFilename(url)
-	destPath := filepath.Join(l.artworkDir, filename)
-
-	// Skip if already downloaded.
-	if _, err := os.Stat(destPath); err == nil {
-		l.visited[filename] = true
+	
+	// Check if already downloaded (by identity prefix).
+	if existing, ok := l.prefixMap[strings.TrimSuffix(filename, filepath.Ext(filename))]; ok {
+		l.visited[existing] = true
 		return false, nil
 	}
+
+	destPath := filepath.Join(l.artworkDir, filename)
 
 	l.logger.Info("downloading source image",
 		"url", truncateURL(url),
@@ -230,8 +232,9 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 		filename = strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
 		destPath = filepath.Join(l.artworkDir, filename)
 
-		// Re-check with correct extension.
-		if _, err := os.Stat(destPath); err == nil {
+		// Re-check by identity prefix.
+		if existing, ok := l.prefixMap[strings.TrimSuffix(filename, ext)]; ok {
+			l.visited[existing] = true
 			return false, nil
 		}
 	}
@@ -264,6 +267,16 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 			l.visited[existing] = true
 			return false, nil
 		}
+		
+		// Rename to include hash for future sync cycles.
+		ext := filepath.Ext(filename)
+		identity := strings.TrimSuffix(filename, ext)
+		filename = fmt.Sprintf("%s.h_%s%s", identity, hash[:12], ext)
+		finalPath := filepath.Join(l.artworkDir, filename)
+		if err := os.Rename(destPath, finalPath); err == nil {
+			destPath = finalPath
+		}
+		
 		l.index[hash] = filename
 	}
 
@@ -353,13 +366,14 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 		url := p.URLs.Raw + "&w=3840&q=95&fm=jpg"
 		
 		// Use a deterministic filename based on Unsplash ID.
-		filename := fmt.Sprintf("unsplash_%s.jpg", p.ID)
-		destPath := filepath.Join(l.artworkDir, filename)
-
-		if _, err := os.Stat(destPath); err == nil {
-			l.visited[filename] = true
-			continue // skip existing
+		identity := fmt.Sprintf("unsplash_%s", p.ID)
+		if existing, ok := l.prefixMap[identity]; ok {
+			l.visited[existing] = true
+			continue
 		}
+
+		filename := identity + ".jpg"
+		destPath := filepath.Join(l.artworkDir, filename)
 
 		// Track download as required by TOS.
 		l.unsplash.TrackDownload(ctx, p.Links.DownloadLocation)
@@ -482,24 +496,26 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 	for _, u := range urls {
 		// Use a deterministic filename based on URL.
 		filename := l.urlToFilename(u)
+		identity := strings.TrimSuffix(filename, filepath.Ext(filename))
+		
 		if strings.Contains(u, "nasa.gov") {
 			// For NASA library, try to keep a more descriptive name if possible.
-			// The URL usually contains the NASA ID.
 			parts := strings.Split(u, "/")
 			if len(parts) > 0 {
 				last := parts[len(parts)-1]
 				if strings.Contains(last, "~") {
-					filename = "nasa_" + strings.Split(last, "~")[0] + ".jpg"
+					identity = "nasa_" + strings.Split(last, "~")[0]
 				}
 			}
 		}
 		
-		destPath := filepath.Join(l.artworkDir, filename)
-
-		if _, err := os.Stat(destPath); err == nil {
-			l.visited[filename] = true
-			continue // skip existing
+		if existing, ok := l.prefixMap[identity]; ok {
+			l.visited[existing] = true
+			continue
 		}
+
+		filename = identity + ".jpg"
+		destPath := filepath.Join(l.artworkDir, filename)
 
 		ok, err := l.downloadToFile(u, destPath)
 		if err != nil {
@@ -543,20 +559,21 @@ func (l *Loader) handleArticLine(line string) (int, error) {
 
 	downloaded := 0
 	for _, u := range urls {
-		filename := l.urlToFilename(u)
+		identity := strings.TrimSuffix(l.urlToFilename(u), ".jpg")
 		if strings.Contains(u, "artic.edu") {
 			// Try to extract image_id for a nicer filename
 			parts := strings.Split(u, "/")
 			if len(parts) > 5 {
-				filename = "artic_" + parts[5] + ".jpg"
+				identity = "artic_" + parts[5]
 			}
 		}
 
-		destPath := filepath.Join(l.artworkDir, filename)
-		if _, err := os.Stat(destPath); err == nil {
-			l.visited[filename] = true
-			continue // skip existing
+		if existing, ok := l.prefixMap[identity]; ok {
+			l.visited[existing] = true
+			continue
 		}
+
+		destPath := filepath.Join(l.artworkDir, identity+".jpg")
 
 		ok, err := l.downloadToFile(u, destPath)
 		if err != nil {
@@ -762,9 +779,11 @@ func (l *Loader) downloadMultiple(urls []string, provider string) (int, error) {
 }
 
 // buildContentIndex hashes all existing files in the artwork directory
-// to enable deduplication.
+// to enable deduplication and fast syncs.
 func (l *Loader) buildContentIndex() {
 	l.index = make(map[string]string)
+	l.prefixMap = make(map[string]string)
+	
 	entries, err := os.ReadDir(l.artworkDir)
 	if err != nil {
 		return
@@ -774,15 +793,46 @@ func (l *Loader) buildContentIndex() {
 		if entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(l.artworkDir, entry.Name())
-		hash, err := l.fileHash(path)
-		if err == nil {
-			if existing, ok := l.index[hash]; ok {
-				l.logger.Info("found existing duplicate content, removing", "file", entry.Name(), "matches", existing)
-				_ = os.Remove(path)
-			} else {
-				l.index[hash] = entry.Name()
+		filename := entry.Name()
+		path := filepath.Join(l.artworkDir, filename)
+		
+		var hash string
+		// identity is the part before the hash suffix (if any).
+		identity := strings.TrimSuffix(filename, filepath.Ext(filename))
+		
+		// Try to extract hash from filename: identity.h_[hash].[ext]
+		if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
+			identity = parts[0]
+			hash = parts[1]
+		}
+		
+		l.prefixMap[identity] = filename
+
+		// If no hash in filename, we must calculate it (once).
+		if hash == "" {
+			var err error
+			hash, err = l.fileHash(path)
+			if err != nil {
+				continue
 			}
+			
+			// Rename to include hash for future cycles.
+			ext := filepath.Ext(filename)
+			newName := identity + ".h_" + hash[:12] + ext
+			newPath := filepath.Join(l.artworkDir, newName)
+			if err := os.Rename(path, newPath); err == nil {
+				filename = newName
+				path = newPath
+				l.prefixMap[identity] = filename
+			}
+			l.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:12])
+		}
+
+		if existing, ok := l.index[hash]; ok {
+			l.logger.Info("found existing duplicate content, removing", "file", filename, "matches", existing)
+			_ = os.Remove(path)
+		} else {
+			l.index[hash] = filename
 		}
 	}
 }
