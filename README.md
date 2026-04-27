@@ -206,6 +206,7 @@ This manager is designed to be truly "set-and-forget":
 
 ## 📂 File Structure
 
+- `sources.yaml`: Your master list of image sources and providers.
 - `/data/artwork/`: Your `.jpg` and `.png` images.
 - `/data/tokens/`:
   - `tv_<IP>.txt`: Encrypted auth token.
