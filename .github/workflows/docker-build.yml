@@ -58,16 +58,22 @@ jobs:
           type=semver,pattern=latest
           # Tag latest for main branch pushes
           type=raw,value=latest,enable={{is_default_branch}}
-          # Tag with branch name for main branch
+          # Tag with branch name
           type=ref,event=branch
           # Tag with short SHA for every commit
-          type=sha,prefix={{branch}}-,format=short,enable=${{ github.ref_type != 'tag' && github.event_name != 'pull_request' }}
+          type=sha,format=short,enable=${{ github.event_name != 'pull_request' }}
           # Tag PR number for pull requests
           type=ref,event=pr
         labels: |
           org.opencontainers.image.title=Frame TV Art Manager
           org.opencontainers.image.description=Automatic artwork sync for Samsung Frame TVs
           org.opencontainers.image.vendor=MikeO7
+
+    - name: Set build metadata
+      id: meta-args
+      run: |
+        echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+        echo "commit=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v7
@@ -79,8 +85,8 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         build-args: |
           VERSION=${{ steps.meta.outputs.version }}
-          GIT_COMMIT=${{ github.sha }}
-          BUILD_DATE=$(date -u +%Y-%m-%d)
+          GIT_COMMIT=${{ steps.meta-args.outputs.commit }}
+          BUILD_DATE=${{ steps.meta-args.outputs.date }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
         provenance: false
@@ -99,5 +105,5 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Pull command**:" >> $GITHUB_STEP_SUMMARY
         echo '```bash' >> $GITHUB_STEP_SUMMARY
-        echo "docker pull ghcr.io/mikeo7/frame-tv-art-manager:latest" >> $GITHUB_STEP_SUMMARY
+        echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
