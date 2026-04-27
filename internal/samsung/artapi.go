@@ -347,3 +347,26 @@ func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
 
 	return nil
 }
+
+// GetCategories retrieves the list of all artwork categories available on the TV.
+func (a *ArtAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
+	id := NewRequestID()
+
+	req := map[string]any{
+		"request":    "get_categories",
+		"id":         id,
+		"request_id": id,
+	}
+
+	payload, err := ArtAppRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("build get_categories request: %w", err)
+	}
+
+	raw, err := a.conn.SendAndWait(ctx, payload, id, a.timeout)
+	if err != nil {
+		return nil, fmt.Errorf("get_categories: %w", err)
+	}
+
+	return raw, nil
+}

@@ -225,6 +225,11 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	}
 	summary.ArtMode = true
 
+	// Save detailed metadata for auditing.
+	if err := client.SaveMetadata(ctx); err != nil {
+		log.Warn("could not save metadata", "error", err)
+	}
+
 	// Load filename→content_id mapping.
 	mapping, err := LoadMapping(e.cfg.TokenDir, ip)
 	if err != nil {

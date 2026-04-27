@@ -106,6 +106,16 @@ All configuration is via environment variables. See [`.env.example`](.env.exampl
 | `SOLAR_BRIGHTNESS_ENABLED` | `false` | Auto brightness from sun position |
 | `AUTO_OFF_TIME` | *(unset)* | Time to power off TVs (24h format) |
 
+## Tizen 8.0+ & 2024 Model Support (Y2025 Platform)
+
+This project is specifically hardened for the 2024+ Samsung Frame TVs (LS03D / Y2025 Platform):
+
+- **Smart Handshake** — Automatically captures tokens on the Remote channel before switching to the Art channel to ensure permanent authorization.
+- **Protocol Agnostic** — Supports both legacy dot-notation (`d2d.service.message.event`) and 2024 underscore-notation (`d2d_service_message`) WebSocket envelopes.
+- **JSON Unwrapping** — Handles string-encoded JSON payloads found in newer firmware that cause standard parsers to fail.
+- **Device Auditing** — Retrieves hidden system metadata including Serial Number, DUID, and internal Platform Capability flags.
+- **Stable REST Port 8002** — Enforces secure connections to prevent the "Empty Token" issue common on newer models.
+
 ## Architecture
 
 ```
@@ -130,14 +140,18 @@ internal/
   sanitize/filename.go              — Filename sanitization
 ```
 
-## 2024 Model Support (LS03D)
+## Troubleshooting
 
-This project includes hardening for 2024 Samsung Frame TVs:
+### Permissions (Docker)
+If your token file shows as "Permission Denied" when viewing from a networked drive (e.g., SMB/NFS), ensure your `docker-compose.yml` specifies the correct User ID:
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+```
 
-- **Port 8002 only** — ensures token persistence and stable connections
-- **Unified client identity** — prevents "Samsung Remote" popup loops
-- **Optional REST gate** — silent art mode detection before connecting
-- **Calibrated timeouts** — tuned for 2024 panel processing overhead
+### Firmware Version "Unknown"
+On 2024+ models, Samsung has removed the firmware version from the public REST API. The manager will correctly report the model name but may display `Unknown` for the firmware version. This does not impact synchronization.
 
 ## Building
 
@@ -158,4 +172,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Credits
 
-Samsung WebSocket protocol inspired by the [samsung-tv-ws-api](https://github.com/NickWaterton/samsung-tv-ws-api) community research.
+Samsung WebSocket protocol research inspired by the [samsung-tv-ws-api](https://github.com/NickWaterton/samsung-tv-ws-api) and the [xchwarze fork](https://github.com/xchwarze/samsung-tv-ws-api).

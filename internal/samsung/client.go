@@ -234,3 +234,46 @@ func (c *Client) tokenFilePath() string {
 	safeIP := strings.ReplaceAll(c.IP, ".", "_")
 	return filepath.Join(c.cfg.TokenDir, fmt.Sprintf("tv_%s.txt", safeIP))
 }
+
+// SaveMetadata fetches all available system information and artwork categories,
+// saving them to a JSON file in the tokens directory for auditing.
+func (c *Client) SaveMetadata(ctx context.Context) error {
+	metadata := make(map[string]any)
+	metadata["timestamp"] = time.Now().Format(time.RFC3339)
+
+	// 1. Basic Device Info.
+	if c.info != nil {
+		metadata["device"] = c.info
+	}
+
+	// 2. Slideshow Status.
+	if ss, err := c.SlideshowStatus(ctx); err == nil {
+		metadata["slideshow"] = ss
+	}
+
+	// 3. All Categories.
+	if cats, err := c.artAPI.GetCategories(ctx); err == nil {
+		var raw json.RawMessage
+		if err := json.Unmarshal(cats, &raw); err == nil {
+			metadata["categories"] = raw
+		}
+	}
+
+	// 4. Detailed Environment (Placeholder for future sensors).
+	metadata["platform"] = "Y2025"
+
+	b, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	safeIP := strings.ReplaceAll(c.IP, ".", "_")
+	path := filepath.Join(c.cfg.TokenDir, fmt.Sprintf("tv_%s_metadata.json", safeIP))
+
+	if err := os.WriteFile(path, b, 0644); err != nil {
+		return fmt.Errorf("write metadata file: %w", err)
+	}
+
+	c.logger.Info("metadata saved", "path", path)
+	return nil
+}
