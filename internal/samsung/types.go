@@ -1,7 +1,7 @@
 // Package samsung provides types shared across the Samsung Frame TV client.
 package samsung
-+
-+import "encoding/json"
+
+import "encoding/json"
 
 // DeviceInfo holds metadata about a connected Samsung TV, retrieved via
 // the REST API at https://<ip>:8002/api/v2/.
