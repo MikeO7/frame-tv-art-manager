@@ -36,7 +36,7 @@ func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtCont
 		"request_id": id,
 	}
 	if category != "" {
-		req["category"] = category
+		req["category_id"] = category
 	}
 
 	payload, err := ArtAppRequest(req)
