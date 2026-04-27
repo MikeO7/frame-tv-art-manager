@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"syscall"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
@@ -59,6 +61,26 @@ func main() {
 
 	logger.Info("Frame TV Art Manager starting", "version", Version, "commit", Commit, "build_date", BuildDate)
 
+	puidStr := os.Getenv("PUID")
+	pgidStr := os.Getenv("PGID")
+
+	var targetUID, targetGID int
+	if puidStr != "" {
+		if val, err := strconv.Atoi(puidStr); err == nil {
+			targetUID = val
+		}
+	} else {
+		targetUID = syscall.Getuid()
+	}
+
+	if pgidStr != "" {
+		if val, err := strconv.Atoi(pgidStr); err == nil {
+			targetGID = val
+		}
+	} else {
+		targetGID = syscall.Getgid()
+	}
+
 	// Robustness check: Ensure required directories exist and are writable.
 	dirs := map[string]string{
 		"artwork": cfg.ArtworkDir,
@@ -69,6 +91,19 @@ func main() {
 			logger.Error("Failed to create/access directory", "name", name, "path", path, "error", err)
 			os.Exit(1)
 		}
+
+		if targetUID != syscall.Getuid() || targetGID != syscall.Getgid() {
+			err := filepath.Walk(path, func(walkPath string, info os.FileInfo, walkErr error) error {
+				if walkErr == nil {
+					return os.Chown(walkPath, targetUID, targetGID)
+				}
+				return walkErr
+			})
+			if err != nil {
+				logger.Warn("Failed to chown directory", "name", name, "path", path, "error", err)
+			}
+		}
+
 		// Test writability
 		testFile := fmt.Sprintf("%s/.write_test", path)
 		if err := os.WriteFile(testFile, []byte("ok"), 0644); err != nil {
@@ -77,6 +112,22 @@ func main() {
 		}
 		_ = os.Remove(testFile)
 		logger.Debug("Directory validated", "name", name, "path", path)
+	}
+
+	if targetGID != syscall.Getgid() {
+		if err := syscall.Setgid(targetGID); err != nil {
+			logger.Error("Failed to set GID", "target_gid", targetGID, "error", err)
+		} else {
+			logger.Debug("Set GID successfully", "gid", targetGID)
+		}
+	}
+
+	if targetUID != syscall.Getuid() {
+		if err := syscall.Setuid(targetUID); err != nil {
+			logger.Error("Failed to set UID", "target_uid", targetUID, "error", err)
+		} else {
+			logger.Debug("Set UID successfully", "uid", targetUID)
+		}
 	}
 
 	healthStatus := health.NewStatus()

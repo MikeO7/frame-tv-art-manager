@@ -176,12 +176,13 @@ func (c *Connection) Close() error {
 
 	c.closed.Store(true)
 	err := c.conn.Close()
-	c.conn = nil
 
-	// Wait for recv loop to finish.
+	// Wait for recv loop to finish before niling conn
 	if c.recvDone != nil {
 		<-c.recvDone
 	}
+
+	c.conn = nil
 
 	// Cancel all pending requests.
 	c.pendingMu.Lock()
