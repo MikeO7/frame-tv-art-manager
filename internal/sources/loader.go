@@ -34,10 +34,11 @@ type Loader struct {
 	nasa        *NASAClient
 	artic       *ArticClient
 	pexels      *PexelsClient
+	pixabay     *PixabayClient
 }
 
 // NewLoader creates a new sources loader.
-func NewLoader(sourcesFile, artworkDir string, unsplashKey, nasaKey, pexelsKey string, logger *slog.Logger) *Loader {
+func NewLoader(sourcesFile, artworkDir string, unsplashKey, nasaKey, pexelsKey, pixabayKey string, logger *slog.Logger) *Loader {
 	return &Loader{
 		sourcesFile: sourcesFile,
 		artworkDir:  artworkDir,
@@ -49,6 +50,7 @@ func NewLoader(sourcesFile, artworkDir string, unsplashKey, nasaKey, pexelsKey s
 		nasa:     NewNASAClient(nasaKey, logger),
 		artic:    NewArticClient(logger),
 		pexels:   NewPexelsClient(pexelsKey, logger),
+		pixabay:  NewPixabayClient(pixabayKey, logger),
 	}
 }
 
@@ -119,6 +121,15 @@ func (l *Loader) Sync() (int, error) {
 			count, err := l.handlePexelsLine(line)
 			if err != nil {
 				l.logger.Warn("pexels sync failed", "line", line, "error", err)
+			}
+			downloaded += count
+			continue
+		}
+
+		if strings.HasPrefix(line, "pixabay:") {
+			count, err := l.handlePixabayLine(line)
+			if err != nil {
+				l.logger.Warn("pixabay sync failed", "line", line, "error", err)
 			}
 			downloaded += count
 			continue
@@ -516,6 +527,60 @@ func (l *Loader) handlePexelsLine(line string) (int, error) {
 		ok, err := l.downloadIfNew(u)
 		if err != nil {
 			l.logger.Warn("failed to download pexels image", "url", truncateURL(u), "error", err)
+			continue
+		}
+		if ok {
+			downloaded++
+		}
+	}
+
+	return downloaded, nil
+}
+
+// handlePixabayLine resolves Pixabay search queries, editor's choice lists, or photo IDs and downloads them.
+func (l *Loader) handlePixabayLine(line string) (int, error) {
+	parts := strings.Split(line, ":")
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("invalid pixabay format: %s (expected pixabay:search:query, pixabay:editors_choice, or pixabay:photo:id)", line)
+	}
+
+	ctx := context.Background()
+	var urls []string
+
+	switch parts[1] {
+	case "search":
+		if len(parts) < 3 {
+			return 0, fmt.Errorf("pixabay search requires a query: %s", line)
+		}
+		p, err := l.pixabay.Search(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		urls = p
+	case "editors_choice":
+		p, err := l.pixabay.EditorsChoice(ctx)
+		if err != nil {
+			return 0, err
+		}
+		urls = p
+	case "photo":
+		if len(parts) < 3 {
+			return 0, fmt.Errorf("pixabay photo requires an ID: %s", line)
+		}
+		p, err := l.pixabay.FetchPhoto(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		urls = []string{p}
+	default:
+		return 0, fmt.Errorf("unknown pixabay type: %s", parts[1])
+	}
+
+	downloaded := 0
+	for _, u := range urls {
+		ok, err := l.downloadIfNew(u)
+		if err != nil {
+			l.logger.Warn("failed to download pixabay image", "url", truncateURL(u), "error", err)
 			continue
 		}
 		if ok {

@@ -125,6 +125,11 @@ Simply create a `sources.yaml` file:
 #   #   - search:nature     # 10 high-res photos from Pexels
 #   #   - curated           # 10 hand-picked photos from Pexels
 #
+#   # --- 🍃 Pixabay (Free Art) ---
+#   # pixabay:
+#   #   - search:nature     # 10 high-res photos from Pixabay
+#   #   - editors_choice    # 10 hand-picked photos from Pixabay
+#
 #   # --- 🔗 Direct URLs (Any JPEG/PNG) ---
 #   # direct:
 #   #   - https://example.com/artwork.jpg
@@ -145,6 +150,9 @@ Simply add these lines to your `sources.txt`:
 | **Pexels** | `pexels:search:nature` | Top 10 results for a keyword (e.g. "nature"). |
 | **Pexels** | `pexels:curated` | 10 hand-picked "Best of Pexels" photos. |
 | **Pexels** | `pexels:photo:12345` | A specific high-resolution photo by its ID. |
+| **Pixabay** | `pixabay:search:nature` | Top 10 results for a keyword (e.g. "nature"). |
+| **Pixabay** | `pixabay:editors_choice` | 10 hand-picked "Editor's Choice" photos. |
+| **Pixabay** | `pixabay:photo:12345` | A specific high-resolution photo by its ID. |
 | **Direct** | `https://example.com/art.jpg` | Any direct web link to a JPEG or PNG image. |
 | **Direct** | `direct:https://example.com/art.jpg` | Explicit direct link (for use in YAML providers map). |
 
@@ -158,6 +166,7 @@ Finding the right ID is easy—just look at the URL in your browser:
 | **Unsplash Collection** | `unsplash.com/collections/225444/nature` | `225444` |
 | **Art Institute** | `artic.edu/artworks/12345/monet-oil` | `12345` |
 | **Pexels Photo** | `pexels.com/photo/landscape-12345` | `12345` |
+| **Pixabay Photo** | `pixabay.com/photos/landscape-12345/` | `12345` |
 
 ### 🛠 Configuration for APIs
 
@@ -165,6 +174,7 @@ Finding the right ID is easy—just look at the URL in your browser:
 |---|---|---|
 | `UNSPLASH_ACCESS_KEY` | *(unset)* | Required for Unsplash. Get one at [unsplash.com/developers](https://unsplash.com/developers). |
 | `PEXELS_API_KEY` | *(unset)* | Required for Pexels. Get one at [pexels.com/api](https://www.pexels.com/api/). |
+| `PIXABAY_API_KEY` | *(unset)* | Required for Pixabay. Get one at [pixabay.com/api/docs/](https://pixabay.com/api/docs/). |
 | `NASA_API_KEY` | `DEMO_KEY` | Optional for NASA. Defaults to a shared demo key. |
 
 > [!TIP]

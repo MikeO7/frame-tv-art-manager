@@ -122,6 +122,9 @@ type Config struct {
 	// PexelsApiKey is the API key for Pexels image downloads.
 	PexelsApiKey string
 
+	// PixabayApiKey is the API key for Pixabay image downloads.
+	PixabayApiKey string
+
 	// --- Image Optimization ---
 
 	// OptimizeEnabled enables automatic image resizing for oversized images.
@@ -198,6 +201,7 @@ func Load() (*Config, error) {
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
 		NasaApiKey:         envStr("NASA_API_KEY", ""),
 		PexelsApiKey:       envStr("PEXELS_API_KEY", ""),
+		PixabayApiKey:      envStr("PIXABAY_API_KEY", ""),
 		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
