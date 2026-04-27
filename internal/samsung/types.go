@@ -1,5 +1,7 @@
 // Package samsung provides types shared across the Samsung Frame TV client.
 package samsung
++
++import "encoding/json"
 
 // DeviceInfo holds metadata about a connected Samsung TV, retrieved via
 // the REST API at https://<ip>:8002/api/v2/.
@@ -30,10 +32,10 @@ type ArtContent struct {
 // ConnInfo holds the D2D socket connection details returned by the TV
 // when accepting an image upload request.
 type ConnInfo struct {
-	IP      string `json:"ip"`
-	Port    int    `json:"port"`
-	Key     string `json:"key"`
-	Secured bool   `json:"secured"`
+	IP      string      `json:"ip"`
+	Port    json.Number `json:"port"`
+	Key     string      `json:"key"`
+	Secured bool        `json:"secured"`
 }
 
 // SlideshowStatus represents the slideshow configuration on the TV.

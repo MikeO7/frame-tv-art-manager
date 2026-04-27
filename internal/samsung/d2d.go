@@ -59,7 +59,7 @@ func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fil
 	}
 
 	// Connect to the TV's D2D socket.
-	addr := fmt.Sprintf("%s:%d", connInfo.IP, connInfo.Port)
+	addr := fmt.Sprintf("%s:%s", connInfo.IP, connInfo.Port)
 	dialer := net.Dialer{Timeout: timeout}
 
 	var conn net.Conn
