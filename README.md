@@ -94,51 +94,64 @@ On the first connection, the TV will display an authorization prompt. Select **A
 | `UNSPLASH_ACCESS_KEY` | *(unset)* | Your Unsplash API key. |
 | `NASA_API_KEY` | `DEMO_KEY` | Your NASA API key (defaults to demo). |
 
-## 📂 Image Sources (`sources.yaml` or `sources.txt`)
+## 📂 Image Sources (`sources.yaml`)
 
-The manager can automatically download and curate images from world-class APIs. To enable this, create a `sources.yaml` (recommended) or `sources.txt` file in your data folder and set `ARTWORK_SOURCES_FILE=/data/sources.txt`.
+The manager can automatically download and curate images from world-class APIs. Create a `sources.yaml` file in your data folder and set `ARTWORK_SOURCES_FILE=/data/sources.yaml`.
 
-### 🧪 Source Cookbook (YAML Example)
+### 🧪 Source Cookbook (YAML)
 
-Simply create a `sources.yaml` file:
+Simply create a `sources.yaml` file using this master template. Uncomment the lines you want to enable:
 
 ```yaml
-# sources.yaml
-# providers:
-#   # --- 🚀 NASA (The Universe) ---
-#   # nasa:
-#   #   - apod             # Today's Picture of the Day
-#   #   - search:nebula     # Top 10 high-res nebula photos
-#
-#   # --- 🎨 Art Institute of Chicago (Fine Art) ---
-#   # art_institute_of_chicago:
-#   #   - search:monet      # 10 masterpieces by Claude Monet
-#   #   - photo:12345       # A specific artwork by ID
-#
-#   # --- 📸 Unsplash (Photography) ---
-#   # unsplash:
-#   #   - collection:225444 # Up to 50 photos from a collection
-#   #   - photo:L9W_5q57_V8 # A specific high-res photo
-#
-#   # --- 🌿 Pexels (Nature & Architecture) ---
-#   # pexels:
-#   #   - search:nature     # 10 high-res photos from Pexels
-#   #   - curated           # 10 hand-picked photos from Pexels
-#
-#   # --- 🍃 Pixabay (Free Art) ---
-#   # pixabay:
-#   #   - search:nature     # 10 high-res photos from Pixabay
-#   #   - editors_choice    # 10 hand-picked photos from Pixabay
-#   #   - user:12345        # Latest 50 photos from a specific artist
-#
-#   # --- 🔗 Direct URLs (Any JPEG/PNG) ---
-#   # direct:
-#   #   - https://example.com/artwork.jpg
+# ==========================================
+# Frame TV Art Manager - MASTER SOURCES FILE
+# ==========================================
+# This file defines where your TV art comes from. 
+# Grouped by provider (DRY). Uncomment lines to enable.
+
+# 💡 PRO TIP:
+# You can use any of these in a "providers:" map or a simple "sources:" list.
+
+providers:
+  # --- 🚀 NASA (The Universe) ---
+  # nasa:
+  #   - apod             # Today's official Astronomy Picture of the Day
+  #   - search:nebula     # Top 10 results for "nebula" from NASA
+  #   - search:galaxy     # Top 10 results for "galaxy" from NASA
+
+  # --- 🎨 Art Institute of Chicago (Fine Art) ---
+  # art_institute_of_chicago:
+  #   - search:monet          # 10 masterpieces by Claude Monet
+  #   - search:impressionism  # 10 famous Impressionist paintings
+  #   - photo:12345           # A specific masterpiece by its ID
+
+  # --- 📸 Unsplash (Photography) ---
+  # unsplash:
+  #   - collection:225444     # All photos (up to 50) from a specific collection
+  #   - photo:L9W_5q57_V8     # A specific high-res photo by its ID
+
+  # --- 🌿 Pexels (Nature & Architecture) ---
+  # pexels:
+  #   - search:nature         # Top 10 high-res photos from Pexels
+  #   - curated               # 10 hand-picked photos from Pexels
+  #   - photo:12345           # A specific high-res photo by its ID
+
+  # --- 🍃 Pixabay (Free Art) ---
+  # pixabay:
+  #   - search:nature         # Top 10 high-res photos from Pixabay
+  #   - editors_choice        # 10 hand-picked photos from Pixabay
+  #   - user:12345            # Latest 50 photos from a specific artist
+  #   - photo:12345           # A specific high-res photo by its ID
+
+  # --- 🔗 Direct URLs (Custom Art) ---
+  # direct:
+  #   - https://example.com/my-art.jpg      # Any direct link to a JPEG
+  #   - https://example.com/wallpaper.png   # Any direct link to a PNG
 ```
 
-### 🧪 Source Cookbook (Legacy TXT Example)
+### 📖 Command Reference
 
-Simply add these lines to your `sources.txt`:
+Use these strings in your `sources.yaml` under the `providers:` map or the `sources:` list:
 
 | Type | Source Command / URL | What it pulls |
 |---|---|---|
