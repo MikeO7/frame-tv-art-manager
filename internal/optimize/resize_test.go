@@ -50,7 +50,8 @@ func TestOptimizeFile_Disabled(t *testing.T) {
 func TestOptimizeFile_AlreadySmall(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/photo.jpg"
-	writeFakeJPEG(t, path, 800, 600)
+	// Use 16:9 aspect (384x216) which is already small and correct aspect.
+	writeFakeJPEG(t, path, 384, 216)
 
 	cfg := DefaultConfig()
 	ok, err := OptimizeFile(path, cfg, testLogger())
@@ -58,7 +59,7 @@ func TestOptimizeFile_AlreadySmall(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 	if ok {
-		t.Error("image smaller than max dimensions should not be resized")
+		t.Error("image already 16:9 and smaller than max dimensions should not be modified")
 	}
 }
 
