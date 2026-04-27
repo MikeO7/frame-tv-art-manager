@@ -179,9 +179,13 @@ func (c *Connection) Close() error {
 	err := c.conn.Close()
 	c.conn = nil
 
-	// Wait for recv loop to finish.
+	// Wait for recv loop to finish with a timeout.
 	if c.recvDone != nil {
-		<-c.recvDone
+		select {
+		case <-c.recvDone:
+		case <-time.After(500 * time.Millisecond):
+			c.logger.Debug("recv loop did not exit quickly, continuing", "endpoint", c.endpoint)
+		}
 	}
 
 	// Cancel all pending requests.
