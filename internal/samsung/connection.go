@@ -308,6 +308,8 @@ func (c *Connection) routeD2DEvent(dataRaw json.RawMessage) {
 		dataToParse = []byte(dataStr)
 	}
 
+	c.logger.Debug("d2d event: unwrapped", "bytes", string(dataToParse))
+
 	var inner struct {
 		RequestID string `json:"request_id"`
 		ID        string `json:"id"`
