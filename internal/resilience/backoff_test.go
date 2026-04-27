@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const statusHealthy = "healthy"
+
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }
@@ -79,13 +81,13 @@ func TestBackoff_MaxDelayEnforced(t *testing.T) {
 func TestBackoff_StatusString(t *testing.T) {
 	b := NewBackoff(newTestLogger())
 
-	if s := b.Status("192.168.1.1"); s != "healthy" {
+	if s := b.Status("192.168.1.1"); s != statusHealthy {
 		t.Errorf("expected 'healthy', got %q", s)
 	}
 
 	b.RecordFailure("192.168.1.1", time.Minute)
 	s := b.Status("192.168.1.1")
-	if s == "healthy" {
+	if s == statusHealthy {
 		t.Error("status should not be healthy after failure")
 	}
 }

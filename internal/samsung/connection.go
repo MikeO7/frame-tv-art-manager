@@ -88,9 +88,12 @@ func (c *Connection) Open(ctx context.Context) error {
 		HandshakeTimeout: c.timeout,
 	}
 
-	conn, _, err := dialer.DialContext(ctx, wsURL, nil)
+	conn, resp, err := dialer.DialContext(ctx, wsURL, nil)
 	if err != nil {
 		return fmt.Errorf("websocket dial: %w", err)
+	}
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
 	}
 
 	// Read the first message — expect ms.channel.connect.

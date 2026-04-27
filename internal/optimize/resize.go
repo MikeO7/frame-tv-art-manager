@@ -61,7 +61,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	}
 
 	img, format, err := image.Decode(f)
-	f.Close()
+	_ = f.Close()
 	if err != nil {
 		return false, fmt.Errorf("decode image: %w", err)
 	}
@@ -110,9 +110,9 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 		err = jpeg.Encode(out, dst, &jpeg.Options{Quality: cfg.JPEGQuality})
 	}
 
-	out.Close()
+	_ = out.Close()
 	if err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("encode resized image: %w", err)
 	}
 
@@ -121,12 +121,12 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	newStat, _ := os.Stat(tmpPath)
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("rename optimized file: %w", err)
 	}
 
 	// Ensure inclusive permissions for Mac access.
-	_ = os.Chmod(path, 0644)
+	_ = os.Chmod(path, 0644); //nosec G302
 
 	if origStat != nil && newStat != nil {
 		logger.Info("image optimized",

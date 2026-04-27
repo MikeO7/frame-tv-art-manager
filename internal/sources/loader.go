@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+const (
+	extJPG = ".jpg"
+	extPNG = ".png"
+)
+
 // Loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
 type Loader struct {
@@ -175,7 +180,7 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 // SHA256 hashing. This ensures idempotent downloads.
 func (l *Loader) urlToFilename(url string) string {
 	hash := sha256.Sum256([]byte(url))
-	return fmt.Sprintf("src_%x.jpg", hash[:8]) // 16 hex chars
+	return fmt.Sprintf("src_%x%s", hash[:8], extJPG) // 16 hex chars
 }
 
 // extensionFromResponse determines the file extension from the HTTP
@@ -184,21 +189,21 @@ func extensionFromResponse(resp *http.Response, url string) string {
 	ct := resp.Header.Get("Content-Type")
 	switch {
 	case strings.Contains(ct, "image/jpeg"):
-		return ".jpg"
+		return extJPG
 	case strings.Contains(ct, "image/png"):
-		return ".png"
+		return extPNG
 	case strings.Contains(ct, "image/webp"):
-		return ".jpg" // TV doesn't support webp, caller will need to convert
+		return extJPG // TV doesn't support webp, caller will need to convert
 	}
 
 	// Fall back to URL extension.
 	ext := strings.ToLower(filepath.Ext(strings.Split(url, "?")[0]))
 	switch ext {
-	case ".jpg", ".jpeg", ".png":
+	case extJPG, ".jpeg", extPNG:
 		return ext
 	}
 
-	return ".jpg" // default
+	return extJPG // default
 }
 
 // truncateURL shortens a URL for logging readability.

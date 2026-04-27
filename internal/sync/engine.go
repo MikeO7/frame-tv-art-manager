@@ -210,7 +210,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		summary.Status = "error"
 		return summary, fmt.Errorf("connect: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Get model info.
 	if info := client.DeviceInfo(); info != nil {
