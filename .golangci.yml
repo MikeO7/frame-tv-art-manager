@@ -38,6 +38,7 @@ linters-settings:
     min-occurrences: 3
 
 run:
+  version: 1
   timeout: 5m
   tests: true
 
