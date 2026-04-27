@@ -41,6 +41,8 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 		return nil, err
 	}
 
+	req.Header.Set("User-Agent", "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)")
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -62,8 +64,8 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 	var imageUrls []string
 	for _, art := range result.Data {
 		if art.ImageID != "" {
-			// Construct the IIIF high-resolution URL (requesting 3840px width for 4K)
-			imgURL := fmt.Sprintf("https://www.artic.edu/iiif/2/%s/full/3840,/0/default.jpg", art.ImageID)
+			// Construct the IIIF high-resolution URL (using !3840,2160 for best fit)
+			imgURL := fmt.Sprintf("https://www.artic.edu/iiif/2/%s/full/!3840,2160/0/default.jpg", art.ImageID)
 			imageUrls = append(imageUrls, imgURL)
 		}
 	}
@@ -78,6 +80,8 @@ func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error)
 	if err != nil {
 		return "", err
 	}
+
+	req.Header.Set("User-Agent", "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -101,5 +105,5 @@ func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error)
 		return "", fmt.Errorf("artwork %s has no image_id", id)
 	}
 
-	return fmt.Sprintf("https://www.artic.edu/iiif/2/%s/full/3840,/0/default.jpg", result.Data.ImageID), nil
+	return fmt.Sprintf("https://www.artic.edu/iiif/2/%s/full/!3840,2160/0/default.jpg", result.Data.ImageID), nil
 }
