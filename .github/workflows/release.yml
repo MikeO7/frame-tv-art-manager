@@ -60,7 +60,9 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         build-args: |
+          VERSION=${{ steps.meta.outputs.version }}
           GIT_COMMIT=${{ github.sha }}
+          BUILD_DATE=$(date -u +%Y-%m-%d)
         cache-from: type=gha
         cache-to: type=gha,mode=max
 

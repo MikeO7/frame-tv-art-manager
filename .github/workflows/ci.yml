@@ -81,3 +81,7 @@ jobs:
         context: .
         push: false
         tags: frame-tv-art-manager:test
+        build-args: |
+          VERSION=ci
+          GIT_COMMIT=${{ github.sha }}
+          BUILD_DATE=$(date -u +%Y-%m-%d)
