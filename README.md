@@ -120,6 +120,11 @@ Simply create a `sources.yaml` file:
 #   #   - collection:225444 # Up to 50 photos from a collection
 #   #   - photo:L9W_5q57_V8 # A specific high-res photo
 #
+#   # --- 🌿 Pexels (Nature & Architecture) ---
+#   # pexels:
+#   #   - search:nature     # 10 high-res photos from Pexels
+#   #   - curated           # 10 hand-picked photos from Pexels
+#
 #   # --- 🔗 Direct URLs (Any JPEG/PNG) ---
 #   # direct:
 #   #   - https://example.com/artwork.jpg
@@ -137,6 +142,9 @@ Simply add these lines to your `sources.txt`:
 | **Art Institute** | `art_institute_of_chicago:photo:12345` | A specific high-res museum artwork by its ID. |
 | **Unsplash** | `unsplash:collection:225444` | Every photo (up to 50) from a curated collection. |
 | **Unsplash** | `unsplash:photo:L9W_5q57_V8` | A specific high-resolution photo by its ID. |
+| **Pexels** | `pexels:search:nature` | Top 10 results for a keyword (e.g. "nature"). |
+| **Pexels** | `pexels:curated` | 10 hand-picked "Best of Pexels" photos. |
+| **Pexels** | `pexels:photo:12345` | A specific high-resolution photo by its ID. |
 | **Direct** | `https://example.com/art.jpg` | Any direct web link to a JPEG or PNG image. |
 | **Direct** | `direct:https://example.com/art.jpg` | Explicit direct link (for use in YAML providers map). |
 
@@ -149,12 +157,14 @@ Finding the right ID is easy—just look at the URL in your browser:
 | **Unsplash Photo** | `unsplash.com/photos/L9W_5q57_V8` | `L9W_5q57_V8` |
 | **Unsplash Collection** | `unsplash.com/collections/225444/nature` | `225444` |
 | **Art Institute** | `artic.edu/artworks/12345/monet-oil` | `12345` |
+| **Pexels Photo** | `pexels.com/photo/landscape-12345` | `12345` |
 
 ### 🛠 Configuration for APIs
 
 | Variable | Default | Description |
 |---|---|---|
 | `UNSPLASH_ACCESS_KEY` | *(unset)* | Required for Unsplash. Get one at [unsplash.com/developers](https://unsplash.com/developers). |
+| `PEXELS_API_KEY` | *(unset)* | Required for Pexels. Get one at [pexels.com/api](https://www.pexels.com/api/). |
 | `NASA_API_KEY` | `DEMO_KEY` | Optional for NASA. Defaults to a shared demo key. |
 
 > [!TIP]

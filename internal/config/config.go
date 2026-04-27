@@ -119,6 +119,9 @@ type Config struct {
 	// Defaults to DEMO_KEY if empty.
 	NasaApiKey string
 
+	// PexelsApiKey is the API key for Pexels image downloads.
+	PexelsApiKey string
+
 	// --- Image Optimization ---
 
 	// OptimizeEnabled enables automatic image resizing for oversized images.
@@ -194,6 +197,7 @@ func Load() (*Config, error) {
 		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
 		NasaApiKey:         envStr("NASA_API_KEY", ""),
+		PexelsApiKey:       envStr("PEXELS_API_KEY", ""),
 		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
