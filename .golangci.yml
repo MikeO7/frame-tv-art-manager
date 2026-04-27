@@ -1,4 +1,4 @@
-version: 2
+version: "2"
 
 linters:
   enable:
@@ -18,23 +18,21 @@ linters:
     - nakedret
     - prealloc
     - unparam
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  revive:
-    rules:
-      - name: exported
-        disabled: true
-  goconst:
-    min-len: 3
-    min-occurrences: 3
+  settings:
+    gocyclo:
+      min-complexity: 15
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    goconst:
+      min-len: 3
+      min-occurrences: 3
 
 run:
   timeout: 5m
   tests: true
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
