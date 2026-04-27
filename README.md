@@ -109,7 +109,7 @@ Every cycle (default: 5 minutes), the manager runs through this sequence:
 
 1. **Download sources** — If you've configured a `sources.yaml`, new images are fetched from APIs
 2. **Validate images** — Every file is decoded to catch corrupt or unsupported files before they reach the TV
-3. **Optimize** — If enabled, oversized JPEGs are resized to 4K and/or cropped to 16:9
+3. **Optimize** — Oversized JPEGs are resized to 4K and/or cropped to 16:9 (configurable)
 4. **Check TV** — Optionally probes the TV via REST to see if it's in Art Mode (avoids popups while watching Netflix)
 5. **Connect** — Opens an encrypted WebSocket (WSS) connection on port 8002
 6. **Diff** — Compares your local folder against the TV's inventory using a persistent `mapping.json`
@@ -142,7 +142,7 @@ Everything is configured through environment variables. Only `TV_IPS` is require
 
 | Variable | Default | Description |
 |---|---|---|
-| `IMAGE_OPTIMIZE_ENABLED` | `false` | Resize oversized JPEGs to fit within max dimensions |
+| `IMAGE_OPTIMIZE_ENABLED` | `true` | Resize oversized JPEGs to fit within max dimensions |
 | `SMART_CROP_ENABLED` | `true` | Crop images to 16:9 using entropy-based analysis |
 | `IMAGE_MAX_WIDTH` | `3840` | Maximum width in pixels |
 | `IMAGE_MAX_HEIGHT` | `2160` | Maximum height in pixels |

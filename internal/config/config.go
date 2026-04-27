@@ -202,7 +202,7 @@ func Load() (*Config, error) {
 		NasaApiKey:         envStr("NASA_API_KEY", "DEMO_KEY"),
 		PexelsApiKey:       envStr("PEXELS_API_KEY", ""),
 		PixabayApiKey:      envStr("PIXABAY_API_KEY", ""),
-		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
+		OptimizeEnabled:     envBoolWithDefault("IMAGE_OPTIMIZE_ENABLED", true),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
 		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", true),
