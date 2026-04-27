@@ -118,15 +118,15 @@ providers:
 
 Simply add these lines to your `sources.txt`:
 
-| Type | Source Command | What it pulls |
+| Type | Source Command / URL | What it pulls |
 |---|---|---|
 | **NASA** | `nasa:apod` | Today's Astronomy Picture of the Day. |
 | **NASA** | `nasa:search:nebula` | Top 10 high-res nebula photos from NASA. |
 | **Art Institute** | `art_institute_of_chicago:search:monet` | 10 masterpieces by Claude Monet. |
-| **Art Institute** | `art_institute_of_chicago:search:impressionism` | 10 famous Impressionist paintings. |
+| **Art Institute** | `art_institute_of_chicago:photo:12345` | A specific artwork by its ID. |
 | **Unsplash** | `unsplash:collection:225444` | Every photo from a curated Unsplash collection. |
 | **Unsplash** | `unsplash:photo:L9W_5q57_V8` | A specific high-res photo by its ID. |
-| **Direct** | `https://example.com/art.jpg` | Any direct link to a JPEG or PNG. |
+| **Direct** | `https://example.com/art.jpg` | Any direct link to a JPEG or PNG image. |
 
 ### 🛠 Configuration for APIs
 

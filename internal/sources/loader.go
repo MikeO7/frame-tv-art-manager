@@ -113,6 +113,10 @@ func (l *Loader) Sync() (int, error) {
 			continue
 		}
 
+		if strings.HasPrefix(line, "direct:") {
+			line = strings.TrimPrefix(line, "direct:")
+		}
+
 		ok, err := l.downloadIfNew(line)
 		if err != nil {
 			l.logger.Warn("failed to download source image",
