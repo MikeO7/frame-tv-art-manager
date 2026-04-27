@@ -1,14 +1,9 @@
 linters:
+  default: standard
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
     - gosec
-    - misspell
     - revive
+    - misspell
     - unconvert
     - goconst
     - gocyclo
@@ -17,9 +12,6 @@ linters:
     - depguard
     - dogsled
     - dupl
-    - exportloopref
-    - gochecknoinits
-    - goconst
     - gocritic
     - goprintffuncname
     - nakedret
@@ -32,13 +24,13 @@ linters-settings:
   revive:
     rules:
       - name: exported
-        disabled: true # I'll keep this disabled for now as it's a small project
+        disabled: true
   goconst:
     min-len: 3
     min-occurrences: 3
 
 run:
-  version: 1
+  version: 2
   timeout: 5m
   tests: true
 
