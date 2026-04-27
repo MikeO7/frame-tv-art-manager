@@ -104,14 +104,25 @@ Simply create a `sources.yaml` file:
 
 ```yaml
 # sources.yaml
-providers:
-  nasa:
-    - apod
-    - search:nebula
-  art_institute_of_chicago:
-    - search:monet
-  unsplash:
-    - collection:225444
+# providers:
+#   # --- 🚀 NASA (The Universe) ---
+#   # nasa:
+#   #   - apod             # Today's Picture of the Day
+#   #   - search:nebula     # Top 10 high-res nebula photos
+#
+#   # --- 🎨 Art Institute of Chicago (Fine Art) ---
+#   # art_institute_of_chicago:
+#   #   - search:monet      # 10 masterpieces by Claude Monet
+#   #   - photo:12345       # A specific artwork by ID
+#
+#   # --- 📸 Unsplash (Photography) ---
+#   # unsplash:
+#   #   - collection:225444 # Up to 50 photos from a collection
+#   #   - photo:L9W_5q57_V8 # A specific high-res photo
+#
+#   # --- 🔗 Direct URLs (Any JPEG/PNG) ---
+#   # direct:
+#   #   - https://example.com/artwork.jpg
 ```
 
 ### 🧪 Source Cookbook (Legacy TXT Example)
@@ -120,13 +131,14 @@ Simply add these lines to your `sources.txt`:
 
 | Type | Source Command / URL | What it pulls |
 |---|---|---|
-| **NASA** | `nasa:apod` | Today's Astronomy Picture of the Day. |
-| **NASA** | `nasa:search:nebula` | Top 10 high-res nebula photos from NASA. |
-| **Art Institute** | `art_institute_of_chicago:search:monet` | 10 masterpieces by Claude Monet. |
-| **Art Institute** | `art_institute_of_chicago:photo:12345` | A specific artwork by its ID. |
-| **Unsplash** | `unsplash:collection:225444` | Every photo from a curated Unsplash collection. |
-| **Unsplash** | `unsplash:photo:L9W_5q57_V8` | A specific high-res photo by its ID. |
-| **Direct** | `https://example.com/art.jpg` | Any direct link to a JPEG or PNG image. |
+| **NASA** | `nasa:apod` | Today's official Astronomy Picture of the Day. |
+| **NASA** | `nasa:search:nebula` | Top 10 high-res results for a keyword (e.g. "nebula"). |
+| **Art Institute** | `art_institute_of_chicago:search:monet` | Top 10 masterpieces for a keyword (e.g. "monet"). |
+| **Art Institute** | `art_institute_of_chicago:photo:12345` | A specific high-res museum artwork by its ID. |
+| **Unsplash** | `unsplash:collection:225444` | Every photo (up to 50) from a curated collection. |
+| **Unsplash** | `unsplash:photo:L9W_5q57_V8` | A specific high-resolution photo by its ID. |
+| **Direct** | `https://example.com/art.jpg` | Any direct web link to a JPEG or PNG image. |
+| **Direct** | `direct:https://example.com/art.jpg` | Explicit direct link (for use in YAML providers map). |
 
 ### 🔍 How to find IDs
 

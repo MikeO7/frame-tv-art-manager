@@ -94,19 +94,19 @@ func main() {
 				"# ==========================================\n" +
 				"# Uncomment the lines below to enable them.\n\n" +
 				"# providers:\n" +
-				"  # --- 🚀 NASA ---\n" +
+				"  # --- 🚀 NASA (The Universe) ---\n" +
 				"  # nasa:\n" +
-				"  #   - apod\n" +
-				"  #   - search:nebula\n\n" +
-				"  # --- 🎨 Art Institute of Chicago ---\n" +
+				"  #   - apod             # Today's Picture of the Day\n" +
+				"  #   - search:nebula     # Top 10 high-res nebula photos\n\n" +
+				"  # --- 🎨 Art Institute of Chicago (Fine Art) ---\n" +
 				"  # art_institute_of_chicago:\n" +
-				"  #   - search:monet\n" +
-				"  #   - photo:12345\n\n" +
-				"  # --- 📸 Unsplash ---\n" +
+				"  #   - search:monet      # 10 masterpieces by Claude Monet\n" +
+				"  #   - photo:12345       # A specific artwork by ID\n\n" +
+				"  # --- 📸 Unsplash (Photography) ---\n" +
 				"  # unsplash:\n" +
-				"  #   - collection:225444\n" +
-				"  #   - photo:L9W_5q57_V8\n\n" +
-				"  # --- 🔗 Direct URLs ---\n" +
+				"  #   - collection:225444 # Up to 50 photos from a collection\n" +
+				"  #   - photo:L9W_5q57_V8 # A specific high-res photo\n\n" +
+				"  # --- 🔗 Direct URLs (Any JPEG/PNG) ---\n" +
 				"  # direct:\n" +
 				"  #   - https://example.com/artwork.jpg\n\n" +
 				"# 🔍 How to find IDs:\n" +
