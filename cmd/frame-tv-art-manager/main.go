@@ -123,7 +123,7 @@ func main() {
 				"# - Pexels Photo: pexels.com/photo/123 -> 123\n" +
 				"# - Pixabay Photo/User: pixabay.com/.../name-123 -> 123\n" +
 				"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n"
-			if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0644); err != nil {
+			if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0600); err != nil {
 				logger.Warn("Failed to bootstrap sources file", "error", err)
 			}
 		}

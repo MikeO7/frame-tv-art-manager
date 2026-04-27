@@ -95,51 +95,13 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 
 	var dst image.Image
 	if cfg.SmartCropEnabled {
-		logger.Info("smart cropping image",
-			"file", filepath.Base(path),
-			"from", fmt.Sprintf("%dx%d", origW, origH),
-			"target_aspect", "16:9",
-		)
-		
-		analyzer := smartcrop.NewAnalyzer(nfnt.NewDefaultResizer())
-		topCrop, err := analyzer.FindBestCrop(img, cfg.MaxWidth, cfg.MaxHeight)
-		if err != nil {
-			return false, fmt.Errorf("find best crop: %w", err)
-		}
-
-		type subImager interface {
-			SubImage(r image.Rectangle) image.Image
-		}
-		
-		// Helper to handle both NRGBA/RGBA and other image types
-		var croppedImg image.Image
-		if si, ok := img.(subImager); ok {
-			croppedImg = si.SubImage(topCrop)
-		} else {
-			// Fallback: draw to a new RGBA then crop
-			tempDst := image.NewRGBA(img.Bounds())
-			draw.Draw(tempDst, tempDst.Bounds(), img, bounds.Min, draw.Src)
-			croppedImg = tempDst.SubImage(topCrop)
-		}
-
-		// Resize the crop to final 4K dimensions
-		finalDst := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
-		draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), croppedImg, croppedImg.Bounds(), draw.Over, nil)
-		dst = finalDst
+		dst, err = smartCrop(img, cfg, logger)
 	} else {
-		// Calculate new dimensions preserving aspect ratio (Fit).
-		newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
+		dst, err = fitResize(img, cfg, logger)
+	}
 
-		logger.Info("resizing image (fit)",
-			"file", filepath.Base(path),
-			"from", fmt.Sprintf("%dx%d", origW, origH),
-			"to", fmt.Sprintf("%dx%d", newW, newH),
-		)
-
-		// Resize using CatmullRom.
-		finalDst := image.NewRGBA(image.Rect(0, 0, newW, newH))
-		draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), img, bounds, draw.Over, nil)
-		dst = finalDst
+	if err != nil {
+		return false, err
 	}
 
 	// Write to temp file then rename.
@@ -202,6 +164,41 @@ func ValidateImage(path string) error {
 
 // fitDimensions calculates new width and height that fit within
 // maxW×maxH while preserving the aspect ratio.
+func smartCrop(img image.Image, cfg Config, logger *slog.Logger) (image.Image, error) {
+	analyzer := smartcrop.NewAnalyzer(nfnt.NewDefaultResizer())
+	topCrop, err := analyzer.FindBestCrop(img, cfg.MaxWidth, cfg.MaxHeight)
+	if err != nil {
+		return nil, fmt.Errorf("find best crop: %w", err)
+	}
+
+	type subImager interface {
+		SubImage(r image.Rectangle) image.Image
+	}
+
+	var croppedImg image.Image
+	if si, ok := img.(subImager); ok {
+		croppedImg = si.SubImage(topCrop)
+	} else {
+		tempDst := image.NewRGBA(img.Bounds())
+		draw.Draw(tempDst, tempDst.Bounds(), img, img.Bounds().Min, draw.Src)
+		croppedImg = tempDst.SubImage(topCrop)
+	}
+
+	finalDst := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+	draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), croppedImg, croppedImg.Bounds(), draw.Over, nil)
+	return finalDst, nil
+}
+
+func fitResize(img image.Image, cfg Config, logger *slog.Logger) (image.Image, error) {
+	origW := img.Bounds().Dx()
+	origH := img.Bounds().Dy()
+	newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
+
+	finalDst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), img, img.Bounds(), draw.Over, nil)
+	return finalDst, nil
+}
+
 func fitDimensions(origW, origH, maxW, maxH int) (int, int) {
 	ratioW := float64(maxW) / float64(origW)
 	ratioH := float64(maxH) / float64(origH)

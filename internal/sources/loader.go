@@ -21,6 +21,9 @@ import (
 const (
 	extJPG = ".jpg"
 	extPNG = ".png"
+
+	cmdPhoto  = "photo"
+	cmdSearch = "search"
 )
 
 // Loader reads a sources file and downloads any images that aren't
@@ -135,9 +138,7 @@ func (l *Loader) Sync() (int, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, "direct:") {
-			line = strings.TrimPrefix(line, "direct:")
-		}
+		line = strings.TrimPrefix(line, "direct:")
 
 		ok, err := l.downloadIfNew(line)
 		if err != nil {
@@ -280,7 +281,7 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 			return 0, err
 		}
 		photos = p
-	case "photo":
+	case cmdPhoto:
 		p, err := l.unsplash.FetchPhoto(ctx, parts[2])
 		if err != nil {
 			return 0, err
@@ -379,7 +380,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 		if u != "" {
 			urls = append(urls, u)
 		}
-	case "search":
+	case cmdSearch:
 		if len(parts) < 3 {
 			return 0, fmt.Errorf("nasa search requires a query: nasa:search:query")
 		}
@@ -438,13 +439,13 @@ func (l *Loader) handleArticLine(line string) (int, error) {
 	var urls []string
 
 	switch parts[1] {
-	case "search":
+	case cmdSearch:
 		p, err := l.artic.Search(ctx, parts[2])
 		if err != nil {
 			return 0, err
 		}
 		urls = p
-	case "photo":
+	case cmdPhoto:
 		p, err := l.artic.FetchPhoto(ctx, parts[2])
 		if err != nil {
 			return 0, err
@@ -494,7 +495,7 @@ func (l *Loader) handlePexelsLine(line string) (int, error) {
 	var urls []string
 
 	switch parts[1] {
-	case "search":
+	case cmdSearch:
 		if len(parts) < 3 {
 			return 0, fmt.Errorf("pexels search requires a query: %s", line)
 		}
@@ -509,7 +510,7 @@ func (l *Loader) handlePexelsLine(line string) (int, error) {
 			return 0, err
 		}
 		urls = p
-	case "photo":
+	case cmdPhoto:
 		if len(parts) < 3 {
 			return 0, fmt.Errorf("pexels photo requires an ID: %s", line)
 		}
@@ -546,58 +547,39 @@ func (l *Loader) handlePixabayLine(line string) (int, error) {
 
 	ctx := context.Background()
 	var urls []string
+	var err error
 
 	switch parts[1] {
-	case "search":
+	case cmdSearch:
 		if len(parts) < 3 {
 			return 0, fmt.Errorf("pixabay search requires a query: %s", line)
 		}
-		p, err := l.pixabay.Search(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		urls = p
+		urls, err = l.pixabay.Search(ctx, parts[2])
 	case "editors_choice":
-		p, err := l.pixabay.EditorsChoice(ctx)
-		if err != nil {
-			return 0, err
-		}
-		urls = p
-	case "photo":
+		urls, err = l.pixabay.EditorsChoice(ctx)
+	case cmdPhoto:
 		if len(parts) < 3 {
 			return 0, fmt.Errorf("pixabay photo requires an ID: %s", line)
 		}
-		p, err := l.pixabay.FetchPhoto(ctx, parts[2])
-		if err != nil {
-			return 0, err
+		var p string
+		p, err = l.pixabay.FetchPhoto(ctx, parts[2])
+		if err == nil {
+			urls = []string{p}
 		}
-		urls = []string{p}
 	case "user":
 		if len(parts) < 3 {
 			return 0, fmt.Errorf("pixabay user requires an ID: %s", line)
 		}
-		p, err := l.pixabay.User(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		urls = p
+		urls, err = l.pixabay.User(ctx, parts[2])
 	default:
 		return 0, fmt.Errorf("unknown pixabay type: %s", parts[1])
 	}
 
-	downloaded := 0
-	for _, u := range urls {
-		ok, err := l.downloadIfNew(u)
-		if err != nil {
-			l.logger.Warn("failed to download pixabay image", "url", truncateURL(u), "error", err)
-			continue
-		}
-		if ok {
-			downloaded++
-		}
+	if err != nil {
+		return 0, err
 	}
 
-	return downloaded, nil
+	return l.downloadMultiple(urls, "pixabay")
 }
 
 // loadSources reads the sources file (TXT or YAML) and returns a list of source strings.
@@ -675,4 +657,19 @@ func truncateURL(url string) string {
 		return url[:77] + "..."
 	}
 	return url
+}
+
+func (l *Loader) downloadMultiple(urls []string, provider string) (int, error) {
+	downloaded := 0
+	for _, u := range urls {
+		ok, err := l.downloadIfNew(u)
+		if err != nil {
+			l.logger.Warn("failed to download image", "provider", provider, "url", truncateURL(u), "error", err)
+			continue
+		}
+		if ok {
+			downloaded++
+		}
+	}
+	return downloaded, nil
 }

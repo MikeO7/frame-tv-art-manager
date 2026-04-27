@@ -111,38 +111,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	}
 
 	// Step 2: Optimize and Validate local artwork.
-	optimized := 0
-	optCfg := optimize.Config{
-		Enabled:             e.cfg.OptimizeEnabled,
-		MaxWidth:            e.cfg.OptimizeMaxWidth,
-		MaxHeight:           e.cfg.OptimizeMaxHeight,
-		OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
-		SmartCropEnabled:    e.cfg.SmartCropEnabled,
-	}
-	
-	for filename := range localFiles {
-		path := filepath.Join(e.cfg.ArtworkDir, filename)
-		
-		// If optimization is enabled, it also performs validation (decoding).
-		if e.cfg.OptimizeEnabled {
-			ok, err := optimize.OptimizeFile(path, optCfg, e.logger)
-			if err != nil {
-				e.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
-				delete(localFiles, filename)
-				continue
-			}
-			if ok {
-				optimized++
-			}
-		} else {
-			// Even if optimization is off, do a quick decode check to prevent uploading junk.
-			if err := optimize.ValidateImage(path); err != nil {
-				e.logger.Warn("skipping corrupt image", "file", filename, "error", err)
-				delete(localFiles, filename)
-				continue
-			}
-		}
-	}
+	optimized := e.optimizeLocalArtwork(localFiles)
 
 	e.logger.Info("local artwork ready",
 		"total", len(localFiles),
@@ -620,4 +589,40 @@ func boolCount(cond bool, count int) int {
 		return count
 	}
 	return 0
+}
+
+func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
+	optimized := 0
+	optCfg := optimize.Config{
+		Enabled:             e.cfg.OptimizeEnabled,
+		MaxWidth:            e.cfg.OptimizeMaxWidth,
+		MaxHeight:           e.cfg.OptimizeMaxHeight,
+		OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
+		SmartCropEnabled:    e.cfg.SmartCropEnabled,
+	}
+
+	for filename := range localFiles {
+		path := filepath.Join(e.cfg.ArtworkDir, filename)
+
+		// If optimization is enabled, it also performs validation (decoding).
+		if e.cfg.OptimizeEnabled {
+			ok, err := optimize.OptimizeFile(path, optCfg, e.logger)
+			if err != nil {
+				e.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
+				delete(localFiles, filename)
+				continue
+			}
+			if ok {
+				optimized++
+			}
+		} else {
+			// Even if optimization is off, do a quick decode check to prevent uploading junk.
+			if err := optimize.ValidateImage(path); err != nil {
+				e.logger.Warn("skipping corrupt image", "file", filename, "error", err)
+				delete(localFiles, filename)
+				continue
+			}
+		}
+	}
+	return optimized
 }
