@@ -1,5 +1,4 @@
 linters:
-  default: standard
   enable:
     - gosec
     - revive
