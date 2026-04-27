@@ -152,6 +152,12 @@ type Config struct {
 
 	// GateTimeout is the HTTP timeout for the REST gate probe.
 	GateTimeout time.Duration
+
+	// --- Ownership ---
+
+	// PUID and PGID for directory ownership (optional).
+	PUID int
+	PGID int
 }
 
 // Load reads configuration from environment variables, applies defaults,
@@ -159,8 +165,8 @@ type Config struct {
 // or constraints are violated.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ArtworkDir:          envStr("ARTWORK_DIR", "/artwork"),
-		TokenDir:            envStr("TOKEN_DIR", "/tokens"),
+		ArtworkDir:          envStr("ARTWORK_DIR", "/data/artwork"),
+		TokenDir:            envStr("TOKEN_DIR", "/data/tokens"),
 		SyncIntervalMin:     envInt("SYNC_INTERVAL_MINUTES", 5),
 		MatteStyle:          envStr("MATTE_STYLE", "none"),
 		ClientName:          envStr("CLIENT_NAME", "Frame Art Manager"),
@@ -190,6 +196,8 @@ func Load() (*Config, error) {
 		UploadDelay:         time.Duration(envInt("UPLOAD_DELAY_MS", 1000)) * time.Millisecond,
 		UploadAttempts:      envInt("UPLOAD_ATTEMPTS", 2),
 		GateTimeout:         time.Duration(envInt("GATE_TIMEOUT_MS", 3000)) * time.Millisecond,
+		PUID:                envInt("PUID", 0),
+		PGID:                envInt("PGID", 0),
 	}
 
 	// Parse TV IPs (required).

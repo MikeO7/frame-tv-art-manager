@@ -69,6 +69,12 @@ func main() {
 			logger.Error("Failed to create/access directory", "name", name, "path", path, "error", err)
 			os.Exit(1)
 		}
+		// If PUID/PGID are set, try to change ownership so the host folders are correct.
+		if cfg.PUID != 0 || cfg.PGID != 0 {
+			if err := os.Chown(path, cfg.PUID, cfg.PGID); err != nil {
+				logger.Warn("Failed to set directory ownership (continuing anyway)", "path", path, "puid", cfg.PUID, "pgid", cfg.PGID, "error", err)
+			}
+		}
 		// Test writability
 		testFile := fmt.Sprintf("%s/.write_test", path)
 		if err := os.WriteFile(testFile, []byte("ok"), 0644); err != nil {

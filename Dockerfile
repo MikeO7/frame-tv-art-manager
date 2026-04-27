@@ -24,6 +24,6 @@ COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
 # Create default directories.
 # (These will be overridden by volume mounts in docker-compose.)
 # Note: Distroless doesn't have a shell, but it handles VOLUME and ENTRYPOINT.
-VOLUME ["/artwork", "/tokens"]
+VOLUME ["/data"]
 
 ENTRYPOINT ["/frame-tv-art-manager"]

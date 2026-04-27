@@ -48,8 +48,6 @@ services:
       # AUTO_OFF_TIME: "22:00"
       # AUTO_OFF_GRACE_HOURS: "2"
     volumes:
-      # Mount your local artwork folder (read-only is fine)
-      - ./artwork:/artwork:ro
-
-      # Persist TV authentication tokens and sync mappings
-      - ./tokens:/tokens
+      # Mount a single data directory. The app will automatically create
+      # frame-tv-art-manager/artwork and frame-tv-art-manager/tokens subfolders.
+      - ./data:/data
