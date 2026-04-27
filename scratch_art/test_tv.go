@@ -15,10 +15,10 @@ import (
 func main() {
 	host := "192.168.1.106"
 	port := 8002
-	name := "Nox Test Client"
-	endpoint := "com.samsung.art-app"
-
+	name := "Nox Test Remote"
 	b64Name := base64.StdEncoding.EncodeToString([]byte(name))
+	token := "11898792"
+	endpoint := "com.samsung.art-app"
 	u := url.URL{
 		Scheme: "wss",
 		Host:   fmt.Sprintf("%s:%d", host, port),
@@ -26,9 +26,10 @@ func main() {
 	}
 	q := u.Query()
 	q.Set("name", b64Name)
+	q.Set("token", token)
 	u.RawQuery = q.Encode()
 
-	fmt.Printf("Connecting to %s...\n", u.String())
+	fmt.Printf("Connecting to %s with token...\n", u.String())
 
 	dialer := websocket.Dialer{
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true},

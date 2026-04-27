@@ -79,6 +79,9 @@ func (c *Client) Connect(ctx context.Context) error {
 		}
 		if err := EnsureToken(ctx, c.IP, 8002, c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger); err != nil {
 			c.logger.Warn("remote handshake failed (TV might be off or busy)", "error", err)
+		} else {
+			// Brief pause to let the TV stabilize after authorization.
+			time.Sleep(2 * time.Second)
 		}
 	}
 
