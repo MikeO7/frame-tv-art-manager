@@ -40,8 +40,7 @@ func TestLoader_DownloadsImage(t *testing.T) {
 
 	dir := t.TempDir()
 	srcFile := filepath.Join(dir, "sources.txt")
-	//nosec G306
-	if err := os.WriteFile(srcFile, []byte(srv.URL+"/photo.jpg\n"), 0644); err != nil {
+	if err := os.WriteFile(srcFile, []byte(srv.URL+"/photo.jpg\n"), 0644); err != nil { //nolint:gosec // Test file
 		t.Fatal(err)
 	}
 
@@ -74,8 +73,7 @@ func TestLoader_SkipsComments(t *testing.T) {
 	dir := t.TempDir()
 	srcFile := filepath.Join(dir, "sources.txt")
 	content := "# this is a comment\n\n" + srv.URL + "/photo.jpg\n# another comment\n"
-	//nosec G306
-	if err := os.WriteFile(srcFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(srcFile, []byte(content), 0644); err != nil { //nolint:gosec // Test file
 		t.Fatal(err)
 	}
 
@@ -97,8 +95,7 @@ func TestLoader_HandlesHTTPError(t *testing.T) {
 
 	dir := t.TempDir()
 	srcFile := filepath.Join(dir, "sources.txt")
-	//nosec G306
-	if err := os.WriteFile(srcFile, []byte(srv.URL+"/missing.jpg\n"), 0644); err != nil {
+	if err := os.WriteFile(srcFile, []byte(srv.URL+"/missing.jpg\n"), 0644); err != nil { //nolint:gosec // Test file
 		t.Fatal(err)
 	}
 

@@ -75,7 +75,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 	}
 
 	// Verify token was saved.
-	savedToken, _ := os.ReadFile(tokenFile)
+	savedToken, _ := os.ReadFile(tokenFile) //nolint:gosec // ReadFile safe in test
 	if string(savedToken) != "test-token-123" {
 		t.Errorf("expected token 'test-token-123', got %q", string(savedToken))
 	}

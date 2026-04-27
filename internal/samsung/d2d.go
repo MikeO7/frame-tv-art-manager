@@ -80,7 +80,7 @@ func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fil
 
 	// Send: [4-byte header length][header JSON][file bytes]
 	headerLen := make([]byte, 4)
-	binary.BigEndian.PutUint32(headerLen, uint32(len(headerJSON)))
+	binary.BigEndian.PutUint32(headerLen, uint32(len(headerJSON))) //nolint:gosec // JSON header length is small
 
 	if _, err := conn.Write(headerLen); err != nil {
 		return fmt.Errorf("write header length: %w", err)

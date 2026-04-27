@@ -33,8 +33,7 @@ func LoadMatteConfig(artworkDir string) *MatteConfig {
 	}
 
 	path := filepath.Join(artworkDir, "mattes.json")
-	//nosec G304
-	raw, err := os.ReadFile(filepath.Clean(path))
+	raw, err := os.ReadFile(filepath.Clean(path)) //nolint:gosec // Path is controlled
 	if err != nil {
 		return mc // file doesn't exist, use global matte
 	}

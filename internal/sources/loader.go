@@ -148,8 +148,7 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 
 	// Write to temp file then rename for atomicity.
 	tmpPath := destPath + ".tmp"
-	//nosec G304
-	out, err := os.Create(filepath.Clean(tmpPath))
+	out, err := os.Create(filepath.Clean(tmpPath)) //nolint:gosec // Safe temporary path
 	if err != nil {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
@@ -167,8 +166,7 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 	}
 
 	// Ensure inclusive permissions for Mac access.
-	//nosec G302
-	_ = os.Chmod(destPath, 0644)
+	_ = os.Chmod(destPath, 0644) //nolint:gosec // Requires inclusive permissions
 
 	l.logger.Info("downloaded source image",
 		"file", filename,
