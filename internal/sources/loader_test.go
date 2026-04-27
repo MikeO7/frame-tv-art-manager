@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoader_NoSourcesFile(t *testing.T) {
-	l := NewLoader("", t.TempDir(), testLogger())
+	l := NewLoader("", t.TempDir(), "", "", testLogger())
 	n, err := l.Sync()
 	if err != nil {
 		t.Errorf("expected no error when sources file is empty, got %v", err)
@@ -20,7 +20,7 @@ func TestLoader_NoSourcesFile(t *testing.T) {
 }
 
 func TestLoader_MissingSourcesFile(t *testing.T) {
-	l := NewLoader("/nonexistent/sources.txt", t.TempDir(), testLogger())
+	l := NewLoader("/nonexistent/sources.txt", t.TempDir(), "", "", testLogger())
 	n, err := l.Sync()
 	if err != nil {
 		t.Errorf("missing file should not error, got %v", err)
@@ -44,7 +44,7 @@ func TestLoader_DownloadsImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	l := NewLoader(srcFile, dir, testLogger())
+	l := NewLoader(srcFile, dir, "", "", testLogger())
 	n, err := l.Sync()
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -77,7 +77,7 @@ func TestLoader_SkipsComments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	l := NewLoader(srcFile, dir, testLogger())
+	l := NewLoader(srcFile, dir, "", "", testLogger())
 	n, err := l.Sync()
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -99,7 +99,7 @@ func TestLoader_HandlesHTTPError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	l := NewLoader(srcFile, dir, testLogger())
+	l := NewLoader(srcFile, dir, "", "", testLogger())
 	n, err := l.Sync()
 	// Error is logged and skipped — sync returns 0 downloads, no error.
 	if err != nil {
