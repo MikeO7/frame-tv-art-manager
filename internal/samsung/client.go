@@ -67,12 +67,22 @@ func (c *Client) Connect(ctx context.Context) error {
 		c.logger.Debug("REST gate: TV is in art mode")
 	}
 
-	// Step 3: Open WSS connection to art endpoint.
+	// Step 3: Ensure we have a token (Smart Handshake for 2024 models).
+	// On 2024 models, the art-app endpoint doesn't issue tokens, but the
+	// remote.control endpoint does. We fetch it once to ensure persistence.
 	tokenFile := c.tokenFilePath()
-	if err := os.MkdirAll(filepath.Dir(tokenFile), 0755); err != nil {
-		return fmt.Errorf("create token dir: %w", err)
+	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
+		c.logger.Info("no token found, performing one-time remote handshake")
+		// Ensure directory exists for token.
+		if err := os.MkdirAll(filepath.Dir(tokenFile), 0755); err != nil {
+			return fmt.Errorf("create token dir: %w", err)
+		}
+		if err := EnsureToken(ctx, c.IP, 8002, c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger); err != nil {
+			c.logger.Warn("remote handshake failed (TV might be off or busy)", "error", err)
+		}
 	}
 
+	// Step 4: Open WSS connection to art endpoint.
 	c.artConn = NewConnection(
 		c.IP, 8002, "com.samsung.art-app",
 		c.cfg.ClientName, tokenFile,

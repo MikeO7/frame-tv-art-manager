@@ -74,3 +74,19 @@ func TurnOffTV(ctx context.Context, host string, port int, clientName, tokenFile
 
 	return nil
 }
+
+// EnsureToken establishes a connection to the "samsung.remote.control" endpoint
+// specifically to trigger the TV's authorization prompt and save a persistent
+// token if one doesn't exist.
+func EnsureToken(ctx context.Context, host string, port int, clientName, tokenFile string, timeout time.Duration, logger *slog.Logger) error {
+	conn := NewConnection(host, port, "samsung.remote.control", clientName, tokenFile, timeout, logger)
+
+	// NewConnection.Open() handles the handshake and automatically saves
+	// the token to tokenFile if it's received in the ms.channel.connect event.
+	if err := conn.Open(ctx); err != nil {
+		return fmt.Errorf("remote handshake failed: %w", err)
+	}
+	defer conn.Close()
+
+	return nil
+}
