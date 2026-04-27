@@ -259,8 +259,16 @@ func (c *Connection) Send(payload []byte) error {
 func (c *Connection) recvLoop() {
 	defer close(c.recvDone)
 
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
+		return
+	}
+
 	for {
-		_, msg, err := c.conn.ReadMessage()
+		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			if !c.closed.Load() {
 				c.logger.Debug("recv loop error", "error", err)
