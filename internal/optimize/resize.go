@@ -90,7 +90,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	if cfg.SmartCropEnabled {
 		dst, err = smartCrop(img, cfg)
 	} else {
-		dst, err = fitResize(img, cfg)
+		dst = fitResize(img, cfg)
 	}
 
 	if err != nil {
@@ -194,14 +194,14 @@ func smartCrop(img image.Image, cfg Config) (image.Image, error) {
 	return finalDst, nil
 }
 
-func fitResize(img image.Image, cfg Config) (image.Image, error) {
+func fitResize(img image.Image, cfg Config) image.Image {
 	origW := img.Bounds().Dx()
 	origH := img.Bounds().Dy()
 	newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
 
 	finalDst := image.NewRGBA(image.Rect(0, 0, newW, newH))
 	draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), img, img.Bounds(), draw.Over, nil)
-	return finalDst, nil
+	return finalDst
 }
 
 func fitDimensions(origW, origH, maxW, maxH int) (int, int) {
