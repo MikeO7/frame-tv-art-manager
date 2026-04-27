@@ -104,7 +104,7 @@ func (l *Loader) Sync() (int, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, "artic:") || strings.HasPrefix(line, "art_institute:") {
+		if strings.HasPrefix(line, "artic:") || strings.HasPrefix(line, "art_institute:") || strings.HasPrefix(line, "art_institute_of_chicago:") {
 			count, err := l.handleArticLine(line)
 			if err != nil {
 				l.logger.Warn("art_institute sync failed", "line", line, "error", err)
@@ -405,7 +405,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 func (l *Loader) handleArticLine(line string) (int, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 3 {
-		return 0, fmt.Errorf("invalid art_institute format: %s (expected art_institute:search:query or art_institute:photo:id)", line)
+		return 0, fmt.Errorf("invalid art_institute_of_chicago format: %s (expected art_institute_of_chicago:search:query or art_institute_of_chicago:photo:id)", line)
 	}
 
 	ctx := context.Background()

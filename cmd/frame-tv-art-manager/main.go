@@ -99,7 +99,7 @@ func main() {
 				"  #   - apod\n" +
 				"  #   - search:nebula\n\n" +
 				"  # --- 🎨 Art Institute of Chicago ---\n" +
-				"  # art_institute:\n" +
+				"  # art_institute_of_chicago:\n" +
 				"  #   - search:impressionism\n" +
 				"  #   - search:monet\n\n" +
 				"  # --- 📸 Unsplash ---\n" +
