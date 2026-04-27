@@ -93,7 +93,7 @@ func main() {
 				"# Frame TV Art Manager - Source List\n" +
 				"# ==========================================\n" +
 				"# Uncomment the lines below to enable them.\n\n" +
-				"providers:\n" +
+				"# providers:\n" +
 				"  # --- 🚀 NASA ---\n" +
 				"  # nasa:\n" +
 				"  #   - apod\n" +
