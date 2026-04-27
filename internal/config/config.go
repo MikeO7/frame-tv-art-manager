@@ -199,7 +199,7 @@ func Load() (*Config, error) {
 		EnableRESTGate:      envBool("ENABLE_REST_GATE"),
 		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
-		NasaApiKey:         envStr("NASA_API_KEY", ""),
+		NasaApiKey:         envStr("NASA_API_KEY", "DEMO_KEY"),
 		PexelsApiKey:       envStr("PEXELS_API_KEY", ""),
 		PixabayApiKey:      envStr("PIXABAY_API_KEY", ""),
 		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
