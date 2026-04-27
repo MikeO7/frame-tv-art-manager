@@ -93,15 +93,18 @@ func main() {
 				"# Frame TV Art Manager - Source List\n" +
 				"# ==========================================\n" +
 				"# Uncomment the lines below to enable them.\n\n" +
-				"sources:\n" +
+				"providers:\n" +
 				"  # --- 🚀 NASA ---\n" +
-				"  # - nasa:apod\n" +
-				"  # - nasa:search:nebula\n\n" +
+				"  # nasa:\n" +
+				"  #   - apod\n" +
+				"  #   - search:nebula\n\n" +
 				"  # --- 🎨 Art Institute of Chicago ---\n" +
-				"  # - artic:search:impressionism\n" +
-				"  # - artic:search:monet\n\n" +
+				"  # art_institute:\n" +
+				"  #   - search:impressionism\n" +
+				"  #   - search:monet\n\n" +
 				"  # --- 📸 Unsplash ---\n" +
-				"  # - unsplash:collection:225444\n"
+				"  # unsplash:\n" +
+				"  #   - collection:225444\n"
 			if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0644); err != nil {
 				logger.Warn("Failed to bootstrap sources file", "error", err)
 			}

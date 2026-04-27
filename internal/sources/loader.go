@@ -104,10 +104,10 @@ func (l *Loader) Sync() (int, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, "artic:") {
+		if strings.HasPrefix(line, "artic:") || strings.HasPrefix(line, "art_institute:") {
 			count, err := l.handleArticLine(line)
 			if err != nil {
-				l.logger.Warn("artic sync failed", "line", line, "error", err)
+				l.logger.Warn("art_institute sync failed", "line", line, "error", err)
 			}
 			downloaded += count
 			continue
@@ -405,7 +405,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 func (l *Loader) handleArticLine(line string) (int, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 3 {
-		return 0, fmt.Errorf("invalid artic format: %s (expected artic:search:query or artic:photo:id)", line)
+		return 0, fmt.Errorf("invalid art_institute format: %s (expected art_institute:search:query or art_institute:photo:id)", line)
 	}
 
 	ctx := context.Background()
@@ -494,21 +494,36 @@ func (l *Loader) loadYamlSources() ([]string, error) {
 		return nil, err
 	}
 
+	var urls []string
+
+	// Try structured format with "providers" map (DRY)
+	var dry struct {
+		Providers map[string][]string `yaml:"providers"`
+	}
+	if err := yaml.Unmarshal(data, &dry); err == nil && len(dry.Providers) > 0 {
+		for provider, commands := range dry.Providers {
+			for _, cmd := range commands {
+				urls = append(urls, fmt.Sprintf("%s:%s", provider, cmd))
+			}
+		}
+		return urls, nil
+	}
+
+	// Try to parse as a structured map with a "sources" key (classic list)
+	var structured struct {
+		Sources []string `yaml:"sources"`
+	}
+	if err := yaml.Unmarshal(data, &structured); err == nil && len(structured.Sources) > 0 {
+		return structured.Sources, nil
+	}
+
 	// Try to parse as a simple list first
 	var list []string
 	if err := yaml.Unmarshal(data, &list); err == nil && len(list) > 0 {
 		return list, nil
 	}
 
-	// Try to parse as a structured map with a "sources" key
-	var structured struct {
-		Sources []string `yaml:"sources"`
-	}
-	if err := yaml.Unmarshal(data, &structured); err == nil {
-		return structured.Sources, nil
-	}
-
-	return nil, fmt.Errorf("invalid YAML sources format")
+	return nil, fmt.Errorf("invalid YAML sources format (expected 'providers:' map or 'sources:' list)")
 }
 
 // truncateURL shortens a URL for logging readability.
