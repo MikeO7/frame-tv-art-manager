@@ -60,6 +60,11 @@ func NewLoader(sourcesFile, artworkDir string, unsplashKey, nasaKey string, logg
 //
 // Downloaded files are named by SHA256 hash of the URL to enable
 // idempotent re-runs.
+// Sync reads the sources file and downloads any new images. Returns the
+// number of newly downloaded images. Skips URLs that have already been
+// downloaded (matched by URL hash filename).
+//
+//nolint:gocyclo // Sync loop handles multiple source types sequentially
 func (l *Loader) Sync() (int, error) {
 	if l.sourcesFile == "" {
 		return 0, nil
@@ -330,12 +335,13 @@ func (l *Loader) downloadToFile(url string, destPath string) (bool, error) {
 		return false, err
 	}
 
-	_ = os.Chmod(destPath, 0644)
+	_ = os.Chmod(destPath, 0644) //nolint:gosec // Required for Mac/Docker volume access
 	l.logger.Info("downloaded unsplash image", "path", filepath.Base(destPath), "size", written)
 	return true, nil
 }
 
 // handleNASALine resolves NASA APOD or search queries and downloads them.
+//nolint:gocyclo // NASA API requires multi-step manifest resolution
 func (l *Loader) handleNASALine(line string) (int, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {

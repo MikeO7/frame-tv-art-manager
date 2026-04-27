@@ -91,31 +91,33 @@ On the first connection, the TV will display an authorization prompt. Select **A
 | `UNSPLASH_ACCESS_KEY` | *(unset)* | Your Unsplash API key. |
 | `NASA_API_KEY` | `DEMO_KEY` | Your NASA API key (defaults to demo). |
 
-## 📂 Image Sources (sources.txt)
+## 📂 Image Sources (`sources.txt`)
 
-The manager can automatically download and curate images from external APIs. To use this, create a text file (e.g., `sources.txt`) and mount it to the container.
+The manager can automatically download and curate images from world-class APIs. To enable this, create a `sources.txt` file in your data folder and set `ARTWORK_SOURCES_FILE=/data/sources.txt`.
 
-### Unsplash Integration
-1. **Get a Key**: Register for a free account at [unsplash.com/developers](https://unsplash.com/developers).
-2. **Add to Env**: Set `UNSPLASH_ACCESS_KEY=your_key`.
-3. **Add to Sources**:
-   - `unsplash:collection:COLLECTION_ID` — Downloads all photos from a curated collection.
-   - `unsplash:photo:PHOTO_ID` — Downloads a specific high-res photo.
+### 🧪 Source Cookbook (Examples)
 
-### NASA Integration
-NASA support is enabled by default using the `DEMO_KEY`.
-- `nasa:apod` — Downloads today's **Astronomy Picture of the Day**.
-- `nasa:search:nebula` — Searches the NASA library and downloads the top 10 results.
+Simply add these lines to your `sources.txt`:
 
-### Art Institute of Chicago (Public Domain)
-No API key required! Access thousands of high-res masterpieces.
-- `artic:search:impressionism` — Pulls 10 masterpieces from the Impressionist collection.
-- `artic:search:monet` — Pulls 10 works by Claude Monet.
-- `artic:photo:27992` — Downloads a specific masterpiece by ID.
+| Type | Source Command | What it pulls |
+|---|---|---|
+| **NASA** | `nasa:apod` | Today's Astronomy Picture of the Day. |
+| **NASA** | `nasa:search:nebula` | Top 10 high-res nebula photos from NASA. |
+| **Art Institute** | `artic:search:monet` | 10 masterpieces by Claude Monet. |
+| **Art Institute** | `artic:search:impressionism` | 10 famous Impressionist paintings. |
+| **Unsplash** | `unsplash:collection:225444` | Every photo from a curated Unsplash collection. |
+| **Unsplash** | `unsplash:photo:L9W_5q57_V8` | A specific high-res photo by its ID. |
+| **Direct** | `https://example.com/art.jpg` | Any direct link to a JPEG or PNG. |
 
-### Direct URLs
-- Simply paste a direct `.jpg` or `.png` URL to download it.
-- Lines starting with `#` are ignored.
+### 🛠 Configuration for APIs
+
+| Variable | Default | Description |
+|---|---|---|
+| `UNSPLASH_ACCESS_KEY` | *(unset)* | Required for Unsplash. Get one at [unsplash.com/developers](https://unsplash.com/developers). |
+| `NASA_API_KEY` | `DEMO_KEY` | Optional for NASA. Defaults to a shared demo key. |
+
+> [!TIP]
+> **Pro Tip**: The manager is smart. It only downloads *new* images and automatically tracks Unsplash downloads to comply with their TOS. If you remove a line from `sources.txt`, the image stays in your folder until you manually delete it.
 
 ## 📂 File Structure
 
