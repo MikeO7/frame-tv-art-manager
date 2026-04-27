@@ -383,7 +383,8 @@ func (c *Connection) extractAndSaveToken(data json.RawMessage) {
 	}
 
 	c.logger.Info("new auth token received", "token", d.Token[:min(len(d.Token), 8)]+"...")
-	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0644); err != nil { //nosec G306
+	//nosec G306
+	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0644); err != nil {
 		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
 	}
 }

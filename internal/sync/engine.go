@@ -404,6 +404,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 
 			if settingsForMode != nil && settingsForMode.Type == "shuffleslideshow" {
 				values := mapValues(verifiedMap)
+				//nosec G404
 				selectedID = values[rand.IntN(len(values))]
 				log.Info("selecting random image for shuffle mode")
 			} else if len(verifiedMap) > 0 {
