@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"path/filepath"
 	"strings"
 	"time"
@@ -404,7 +404,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 
 			if settingsForMode != nil && settingsForMode.Type == "shuffleslideshow" {
 				values := mapValues(verifiedMap)
-				selectedID = values[rand.Intn(len(values))]
+				selectedID = values[rand.IntN(len(values))]
 				log.Info("selecting random image for shuffle mode")
 			} else if len(verifiedMap) > 0 {
 				for _, id := range verifiedMap {
@@ -540,16 +540,16 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("║  Local:  %-3d images", totalLocal))
+	fmt.Fprintf(sb, "║  Local:  %-3d images", totalLocal)
 	if fromSources > 0 {
-		sb.WriteString(fmt.Sprintf("  │  %d from URLs", fromSources))
+		fmt.Fprintf(sb, "  │  %d from URLs", fromSources)
 	}
 	if optimized > 0 {
-		sb.WriteString(fmt.Sprintf("  │  %d resized", optimized))
+		fmt.Fprintf(sb, "  │  %d resized", optimized)
 	}
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("║  Took:   %-40s║\n", elapsed.String()))
-	sb.WriteString(fmt.Sprintf("║  Next:   %-40s║\n", nextSync.Format("15:04:05")))
+	fmt.Fprintf(sb, "║  Took:   %-40s║\n", elapsed.String())
+	fmt.Fprintf(sb, "║  Next:   %-40s║\n", nextSync.Format("15:04:05"))
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
 
 	e.logger.Info(sb.String())

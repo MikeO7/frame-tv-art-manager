@@ -23,7 +23,7 @@ func TurnOffTV(ctx context.Context, host string, port int, clientName, tokenFile
 	if err := conn.Open(ctx); err != nil {
 		return fmt.Errorf("open remote control connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send KEY_POWER press.
 	press := map[string]any{
@@ -86,7 +86,7 @@ func EnsureToken(ctx context.Context, host string, port int, clientName, tokenFi
 	if err := conn.Open(ctx); err != nil {
 		return fmt.Errorf("remote handshake failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	return nil
 }

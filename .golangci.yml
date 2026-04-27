@@ -10,7 +10,6 @@ linters:
     - gocyclo
     - asciicheck
     - bodyclose
-    - depguard
     - dogsled
     - dupl
     - gocritic

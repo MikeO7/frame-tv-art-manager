@@ -61,7 +61,7 @@ func (l *Loader) Sync() (int, error) {
 		}
 		return 0, fmt.Errorf("open sources file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var urls []string
 	scanner := bufio.NewScanner(f)
@@ -121,7 +121,7 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("HTTP GET: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("HTTP %d from %s", resp.StatusCode, truncateURL(url))
@@ -149,19 +149,19 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 	}
 
 	written, err := io.Copy(out, resp.Body)
-	out.Close()
+	_ = out.Close()
 	if err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("download body: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, destPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("rename temp file: %w", err)
 	}
 
 	// Ensure inclusive permissions for Mac access.
-	_ = os.Chmod(destPath, 0644)
+	_ = os.Chmod(destPath, 0644) //nosec G302
 
 	l.logger.Info("downloaded source image",
 		"file", filename,

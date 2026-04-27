@@ -95,20 +95,20 @@ func (c *Connection) Open(ctx context.Context) error {
 
 	// Read the first message — expect ms.channel.connect.
 	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("set read deadline: %w", err)
 	}
 
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("read handshake: %w", err)
 	}
 
 	c.logger.Debug("handshake message received", "msg", string(msg))
 	var resp wsResponse
 	if err := json.Unmarshal(msg, &resp); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("parse handshake: %w", err)
 	}
 
@@ -116,44 +116,44 @@ func (c *Connection) Open(ctx context.Context) error {
 	case "ms.channel.connect":
 		c.extractAndSaveToken(resp.Data)
 	case "ms.channel.unauthorized":
-		conn.Close()
+		_ = conn.Close()
 		return ErrUnauthorized
 	case "ms.channel.timeOut":
-		conn.Close()
+		_ = conn.Close()
 		return ErrTimeout
 	default:
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("%w: unexpected event %q", ErrConnectionFailure, resp.Event)
 	}
 
 	// For the art endpoint, also wait for ms.channel.ready.
 	if c.endpoint == "com.samsung.art-app" {
 		if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return fmt.Errorf("set read deadline: %w", err)
 		}
 
 		_, msg, err = conn.ReadMessage()
 		if err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return fmt.Errorf("read channel ready: %w", err)
 		}
 
 		var readyResp wsResponse
 		if err := json.Unmarshal(msg, &readyResp); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return fmt.Errorf("parse channel ready: %w", err)
 		}
 
 		if readyResp.Event != "ms.channel.ready" {
-			conn.Close()
+			_ = conn.Close()
 			return fmt.Errorf("%w: expected ms.channel.ready, got %q", ErrConnectionFailure, readyResp.Event)
 		}
 	}
 
 	// Clear the read deadline for the recv loop.
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("clear read deadline: %w", err)
 	}
 
@@ -380,7 +380,7 @@ func (c *Connection) extractAndSaveToken(data json.RawMessage) {
 	}
 
 	c.logger.Info("new auth token received", "token", d.Token[:min(len(d.Token), 8)]+"...")
-	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0644); err != nil {
+	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0644); err != nil { //nosec G306
 		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
 	}
 }

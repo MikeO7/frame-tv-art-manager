@@ -36,7 +36,7 @@ func CheckArtModeGate(ctx context.Context, host string, timeout time.Duration) (
 		// Timeout or connection refused — TV is off or busy.
 		return false, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Only 200 OK means the TV is definitively in Art Mode.
 	return resp.StatusCode == http.StatusOK, nil

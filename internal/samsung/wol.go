@@ -49,7 +49,7 @@ func SendWOL(macAddr string) error {
 	if err != nil {
 		return fmt.Errorf("dial broadcast: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_, err = conn.Write(packet)
 	if err != nil {

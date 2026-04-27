@@ -33,7 +33,7 @@ func FetchDeviceInfo(ctx context.Context, host string, port int, timeout time.Du
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

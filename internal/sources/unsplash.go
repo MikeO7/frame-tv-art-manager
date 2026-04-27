@@ -80,7 +80,7 @@ func (u *UnsplashClient) RandomPhotos(ctx context.Context, query string, count i
 	if err != nil {
 		return nil, fmt.Errorf("unsplash API request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
 		remaining := resp.Header.Get("X-Ratelimit-Remaining")
@@ -136,7 +136,7 @@ func (u *UnsplashClient) CollectionPhotos(ctx context.Context, collectionID stri
 	if err != nil {
 		return nil, fmt.Errorf("unsplash collection request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unsplash collection API returned %d", resp.StatusCode)

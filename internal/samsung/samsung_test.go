@@ -26,7 +26,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Step 1: Send ms.channel.connect.
 		resp := wsResponse{
@@ -68,7 +68,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 	if err := conn.Open(ctx); err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if !conn.IsAlive() {
 		t.Error("expected connection to be alive")
@@ -88,7 +88,7 @@ func TestConnection_Unauthorized(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		resp := wsResponse{
 			Event: "ms.channel.unauthorized",

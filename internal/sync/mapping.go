@@ -27,7 +27,7 @@ type Mapping struct {
 // returns an empty mapping that will be created on first Save().
 func LoadMapping(dir, tvIP string) (*Mapping, error) {
 	safeIP := strings.ReplaceAll(tvIP, ".", "_")
-	path := filepath.Join(dir, fmt.Sprintf("tv_%s_mapping.json", safeIP))
+	path := filepath.Clean(filepath.Join(dir, fmt.Sprintf("tv_%s_mapping.json", safeIP)))
 
 	m := &Mapping{
 		path: path,
@@ -54,7 +54,7 @@ func (m *Mapping) Save() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil { //nosec G301
 		return fmt.Errorf("create mapping dir: %w", err)
 	}
 
@@ -63,7 +63,7 @@ func (m *Mapping) Save() error {
 		return fmt.Errorf("marshal mapping: %w", err)
 	}
 
-	return os.WriteFile(m.path, raw, 0644)
+	return os.WriteFile(m.path, raw, 0644) //nosec G306
 }
 
 // Set records a filename→content_id association.

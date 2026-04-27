@@ -33,7 +33,7 @@ func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fil
 	if err != nil {
 		return fmt.Errorf("open image file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	stat, err := f.Stat()
 	if err != nil {
@@ -71,7 +71,7 @@ func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fil
 	if err != nil {
 		return fmt.Errorf("dial d2d socket %s: %w", addr, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Set a write deadline for the entire transfer.
 	if err := conn.SetWriteDeadline(time.Now().Add(timeout + time.Duration(fileSize/d2dChunkSize)*100*time.Millisecond)); err != nil {

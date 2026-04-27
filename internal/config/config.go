@@ -170,23 +170,23 @@ func Load() (*Config, error) {
 		SyncIntervalMin:     envInt("SYNC_INTERVAL_MINUTES", 5),
 		MatteStyle:          envStr("MATTE_STYLE", "none"),
 		ClientName:          envStr("CLIENT_NAME", "Frame Art Manager"),
-		DryRun:              envBool("DRY_RUN", false),
+		DryRun:              envBool("DRY_RUN"),
 		LogLevel:            strings.ToLower(envStr("LOG_LEVEL", "info")),
-		SlideshowEnabled:    envBool("SLIDESHOW_ENABLED", false),
+		SlideshowEnabled:    envBool("SLIDESHOW_ENABLED"),
 		SlideshowInterval:   envInt("SLIDESHOW_INTERVAL", 15),
 		SlideshowType:       strings.ToLower(envStr("SLIDESHOW_TYPE", "shuffle")),
-		SolarEnabled:        envBool("SOLAR_BRIGHTNESS_ENABLED", false),
+		SolarEnabled:        envBool("SOLAR_BRIGHTNESS_ENABLED"),
 		Timezone:            envStr("LOCATION_TIMEZONE", "UTC"),
 		BrightnessMin:       envInt("BRIGHTNESS_MIN", 2),
 		BrightnessMax:       envInt("BRIGHTNESS_MAX", 10),
-		RemoveUnknownImages: envBool("REMOVE_UNKNOWN_IMAGES", false),
+		RemoveUnknownImages: envBool("REMOVE_UNKNOWN_IMAGES"),
 		AutoOffTime:         envStr("AUTO_OFF_TIME", ""),
 		AutoOffGraceHours:   envFloat("AUTO_OFF_GRACE_HOURS", 2),
 		TVMAC:               envStr("TV_MAC", ""),
-		EnableRESTGate:      envBool("ENABLE_REST_GATE", false),
+		EnableRESTGate:      envBool("ENABLE_REST_GATE"),
 		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
-		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED", false),
+		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 92),
@@ -301,7 +301,7 @@ func envInt(key string, def int) int {
 	return n
 }
 
-func envBool(key string, def bool) bool {
+func envBool(key string) bool {
 	v := strings.ToLower(os.Getenv(key))
 	switch v {
 	case "true", "1", "yes":
@@ -309,7 +309,7 @@ func envBool(key string, def bool) bool {
 	case "false", "0", "no":
 		return false
 	default:
-		return def
+		return false
 	}
 }
 
