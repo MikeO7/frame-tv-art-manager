@@ -186,7 +186,7 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		ArtworkDir:          envStr("ARTWORK_DIR", "/data/artwork"),
-		MaxArtworkImages:    envInt("MAX_ARTWORK_IMAGES", 500),
+		MaxArtworkImages:    envInt("MAX_ARTWORK_IMAGES", 100),
 		MaxDownloadSizeMB:   envInt("MAX_DOWNLOAD_SIZE_MB", 20),
 		TokenDir:            envStr("TOKEN_DIR", "/data/tokens"),
 		SyncIntervalMin:     envInt("SYNC_INTERVAL_MINUTES", 5),
