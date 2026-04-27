@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
-	"image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -59,15 +58,9 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	}
 
 	// Decode the image.
-	f, err := os.Open(filepath.Clean(path)) //nolint:gosec // Path is verified
+	img, err := decodeImage(path)
 	if err != nil {
-		return false, fmt.Errorf("open image: %w", err)
-	}
-
-	img, _, err := image.Decode(f)
-	_ = f.Close()
-	if err != nil {
-		return false, fmt.Errorf("decode image: %w", err)
+		return false, err
 	}
 
 	bounds := img.Bounds()
@@ -95,14 +88,35 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 
 	var dst image.Image
 	if cfg.SmartCropEnabled {
-		dst, err = smartCrop(img, cfg, logger)
+		dst, err = smartCrop(img, cfg)
 	} else {
-		dst, err = fitResize(img, cfg, logger)
+		dst, err = fitResize(img, cfg)
 	}
 
 	if err != nil {
 		return false, err
 	}
+
+	return atomicWriteImage(path, dst, cfg.OptimizeJPEGQuality, logger)
+}
+
+func decodeImage(path string) (image.Image, error) {
+	f, err := os.Open(filepath.Clean(path)) //nolint:gosec // Path is verified
+	if err != nil {
+		return nil, fmt.Errorf("open image: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("decode image: %w", err)
+	}
+	return img, nil
+}
+
+func atomicWriteImage(path string, img image.Image, quality int, logger *slog.Logger) (bool, error) {
+	// Get original size for logging.
+	origStat, _ := os.Stat(path)
 
 	// Write to temp file then rename.
 	tmpPath := path + ".opt.tmp"
@@ -111,24 +125,13 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
 
-	switch ext {
-	case ".jpg", ".jpeg":
-		err = jpeg.Encode(out, dst, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
-	case ".png":
-		err = png.Encode(out, dst)
-	default:
-		err = jpeg.Encode(out, dst, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
-	}
-
+	// Always encode as JPEG for the TV.
+	err = jpeg.Encode(out, img, &jpeg.Options{Quality: quality})
 	_ = out.Close()
 	if err != nil {
 		_ = os.Remove(tmpPath)
-		return false, fmt.Errorf("encode resized image: %w", err)
+		return false, fmt.Errorf("encode jpeg: %w", err)
 	}
-
-	// Get size comparison.
-	origStat, _ := os.Stat(path)
-	newStat, _ := os.Stat(tmpPath)
 
 	if err := os.Rename(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath)
@@ -138,13 +141,15 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	// Ensure inclusive permissions for Mac access.
 	_ = os.Chmod(path, 0644) //nolint:gosec // Requires inclusive permissions
 
-	if origStat != nil && newStat != nil {
-		logger.Info("image optimized",
-			"file", filepath.Base(path),
-			"original_bytes", origStat.Size(),
-			"optimized_bytes", newStat.Size(),
-			"saved_pct", fmt.Sprintf("%.0f%%", (1-float64(newStat.Size())/float64(origStat.Size()))*100),
-		)
+	if origStat != nil {
+		if newStat, err := os.Stat(path); err == nil {
+			logger.Info("image optimized",
+				"file", filepath.Base(path),
+				"original_bytes", origStat.Size(),
+				"optimized_bytes", newStat.Size(),
+				"saved_pct", fmt.Sprintf("%.0f%%", (1-float64(newStat.Size())/float64(origStat.Size()))*100),
+			)
+		}
 	}
 
 	return true, nil
@@ -164,7 +169,7 @@ func ValidateImage(path string) error {
 
 // fitDimensions calculates new width and height that fit within
 // maxW×maxH while preserving the aspect ratio.
-func smartCrop(img image.Image, cfg Config, logger *slog.Logger) (image.Image, error) {
+func smartCrop(img image.Image, cfg Config) (image.Image, error) {
 	analyzer := smartcrop.NewAnalyzer(nfnt.NewDefaultResizer())
 	topCrop, err := analyzer.FindBestCrop(img, cfg.MaxWidth, cfg.MaxHeight)
 	if err != nil {
@@ -189,7 +194,7 @@ func smartCrop(img image.Image, cfg Config, logger *slog.Logger) (image.Image, e
 	return finalDst, nil
 }
 
-func fitResize(img image.Image, cfg Config, logger *slog.Logger) (image.Image, error) {
+func fitResize(img image.Image, cfg Config) (image.Image, error) {
 	origW := img.Bounds().Dx()
 	origH := img.Bounds().Dy()
 	newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
