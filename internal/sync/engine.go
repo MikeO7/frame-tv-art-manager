@@ -181,6 +181,12 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	return nil
 }
 
+// Status string constants for TV summary logging.
+const (
+	statusBackoff = "backoff"
+	statusError   = "error"
+)
+
 // tvSyncSummary captures results for summary logging.
 type tvSyncSummary struct {
 	IP          string
@@ -195,6 +201,7 @@ type tvSyncSummary struct {
 }
 
 // syncTV performs the full sync for a single TV.
+//nolint:gocyclo // Core sync loop requires complex flow control
 func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}) (tvSyncSummary, error) {
 	log := e.logger.With("tv", ip)
 	summary := tvSyncSummary{IP: ip}
@@ -207,7 +214,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 			summary.Status = "skipped (gate)"
 			return summary, nil
 		}
-		summary.Status = "error"
+		summary.Status = statusError
 		return summary, fmt.Errorf("connect: %w", err)
 	}
 	defer func() { _ = client.Close() }()
@@ -233,7 +240,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	// Load filename→content_id mapping.
 	mapping, err := LoadMapping(e.cfg.TokenDir, ip)
 	if err != nil {
-		summary.Status = "error"
+		summary.Status = statusError
 		return summary, fmt.Errorf("load mapping: %w", err)
 	}
 
@@ -243,7 +250,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	// Get list of images currently on the TV.
 	tvContent, err := client.GetUploadedImages(ctx)
 	if err != nil {
-		summary.Status = "error"
+		summary.Status = statusError
 		return summary, fmt.Errorf("get TV images: %w", err)
 	}
 

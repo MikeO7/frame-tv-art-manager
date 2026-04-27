@@ -75,8 +75,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
 		c.logger.Info("no token found, performing one-time remote handshake")
 		// Ensure directory exists for token.
-		//nosec G301
-		if err := os.MkdirAll(filepath.Dir(tokenFile), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(tokenFile), 0755); err != nil { //nolint:gosec // Required token directory permissions
 			return fmt.Errorf("create token dir: %w", err)
 		}
 		if err := EnsureToken(ctx, c.IP, 8002, c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger); err != nil {
@@ -272,8 +271,7 @@ func (c *Client) SaveMetadata(ctx context.Context) error {
 	safeIP := strings.ReplaceAll(c.IP, ".", "_")
 	path := filepath.Join(c.cfg.TokenDir, fmt.Sprintf("tv_%s_metadata.json", safeIP))
 
-	//nosec G306
-	if err := os.WriteFile(path, b, 0644); err != nil {
+	if err := os.WriteFile(path, b, 0644); err != nil { //nolint:gosec // Standard file permissions
 		return fmt.Errorf("write metadata file: %w", err)
 	}
 

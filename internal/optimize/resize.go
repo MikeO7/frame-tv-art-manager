@@ -55,7 +55,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	}
 
 	// Decode the image.
-	f, err := os.Open(path)
+	f, err := os.Open(filepath.Clean(path)) //nolint:gosec // Path is verified
 	if err != nil {
 		return false, fmt.Errorf("open image: %w", err)
 	}

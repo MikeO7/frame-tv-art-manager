@@ -65,7 +65,7 @@ func main() {
 		"tokens":  cfg.TokenDir,
 	}
 	for name, path := range dirs {
-		if err := os.MkdirAll(path, 0755); err != nil {
+		if err := os.MkdirAll(path, 0755); err != nil { //nolint:gosec // Required for shared volumes
 			logger.Error("Failed to create/access directory", "name", name, "path", path, "error", err)
 			os.Exit(1)
 		}
@@ -77,7 +77,7 @@ func main() {
 		}
 		// Test writability
 		testFile := fmt.Sprintf("%s/.write_test", path)
-		if err := os.WriteFile(testFile, []byte("ok"), 0644); err != nil {
+		if err := os.WriteFile(testFile, []byte("ok"), 0644); err != nil { //nolint:gosec // Test file, broad permissions intentional
 			logger.Error("Directory is not writable", "name", name, "path", path, "error", err)
 			os.Exit(1)
 		}

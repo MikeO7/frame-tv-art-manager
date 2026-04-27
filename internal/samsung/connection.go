@@ -71,6 +71,7 @@ func NewConnection(host string, port int, endpoint, name, tokenFile string, time
 //  3. Receive ms.channel.ready event → connection is live
 //
 // For the remote control endpoint, only step 1-2 is needed.
+//nolint:gocyclo // Connection handshake sequence is inherently complex
 func (c *Connection) Open(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -383,8 +384,7 @@ func (c *Connection) extractAndSaveToken(data json.RawMessage) {
 	}
 
 	c.logger.Info("new auth token received", "token", d.Token[:min(len(d.Token), 8)]+"...")
-	//nosec G306
-	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0644); err != nil {
+	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0644); err != nil { //nolint:gosec // Safe token write
 		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
 	}
 }

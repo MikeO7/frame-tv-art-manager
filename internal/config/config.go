@@ -163,6 +163,7 @@ type Config struct {
 // Load reads configuration from environment variables, applies defaults,
 // and validates the result. Returns an error if required values are missing
 // or constraints are violated.
+//nolint:gocyclo // Config loading is naturally complex due to many fields
 func Load() (*Config, error) {
 	cfg := &Config{
 		ArtworkDir:          envStr("ARTWORK_DIR", "/data/artwork"),
