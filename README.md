@@ -29,6 +29,7 @@ The manager runs on a configurable interval (default 5 minutes) and performs the
 4. **Inventory & Diff**: Compares local files against the TV's inventory using a persistent `mapping.json` file.
 5. **Smart Sync**: Uploads new images, deletes removed ones, and reconciles "unknown" images on the TV.
 6. **Metadata Audit**: Refreshes a detailed `metadata.json` file containing Serial Numbers, DUIDs, and category lists.
+7. **Image Sources**: Automatically pulls high-resolution art from Unsplash collections or NASA's daily astronomy feed.
 
 ## 🚀 Quick Start
 
@@ -86,6 +87,35 @@ On the first connection, the TV will display an authorization prompt. Select **A
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Delete images on TV not found in local folder. |
 | `IMAGE_OPTIMIZE_ENABLED` | `false` | Automatically resize JPEGs to 4K. |
 | `TV_MAC` | *(unset)* | MAC address for Wake-on-LAN support. |
+| `ARTWORK_SOURCES_FILE` | *(unset)* | Path to `sources.txt` file. |
+| `UNSPLASH_ACCESS_KEY` | *(unset)* | Your Unsplash API key. |
+| `NASA_API_KEY` | `DEMO_KEY` | Your NASA API key (defaults to demo). |
+
+## 📂 Image Sources (sources.txt)
+
+The manager can automatically download and curate images from external APIs. To use this, create a text file (e.g., `sources.txt`) and mount it to the container.
+
+### Unsplash Integration
+1. **Get a Key**: Register for a free account at [unsplash.com/developers](https://unsplash.com/developers).
+2. **Add to Env**: Set `UNSPLASH_ACCESS_KEY=your_key`.
+3. **Add to Sources**:
+   - `unsplash:collection:COLLECTION_ID` — Downloads all photos from a curated collection.
+   - `unsplash:photo:PHOTO_ID` — Downloads a specific high-res photo.
+
+### NASA Integration
+NASA support is enabled by default using the `DEMO_KEY`.
+- `nasa:apod` — Downloads today's **Astronomy Picture of the Day**.
+- `nasa:search:nebula` — Searches the NASA library and downloads the top 10 results.
+
+### Art Institute of Chicago (Public Domain)
+No API key required! Access thousands of high-res masterpieces.
+- `artic:search:impressionism` — Pulls 10 masterpieces from the Impressionist collection.
+- `artic:search:monet` — Pulls 10 works by Claude Monet.
+- `artic:photo:27992` — Downloads a specific masterpiece by ID.
+
+### Direct URLs
+- Simply paste a direct `.jpg` or `.png` URL to download it.
+- Lines starting with `#` are ignored.
 
 ## 📂 File Structure
 

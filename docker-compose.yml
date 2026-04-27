@@ -47,6 +47,11 @@ services:
       # Requires LOCATION_TIMEZONE to be set.
       # AUTO_OFF_TIME: "22:00"
       # AUTO_OFF_GRACE_HOURS: "2"
+
+      # --- Optional: Image Sources (Unsplash & NASA) ---
+      # ARTWORK_SOURCES_FILE: "/data/sources.txt"
+      # UNSPLASH_ACCESS_KEY: "your_key_here"
+      # NASA_API_KEY: "DEMO_KEY"  # Default is DEMO_KEY if unset
     volumes:
       # Mount a single data directory. The app will automatically create
       # frame-tv-art-manager/artwork and frame-tv-art-manager/tokens subfolders.

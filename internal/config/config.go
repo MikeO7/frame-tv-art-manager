@@ -113,8 +113,11 @@ type Config struct {
 	SourcesFile string
 
 	// UnsplashAccessKey is the API key for Unsplash image downloads.
-	// Empty disables the Unsplash integration.
 	UnsplashAccessKey string
+
+	// NasaApiKey is the API key for NASA APOD downloads.
+	// Defaults to DEMO_KEY if empty.
+	NasaApiKey string
 
 	// --- Image Optimization ---
 
@@ -187,6 +190,7 @@ func Load() (*Config, error) {
 		EnableRESTGate:      envBool("ENABLE_REST_GATE"),
 		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
+		NasaApiKey:         envStr("NASA_API_KEY", ""),
 		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),

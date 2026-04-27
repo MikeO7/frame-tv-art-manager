@@ -43,6 +43,8 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 		srcLoader: sources.NewLoader(
 			cfg.SourcesFile,
 			cfg.ArtworkDir,
+			cfg.UnsplashAccessKey,
+			cfg.NasaApiKey,
 			logger,
 		),
 	}

@@ -4,6 +4,7 @@ package sources
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -27,10 +28,13 @@ type Loader struct {
 	artworkDir  string
 	logger      *slog.Logger
 	client      *http.Client
+	unsplash    *UnsplashClient
+	nasa        *NASAClient
+	artic       *ArticClient
 }
 
 // NewLoader creates a new sources loader.
-func NewLoader(sourcesFile, artworkDir string, logger *slog.Logger) *Loader {
+func NewLoader(sourcesFile, artworkDir string, unsplashKey, nasaKey string, logger *slog.Logger) *Loader {
 	return &Loader{
 		sourcesFile: sourcesFile,
 		artworkDir:  artworkDir,
@@ -38,6 +42,9 @@ func NewLoader(sourcesFile, artworkDir string, logger *slog.Logger) *Loader {
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
+		unsplash: NewUnsplashClient(unsplashKey, logger),
+		nasa:     NewNASAClient(nasaKey, logger),
+		artic:    NewArticClient(logger),
 	}
 }
 
@@ -85,11 +92,38 @@ func (l *Loader) Sync() (int, error) {
 	l.logger.Info("processing image sources", "urls", len(urls))
 
 	downloaded := 0
-	for _, url := range urls {
-		ok, err := l.downloadIfNew(url)
+	for _, line := range urls {
+		if strings.HasPrefix(line, "unsplash:") {
+			count, err := l.handleUnsplashLine(line)
+			if err != nil {
+				l.logger.Warn("unsplash sync failed", "line", line, "error", err)
+			}
+			downloaded += count
+			continue
+		}
+
+		if strings.HasPrefix(line, "nasa:") {
+			count, err := l.handleNASALine(line)
+			if err != nil {
+				l.logger.Warn("nasa sync failed", "line", line, "error", err)
+			}
+			downloaded += count
+			continue
+		}
+
+		if strings.HasPrefix(line, "artic:") {
+			count, err := l.handleArticLine(line)
+			if err != nil {
+				l.logger.Warn("artic sync failed", "line", line, "error", err)
+			}
+			downloaded += count
+			continue
+		}
+
+		ok, err := l.downloadIfNew(line)
 		if err != nil {
 			l.logger.Warn("failed to download source image",
-				"url", truncateURL(url),
+				"url", truncateURL(line),
 				"error", err,
 			)
 			continue
@@ -204,6 +238,229 @@ func extensionFromResponse(resp *http.Response, url string) string {
 	}
 
 	return extJPG // default
+}
+
+// handleUnsplashLine resolves Unsplash collection or photo IDs and downloads them.
+func (l *Loader) handleUnsplashLine(line string) (int, error) {
+	if l.unsplash.accessKey == "" {
+		return 0, fmt.Errorf("UNSPLASH_ACCESS_KEY not configured")
+	}
+
+	parts := strings.Split(line, ":")
+	if len(parts) < 3 {
+		return 0, fmt.Errorf("invalid unsplash format: %s", line)
+	}
+
+	ctx := context.Background()
+	var photos []UnsplashPhoto
+
+	switch parts[1] {
+	case "collection":
+		p, err := l.unsplash.FetchCollectionPhotos(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		photos = p
+	case "photo":
+		p, err := l.unsplash.FetchPhoto(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		photos = []UnsplashPhoto{*p}
+	default:
+		return 0, fmt.Errorf("unknown unsplash type: %s", parts[1])
+	}
+
+	downloaded := 0
+	for _, p := range photos {
+		// Prefer RAW for maximum quality, with Frame TV friendly width.
+		url := p.URLs.Raw + "&w=3840&q=95&fm=jpg"
+		
+		// Use a deterministic filename based on Unsplash ID.
+		filename := fmt.Sprintf("unsplash_%s.jpg", p.ID)
+		destPath := filepath.Join(l.artworkDir, filename)
+
+		if _, err := os.Stat(destPath); err == nil {
+			continue // skip existing
+		}
+
+		// Track download as required by TOS.
+		l.unsplash.TrackDownload(ctx, p.Links.DownloadLocation)
+
+		ok, err := l.downloadToFile(url, destPath)
+		if err != nil {
+			l.logger.Warn("failed to download unsplash image", "id", p.ID, "error", err)
+			continue
+		}
+		if ok {
+			downloaded++
+		}
+	}
+
+	return downloaded, nil
+}
+
+// downloadToFile is a helper that downloads a URL directly to a path.
+func (l *Loader) downloadToFile(url string, destPath string) (bool, error) {
+	resp, err := l.client.Get(url)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	tmpPath := destPath + ".tmp"
+	out, err := os.Create(filepath.Clean(tmpPath))
+	if err != nil {
+		return false, err
+	}
+
+	written, err := io.Copy(out, resp.Body)
+	_ = out.Close()
+	if err != nil {
+		_ = os.Remove(tmpPath)
+		return false, err
+	}
+
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return false, err
+	}
+
+	_ = os.Chmod(destPath, 0644)
+	l.logger.Info("downloaded unsplash image", "path", filepath.Base(destPath), "size", written)
+	return true, nil
+}
+
+// handleNASALine resolves NASA APOD or search queries and downloads them.
+func (l *Loader) handleNASALine(line string) (int, error) {
+	parts := strings.Split(line, ":")
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("invalid nasa format: %s", line)
+	}
+
+	ctx := context.Background()
+	var urls []string
+
+	switch parts[1] {
+	case "apod":
+		apod, err := l.nasa.FetchAPOD(ctx)
+		if err != nil {
+			return 0, err
+		}
+		// Prefer HD version for Frame TV.
+		u := apod.HDURL
+		if u == "" {
+			u = apod.URL
+		}
+		if u != "" {
+			urls = append(urls, u)
+		}
+	case "search":
+		if len(parts) < 3 {
+			return 0, fmt.Errorf("nasa search requires a query: nasa:search:query")
+		}
+		p, err := l.nasa.SearchNASAImageLibrary(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		urls = p
+	default:
+		return 0, fmt.Errorf("unknown nasa type: %s", parts[1])
+	}
+
+	downloaded := 0
+	for _, u := range urls {
+		// Use a deterministic filename based on URL.
+		filename := l.urlToFilename(u)
+		if strings.Contains(u, "nasa.gov") {
+			// For NASA library, try to keep a more descriptive name if possible.
+			// The URL usually contains the NASA ID.
+			parts := strings.Split(u, "/")
+			if len(parts) > 0 {
+				last := parts[len(parts)-1]
+				if strings.Contains(last, "~") {
+					filename = "nasa_" + strings.Split(last, "~")[0] + ".jpg"
+				}
+			}
+		}
+		
+		destPath := filepath.Join(l.artworkDir, filename)
+
+		if _, err := os.Stat(destPath); err == nil {
+			continue // skip existing
+		}
+
+		ok, err := l.downloadToFile(u, destPath)
+		if err != nil {
+			l.logger.Warn("failed to download nasa image", "url", u, "error", err)
+			continue
+		}
+		if ok {
+			downloaded++
+		}
+	}
+
+	return downloaded, nil
+}
+
+// handleArticLine resolves Art Institute of Chicago search queries or photo IDs and downloads them.
+func (l *Loader) handleArticLine(line string) (int, error) {
+	parts := strings.Split(line, ":")
+	if len(parts) < 3 {
+		return 0, fmt.Errorf("invalid artic format: %s (expected artic:search:query or artic:photo:id)", line)
+	}
+
+	ctx := context.Background()
+	var urls []string
+
+	switch parts[1] {
+	case "search":
+		p, err := l.artic.Search(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		urls = p
+	case "photo":
+		p, err := l.artic.FetchPhoto(ctx, parts[2])
+		if err != nil {
+			return 0, err
+		}
+		urls = []string{p}
+	default:
+		return 0, fmt.Errorf("unknown artic type: %s", parts[1])
+	}
+
+	downloaded := 0
+	for _, u := range urls {
+		filename := l.urlToFilename(u)
+		if strings.Contains(u, "artic.edu") {
+			// Try to extract image_id for a nicer filename
+			parts := strings.Split(u, "/")
+			if len(parts) > 5 {
+				filename = "artic_" + parts[5] + ".jpg"
+			}
+		}
+
+		destPath := filepath.Join(l.artworkDir, filename)
+		if _, err := os.Stat(destPath); err == nil {
+			continue // skip existing
+		}
+
+		ok, err := l.downloadToFile(u, destPath)
+		if err != nil {
+			l.logger.Warn("failed to download artic image", "url", u, "error", err)
+			continue
+		}
+		if ok {
+			downloaded++
+		}
+	}
+
+	return downloaded, nil
 }
 
 // truncateURL shortens a URL for logging readability.
