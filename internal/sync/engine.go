@@ -511,7 +511,7 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 
 	var sb strings.Builder
 	sb.WriteString("\n╔══════════════════════════════════════════════════╗\n")
-	sb.WriteString(fmt.Sprintf("║  Sync Cycle #%-3d — %-27s ║\n", e.cycleNum, time.Now().Format("2006-01-02 15:04:05")))
+	fmt.Fprintf(&sb, "║  Sync Cycle #%-3d — %-27s ║\n", e.cycleNum, time.Now().Format("2006-01-02 15:04:05"))
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 
 	for _, tv := range tvs {
@@ -519,23 +519,23 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		if tv.Model != "" {
 			name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
 		}
-		sb.WriteString(fmt.Sprintf("║  TV: %-44s║\n", name))
+		fmt.Fprintf(&sb, "║  TV: %-44s║\n", name)
 
 		switch tv.Status {
 		case "ok":
 			sb.WriteString("║    Status:     ✔ Art Mode                        ║\n")
-			sb.WriteString(fmt.Sprintf("║    Uploaded:   %-3d new  │  Deleted: %-3d            ║\n", tv.Uploaded, tv.Deleted))
-			sb.WriteString(fmt.Sprintf("║    Total:      %-3d images on TV                   ║\n", tv.TotalImages))
+			fmt.Fprintf(&sb, "║    Uploaded:   %-3d new  │  Deleted: %-3d            ║\n", tv.Uploaded, tv.Deleted)
+			fmt.Fprintf(&sb, "║    Total:      %-3d images on TV                   ║\n", tv.TotalImages)
 			if tv.Brightness != "" {
-				sb.WriteString(fmt.Sprintf("║    Brightness: %-35s║\n", tv.Brightness))
+				fmt.Fprintf(&sb, "║    Brightness: %-35s║\n", tv.Brightness)
 			}
 			if tv.Slideshow != "" {
-				sb.WriteString(fmt.Sprintf("║    Slideshow:  %-35s║\n", tv.Slideshow))
+				fmt.Fprintf(&sb, "║    Slideshow:  %-35s║\n", tv.Slideshow)
 			}
 		case "backoff":
 			sb.WriteString("║    Status:     ⏸ Backing off (unreachable)        ║\n")
 		default:
-			sb.WriteString(fmt.Sprintf("║    Status:     %-35s║\n", tv.Status))
+			fmt.Fprintf(&sb, "║    Status:     %-35s║\n", tv.Status)
 		}
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
