@@ -14,6 +14,8 @@ services:
       # MATTE_STYLE: "none"
       # LOG_LEVEL: "info"
       # REMOVE_UNKNOWN_IMAGES: "false"
+      # IMAGE_OPTIMIZE_ENABLED: "true"
+      # SMART_CROP_ENABLED: "true"
 
       # --- Optional: Wake-on-LAN ---
       # TV_MAC: "AA:BB:CC:DD:EE:FF"

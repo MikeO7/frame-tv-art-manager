@@ -9,6 +9,7 @@ A robust Go service designed for "set-and-forget" artwork synchronization for Sa
 - **Smart Handshake**: Persistent token management that eliminates "Allow/Deny" popup loops.
 - **Solar Brightness**: Automatically adjusts TV brightness based on the sun's elevation at your coordinates.
 - **Silent Operation**: Uses a REST-based "Gate" to check TV status before initiating WebSocket connections.
+- **Smart Cropping**: Uses entropy-based analysis to automatically crop images to a perfect 16:9 aspect ratio, keeping the most interesting part of the image.
 - **Image Optimization**: Automatically resizes oversized JPEGs to 4K (3840x2160) to save bandwidth and storage.
 - **Metadata Auditing**: Automatically dumps TV system info and category lists to JSON for easy reference.
 - **Tiny & Fast**: ~8MB Docker image with zero external dependencies.
@@ -86,6 +87,7 @@ On the first connection, the TV will display an authorization prompt. Select **A
 | `ENABLE_REST_GATE` | `false` | Check Art Mode status via REST before WSS. |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Delete images on TV not found in local folder. |
 | `IMAGE_OPTIMIZE_ENABLED` | `false` | Automatically resize JPEGs to 4K. |
+| `SMART_CROP_ENABLED` | `true` | Automatically crop to 16:9 using entropy. |
 | `TV_MAC` | *(unset)* | MAC address for Wake-on-LAN support. |
 | `ARTWORK_SOURCES_FILE` | *(unset)* | Path to `sources.txt` file. |
 | `UNSPLASH_ACCESS_KEY` | *(unset)* | Your Unsplash API key. |

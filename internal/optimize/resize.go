@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"golang.org/x/image/draw"
+	"github.com/muesli/smartcrop"
+	"github.com/nfnt/resize"
 )
 
 // Config holds image optimization settings.
@@ -21,16 +23,18 @@ type Config struct {
 	Enabled     bool
 	MaxWidth    int
 	MaxHeight   int
-	JPEGQuality int
+	OptimizeJPEGQuality int
+	SmartCropEnabled   bool
 }
 
 // DefaultConfig returns sensible defaults for Frame TV display.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:     true,
-		MaxWidth:    3840,
-		MaxHeight:   2160,
-		JPEGQuality: 92,
+		Enabled:             true,
+		MaxWidth:            3840,
+		MaxHeight:           2160,
+		OptimizeJPEGQuality: 92,
+		SmartCropEnabled:    true,
 	}
 }
 
@@ -70,9 +74,18 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	origW := bounds.Dx()
 	origH := bounds.Dy()
 
-	// Check if resize is needed.
-	if origW <= cfg.MaxWidth && origH <= cfg.MaxHeight {
-		logger.Debug("image already optimal size",
+	// Check if resize or crop is needed.
+	aspectRatio := float64(cfg.MaxWidth) / float64(cfg.MaxHeight)
+	imgRatio := float64(origW) / float64(origH)
+	
+	// We optimize if:
+	// 1. Image is oversized
+	// 2. Image has wrong aspect ratio and SmartCropEnabled is enabled
+	needsResize := origW > cfg.MaxWidth || origH > cfg.MaxHeight
+	needsCrop := cfg.SmartCropEnabled && (fmt.Sprintf("%.3f", imgRatio) != fmt.Sprintf("%.3f", aspectRatio))
+
+	if !needsResize && !needsCrop {
+		logger.Debug("image already optimal size and aspect",
 			"file", filepath.Base(path),
 			"width", origW,
 			"height", origH,
@@ -80,19 +93,54 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 		return false, nil
 	}
 
-	// Calculate new dimensions preserving aspect ratio.
-	newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
+	var dst image.Image
+	if cfg.SmartCropEnabled {
+		logger.Info("smart cropping image",
+			"file", filepath.Base(path),
+			"from", fmt.Sprintf("%dx%d", origW, origH),
+			"target_aspect", "16:9",
+		)
+		
+		analyzer := smartcrop.NewAnalyzer(resize.NewDefaultResizer())
+		topCrop, err := analyzer.FindBestCrop(img, cfg.MaxWidth, cfg.MaxHeight)
+		if err != nil {
+			return false, fmt.Errorf("find best crop: %w", err)
+		}
 
-	logger.Info("resizing image",
-		"file", filepath.Base(path),
-		"from", fmt.Sprintf("%dx%d", origW, origH),
-		"to", fmt.Sprintf("%dx%d", newW, newH),
-		"format", format,
-	)
+		type subImager interface {
+			SubImage(r image.Rectangle) image.Image
+		}
+		
+		// Helper to handle both NRGBA/RGBA and other image types
+		var croppedImg image.Image
+		if si, ok := img.(subImager); ok {
+			croppedImg = si.SubImage(topCrop)
+		} else {
+			// Fallback: draw to a new RGBA then crop
+			tempDst := image.NewRGBA(img.Bounds())
+			draw.Draw(tempDst, tempDst.Bounds(), img, bounds.Min, draw.Src)
+			croppedImg = tempDst.SubImage(topCrop)
+		}
 
-	// Resize using CatmullRom (high quality, similar to Lanczos).
-	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
+		// Resize the crop to final 4K dimensions
+		finalDst := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+		draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), croppedImg, croppedImg.Bounds(), draw.Over, nil)
+		dst = finalDst
+	} else {
+		// Calculate new dimensions preserving aspect ratio (Fit).
+		newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
+
+		logger.Info("resizing image (fit)",
+			"file", filepath.Base(path),
+			"from", fmt.Sprintf("%dx%d", origW, origH),
+			"to", fmt.Sprintf("%dx%d", newW, newH),
+		)
+
+		// Resize using CatmullRom.
+		finalDst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+		draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), img, bounds, draw.Over, nil)
+		dst = finalDst
+	}
 
 	// Write to temp file then rename.
 	tmpPath := path + ".opt.tmp"
@@ -103,11 +151,11 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 
 	switch ext {
 	case ".jpg", ".jpeg":
-		err = jpeg.Encode(out, dst, &jpeg.Options{Quality: cfg.JPEGQuality})
+		err = jpeg.Encode(out, dst, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
 	case ".png":
 		err = png.Encode(out, dst)
 	default:
-		err = jpeg.Encode(out, dst, &jpeg.Options{Quality: cfg.JPEGQuality})
+		err = jpeg.Encode(out, dst, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
 	}
 
 	_ = out.Close()

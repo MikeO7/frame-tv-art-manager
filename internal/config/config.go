@@ -133,6 +133,9 @@ type Config struct {
 	// OptimizeJPEGQuality is the JPEG encoding quality (1-100, default 92).
 	OptimizeJPEGQuality int
 
+	// SmartCropEnabled enables entropy-based cropping to fit 16:9 perfectly.
+	SmartCropEnabled bool
+
 	// --- Health Server ---
 
 	// HealthPort is the HTTP port for /health and /status endpoints.
@@ -194,6 +197,7 @@ func Load() (*Config, error) {
 		OptimizeEnabled:     envBool("IMAGE_OPTIMIZE_ENABLED"),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
+		SmartCropEnabled:    envBool("SMART_CROP_ENABLED", true),
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 92),
 		HealthPort:          envInt("HEALTH_PORT", 0),
 		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,

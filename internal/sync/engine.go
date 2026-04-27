@@ -112,10 +112,11 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	optimized := 0
 	if e.cfg.OptimizeEnabled {
 		optCfg := optimize.Config{
-			Enabled:     true,
-			MaxWidth:    e.cfg.OptimizeMaxWidth,
-			MaxHeight:   e.cfg.OptimizeMaxHeight,
-			JPEGQuality: e.cfg.OptimizeJPEGQuality,
+			Enabled:             true,
+			MaxWidth:            e.cfg.OptimizeMaxWidth,
+			MaxHeight:           e.cfg.OptimizeMaxHeight,
+			OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
+			SmartCropEnabled:    e.cfg.SmartCropEnabled,
 		}
 		for filename := range localFiles {
 			path := filepath.Join(e.cfg.ArtworkDir, filename)
