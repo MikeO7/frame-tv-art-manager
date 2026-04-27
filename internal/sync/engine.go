@@ -540,16 +540,16 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
 
-	fmt.Fprintf(sb, "║  Local:  %-3d images", totalLocal)
+	fmt.Fprintf(&sb, "║  Local:  %-3d images", totalLocal)
 	if fromSources > 0 {
-		fmt.Fprintf(sb, "  │  %d from URLs", fromSources)
+		fmt.Fprintf(&sb, "  │  %d from URLs", fromSources)
 	}
 	if optimized > 0 {
-		fmt.Fprintf(sb, "  │  %d resized", optimized)
+		fmt.Fprintf(&sb, "  │  %d resized", optimized)
 	}
 	sb.WriteString("\n")
-	fmt.Fprintf(sb, "║  Took:   %-40s║\n", elapsed.String())
-	fmt.Fprintf(sb, "║  Next:   %-40s║\n", nextSync.Format("15:04:05"))
+	fmt.Fprintf(&sb, "║  Took:   %-40s║\n", elapsed.String())
+	fmt.Fprintf(&sb, "║  Next:   %-40s║\n", nextSync.Format("15:04:05"))
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
 
 	e.logger.Info(sb.String())
