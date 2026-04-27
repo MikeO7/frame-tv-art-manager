@@ -15,7 +15,7 @@ ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X main.Version=${VERSION} -X main.Commit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
+    -ldflags="-s -w -X 'main.Version=${VERSION}' -X 'main.Commit=${GIT_COMMIT}' -X 'main.BuildDate=${BUILD_DATE}'" \
     -o /frame-tv-art-manager ./cmd/frame-tv-art-manager
 
 # Runtime stage — minimal distroless image.
