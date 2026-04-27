@@ -6,6 +6,7 @@ import (
 	"image/jpeg"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
