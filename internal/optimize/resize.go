@@ -188,9 +188,19 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	return true, nil
 }
 
-// fitDimensions calculates new width and height that fit within
-// maxW×maxH while preserving the aspect ratio.
-func fitDimensions(origW, origH, maxW, maxH int) (int, int) {
+// ValidateImage checks if a file is a valid image that can be decoded.
+func ValidateImage(path string) error {
+	f, err := os.Open(filepath.Clean(path)) //nolint:gosec
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	_, _, err = image.Decode(f)
+	return err
+}
+
+// fitDimensions calculates new width and height...
 	ratioW := float64(maxW) / float64(origW)
 	ratioH := float64(maxH) / float64(origH)
 

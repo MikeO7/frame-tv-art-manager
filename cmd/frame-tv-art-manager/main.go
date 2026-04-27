@@ -90,9 +90,10 @@ func main() {
 	engine := sync.NewEngine(cfg, logger, healthStatus)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	done := make(chan struct{})
 
 	go func() {
+		defer close(done)
 		_ = engine.RunLoop(ctx)
 	}()
 
@@ -103,7 +104,11 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down...")
+	logger.Info("Shutting down gracefully...")
 	cancel()
+	
+	// Wait for engine to finish current cycle
+	<-done
 	_ = healthServer.Shutdown(context.Background())
+	logger.Info("Shutdown complete")
 }

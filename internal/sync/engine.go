@@ -108,24 +108,36 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 		return fmt.Errorf("scan artwork: %w", err)
 	}
 
-	// Step 2: Optimize oversized images.
+	// Step 2: Optimize and Validate local artwork.
 	optimized := 0
-	if e.cfg.OptimizeEnabled {
-		optCfg := optimize.Config{
-			Enabled:             true,
-			MaxWidth:            e.cfg.OptimizeMaxWidth,
-			MaxHeight:           e.cfg.OptimizeMaxHeight,
-			OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
-			SmartCropEnabled:    e.cfg.SmartCropEnabled,
-		}
-		for filename := range localFiles {
-			path := filepath.Join(e.cfg.ArtworkDir, filename)
+	optCfg := optimize.Config{
+		Enabled:             e.cfg.OptimizeEnabled,
+		MaxWidth:            e.cfg.OptimizeMaxWidth,
+		MaxHeight:           e.cfg.OptimizeMaxHeight,
+		OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
+		SmartCropEnabled:    e.cfg.SmartCropEnabled,
+	}
+	
+	for filename := range localFiles {
+		path := filepath.Join(e.cfg.ArtworkDir, filename)
+		
+		// If optimization is enabled, it also performs validation (decoding).
+		if e.cfg.OptimizeEnabled {
 			ok, err := optimize.OptimizeFile(path, optCfg, e.logger)
 			if err != nil {
-				e.logger.Warn("optimize failed", "file", filename, "error", err)
+				e.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
+				delete(localFiles, filename)
+				continue
 			}
 			if ok {
 				optimized++
+			}
+		} else {
+			// Even if optimization is off, do a quick decode check to prevent uploading junk.
+			if err := optimize.ValidateImage(path); err != nil {
+				e.logger.Warn("skipping corrupt image", "file", filename, "error", err)
+				delete(localFiles, filename)
+				continue
 			}
 		}
 	}
@@ -140,6 +152,14 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	tvSummaries := make([]tvSyncSummary, 0, len(e.cfg.TVIPs))
 
 	for _, ip := range e.cfg.TVIPs {
+		// Respect shutdown context.
+		select {
+		case <-ctx.Done():
+			e.logger.Info("sync cycle cancelled due to shutdown")
+			return ctx.Err()
+		default:
+		}
+
 		// Check backoff.
 		if e.backoff.ShouldSkip(ip) {
 			tvSummaries = append(tvSummaries, tvSyncSummary{

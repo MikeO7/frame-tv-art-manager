@@ -11,6 +11,7 @@ A robust Go service designed for "set-and-forget" artwork synchronization for Sa
 - **Silent Operation**: Uses a REST-based "Gate" to check TV status before initiating WebSocket connections.
 - **Smart Cropping**: Uses entropy-based analysis to automatically crop images to a perfect 16:9 aspect ratio, keeping the most interesting part of the image.
 - **Image Optimization**: Automatically resizes oversized JPEGs to 4K (3840x2160) to save bandwidth and storage.
+- **Auto-Validation**: Every image is verified (decoded) before sync. Corrupt or unsupported files are gracefully skipped, protecting your TV from "bad data" loops.
 - **Metadata Auditing**: Automatically dumps TV system info and category lists to JSON for easy reference.
 - **Tiny & Fast**: ~8MB Docker image with zero external dependencies.
 
@@ -120,6 +121,14 @@ Simply add these lines to your `sources.txt`:
 
 > [!TIP]
 > **Pro Tip**: The manager is smart. It only downloads *new* images and automatically tracks Unsplash downloads to comply with their TOS. If you remove a line from `sources.txt`, the image stays in your folder until you manually delete it.
+
+## 🛡️ Robustness & Reliability
+
+This manager is designed to be truly "set-and-forget":
+- **Exponential Backoff**: If the TV is unreachable (e.g. Wi-Fi blip), the app waits progressively longer before retrying to prevent network spam.
+- **Image Sanity Gate**: If a file in your artwork folder is corrupt or not actually an image, it is logged and skipped automatically.
+- **Atomic Writes**: When downloading or optimizing, the app writes to a temporary file first, ensuring you never end up with a half-written, broken image.
+- **Silent REST Gate**: The app checks if your TV is in Art Mode *silently* before ever opening a loud "Samsung Remote" connection.
 
 ## 📂 File Structure
 
