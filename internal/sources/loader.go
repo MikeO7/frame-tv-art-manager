@@ -189,7 +189,8 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 	filename := l.urlToFilename(url)
 	
 	// Check if already downloaded (by identity prefix).
-	if existing, ok := l.prefixMap[strings.TrimSuffix(filename, filepath.Ext(filename))]; ok {
+	identity := strings.TrimSuffix(filename, filepath.Ext(filename))
+	if existing, ok := l.prefixMap[identity]; ok {
 		l.visited[existing] = true
 		return false, nil
 	}
@@ -258,39 +259,57 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 		return false, fmt.Errorf("rename temp file: %w", err)
 	}
 
-	// Calculate content hash and check for duplicates.
-	hash, err := l.fileHash(destPath)
-	if err == nil {
-		if existing, ok := l.index[hash]; ok && existing != filename {
-			l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
-			_ = os.Remove(destPath)
-			l.visited[existing] = true
-			return false, nil
-		}
-		
-		// Rename to include hash for future sync cycles.
-		ext := filepath.Ext(filename)
-		identity := strings.TrimSuffix(filename, ext)
-		filename = fmt.Sprintf("%s.h_%s%s", identity, hash[:12], ext)
-		finalPath := filepath.Join(l.artworkDir, filename)
-		if err := os.Rename(destPath, finalPath); err == nil {
-			destPath = finalPath
-		}
-		
-		l.index[hash] = filename
+	finalName, ok, err := l.finalizeDownload(destPath, filename)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
 	}
 
-	l.visited[filename] = true
+	l.visited[finalName] = true
 
 	// Ensure inclusive permissions for Mac access.
-	_ = os.Chmod(destPath, 0644) //nolint:gosec // Requires inclusive permissions
+	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0644) //nolint:gosec // Requires inclusive permissions
 
 	l.logger.Info("downloaded source image",
-		"file", filename,
+		"file", finalName,
 		"size_bytes", written,
 	)
 
 	return true, nil
+}
+
+// finalizeDownload checks for content duplicates, renames the file to include
+// the hash, and updates the index. Returns the final filename and true if the
+// file should be kept.
+func (l *Loader) finalizeDownload(path, filename string) (string, bool, error) {
+	hash, err := l.fileHash(path)
+	if err != nil {
+		// If hashing fails, we keep the file with its current name but log it.
+		l.logger.Warn("failed to hash downloaded file", "file", filename, "error", err)
+		return filename, true, nil
+	}
+
+	if existing, ok := l.index[hash]; ok && existing != filename {
+		l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
+		_ = os.Remove(path)
+		l.visited[existing] = true
+		return existing, false, nil
+	}
+
+	// Rename to include hash for future sync cycles.
+	ext := filepath.Ext(filename)
+	identity := strings.TrimSuffix(filename, ext)
+	finalName := fmt.Sprintf("%s.h_%s%s", identity, hash[:12], ext)
+	finalPath := filepath.Join(l.artworkDir, finalName)
+	
+	if err := os.Rename(path, finalPath); err != nil {
+		return filename, true, nil // keep original if rename fails
+	}
+
+	l.index[hash] = finalName
+	return finalName, true, nil
 }
 
 // urlToFilename generates a deterministic filename from a URL using
