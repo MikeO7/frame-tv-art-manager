@@ -25,7 +25,7 @@ func writeFakeJPEG(t *testing.T, path string, w, h int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := jpeg.Encode(f, img, &jpeg.Options{Quality: 90}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestOptimizeFile_LargeImageResized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	img, _, err := image.Decode(f)
 	if err != nil {
