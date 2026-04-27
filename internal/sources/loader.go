@@ -180,27 +180,29 @@ func (l *Loader) Sync() (int, error) {
 // downloadIfNew downloads a URL if the corresponding file doesn't
 // already exist. Returns true if a new file was downloaded.
 func (l *Loader) downloadIfNew(url string) (bool, error) {
-	// Check global limit.
 	if l.maxImages > 0 && len(l.index) >= l.maxImages {
 		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
 		return false, nil
 	}
 
 	filename := l.urlToFilename(url)
-	
-	// Check if already downloaded (by identity prefix).
-	identity := strings.TrimSuffix(filename, filepath.Ext(filename))
-	if existing, ok := l.prefixMap[identity]; ok {
+	if existing, ok := l.checkExisting(filename); ok {
 		l.visited[existing] = true
 		return false, nil
 	}
 
-	destPath := filepath.Join(l.artworkDir, filename)
+	return l.executeDownload(url, filename)
+}
 
-	l.logger.Info("downloading source image",
-		"url", truncateURL(url),
-		"file", filename,
-	)
+func (l *Loader) checkExisting(filename string) (string, bool) {
+	identity := strings.TrimSuffix(filename, filepath.Ext(filename))
+	existing, ok := l.prefixMap[identity]
+	return existing, ok
+}
+
+func (l *Loader) executeDownload(url, filename string) (bool, error) {
+	destPath := filepath.Join(l.artworkDir, filename)
+	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -225,16 +227,14 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 		}
 	}
 
-	// Determine extension from Content-Type or URL.
+	// Determine extension and potential new path.
 	ext := extensionFromResponse(resp, url)
-
-	// Update filename with correct extension if needed.
 	if ext != "" && !strings.HasSuffix(filename, ext) {
 		filename = strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
 		destPath = filepath.Join(l.artworkDir, filename)
 
 		// Re-check by identity prefix.
-		if existing, ok := l.prefixMap[strings.TrimSuffix(filename, ext)]; ok {
+		if existing, ok := l.checkExisting(filename); ok {
 			l.visited[existing] = true
 			return false, nil
 		}
@@ -268,15 +268,9 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 	}
 
 	l.visited[finalName] = true
+	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0644) //nolint:gosec
 
-	// Ensure inclusive permissions for Mac access.
-	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0644) //nolint:gosec // Requires inclusive permissions
-
-	l.logger.Info("downloaded source image",
-		"file", finalName,
-		"size_bytes", written,
-	)
-
+	l.logger.Info("downloaded source image", "file", finalName, "size_bytes", written)
 	return true, nil
 }
 
@@ -305,7 +299,7 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool, error) {
 	finalPath := filepath.Join(l.artworkDir, finalName)
 	
 	if err := os.Rename(path, finalPath); err != nil {
-		return filename, true, nil // keep original if rename fails
+		return filename, true, fmt.Errorf("rename to final: %w", err)
 	}
 
 	l.index[hash] = finalName
