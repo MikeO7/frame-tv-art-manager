@@ -132,6 +132,8 @@ Everything is configured through environment variables. Only `TV_IPS` is require
 |---|---|---|
 | `TV_IPS` | *(required)* | Comma-separated TV IP addresses |
 | `ARTWORK_DIR` | `/data/artwork` | Path to your images folder |
+| `MAX_ARTWORK_IMAGES` | `500` | Maximum images allowed in the artwork folder (0=unlimited) |
+| `MAX_DOWNLOAD_SIZE_MB` | `20` | Maximum size for a single image download |
 | `TOKEN_DIR` | `/data/tokens` | Path for auth tokens, mappings, and metadata |
 | `SYNC_INTERVAL_MINUTES` | `5` | Minutes between sync cycles |
 | `CLIENT_NAME` | `Frame Art Manager` | Name shown on the TV during authorization |

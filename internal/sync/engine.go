@@ -47,6 +47,8 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 			cfg.NasaApiKey,
 			cfg.PexelsApiKey,
 			cfg.PixabayApiKey,
+			cfg.MaxArtworkImages,
+			cfg.MaxDownloadSizeMB,
 			logger,
 		),
 	}

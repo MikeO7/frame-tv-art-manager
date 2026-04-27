@@ -38,13 +38,19 @@ type Loader struct {
 	artic       *ArticClient
 	pexels      *PexelsClient
 	pixabay     *PixabayClient
+	maxImages   int
+	maxSizeMB   int
+	index       map[string]string // hash -> filename (content deduplication)
+	visited     map[string]bool   // filename -> true (cleanup tracking)
 }
 
 // NewLoader creates a new sources loader.
-func NewLoader(sourcesFile, artworkDir string, unsplashKey, nasaKey, pexelsKey, pixabayKey string, logger *slog.Logger) *Loader {
+func NewLoader(sourcesFile, artworkDir string, unsplashKey, nasaKey, pexelsKey, pixabayKey string, maxImages, maxSizeMB int, logger *slog.Logger) *Loader {
 	return &Loader{
 		sourcesFile: sourcesFile,
 		artworkDir:  artworkDir,
+		maxImages:   maxImages,
+		maxSizeMB:   maxSizeMB,
 		logger:      logger,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
@@ -90,6 +96,13 @@ func (l *Loader) Sync() (int, error) {
 
 	l.logger.Info("processing image sources", "urls", len(urls))
 
+	// Deduplicate URLs to avoid redundant processing.
+	urls = deduplicateStrings(urls)
+
+	// Build content index to avoid duplicates.
+	l.buildContentIndex()
+
+	l.visited = make(map[string]bool)
 	downloaded := 0
 	for _, line := range urls {
 		// Existing source processing logic...
@@ -153,6 +166,9 @@ func (l *Loader) Sync() (int, error) {
 		}
 	}
 
+	// Remove managed images that are no longer in sources.
+	l.cleanupUnusedSources()
+
 	if downloaded > 0 {
 		l.logger.Info("downloaded new source images", "count", downloaded)
 	}
@@ -163,11 +179,18 @@ func (l *Loader) Sync() (int, error) {
 // downloadIfNew downloads a URL if the corresponding file doesn't
 // already exist. Returns true if a new file was downloaded.
 func (l *Loader) downloadIfNew(url string) (bool, error) {
+	// Check global limit.
+	if l.maxImages > 0 && len(l.index) >= l.maxImages {
+		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
+		return false, nil
+	}
+
 	filename := l.urlToFilename(url)
 	destPath := filepath.Join(l.artworkDir, filename)
 
 	// Skip if already downloaded.
 	if _, err := os.Stat(destPath); err == nil {
+		l.visited[filename] = true
 		return false, nil
 	}
 
@@ -190,6 +213,13 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("HTTP %d from %s", resp.StatusCode, truncateURL(url))
+	}
+
+	// Check file size.
+	if l.maxSizeMB > 0 {
+		if size := resp.ContentLength; size > int64(l.maxSizeMB)*1024*1024 {
+			return false, fmt.Errorf("file too large: %d bytes (limit %d MB)", size, l.maxSizeMB)
+		}
 	}
 
 	// Determine extension from Content-Type or URL.
@@ -224,6 +254,20 @@ func (l *Loader) downloadIfNew(url string) (bool, error) {
 		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("rename temp file: %w", err)
 	}
+
+	// Calculate content hash and check for duplicates.
+	hash, err := l.fileHash(destPath)
+	if err == nil {
+		if existing, ok := l.index[hash]; ok && existing != filename {
+			l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
+			_ = os.Remove(destPath)
+			l.visited[existing] = true
+			return false, nil
+		}
+		l.index[hash] = filename
+	}
+
+	l.visited[filename] = true
 
 	// Ensure inclusive permissions for Mac access.
 	_ = os.Chmod(destPath, 0644) //nolint:gosec // Requires inclusive permissions
@@ -299,6 +343,12 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 
 	downloaded := 0
 	for _, p := range photos {
+		// Check global limit.
+		if l.maxImages > 0 && len(l.index) >= l.maxImages {
+			l.logger.Warn("global image limit reached, skipping unsplash photo", "limit", l.maxImages)
+			break
+		}
+
 		// Prefer RAW for maximum quality, with Frame TV friendly width.
 		url := p.URLs.Raw + "&w=3840&q=95&fm=jpg"
 		
@@ -307,6 +357,7 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 		destPath := filepath.Join(l.artworkDir, filename)
 
 		if _, err := os.Stat(destPath); err == nil {
+			l.visited[filename] = true
 			continue // skip existing
 		}
 
@@ -344,6 +395,13 @@ func (l *Loader) downloadToFile(url string, destPath string) (bool, error) {
 		return false, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
+	// Check file size.
+	if l.maxSizeMB > 0 {
+		if size := resp.ContentLength; size > int64(l.maxSizeMB)*1024*1024 {
+			return false, fmt.Errorf("file too large: %d bytes (limit %d MB)", size, l.maxSizeMB)
+		}
+	}
+
 	tmpPath := destPath + ".tmp"
 	out, err := os.Create(filepath.Clean(tmpPath))
 	if err != nil {
@@ -362,8 +420,23 @@ func (l *Loader) downloadToFile(url string, destPath string) (bool, error) {
 		return false, err
 	}
 
+	// Calculate content hash and check for duplicates.
+	filename := filepath.Base(destPath)
+	hash, err := l.fileHash(destPath)
+	if err == nil {
+		if existing, ok := l.index[hash]; ok && existing != filename {
+			l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
+			_ = os.Remove(destPath)
+			l.visited[existing] = true
+			return false, nil
+		}
+		l.index[hash] = filename
+	}
+
+	l.visited[filename] = true
+
 	_ = os.Chmod(destPath, 0644) //nolint:gosec // Required for Mac/Docker volume access
-	l.logger.Info("downloaded unsplash image", "path", filepath.Base(destPath), "size", written)
+	l.logger.Info("downloaded image", "path", filename, "size", written)
 	return true, nil
 }
 
@@ -424,6 +497,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 		destPath := filepath.Join(l.artworkDir, filename)
 
 		if _, err := os.Stat(destPath); err == nil {
+			l.visited[filename] = true
 			continue // skip existing
 		}
 
@@ -480,6 +554,7 @@ func (l *Loader) handleArticLine(line string) (int, error) {
 
 		destPath := filepath.Join(l.artworkDir, filename)
 		if _, err := os.Stat(destPath); err == nil {
+			l.visited[filename] = true
 			continue // skip existing
 		}
 
@@ -684,4 +759,92 @@ func (l *Loader) downloadMultiple(urls []string, provider string) (int, error) {
 		}
 	}
 	return downloaded, nil
+}
+
+// buildContentIndex hashes all existing files in the artwork directory
+// to enable deduplication.
+func (l *Loader) buildContentIndex() {
+	l.index = make(map[string]string)
+	entries, err := os.ReadDir(l.artworkDir)
+	if err != nil {
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(l.artworkDir, entry.Name())
+		hash, err := l.fileHash(path)
+		if err == nil {
+			if existing, ok := l.index[hash]; ok {
+				l.logger.Info("found existing duplicate content, removing", "file", entry.Name(), "matches", existing)
+				_ = os.Remove(path)
+			} else {
+				l.index[hash] = entry.Name()
+			}
+		}
+	}
+}
+
+// fileHash calculates the SHA256 hash of a file's content.
+func (l *Loader) fileHash(path string) (string, error) {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// deduplicateStrings returns a new slice containing only unique strings from the input.
+func deduplicateStrings(input []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, s := range input {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+// cleanupUnusedSources removes managed images (src_, unsplash_, etc.) from the artwork
+// directory that were not encountered during the current sync cycle.
+func (l *Loader) cleanupUnusedSources() {
+	entries, err := os.ReadDir(l.artworkDir)
+	if err != nil {
+		return
+	}
+
+	managedPrefixes := []string{"src_", "unsplash_", "nasa_", "artic_", "pexels_", "pixabay_"}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		filename := entry.Name()
+		if l.visited[filename] {
+			continue
+		}
+
+		isManaged := false
+		for _, prefix := range managedPrefixes {
+			if strings.HasPrefix(filename, prefix) {
+				isManaged = true
+				break
+			}
+		}
+
+		if isManaged {
+			l.logger.Info("removing unused source image", "file", filename)
+			_ = os.Remove(filepath.Join(l.artworkDir, filename))
+		}
+	}
 }

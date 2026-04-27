@@ -20,6 +20,13 @@ type Config struct {
 	// ArtworkDir is the local directory containing artwork images.
 	ArtworkDir string
 
+	// MaxArtworkImages is the maximum number of images allowed in ArtworkDir.
+	// 0 means no limit.
+	MaxArtworkImages int
+
+	// MaxDownloadSizeMB is the maximum allowed size for a single download.
+	MaxDownloadSizeMB int
+
 	// TokenDir is the directory for storing TV auth tokens and mappings.
 	TokenDir string
 
@@ -179,6 +186,8 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		ArtworkDir:          envStr("ARTWORK_DIR", "/data/artwork"),
+		MaxArtworkImages:    envInt("MAX_ARTWORK_IMAGES", 500),
+		MaxDownloadSizeMB:   envInt("MAX_DOWNLOAD_SIZE_MB", 20),
 		TokenDir:            envStr("TOKEN_DIR", "/data/tokens"),
 		SyncIntervalMin:     envInt("SYNC_INTERVAL_MINUTES", 5),
 		MatteStyle:          envStr("MATTE_STYLE", "none"),
