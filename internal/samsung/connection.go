@@ -105,6 +105,7 @@ func (c *Connection) Open(ctx context.Context) error {
 		return fmt.Errorf("read handshake: %w", err)
 	}
 
+	c.logger.Debug("handshake message received", "msg", string(msg))
 	var resp wsResponse
 	if err := json.Unmarshal(msg, &resp); err != nil {
 		conn.Close()
@@ -356,7 +357,12 @@ func (c *Connection) extractAndSaveToken(data json.RawMessage) {
 	var d struct {
 		Token string `json:"token"`
 	}
-	if err := json.Unmarshal(data, &d); err != nil || d.Token == "" {
+	if err := json.Unmarshal(data, &d); err != nil {
+		c.logger.Debug("failed to parse token from data", "error", err, "data", string(data))
+		return
+	}
+	if d.Token == "" {
+		c.logger.Debug("token field is empty in handshake data", "data", string(data))
 		return
 	}
 
