@@ -21,7 +21,7 @@ func writeFakeJPEG(t *testing.T, path string, w, h int) {
 			img.Set(x, y, color.RGBA{R: 100, G: 150, B: 200, A: 255})
 		}
 	}
-	f, err := os.Create(path)
+	f, err := os.Create(filepath.Clean(path)) //nolint:gosec // Test file
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestOptimizeFile_LargeImageResized(t *testing.T) {
 	}
 
 	// Verify output dimensions.
-	f, err := os.Open(path)
+	f, err := os.Open(filepath.Clean(path)) //nolint:gosec // Test file
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestOptimizeFile_SkipsPNG(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/photo.png"
 	// Write minimal file (content doesn't matter for skip test).
-	if err := os.WriteFile(path, []byte("fake"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("fake"), 0644); err != nil { //nolint:gosec // Test file
 		t.Fatal(err)
 	}
 

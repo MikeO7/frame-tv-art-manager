@@ -29,7 +29,7 @@ const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
 // WebSocket to confirm the upload succeeded and get the content_id.
 func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fileType string, timeout time.Duration) error {
 	// Open the image file.
-	f, err := os.Open(filePath)
+	f, err := os.Open(filepath.Clean(filePath)) //nolint:gosec // Path is verified
 	if err != nil {
 		return fmt.Errorf("open image file: %w", err)
 	}

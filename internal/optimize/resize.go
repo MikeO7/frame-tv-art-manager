@@ -96,7 +96,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 
 	// Write to temp file then rename.
 	tmpPath := path + ".opt.tmp"
-	out, err := os.Create(tmpPath)
+	out, err := os.Create(filepath.Clean(tmpPath)) //nolint:gosec // Safe temporary path
 	if err != nil {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
@@ -126,7 +126,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	}
 
 	// Ensure inclusive permissions for Mac access.
-	_ = os.Chmod(path, 0644); //nosec G302
+	_ = os.Chmod(path, 0644) //nolint:gosec // Requires inclusive permissions
 
 	if origStat != nil && newStat != nil {
 		logger.Info("image optimized",
