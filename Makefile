@@ -1,17 +1,18 @@
-.PHONY: all test lint build docker check clean tools fmt vuln actionlint
+.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy
+.NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
 
 all: check build
 
 test:
 	@echo "🔍 Running tests..."
-	go test -v ./...
+	go test -v -count=1 ./...
 
 lint:
 	@echo "✨ Running linter..."
 	@if command -v golangci-lint &> /dev/null; then \
-		golangci-lint run; \
+		golangci-lint run --timeout 5m; \
 	else \
-		$$(go env GOPATH)/bin/golangci-lint run; \
+		$$(go env GOPATH)/bin/golangci-lint run --timeout 5m; \
 	fi
 
 vuln:
@@ -46,12 +47,15 @@ docker:
 	@echo "🐳 Building Docker image (local)..."
 	docker build -t frame-tv-art-manager:local .
 
-check: tidy fmt test lint vuln actionlint
+# The 'check' target now runs test, lint, vuln, and actionlint in parallel 
+# when you run 'make -j check'.
+check: tidy fmt
+	@$(MAKE) -j4 test lint vuln actionlint
 	@echo "✅ All local checks passed!"
 
 tools:
 	@echo "🛠️  Installing development tools..."
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 	@if ! command -v actionlint &> /dev/null; then \
 		if [[ "$$OSTYPE" == "darwin"* ]]; then \
