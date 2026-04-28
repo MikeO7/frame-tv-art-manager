@@ -514,23 +514,21 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	elapsed := time.Since(startTime).Round(time.Millisecond)
 	nextSync := time.Now().Add(time.Duration(e.cfg.SyncIntervalMin) * time.Minute)
 
-	const interiorWidth = 46 // 50 total interior - 2 margin on each side
+	const boxWidth = 50 // total interior width between borders
 
 	padLine := func(content string) string {
-		// Use runes for correct character counting with UTF-8.
 		runes := []rune(content)
-		if len(runes) > interiorWidth {
-			content = string(runes[:interiorWidth])
-			runes = []rune(content)
+		if len(runes) > boxWidth {
+			runes = runes[:boxWidth]
 		}
-		padding := interiorWidth - len(runes)
-		return "║  " + content + strings.Repeat(" ", padding) + "  ║\n"
+		padding := boxWidth - len(runes)
+		return "║" + string(runes) + strings.Repeat(" ", padding) + "║\n"
 	}
 
 	var sb strings.Builder
 	sb.WriteString("\n╔══════════════════════════════════════════════════╗\n")
 
-	header := fmt.Sprintf("Sync Cycle #%d — %s", e.cycleNum, time.Now().Format("2006-01-02 15:04:05"))
+	header := fmt.Sprintf("  Sync Cycle #%d - %s", e.cycleNum, time.Now().Format("2006-01-02 15:04:05"))
 	sb.WriteString(padLine(header))
 
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
@@ -540,29 +538,29 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		if tv.Model != "" {
 			name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
 		}
-		sb.WriteString(padLine("TV: " + name))
+		sb.WriteString(padLine("  TV: " + name))
 
 		switch tv.Status {
 		case "ok":
-			sb.WriteString(padLine("  Status:     ✔ Art Mode"))
-			sb.WriteString(padLine(fmt.Sprintf("  Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
-			sb.WriteString(padLine(fmt.Sprintf("  Total:      %d images on TV", tv.TotalImages)))
+			sb.WriteString(padLine("    Status:     ✔ Art Mode"))
+			sb.WriteString(padLine(fmt.Sprintf("    Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
+			sb.WriteString(padLine(fmt.Sprintf("    Total:      %d images on TV", tv.TotalImages)))
 			if tv.Brightness != "" {
-				sb.WriteString(padLine("  Brightness: " + tv.Brightness))
+				sb.WriteString(padLine("    Brightness: " + tv.Brightness))
 			}
 			if tv.Slideshow != "" {
-				sb.WriteString(padLine("  Slideshow:  " + tv.Slideshow))
+				sb.WriteString(padLine("    Slideshow:  " + tv.Slideshow))
 			}
 		case "backoff":
-			sb.WriteString(padLine("  Status:     ⏸ Backing off (unreachable)"))
+			sb.WriteString(padLine("    Status:     ⏸ Backing off (unreachable)"))
 		default:
-			sb.WriteString(padLine("  Status:     " + tv.Status))
+			sb.WriteString(padLine("    Status:     " + tv.Status))
 		}
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
 
 	// Local collection summary.
-	localSummary := fmt.Sprintf("Local:  %d files", totalLocal)
+	localSummary := fmt.Sprintf("  Local:  %d files", totalLocal)
 	if fromSources > 0 {
 		localSummary += fmt.Sprintf(" │ %d from URLs", fromSources)
 	}
@@ -571,8 +569,8 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	}
 	sb.WriteString(padLine(localSummary))
 
-	sb.WriteString(padLine("Took:   " + elapsed.String()))
-	sb.WriteString(padLine("Next:   " + nextSync.Format("15:04:05")))
+	sb.WriteString(padLine("  Took:   " + elapsed.String()))
+	sb.WriteString(padLine("  Next:   " + nextSync.Format("15:04:05")))
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
 
 	e.logger.Info(sb.String())
