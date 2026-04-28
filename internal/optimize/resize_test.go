@@ -119,11 +119,11 @@ func TestFitDimensions(t *testing.T) {
 		origW, origH, maxW, maxH int
 		wantW, wantH             int
 	}{
-		{7680, 4320, 3840, 2160, 3840, 2160},  // exact 2x scale
-		{1920, 1080, 3840, 2160, 1920, 1080},  // already smaller — unreachable (caller checks first)
-		{3840, 2160, 3840, 2160, 3840, 2160},  // exact match
-		{4000, 1000, 3840, 2160, 3840, 960},   // width-constrained
-		{1000, 4000, 3840, 2160, 540, 2160},   // height-constrained
+		{7680, 4320, 3840, 2160, 3840, 2160}, // exact 2x scale
+		{1920, 1080, 3840, 2160, 1920, 1080}, // already smaller — unreachable (caller checks first)
+		{3840, 2160, 3840, 2160, 3840, 2160}, // exact match
+		{4000, 1000, 3840, 2160, 3840, 960},  // width-constrained
+		{1000, 4000, 3840, 2160, 540, 2160},  // height-constrained
 	}
 
 	for _, tc := range tests {

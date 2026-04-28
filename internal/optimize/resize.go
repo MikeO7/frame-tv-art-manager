@@ -12,18 +12,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/image/draw"
 	"github.com/muesli/smartcrop"
 	"github.com/muesli/smartcrop/nfnt"
+	"golang.org/x/image/draw"
 )
 
 // Config holds image optimization settings.
 type Config struct {
-	Enabled     bool
-	MaxWidth    int
-	MaxHeight   int
+	Enabled             bool
+	MaxWidth            int
+	MaxHeight           int
 	OptimizeJPEGQuality int
-	SmartCropEnabled   bool
+	SmartCropEnabled    bool
 }
 
 // DefaultConfig returns sensible defaults for Frame TV display.
@@ -70,7 +70,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	// Check if resize or crop is needed.
 	aspectRatio := float64(cfg.MaxWidth) / float64(cfg.MaxHeight)
 	imgRatio := float64(origW) / float64(origH)
-	
+
 	// We optimize if:
 	// 1. Image is oversized
 	// 2. Image has wrong aspect ratio and SmartCropEnabled is enabled

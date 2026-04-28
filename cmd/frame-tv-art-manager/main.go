@@ -55,7 +55,7 @@ func main() {
 
 	logger.Info("Shutting down gracefully...")
 	cancel()
-	
+
 	// Wait for engine to finish current cycle
 	<-done
 	_ = healthServer.Shutdown(context.Background())

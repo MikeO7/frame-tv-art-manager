@@ -18,9 +18,9 @@ type PexelsClient struct {
 
 // PexelsPhoto represents the metadata returned by the Pexels API.
 type PexelsPhoto struct {
-	ID   int    `json:"id"`
-	Url  string `json:"url"`
-	Src  struct {
+	ID  int    `json:"id"`
+	Url string `json:"url"`
+	Src struct {
 		Original string `json:"original"`
 		Large2x  string `json:"large2x"`
 		Large    string `json:"large"`

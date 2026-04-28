@@ -182,6 +182,7 @@ type Config struct {
 // Load reads configuration from environment variables, applies defaults,
 // and validates the result. Returns an error if required values are missing
 // or constraints are violated.
+//
 //nolint:gocyclo // Config loading is naturally complex due to many fields
 func Load() (*Config, error) {
 	cfg := &Config{
@@ -208,9 +209,9 @@ func Load() (*Config, error) {
 		EnableRESTGate:      envBool("ENABLE_REST_GATE"),
 		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
-		NasaApiKey:         envStr("NASA_API_KEY", "DEMO_KEY"),
-		PexelsApiKey:       envStr("PEXELS_API_KEY", ""),
-		PixabayApiKey:      envStr("PIXABAY_API_KEY", ""),
+		NasaApiKey:          envStr("NASA_API_KEY", "DEMO_KEY"),
+		PexelsApiKey:        envStr("PEXELS_API_KEY", ""),
+		PixabayApiKey:       envStr("PIXABAY_API_KEY", ""),
 		OptimizeEnabled:     envBoolWithDefault("IMAGE_OPTIMIZE_ENABLED", true),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),

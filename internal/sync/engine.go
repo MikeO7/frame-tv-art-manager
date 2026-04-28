@@ -197,6 +197,7 @@ type tvSyncSummary struct {
 }
 
 // syncTV performs the full sync for a single TV.
+//
 //nolint:gocyclo // Core sync loop requires complex flow control
 func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}) (tvSyncSummary, error) {
 	log := e.logger.With("tv", ip)

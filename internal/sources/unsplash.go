@@ -18,11 +18,11 @@ type UnsplashClient struct {
 
 // UnsplashPhoto represents the metadata returned by the Unsplash API.
 type UnsplashPhoto struct {
-	ID    string `json:"id"`
-	Width int    `json:"width"`
-	Height int   `json:"height"`
-	Links struct {
-		Download string `json:"download"`
+	ID     string `json:"id"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	Links  struct {
+		Download         string `json:"download"`
 		DownloadLocation string `json:"download_location"`
 	} `json:"links"`
 	URLs struct {

@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"net"
-	"net/url"
-	"strconv"
 	"github.com/gorilla/websocket"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
+	"strconv"
 )
 
 func TestConnection_Open_Handshake(t *testing.T) {

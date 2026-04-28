@@ -297,7 +297,7 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool, error) {
 	identity := strings.TrimSuffix(filename, ext)
 	finalName := fmt.Sprintf("%s.h_%s%s", identity, hash[:12], ext)
 	finalPath := filepath.Join(l.artworkDir, finalName)
-	
+
 	if err := os.Rename(path, finalPath); err != nil {
 		return filename, true, fmt.Errorf("rename to final: %w", err)
 	}
@@ -377,7 +377,7 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 
 		// Prefer RAW for maximum quality, with Frame TV friendly width.
 		url := p.URLs.Raw + "&w=3840&q=95&fm=jpg"
-		
+
 		// Use a deterministic filename based on Unsplash ID.
 		identity := fmt.Sprintf("unsplash_%s", p.ID)
 		if existing, ok := l.prefixMap[identity]; ok {
@@ -468,6 +468,7 @@ func (l *Loader) downloadToFile(url string, destPath string) (bool, error) {
 }
 
 // handleNASALine resolves NASA APOD or search queries and downloads them.
+//
 //nolint:gocyclo // NASA API requires multi-step manifest resolution
 func (l *Loader) handleNASALine(line string) (int, error) {
 	parts := strings.Split(line, ":")
@@ -510,7 +511,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 		// Use a deterministic filename based on URL.
 		filename := l.urlToFilename(u)
 		identity := strings.TrimSuffix(filename, filepath.Ext(filename))
-		
+
 		if strings.Contains(u, "nasa.gov") {
 			// For NASA library, try to keep a more descriptive name if possible.
 			parts := strings.Split(u, "/")
@@ -521,7 +522,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 				}
 			}
 		}
-		
+
 		if existing, ok := l.prefixMap[identity]; ok {
 			l.visited[existing] = true
 			continue
@@ -796,7 +797,7 @@ func (l *Loader) downloadMultiple(urls []string, provider string) (int, error) {
 func (l *Loader) buildContentIndex() {
 	l.index = make(map[string]string)
 	l.prefixMap = make(map[string]string)
-	
+
 	entries, err := os.ReadDir(l.artworkDir)
 	if err != nil {
 		return
@@ -808,17 +809,17 @@ func (l *Loader) buildContentIndex() {
 		}
 		filename := entry.Name()
 		path := filepath.Join(l.artworkDir, filename)
-		
+
 		var hash string
 		// identity is the part before the hash suffix (if any).
 		identity := strings.TrimSuffix(filename, filepath.Ext(filename))
-		
+
 		// Try to extract hash from filename: identity.h_[hash].[ext]
 		if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
 			identity = parts[0]
 			hash = parts[1]
 		}
-		
+
 		l.prefixMap[identity] = filename
 
 		// If no hash in filename, we must calculate it (once).
@@ -828,7 +829,7 @@ func (l *Loader) buildContentIndex() {
 			if err != nil {
 				continue
 			}
-			
+
 			// Rename to include hash for future cycles.
 			ext := filepath.Ext(filename)
 			newName := identity + ".h_" + hash[:12] + ext

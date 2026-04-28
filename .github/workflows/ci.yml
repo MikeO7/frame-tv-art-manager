@@ -26,22 +26,11 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
-    - name: Run tests
-      run: go test -v ./...
+    - name: Install tools
+      run: make tools
 
-    - name: Run tests with race detector
-      run: go test -race ./...
-
-    - name: Generate coverage report
-      run: |
-        go test -coverprofile=coverage.out ./...
-        go tool cover -func=coverage.out
-
-    - name: Install golangci-lint
-      run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-
-    - name: Run golangci-lint
-      run: $(go env GOPATH)/bin/golangci-lint run
+    - name: Run checks
+      run: make check
 
   build:
     name: Build
@@ -57,11 +46,7 @@ jobs:
         cache: true
 
     - name: Build binary
-      run: |
-        go build -v \
-          -ldflags="-s -w -X main.Version=ci -X main.Commit=${{ github.sha }} -X main.BuildDate=$(date -u +%Y-%m-%d)" \
-          -o frame-tv-art-manager \
-          ./cmd/frame-tv-art-manager
+      run: make build
 
     - name: Verify binary runs
       run: ./frame-tv-art-manager --help

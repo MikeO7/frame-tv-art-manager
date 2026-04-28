@@ -71,6 +71,7 @@ func NewConnection(host string, port int, endpoint, name, tokenFile string, time
 //  3. Receive ms.channel.ready event → connection is live
 //
 // For the remote control endpoint, only step 1-2 is needed.
+//
 //nolint:gocyclo // Connection handshake sequence is inherently complex
 func (c *Connection) Open(ctx context.Context) error {
 	c.mu.Lock()

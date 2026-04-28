@@ -72,8 +72,8 @@ jobs:
     - name: Set build metadata
       id: meta-args
       run: |
-        echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
-        echo "commit=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+        echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        echo "commit=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v7
@@ -94,16 +94,18 @@ jobs:
 
     - name: Output image information
       run: |
-        echo "## 🖼️ Docker Image Built Successfully!" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Architectures**: linux/amd64, linux/arm64, linux/arm/v7" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Tags**:" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Pull command**:" >> $GITHUB_STEP_SUMMARY
-        echo '```bash' >> $GITHUB_STEP_SUMMARY
-        echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        {
+          echo "## 🖼️ Docker Image Built Successfully!"
+          echo ""
+          echo "**Architectures**: linux/amd64, linux/arm64, linux/arm/v7"
+          echo ""
+          echo "**Tags**:"
+          echo '```'
+          echo "${{ steps.meta.outputs.tags }}"
+          echo '```'
+          echo ""
+          echo "**Pull command**:"
+          echo '```bash'
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
