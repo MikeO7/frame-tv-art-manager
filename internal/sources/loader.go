@@ -409,10 +409,10 @@ func (l *Loader) handleUnsplashLine(line, prefix string) (int, error) {
 
 		// Use a descriptive identity including provider and source.
 		coll := parts[2]
-		if len(coll) > 20 {
-			coll = coll[:20]
+		if len(coll) > 100 {
+			coll = coll[:100]
 		}
-		identity := fmt.Sprintf("%sunsplash_coll-%s_%s", prefix, coll, p.ID)
+		identity := fmt.Sprintf("%sunsplash_collection-%s_%s", prefix, coll, p.ID)
 		if parts[1] == "photo" {
 			identity = fmt.Sprintf("%sunsplash_photo_%s", prefix, p.ID)
 		}
@@ -484,10 +484,10 @@ func (l *Loader) handleNASALine(line, prefix string) (int, error) {
 			if len(parts) > 0 {
 				last := parts[len(parts)-1]
 				id := strings.Split(last, "~")[0]
-				// Shorten and sanitize the ID to keep names reasonable.
+				// Limit length to keep filenames safe (max 255 on Linux).
 				cleanID := sanitize.Filename(id)
-				if len(cleanID) > 40 {
-					cleanID = cleanID[:40]
+				if len(cleanID) > 100 {
+					cleanID = cleanID[:100]
 				}
 				identity = fmt.Sprintf("%snasa_%s", prefix, cleanID)
 			}
