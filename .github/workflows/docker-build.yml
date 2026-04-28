@@ -63,6 +63,11 @@ jobs:
           type=ref,event=branch
           type=ref,event=pr
 
+    - name: Set build metadata
+      id: build-meta
+      run: |
+        echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
     - name: Build and push by digest
       id: build
       uses: docker/build-push-action@v5
@@ -74,7 +79,7 @@ jobs:
         build-args: |
           VERSION=${{ steps.meta.outputs.version }}
           GIT_COMMIT=${{ github.sha }}
-          BUILD_DATE=$(date -u +%Y-%m-%d)
+          BUILD_DATE=${{ steps.build-meta.outputs.date }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
         provenance: false
