@@ -212,6 +212,10 @@ func smartCrop(img image.Image, cfg Config) (image.Image, error) {
 	}
 
 	finalDst := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+	// Initialize with opaque black to prevent transparency issues
+	for i := 3; i < len(finalDst.Pix); i += 4 {
+		finalDst.Pix[i] = 255
+	}
 	draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), croppedImg, croppedImg.Bounds(), draw.Over, nil)
 	return finalDst, nil
 }
@@ -293,6 +297,7 @@ func applyAmbientEffects(img *image.RGBA, dimFactor, vignetteStrength float64) {
 			img.Pix[i] = clamp(float64(img.Pix[i]) * finalDim)
 			img.Pix[i+1] = clamp(float64(img.Pix[i+1]) * finalDim)
 			img.Pix[i+2] = clamp(float64(img.Pix[i+2]) * finalDim)
+			img.Pix[i+3] = 255 // Ensure fully opaque
 		}
 	}
 }
