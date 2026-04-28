@@ -29,9 +29,10 @@ jobs:
           go-version: '1.25'
           cache: true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6 # Reverting to v6 only for this job because v9 has an issues with Go 1.25 binaries
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+          install-mode: binary
 
   # Lane 2: Security Scan
   security:
@@ -47,6 +48,7 @@ jobs:
         uses: golang/govulncheck-action@v1
         with:
           go-version: '1.25'
+          check-latest: true
 
   # Lane 3: Workflow Linting
   actionlint:
