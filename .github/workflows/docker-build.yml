@@ -15,19 +15,22 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
-    name: Build and Push Multi-Arch Images
+  # The Build job runs 3 times in parallel (amd64, arm64, arm/v7)
+  build:
+    name: Build ${{ matrix.platform }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64, linux/arm/v7]
 
     steps:
     - name: Check out code
       uses: actions/checkout@v4
 
-    # QEMU is still needed to provide the target-architecture environment 
-    # for the final image assembly, but the heavy Go build is now native.
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
 
@@ -48,51 +51,93 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern=latest
-          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,format=short
           type=ref,event=branch
-          type=sha,format=short,enable=${{ github.event_name != 'pull_request' }}
-        labels: |
-          org.opencontainers.image.title=Frame TV Art Manager
-          org.opencontainers.image.description=Automatic artwork sync for Samsung Frame TVs
-          org.opencontainers.image.vendor=MikeO7
+          type=ref,event=pr
 
-    - name: Build and push Docker image
+    - name: Build and push by digest
+      id: build
       uses: docker/build-push-action@v5
       with:
         context: .
-        # Build for all 3 architectures in one pass. 
-        # Because the Dockerfile uses cross-compilation, this is now lightning fast!
-        platforms: linux/amd64,linux/arm64,linux/arm/v7
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        platforms: ${{ matrix.platform }}
+        # We push by digest to a temporary location so the manifest job can join them
+        outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
         build-args: |
           VERSION=${{ steps.meta.outputs.version }}
           GIT_COMMIT=${{ github.sha }}
           BUILD_DATE=$(date -u +%Y-%m-%d)
-        # Using the GHA cache makes subsequent builds even faster
         cache-from: type=gha
         cache-to: type=gha,mode=max
         provenance: false
         sbom: false
 
-    - name: Output image information
+    - name: Export digest
       run: |
-        {
-          echo "## 🖼️ Docker Image Built Successfully!"
-          echo ""
-          echo "**Architectures**: linux/amd64, linux/arm64, linux/arm/v7"
-          echo ""
-          echo "**Tags**:"
-          echo '```'
-          echo "${{ steps.meta.outputs.tags }}"
-          echo '```'
-          echo ""
-          echo "**Pull command**:"
-          echo '```bash'
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          echo '```'
-        } >> "$GITHUB_STEP_SUMMARY"
+        mkdir -p /tmp/digests
+        digest="${{ steps.build.outputs.digest }}"
+        touch "/tmp/digests/${digest#sha256:}"
+
+    - name: Upload digest
+      uses: actions/upload-artifact@v4
+      with:
+        name: digests-${{ strategy.job-index }}
+        path: /tmp/digests/*
+        if-no-files-found: error
+        retention-days: 1
+
+  # The Merge job joins the 3 parallel builds into a single multi-arch manifest
+  merge:
+    name: Merge Manifests
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    needs: [build]
+    permissions:
+      packages: write
+    steps:
+    - name: Download digests
+      uses: actions/download-artifact@v4
+      with:
+        path: /tmp/digests
+        pattern: digests-*
+        merge-multiple: true
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern=latest
+          type=raw,value=latest,enable={{is_default_branch}}
+        labels: |
+          org.opencontainers.image.title=Frame TV Art Manager
+          org.opencontainers.image.description=Automatic artwork sync for Samsung Frame TVs
+
+    - name: Create manifest list and push
+      working-directory: /tmp/digests
+      run: |
+        # Generate the list of digests to merge
+        DIGESTS=$(find . -type f -exec printf "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s " {} +)
+        
+        # Create and push the multi-arch manifest
+        # shellcheck disable=SC2086
+        docker buildx imagetools create $DIGESTS \
+          --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" \
+          "$(echo "${{ steps.meta.outputs.tags }}" | xargs -I {} echo "--tag {}")"
+
+    - name: Inspect image
+      run: |
+        docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
