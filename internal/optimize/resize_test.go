@@ -54,12 +54,15 @@ func TestOptimizeFile_AlreadySmall(t *testing.T) {
 	writeFakeJPEG(t, path, 384, 216)
 
 	cfg := DefaultConfig()
-	_, _, ok, err := OptimizeFile(path, cfg, testLogger())
+	newW, newH, ok, err := OptimizeFile(path, cfg, testLogger())
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if ok {
-		t.Error("image already 16:9 and smaller than max dimensions should not be modified")
+	if !ok {
+		t.Error("image smaller than 4K but 16:9 should be upscaled to native 4K for best quality")
+	}
+	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
+		t.Errorf("expected 4K dimensions, got %dx%d", newW, newH)
 	}
 }
 
@@ -123,7 +126,7 @@ func TestFitDimensions(t *testing.T) {
 		wantW, wantH             int
 	}{
 		{7680, 4320, 3840, 2160, 3840, 2160}, // exact 2x scale
-		{1920, 1080, 3840, 2160, 1920, 1080}, // already smaller — unreachable (caller checks first)
+		{1920, 1080, 3840, 2160, 3840, 2160}, // smaller 16:9 — should upscale to native 4K
 		{3840, 2160, 3840, 2160, 3840, 2160}, // exact match
 		{4000, 1000, 3840, 2160, 3840, 960},  // width-constrained
 		{1000, 4000, 3840, 2160, 540, 2160},  // height-constrained

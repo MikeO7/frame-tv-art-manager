@@ -64,13 +64,22 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 	aspectRatio := float64(cfg.MaxWidth) / float64(cfg.MaxHeight)
 	imgRatio := float64(origW) / float64(origH)
 
+	// Tolerance for "Smart Fill": If the image is within 5% of the target 16:9 ratio,
+	// we perform a slight center-crop to avoid tiny black slivers.
+	const fillTolerance = 0.05
+	ratioDiff := (imgRatio - aspectRatio) / aspectRatio
+	if ratioDiff < 0 {
+		ratioDiff = -ratioDiff
+	}
+	isCloseEnoughToFill := ratioDiff <= fillTolerance
+
 	// We optimize if:
-	// 1. Image is oversized
-	// 2. Image aspect ratio doesn't match 4K target (needs Padding or Cropping)
-	needsResize := origW > cfg.MaxWidth || origH > cfg.MaxHeight
+	// 1. Image is not exactly 4K (either too large or too small)
+	// 2. Image aspect ratio doesn't match 4K target exactly
+	isExact4K := origW == cfg.MaxWidth && origH == cfg.MaxHeight
 	needsRatioFix := (fmt.Sprintf("%.3f", imgRatio) != fmt.Sprintf("%.3f", aspectRatio))
 
-	if !needsResize && !needsRatioFix {
+	if isExact4K && !needsRatioFix {
 		logger.Debug("image already optimal size and aspect",
 			"file", filepath.Base(path),
 			"width", origW,
@@ -80,7 +89,11 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 	}
 
 	var dst image.Image
-	if cfg.SmartCropEnabled {
+	// If SmartCrop is enabled OR we are "close enough" to fill the screen, we crop.
+	if cfg.SmartCropEnabled || isCloseEnoughToFill {
+		if isCloseEnoughToFill && !cfg.SmartCropEnabled {
+			logger.Debug("performing subtle smart-fill crop to remove slivers", "file", filepath.Base(path))
+		}
 		dst, err = smartCrop(img, cfg)
 	} else {
 		dst = fitResize(img, cfg)
@@ -200,16 +213,29 @@ func fitResize(img image.Image, cfg Config) image.Image {
 	scaledImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
 	draw.CatmullRom.Scale(scaledImg, scaledImg.Bounds(), img, img.Bounds(), draw.Over, nil)
 
-	// Create a full 4K background (default black) to ensure 1-1 pixel mapping on TV.
-	// This prevents the TV from trying to stretch or "smart fill" a non-16:9 image.
-	finalDst := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+	// Create the background. We use a "Fast Blur" technique for a premium extended look:
+	// 1. Scale image down to a tiny size (40x40) to average out the colors.
+	// 2. Scale it back up to 4K to create a smooth, blurry ambient background.
+	ambientBg := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+	
+	// Create a tiny version for blurring.
+	tinyW, tinyH := 40, 40
+	tinyImg := image.NewRGBA(image.Rect(0, 0, tinyW, tinyH))
+	draw.BiLinear.Scale(tinyImg, tinyImg.Bounds(), img, img.Bounds(), draw.Over, nil)
+	
+	// Blow it back up to 4K (this creates the blur effect).
+	draw.BiLinear.Scale(ambientBg, ambientBg.Bounds(), tinyImg, tinyImg.Bounds(), draw.Over, nil)
+
+	// Create the final destination canvas.
+	finalDst := ambientBg
 
 	// Calculate center offset.
 	offsetX := (cfg.MaxWidth - newW) / 2
 	offsetY := (cfg.MaxHeight - newH) / 2
 
-	// Draw the scaled image onto the center of the 4K canvas.
-	draw.Draw(finalDst, image.Rect(offsetX, offsetY, offsetX+newW, offsetY+newH), scaledImg, scaledImg.Bounds().Min, draw.Src)
+	// Draw the scaled image onto the center of the blurry canvas.
+	// We use draw.Over here instead of draw.Src to preserve the blurry background.
+	draw.Draw(finalDst, image.Rect(offsetX, offsetY, offsetX+newW, offsetY+newH), scaledImg, scaledImg.Bounds().Min, draw.Over)
 
 	return finalDst
 }
@@ -223,11 +249,8 @@ func fitDimensions(origW, origH, maxW, maxH int) (int, int) {
 		ratio = ratioH
 	}
 
-	// Never upscale.
-	if ratio > 1.0 {
-		ratio = 1.0
-	}
-
+	// Use the ratio to scale. We allow upscaling to ensure the image
+	// fills the 4K canvas as much as possible while maintaining aspect ratio.
 	newW := int(float64(origW) * ratio)
 	newH := int(float64(origH) * ratio)
 
