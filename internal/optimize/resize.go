@@ -66,11 +66,11 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 
 	// We optimize if:
 	// 1. Image is oversized
-	// 2. Image has wrong aspect ratio and SmartCropEnabled is enabled
+	// 2. Image aspect ratio doesn't match 4K target (needs Padding or Cropping)
 	needsResize := origW > cfg.MaxWidth || origH > cfg.MaxHeight
-	needsCrop := cfg.SmartCropEnabled && (fmt.Sprintf("%.3f", imgRatio) != fmt.Sprintf("%.3f", aspectRatio))
+	needsRatioFix := (fmt.Sprintf("%.3f", imgRatio) != fmt.Sprintf("%.3f", aspectRatio))
 
-	if !needsResize && !needsCrop {
+	if !needsResize && !needsRatioFix {
 		logger.Debug("image already optimal size and aspect",
 			"file", filepath.Base(path),
 			"width", origW,
