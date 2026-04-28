@@ -259,10 +259,7 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 		return false, fmt.Errorf("rename temp file: %w", err)
 	}
 
-	finalName, ok, err := l.finalizeDownload(destPath, filename)
-	if err != nil {
-		return false, err
-	}
+	finalName, ok := l.finalizeDownload(destPath, filename)
 	if !ok {
 		return false, nil
 	}
@@ -274,36 +271,64 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 	return true, nil
 }
 
+// downloadWithIdentity is a helper that handles the full download, hashing,
+// and indexing flow for a given identity.
+func (l *Loader) downloadWithIdentity(url, identity string) (bool, error) {
+	if l.maxImages > 0 && len(l.index) >= l.maxImages {
+		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
+		return false, nil
+	}
+
+	if existing, ok := l.checkExisting(identity); ok {
+		l.visited[existing] = true
+		return false, nil
+	}
+
+	filename := identity + ".jpg"
+	return l.executeDownload(url, filename)
+}
+
 // finalizeDownload checks for content duplicates, renames the file to include
 // the hash, and updates the index. Returns the final filename and true if the
 // file should be kept.
-func (l *Loader) finalizeDownload(path, filename string) (string, bool, error) {
+func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 	hash, err := l.fileHash(path)
 	if err != nil {
 		// If hashing fails, we keep the file with its current name but log it.
 		l.logger.Warn("failed to hash downloaded file", "file", filename, "error", err)
-		return filename, true, nil
+		return filename, true
 	}
 
-	if existing, ok := l.index[hash]; ok && existing != filename {
-		l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
-		_ = os.Remove(path)
-		l.visited[existing] = true
-		return existing, false, nil
+	if existing, ok := l.index[hash]; ok {
+		if existing != filename {
+			l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
+			_ = os.Remove(path)
+			l.visited[existing] = true
+			return existing, false
+		}
 	}
 
 	// Rename to include hash for future sync cycles.
 	ext := filepath.Ext(filename)
 	identity := strings.TrimSuffix(filename, ext)
+
+	// If it already has a hash, don't double-hash.
+	if strings.Contains(identity, ".h_") {
+		l.index[hash] = filename
+		return filename, true
+	}
+
 	finalName := fmt.Sprintf("%s.h_%s%s", identity, hash[:12], ext)
 	finalPath := filepath.Join(l.artworkDir, finalName)
 
 	if err := os.Rename(path, finalPath); err != nil {
-		return filename, true, fmt.Errorf("rename to final: %w", err)
+		l.logger.Warn("failed to rename to hash-based name", "file", filename, "error", err)
+		l.index[hash] = filename
+		return filename, true
 	}
 
 	l.index[hash] = finalName
-	return finalName, true, nil
+	return finalName, true
 }
 
 // urlToFilename generates a deterministic filename from a URL using
@@ -380,18 +405,11 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 
 		// Use a deterministic filename based on Unsplash ID.
 		identity := fmt.Sprintf("unsplash_%s", p.ID)
-		if existing, ok := l.prefixMap[identity]; ok {
-			l.visited[existing] = true
-			continue
-		}
-
-		filename := identity + ".jpg"
-		destPath := filepath.Join(l.artworkDir, filename)
 
 		// Track download as required by TOS.
 		l.unsplash.TrackDownload(ctx, p.Links.DownloadLocation)
 
-		ok, err := l.downloadToFile(url, destPath)
+		ok, err := l.downloadWithIdentity(url, identity)
 		if err != nil {
 			l.logger.Warn("failed to download unsplash image", "id", p.ID, "error", err)
 			continue
@@ -402,69 +420,6 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 	}
 
 	return downloaded, nil
-}
-
-// downloadToFile is a helper that downloads a URL directly to a path.
-func (l *Loader) downloadToFile(url string, destPath string) (bool, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return false, err
-	}
-	req.Header.Set("User-Agent", "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)")
-
-	resp, err := l.client.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	// Check file size.
-	if l.maxSizeMB > 0 {
-		if size := resp.ContentLength; size > int64(l.maxSizeMB)*1024*1024 {
-			return false, fmt.Errorf("file too large: %d bytes (limit %d MB)", size, l.maxSizeMB)
-		}
-	}
-
-	tmpPath := destPath + ".tmp"
-	out, err := os.Create(filepath.Clean(tmpPath))
-	if err != nil {
-		return false, err
-	}
-
-	written, err := io.Copy(out, resp.Body)
-	_ = out.Close()
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		return false, err
-	}
-
-	if err := os.Rename(tmpPath, destPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return false, err
-	}
-
-	// Calculate content hash and check for duplicates.
-	filename := filepath.Base(destPath)
-	hash, err := l.fileHash(destPath)
-	if err == nil {
-		if existing, ok := l.index[hash]; ok && existing != filename {
-			l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
-			_ = os.Remove(destPath)
-			l.visited[existing] = true
-			return false, nil
-		}
-		l.index[hash] = filename
-	}
-
-	l.visited[filename] = true
-
-	_ = os.Chmod(destPath, 0644) //nolint:gosec // Required for Mac/Docker volume access
-	l.logger.Info("downloaded image", "path", filename, "size", written)
-	return true, nil
 }
 
 // handleNASALine resolves NASA APOD or search queries and downloads them.
@@ -523,15 +478,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 			}
 		}
 
-		if existing, ok := l.prefixMap[identity]; ok {
-			l.visited[existing] = true
-			continue
-		}
-
-		filename = identity + ".jpg"
-		destPath := filepath.Join(l.artworkDir, filename)
-
-		ok, err := l.downloadToFile(u, destPath)
+		ok, err := l.downloadWithIdentity(u, identity)
 		if err != nil {
 			l.logger.Warn("failed to download nasa image", "url", u, "error", err)
 			continue
@@ -582,14 +529,7 @@ func (l *Loader) handleArticLine(line string) (int, error) {
 			}
 		}
 
-		if existing, ok := l.prefixMap[identity]; ok {
-			l.visited[existing] = true
-			continue
-		}
-
-		destPath := filepath.Join(l.artworkDir, identity+".jpg")
-
-		ok, err := l.downloadToFile(u, destPath)
+		ok, err := l.downloadWithIdentity(u, identity)
 		if err != nil {
 			l.logger.Warn("failed to download artic image", "url", u, "error", err)
 			continue
