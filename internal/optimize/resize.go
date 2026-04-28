@@ -108,7 +108,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 		logger.Debug("performing subtle smart-fill crop to remove slivers", "file", filepath.Base(path))
 		dst, err = smartCrop(img, cfg)
 	default:
-		dst = fitResize(img, cfg)
+		dst = FitResize(img, cfg)
 	}
 
 	if err != nil {
@@ -220,7 +220,7 @@ func smartCrop(img image.Image, cfg Config) (image.Image, error) {
 	return finalDst, nil
 }
 
-func fitResize(img image.Image, cfg Config) image.Image {
+func FitResize(img image.Image, cfg Config) image.Image {
 	origW := img.Bounds().Dx()
 	origH := img.Bounds().Dy()
 	newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
@@ -315,23 +315,7 @@ func clamp(v float64) uint8 {
 func fitDimensions(origW, origH, maxW, maxH int) (int, int) {
 	ratioW := float64(maxW) / float64(origW)
 	ratioH := float64(maxH) / float64(origH)
+	ratio := math.Min(ratioW, ratioH)
 
-	ratio := ratioW
-	if ratioH < ratioW {
-		ratio = ratioH
-	}
-
-	// Use the ratio to scale. We allow upscaling to ensure the image
-	// fills the 4K canvas as much as possible while maintaining aspect ratio.
-	newW := int(float64(origW) * ratio)
-	newH := int(float64(origH) * ratio)
-
-	if newW < 1 {
-		newW = 1
-	}
-	if newH < 1 {
-		newH = 1
-	}
-
-	return newW, newH
+	return int(float64(origW) * ratio), int(float64(origH) * ratio)
 }
