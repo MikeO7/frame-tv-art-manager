@@ -514,9 +514,25 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	elapsed := time.Since(startTime).Round(time.Millisecond)
 	nextSync := time.Now().Add(time.Duration(e.cfg.SyncIntervalMin) * time.Minute)
 
+	const interiorWidth = 46 // 50 total interior - 2 margin on each side
+
+	padLine := func(content string) string {
+		// Use runes for correct character counting with UTF-8.
+		runes := []rune(content)
+		if len(runes) > interiorWidth {
+			content = string(runes[:interiorWidth])
+			runes = []rune(content)
+		}
+		padding := interiorWidth - len(runes)
+		return "║  " + content + strings.Repeat(" ", padding) + "  ║\n"
+	}
+
 	var sb strings.Builder
 	sb.WriteString("\n╔══════════════════════════════════════════════════╗\n")
-	fmt.Fprintf(&sb, "║  Sync Cycle #%-3d — %-27s ║\n", e.cycleNum, time.Now().Format("2006-01-02 15:04:05"))
+
+	header := fmt.Sprintf("Sync Cycle #%d — %s", e.cycleNum, time.Now().Format("2006-01-02 15:04:05"))
+	sb.WriteString(padLine(header))
+
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 
 	for _, tv := range tvs {
@@ -524,23 +540,23 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		if tv.Model != "" {
 			name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
 		}
-		fmt.Fprintf(&sb, "║  TV: %-44s║\n", name)
+		sb.WriteString(padLine("TV: " + name))
 
 		switch tv.Status {
 		case "ok":
-			sb.WriteString("║    Status:     ✔ Art Mode                        ║\n")
-			fmt.Fprintf(&sb, "║    Uploaded:   %-3d new  │  Deleted: %-13d║\n", tv.Uploaded, tv.Deleted)
-			fmt.Fprintf(&sb, "║    Total:      %-3d images on TV                   ║\n", tv.TotalImages)
+			sb.WriteString(padLine("  Status:     ✔ Art Mode"))
+			sb.WriteString(padLine(fmt.Sprintf("  Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
+			sb.WriteString(padLine(fmt.Sprintf("  Total:      %d images on TV", tv.TotalImages)))
 			if tv.Brightness != "" {
-				fmt.Fprintf(&sb, "║    Brightness: %-34s║\n", tv.Brightness)
+				sb.WriteString(padLine("  Brightness: " + tv.Brightness))
 			}
 			if tv.Slideshow != "" {
-				fmt.Fprintf(&sb, "║    Slideshow:  %-34s║\n", tv.Slideshow)
+				sb.WriteString(padLine("  Slideshow:  " + tv.Slideshow))
 			}
 		case "backoff":
-			sb.WriteString("║    Status:     ⏸ Backing off (unreachable)        ║\n")
+			sb.WriteString(padLine("  Status:     ⏸ Backing off (unreachable)"))
 		default:
-			fmt.Fprintf(&sb, "║    Status:     %-34s║\n", tv.Status)
+			sb.WriteString(padLine("  Status:     " + tv.Status))
 		}
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
@@ -553,10 +569,10 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	if optimized > 0 {
 		localSummary += fmt.Sprintf(" │ %d optimized", optimized)
 	}
-	fmt.Fprintf(&sb, "║  %-48s║\n", localSummary)
+	sb.WriteString(padLine(localSummary))
 
-	fmt.Fprintf(&sb, "║  Took:   %-40s║\n", elapsed.String())
-	fmt.Fprintf(&sb, "║  Next:   %-40s║\n", nextSync.Format("15:04:05"))
+	sb.WriteString(padLine("Took:   " + elapsed.String()))
+	sb.WriteString(padLine("Next:   " + nextSync.Format("15:04:05")))
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
 
 	e.logger.Info(sb.String())
