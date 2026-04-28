@@ -302,14 +302,9 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 	ext := filepath.Ext(filename)
 	identity := strings.TrimSuffix(filename, ext)
 
-	// Strip existing hash/meta if any (e.g. from previous runs) to normalize.
-	// We handle both old .h_ separator and new __ separator.
+	// Strip old .h_ separator if any.
 	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
 		identity = parts[0]
-	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
-		// New format: [index]__[source]__[slug]__[hash]
-		// We keep everything before the last hash part.
-		identity = strings.Join(parts[:len(parts)-1], "__")
 	}
 
 	finalName := fmt.Sprintf("%s__%s%s", identity, hash[:12], ext)
@@ -336,7 +331,6 @@ func (l *Loader) urlToSlug(url string) string {
 		}
 		slug := sanitize.Filename(host + "_" + path)
 		slug = strings.ReplaceAll(slug, " ", "-")
-		slug = strings.TrimSuffix(slug, filepath.Ext(slug))
 		if len(slug) > 100 {
 			slug = slug[:100]
 		}
@@ -572,36 +566,45 @@ func (l *Loader) handlePexelsLine(line string, globalIndex *int) (int, error) {
 
 	ctx := context.Background()
 	var urls []string
+	var err error
 
+	urls, err = l.fetchPexelsURLs(ctx, parts)
+	if err != nil {
+		return 0, err
+	}
+
+	return l.processPexelsURLs(urls, globalIndex)
+}
+
+func (l *Loader) fetchPexelsURLs(ctx context.Context, parts []string) ([]string, error) {
 	switch parts[1] {
 	case cmdSearch:
 		if len(parts) < 3 {
-			return 0, fmt.Errorf("pexels search requires a query: %s", line)
+			return nil, fmt.Errorf("pexels search requires a query")
 		}
-		p, err := l.pexels.Search(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		urls = p
+		return l.pexels.Search(ctx, parts[2])
 	case "curated":
-		p, err := l.pexels.Curated(ctx)
-		if err != nil {
-			return 0, err
+		return l.pexels.Curated(ctx)
+	case "collection":
+		if len(parts) < 3 {
+			return nil, fmt.Errorf("pexels collection requires an ID")
 		}
-		urls = p
+		return l.pexels.FetchCollection(ctx, parts[2])
 	case cmdPhoto:
 		if len(parts) < 3 {
-			return 0, fmt.Errorf("pexels photo requires an ID: %s", line)
+			return nil, fmt.Errorf("pexels photo requires an ID")
 		}
 		p, err := l.pexels.FetchPhoto(ctx, parts[2])
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		urls = []string{p}
+		return []string{p}, nil
 	default:
-		return 0, fmt.Errorf("unknown pexels type: %s", parts[1])
+		return nil, fmt.Errorf("unknown pexels type: %s", parts[1])
 	}
+}
 
+func (l *Loader) processPexelsURLs(urls []string, globalIndex *int) (int, error) {
 	downloaded := 0
 	for _, u := range urls {
 		slug := l.urlToSlug(u)
@@ -616,7 +619,6 @@ func (l *Loader) handlePexelsLine(line string, globalIndex *int) (int, error) {
 			downloaded++
 		}
 	}
-
 	return downloaded, nil
 }
 

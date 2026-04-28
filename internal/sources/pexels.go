@@ -50,6 +50,36 @@ func (c *PexelsClient) Curated(ctx context.Context) ([]string, error) {
 	return c.fetchPhotoList(ctx, url)
 }
 
+// FetchCollection retrieves photos from a specific Pexels collection.
+func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string) ([]string, error) {
+	url := fmt.Sprintf("https://api.pexels.com/v1/collections/%s?per_page=15", collectionID)
+	// Pexels collection response structure is slightly different (it has 'media' instead of 'photos')
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", c.apiKey)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("pexels api error: %d", resp.StatusCode)
+	}
+	var result struct {
+		Media []PexelsPhoto `json:"media"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode pexels response: %w", err)
+	}
+	var urls []string
+	for _, p := range result.Media {
+		urls = append(urls, p.Src.Original)
+	}
+	return urls, nil
+}
+
 // FetchPhoto retrieves a single photo by its ID.
 func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
 	url := fmt.Sprintf("https://api.pexels.com/v1/photos/%s", photoID)
