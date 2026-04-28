@@ -46,9 +46,14 @@ services:
       # Resize oversized images to 4K and center-pad non-16:9 images
       IMAGE_OPTIMIZE_ENABLED: "true"
       
+      # IMAGE_MATTE_MODE: "extended" (Default: extended)
+      # "extended": Premium blurred/dimmed background (recommended)
+      # "black": Traditional solid black bars
+      IMAGE_MATTE_MODE: "extended"
+
       # SMART_CROP_ENABLED: "false" (Default: false)
-      # When false, images are centered and padded to 4K ("True to Form").
-      # When true, images are intelligently cropped to exactly 16:9.
+      # When false, non-16:9 images use the background set in IMAGE_MATTE_MODE.
+      # When true, images are intelligently cropped to fill the full 16:9 screen.
 
       # Shuffle through images every hour
       SLIDESHOW_ENABLED: "true"
@@ -147,8 +152,9 @@ Everything is configured through environment variables. Only `TV_IPS` is require
 
 | Variable | Default | Description |
 |---|---|---|
-| `IMAGE_OPTIMIZE_ENABLED` | `true` | Resize oversized JPEGs to fit within max dimensions |
-| `SMART_CROP_ENABLED` | `true` | Crop images to 16:9 using entropy-based analysis |
+| `IMAGE_OPTIMIZE_ENABLED` | `true` | Resize oversized images to fit within max dimensions |
+| `IMAGE_MATTE_MODE` | `extended` | Background for non-16:9 images: `extended` (blurred) or `black` |
+| `SMART_CROP_ENABLED` | `false` | Crop images to 16:9 using entropy-based analysis |
 | `IMAGE_MAX_WIDTH` | `3840` | Maximum width in pixels |
 | `IMAGE_MAX_HEIGHT` | `2160` | Maximum height in pixels |
 | `IMAGE_JPEG_QUALITY` | `92` | JPEG quality for re-encoded images (1–100) |

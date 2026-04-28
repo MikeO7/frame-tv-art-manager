@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/jpeg"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ type Config struct {
 	MaxHeight           int
 	OptimizeJPEGQuality int
 	SmartCropEnabled    bool
+	ImageMatteMode      string
 }
 
 // DefaultConfig returns sensible defaults for Frame TV display.
@@ -34,6 +36,7 @@ func DefaultConfig() Config {
 		MaxHeight:           2160,
 		OptimizeJPEGQuality: 92,
 		SmartCropEnabled:    false,
+		ImageMatteMode:      "extended",
 	}
 }
 
@@ -213,18 +216,29 @@ func fitResize(img image.Image, cfg Config) image.Image {
 	scaledImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
 	draw.CatmullRom.Scale(scaledImg, scaledImg.Bounds(), img, img.Bounds(), draw.Over, nil)
 
-	// Create the background. We use a "Fast Blur" technique for a premium extended look:
-	// 1. Scale image down to a tiny size (40x40) to average out the colors.
-	// 2. Scale it back up to 4K to create a smooth, blurry ambient background.
-	ambientBg := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
-	
-	// Create a tiny version for blurring.
-	tinyW, tinyH := 40, 40
-	tinyImg := image.NewRGBA(image.Rect(0, 0, tinyW, tinyH))
-	draw.BiLinear.Scale(tinyImg, tinyImg.Bounds(), img, img.Bounds(), draw.Over, nil)
-	
-	// Blow it back up to 4K (this creates the blur effect).
-	draw.BiLinear.Scale(ambientBg, ambientBg.Bounds(), tinyImg, tinyImg.Bounds(), draw.Over, nil)
+	// Create the background based on the configured mode.
+	var ambientBg *image.RGBA
+	if cfg.ImageMatteMode == "black" {
+		// Classic Black Bars
+		ambientBg = image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+		// Default is already transparent/black (0,0,0,0), but we ensure it's opaque black.
+		for i := 0; i < len(ambientBg.Pix); i += 4 {
+			ambientBg.Pix[i+3] = 255 // Set Alpha to 255
+		}
+	} else {
+		// Premium "Extended Look" (Blurred + Jazzed-up)
+		bgW, bgH := 640, 360
+		lowRes := image.NewRGBA(image.Rect(0, 0, bgW, bgH))
+		draw.BiLinear.Scale(lowRes, lowRes.Bounds(), img, img.Bounds(), draw.Over, nil)
+
+		blurredLowRes := GaussianBlur(lowRes, 8.0)
+
+		ambientBg = image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+		draw.BiLinear.Scale(ambientBg, ambientBg.Bounds(), blurredLowRes, blurredLowRes.Bounds(), draw.Over, nil)
+
+		// Apply "Jazz-up" effects (Dimming + Vignette)
+		applyAmbientEffects(ambientBg)
+	}
 
 	// Create the final destination canvas.
 	finalDst := ambientBg
@@ -233,11 +247,45 @@ func fitResize(img image.Image, cfg Config) image.Image {
 	offsetX := (cfg.MaxWidth - newW) / 2
 	offsetY := (cfg.MaxHeight - newH) / 2
 
-	// Draw the scaled image onto the center of the blurry canvas.
-	// We use draw.Over here instead of draw.Src to preserve the blurry background.
+	// Draw the sharp scaled image onto the center of the canvas.
 	draw.Draw(finalDst, image.Rect(offsetX, offsetY, offsetX+newW, offsetY+newH), scaledImg, scaledImg.Bounds().Min, draw.Over)
 
 	return finalDst
+}
+
+// applyAmbientEffects darkens and adds a vignette to the background for a premium look.
+func applyAmbientEffects(img *image.RGBA) {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	centerX, centerY := float64(w)/2, float64(h)/2
+	maxDist := math.Sqrt(centerX*centerX + centerY*centerY)
+
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			// 1. Calculate Vignette (Radial darkening)
+			dx := float64(x) - centerX
+			dy := float64(y) - centerY
+			dist := math.Sqrt(dx*dx + dy*dy)
+
+			// Vignette factor: 1.0 at center, drops off toward corners.
+			// We start darkening after 50% of the distance.
+			vignette := 1.0
+			if dist > maxDist*0.4 {
+				vignette = 1.0 - (dist-maxDist*0.4)/(maxDist*0.6)*0.4
+			}
+			if vignette < 0.6 {
+				vignette = 0.6
+			}
+
+			// 2. Base Dimming (Darken by another 20%)
+			dimFactor := 0.75 * vignette
+
+			i := y*img.Stride + x*4
+			img.Pix[i] = uint8(float64(img.Pix[i]) * dimFactor)
+			img.Pix[i+1] = uint8(float64(img.Pix[i+1]) * dimFactor)
+			img.Pix[i+2] = uint8(float64(img.Pix[i+2]) * dimFactor)
+		}
+	}
 }
 
 func fitDimensions(origW, origH, maxW, maxH int) (int, int) {

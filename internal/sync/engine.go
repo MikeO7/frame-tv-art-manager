@@ -619,6 +619,7 @@ func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 		MaxHeight:           e.cfg.OptimizeMaxHeight,
 		OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
 		SmartCropEnabled:    e.cfg.SmartCropEnabled,
+		ImageMatteMode:      e.cfg.ImageMatteMode,
 	}
 
 	for filename := range localFiles {

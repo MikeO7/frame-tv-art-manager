@@ -149,6 +149,10 @@ type Config struct {
 	// SmartCropEnabled enables entropy-based cropping to fit 16:9 perfectly.
 	SmartCropEnabled bool
 
+	// ImageMatteMode controls the background for non-16:9 images.
+	// Options: "extended" (blurred/dimmed/vignette) or "black" (solid bars).
+	ImageMatteMode string
+
 	// --- Health Server ---
 
 	// HealthPort is the HTTP port for /health and /status endpoints.
@@ -217,6 +221,7 @@ func Load() (*Config, error) {
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
 		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", false),
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 92),
+		ImageMatteMode:      strings.ToLower(envStr("IMAGE_MATTE_MODE", "extended")),
 		HealthPort:          envInt("HEALTH_PORT", 0),
 		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,
 		APITimeout:          time.Duration(envInt("API_TIMEOUT_SECONDS", 60)) * time.Second,
@@ -301,6 +306,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf(
 			"LOG_LEVEL must be one of debug, info, warn, error; got %q",
 			cfg.LogLevel,
+		)
+	}
+
+	validMatteModes := map[string]bool{"extended": true, "black": true}
+	if !validMatteModes[cfg.ImageMatteMode] {
+		return nil, fmt.Errorf(
+			"IMAGE_MATTE_MODE must be 'extended' or 'black', got %q",
+			cfg.ImageMatteMode,
 		)
 	}
 
