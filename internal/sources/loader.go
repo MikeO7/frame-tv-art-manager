@@ -427,6 +427,9 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int) (int, error) 
 		// Use a descriptive identity including provider and source.
 		slug := sanitize.Filename(parts[2] + "-" + p.ID)
 		slug = strings.ReplaceAll(slug, " ", "-")
+		if len(slug) > 100 {
+			slug = slug[:100]
+		}
 		identity := fmt.Sprintf("%03d__unsplash__%s", *globalIndex, slug)
 		*globalIndex++
 
@@ -496,6 +499,9 @@ func (l *Loader) handleNASALine(line string, globalIndex *int) (int, error) {
 				id := strings.Split(last, "~")[0]
 				slug = sanitize.Filename(id)
 				slug = strings.ReplaceAll(slug, " ", "-")
+				if len(slug) > 100 {
+					slug = slug[:100]
+				}
 			}
 		}
 
@@ -549,6 +555,9 @@ func (l *Loader) handleArticLine(line string, globalIndex *int) (int, error) {
 			parts := strings.Split(u, "/")
 			if len(parts) > 5 {
 				slug = sanitize.Filename(parts[5])
+				if len(slug) > 100 {
+					slug = slug[:100]
+				}
 			}
 		}
 
