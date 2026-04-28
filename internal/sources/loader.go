@@ -7,6 +7,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/sanitize"
 	"gopkg.in/yaml.v3"
 )
 
@@ -105,10 +109,10 @@ func (l *Loader) Sync() (int, error) {
 
 	l.visited = make(map[string]bool)
 	downloaded := 0
-	for _, line := range urls {
-		// Existing source processing logic...
+	for i, line := range urls {
+		prefix := fmt.Sprintf("%03d_", i+1)
 		if strings.HasPrefix(line, "unsplash:") {
-			count, err := l.handleUnsplashLine(line)
+			count, err := l.handleUnsplashLine(line, prefix)
 			if err != nil {
 				l.logger.Warn("unsplash sync failed", "line", line, "error", err)
 			}
@@ -117,7 +121,7 @@ func (l *Loader) Sync() (int, error) {
 		}
 
 		if strings.HasPrefix(line, "nasa:") {
-			count, err := l.handleNASALine(line)
+			count, err := l.handleNASALine(line, prefix)
 			if err != nil {
 				l.logger.Warn("nasa sync failed", "line", line, "error", err)
 			}
@@ -126,7 +130,7 @@ func (l *Loader) Sync() (int, error) {
 		}
 
 		if strings.HasPrefix(line, "artic:") || strings.HasPrefix(line, "art_institute:") || strings.HasPrefix(line, "art_institute_of_chicago:") {
-			count, err := l.handleArticLine(line)
+			count, err := l.handleArticLine(line, prefix)
 			if err != nil {
 				l.logger.Warn("art_institute sync failed", "line", line, "error", err)
 			}
@@ -135,7 +139,7 @@ func (l *Loader) Sync() (int, error) {
 		}
 
 		if strings.HasPrefix(line, "pexels:") {
-			count, err := l.handlePexelsLine(line)
+			count, err := l.handlePexelsLine(line, prefix)
 			if err != nil {
 				l.logger.Warn("pexels sync failed", "line", line, "error", err)
 			}
@@ -144,7 +148,7 @@ func (l *Loader) Sync() (int, error) {
 		}
 
 		if strings.HasPrefix(line, "pixabay:") {
-			count, err := l.handlePixabayLine(line)
+			count, err := l.handlePixabayLine(line, prefix)
 			if err != nil {
 				l.logger.Warn("pixabay sync failed", "line", line, "error", err)
 			}
@@ -153,8 +157,9 @@ func (l *Loader) Sync() (int, error) {
 		}
 
 		line = strings.TrimPrefix(line, "direct:")
+		identity := prefix + l.urlToFilename(line)
 
-		ok, err := l.downloadIfNew(line)
+		ok, err := l.downloadWithIdentity(line, identity)
 		if err != nil {
 			l.logger.Warn("failed to download source image",
 				"url", truncateURL(line),
@@ -175,23 +180,6 @@ func (l *Loader) Sync() (int, error) {
 	}
 
 	return downloaded, nil
-}
-
-// downloadIfNew downloads a URL if the corresponding file doesn't
-// already exist. Returns true if a new file was downloaded.
-func (l *Loader) downloadIfNew(url string) (bool, error) {
-	if l.maxImages > 0 && len(l.index) >= l.maxImages {
-		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
-		return false, nil
-	}
-
-	filename := l.urlToFilename(url)
-	if existing, ok := l.checkExisting(filename); ok {
-		l.visited[existing] = true
-		return false, nil
-	}
-
-	return l.executeDownload(url, filename)
 }
 
 func (l *Loader) checkExisting(filename string) (string, bool) {
@@ -308,6 +296,9 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 		}
 	}
 
+	// Get image dimensions for the filename.
+	dims := l.imageDimensions(path)
+
 	// Rename to include hash for future sync cycles.
 	ext := filepath.Ext(filename)
 	identity := strings.TrimSuffix(filename, ext)
@@ -318,7 +309,7 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 		return filename, true
 	}
 
-	finalName := fmt.Sprintf("%s.h_%s%s", identity, hash[:12], ext)
+	finalName := fmt.Sprintf("%s_%s.h_%s%s", identity, dims, hash[:12], ext)
 	finalPath := filepath.Join(l.artworkDir, finalName)
 
 	if err := os.Rename(path, finalPath); err != nil {
@@ -329,6 +320,20 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 
 	l.index[hash] = finalName
 	return finalName, true
+}
+
+func (l *Loader) imageDimensions(path string) string {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return "unknown"
+	}
+	defer func() { _ = f.Close() }()
+
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("%dx%d", cfg.Width, cfg.Height)
 }
 
 // urlToFilename generates a deterministic filename from a URL using
@@ -362,7 +367,7 @@ func extensionFromResponse(resp *http.Response, url string) string {
 }
 
 // handleUnsplashLine resolves Unsplash collection or photo IDs and downloads them.
-func (l *Loader) handleUnsplashLine(line string) (int, error) {
+func (l *Loader) handleUnsplashLine(line, prefix string) (int, error) {
 	if l.unsplash.accessKey == "" {
 		return 0, fmt.Errorf("UNSPLASH_ACCESS_KEY not configured")
 	}
@@ -403,8 +408,11 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 		// Prefer RAW for maximum quality, with Frame TV friendly width.
 		url := p.URLs.Raw + "&w=3840&q=95&fm=jpg"
 
-		// Use a deterministic filename based on Unsplash ID.
-		identity := fmt.Sprintf("unsplash_%s", p.ID)
+		// Use a descriptive identity including provider and source.
+		identity := fmt.Sprintf("%sunsplash_collection-%s_%s", prefix, parts[2], p.ID)
+		if parts[1] == "photo" {
+			identity = fmt.Sprintf("%sunsplash_photo_%s", prefix, p.ID)
+		}
 
 		// Track download as required by TOS.
 		l.unsplash.TrackDownload(ctx, p.Links.DownloadLocation)
@@ -425,7 +433,7 @@ func (l *Loader) handleUnsplashLine(line string) (int, error) {
 // handleNASALine resolves NASA APOD or search queries and downloads them.
 //
 //nolint:gocyclo // NASA API requires multi-step manifest resolution
-func (l *Loader) handleNASALine(line string) (int, error) {
+func (l *Loader) handleNASALine(line, prefix string) (int, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {
 		return 0, fmt.Errorf("invalid nasa format: %s", line)
@@ -473,7 +481,8 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 			if len(parts) > 0 {
 				last := parts[len(parts)-1]
 				if strings.Contains(last, "~") {
-					identity = "nasa_" + strings.Split(last, "~")[0]
+					querySlug := sanitize.Filename(parts[1] + "-" + parts[2])
+					identity = fmt.Sprintf("%snasa_%s_%s", prefix, querySlug, strings.Split(last, "~")[0])
 				}
 			}
 		}
@@ -492,7 +501,7 @@ func (l *Loader) handleNASALine(line string) (int, error) {
 }
 
 // handleArticLine resolves Art Institute of Chicago search queries or photo IDs and downloads them.
-func (l *Loader) handleArticLine(line string) (int, error) {
+func (l *Loader) handleArticLine(line, prefix string) (int, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 3 {
 		return 0, fmt.Errorf("invalid art_institute_of_chicago format: %s (expected art_institute_of_chicago:search:query or art_institute_of_chicago:photo:id)", line)
@@ -525,7 +534,8 @@ func (l *Loader) handleArticLine(line string) (int, error) {
 			// Try to extract image_id for a nicer filename
 			parts := strings.Split(u, "/")
 			if len(parts) > 5 {
-				identity = "artic_" + parts[5]
+				querySlug := sanitize.Filename(parts[1] + "-" + parts[2])
+				identity = fmt.Sprintf("%sartic_%s_%s", prefix, querySlug, parts[5])
 			}
 		}
 
@@ -543,7 +553,7 @@ func (l *Loader) handleArticLine(line string) (int, error) {
 }
 
 // handlePexelsLine resolves Pexels search queries, curated lists, or photo IDs and downloads them.
-func (l *Loader) handlePexelsLine(line string) (int, error) {
+func (l *Loader) handlePexelsLine(line, prefix string) (int, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {
 		return 0, fmt.Errorf("invalid pexels format: %s (expected pexels:search:query, pexels:curated, or pexels:photo:id)", line)
@@ -583,7 +593,8 @@ func (l *Loader) handlePexelsLine(line string) (int, error) {
 
 	downloaded := 0
 	for _, u := range urls {
-		ok, err := l.downloadIfNew(u)
+		identity := prefix + "pexels_" + l.urlToFilename(u)
+		ok, err := l.downloadWithIdentity(u, identity)
 		if err != nil {
 			l.logger.Warn("failed to download pexels image", "url", truncateURL(u), "error", err)
 			continue
@@ -597,7 +608,7 @@ func (l *Loader) handlePexelsLine(line string) (int, error) {
 }
 
 // handlePixabayLine resolves Pixabay search queries, editor's choice lists, or photo IDs and downloads them.
-func (l *Loader) handlePixabayLine(line string) (int, error) {
+func (l *Loader) handlePixabayLine(line, prefix string) (int, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {
 		return 0, fmt.Errorf("invalid pixabay format: %s (expected pixabay:search:query, pixabay:editors_choice, or pixabay:photo:id)", line)
@@ -637,7 +648,20 @@ func (l *Loader) handlePixabayLine(line string) (int, error) {
 		return 0, err
 	}
 
-	return l.downloadMultiple(urls, "pixabay")
+	downloaded := 0
+	for _, u := range urls {
+		identity := prefix + "pixabay_" + l.urlToFilename(u)
+		ok, err := l.downloadWithIdentity(u, identity)
+		if err != nil {
+			l.logger.Warn("failed to download pixabay image", "url", truncateURL(u), "error", err)
+			continue
+		}
+		if ok {
+			downloaded++
+		}
+	}
+
+	return downloaded, nil
 }
 
 // loadSources reads the sources file (TXT or YAML) and returns a list of source strings.
@@ -715,21 +739,6 @@ func truncateURL(url string) string {
 		return url[:77] + "..."
 	}
 	return url
-}
-
-func (l *Loader) downloadMultiple(urls []string, provider string) (int, error) {
-	downloaded := 0
-	for _, u := range urls {
-		ok, err := l.downloadIfNew(u)
-		if err != nil {
-			l.logger.Warn("failed to download image", "provider", provider, "url", truncateURL(u), "error", err)
-			continue
-		}
-		if ok {
-			downloaded++
-		}
-	}
-	return downloaded, nil
 }
 
 // buildContentIndex hashes all existing files in the artwork directory
