@@ -479,10 +479,13 @@ func (l *Loader) handleNASALine(line, prefix string) (int, error) {
 			parts := strings.Split(u, "/")
 			if len(parts) > 0 {
 				last := parts[len(parts)-1]
-				if strings.Contains(last, "~") {
-					querySlug := sanitize.Filename(parts[1] + "-" + parts[2])
-					identity = fmt.Sprintf("%snasa_%s_%s", prefix, querySlug, strings.Split(last, "~")[0])
+				id := strings.Split(last, "~")[0]
+				// Shorten and sanitize the ID to keep names reasonable.
+				cleanID := sanitize.Filename(id)
+				if len(cleanID) > 40 {
+					cleanID = cleanID[:40]
 				}
+				identity = fmt.Sprintf("%snasa_%s", prefix, cleanID)
 			}
 		}
 
