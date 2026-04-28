@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -595,7 +596,7 @@ func boolCount(cond bool, count int) int {
 }
 
 func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
-	optimized := 0
+	optimizedCount := 0
 	optCfg := optimize.Config{
 		Enabled:             e.cfg.OptimizeEnabled,
 		MaxWidth:            e.cfg.OptimizeMaxWidth,
@@ -605,27 +606,120 @@ func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 	}
 
 	for filename := range localFiles {
-		path := filepath.Join(e.cfg.ArtworkDir, filename)
+		wasModified, ok := e.handleSingleOptimization(filename, localFiles, optCfg)
+		if !ok {
+			continue
+		}
+		if wasModified {
+			optimizedCount++
+		}
+	}
+	return optimizedCount
+}
 
-		// If optimization is enabled, it also performs validation (decoding).
-		if e.cfg.OptimizeEnabled {
-			ok, err := optimize.OptimizeFile(path, optCfg, e.logger)
-			if err != nil {
-				e.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
-				delete(localFiles, filename)
-				continue
-			}
-			if ok {
-				optimized++
-			}
-		} else {
-			// Even if optimization is off, do a quick decode check to prevent uploading junk.
-			if err := optimize.ValidateImage(path); err != nil {
-				e.logger.Warn("skipping corrupt image", "file", filename, "error", err)
-				delete(localFiles, filename)
-				continue
+func (e *Engine) handleSingleOptimization(filename string, localFiles map[string]struct{}, optCfg optimize.Config) (bool, bool) {
+	path := filepath.Join(e.cfg.ArtworkDir, filename)
+
+	// 1. Skip check based on filename metadata (Avoid heavy computing).
+	if optCfg.Enabled && strings.Contains(filename, "_opt.h_") {
+		w, h, ok := parseDimensions(filename)
+		if ok && w <= optCfg.MaxWidth && h <= optCfg.MaxHeight {
+			e.logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
+			return false, true
+		}
+	}
+
+	// 2. Perform optimization/validation if needed.
+	if !optCfg.Enabled {
+		if err := optimize.ValidateImage(path); err != nil {
+			e.logger.Warn("skipping corrupt image", "file", filename, "error", err)
+			delete(localFiles, filename)
+			return false, false
+		}
+		return false, true
+	}
+
+	newW, newH, modified, err := optimize.OptimizeFile(path, optCfg, e.logger)
+	if err != nil {
+		e.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
+		delete(localFiles, filename)
+		return false, false
+	}
+
+	// 3. Handle renaming if modified or if filename metadata is missing/stale.
+	e.ensureCorrectFilename(filename, newW, newH, modified, localFiles)
+	return modified, true
+}
+
+func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified bool, localFiles map[string]struct{}) {
+	currentW, currentH, _ := parseDimensions(filename)
+	isOpt := strings.Contains(filename, "_opt.h_")
+
+	if !modified && isOpt && currentW == newW && currentH == newH {
+		return
+	}
+
+	ext := filepath.Ext(filename)
+	identity := strings.TrimSuffix(filename, ext)
+
+	// Strip hash and existing metadata to get clean identity.
+	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
+		identity = parts[0]
+		hash := parts[1]
+
+		// Strip existing dimensions/opt tags from identity.
+		identity = strings.Split(identity, "_"+fmt.Sprintf("%dx%d", currentW, currentH))[0]
+		identity = strings.Split(identity, "_opt")[0]
+
+		newFilename := fmt.Sprintf("%s_%dx%d_opt.h_%s%s", identity, newW, newH, hash, ext)
+		if newFilename == filename {
+			return
+		}
+
+		path := filepath.Join(e.cfg.ArtworkDir, filename)
+		newPath := filepath.Join(e.cfg.ArtworkDir, newFilename)
+
+		if err := os.Rename(path, newPath); err == nil {
+			e.logger.Info("updated optimized filename", "old", filename, "new", newFilename)
+			e.updateMappings(filename, newFilename)
+			delete(localFiles, filename)
+			localFiles[newFilename] = struct{}{}
+		}
+	}
+}
+
+// updateMappings migrates a content ID from an old filename to a new one across all TVs.
+func (e *Engine) updateMappings(oldName, newName string) {
+	for _, ip := range e.cfg.TVIPs {
+		m, err := LoadMapping(e.cfg.ArtworkDir, ip)
+		if err != nil {
+			continue
+		}
+		if m.Rename(oldName, newName) {
+			if err := m.Save(); err != nil {
+				e.logger.Warn("failed to save migrated mapping", "tv", ip, "error", err)
 			}
 		}
 	}
-	return optimized
+}
+
+// parseDimensions extracts width and height from a filename like "..._3840x2160_opt.h_...".
+func parseDimensions(filename string) (int, int, bool) {
+	ext := filepath.Ext(filename)
+	identity := strings.TrimSuffix(filename, ext)
+	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
+		identity = parts[0]
+	}
+
+	// Look for [WxH] pattern.
+	parts := strings.Split(identity, "_")
+	for _, p := range parts {
+		if strings.Contains(p, "x") {
+			var w, h int
+			if n, _ := fmt.Sscanf(p, "%dx%d", &w, &h); n == 2 {
+				return w, h, true
+			}
+		}
+	}
+	return 0, 0, false
 }

@@ -38,7 +38,7 @@ func TestOptimizeFile_Disabled(t *testing.T) {
 	writeFakeJPEG(t, path, 100, 100)
 
 	cfg := Config{Enabled: false}
-	ok, err := OptimizeFile(path, cfg, testLogger())
+	_, _, ok, err := OptimizeFile(path, cfg, testLogger())
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestOptimizeFile_AlreadySmall(t *testing.T) {
 	writeFakeJPEG(t, path, 384, 216)
 
 	cfg := DefaultConfig()
-	ok, err := OptimizeFile(path, cfg, testLogger())
+	_, _, ok, err := OptimizeFile(path, cfg, testLogger())
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -70,12 +70,15 @@ func TestOptimizeFile_LargeImageResized(t *testing.T) {
 	writeFakeJPEG(t, path, 7680, 4320)
 
 	cfg := DefaultConfig()
-	ok, err := OptimizeFile(path, cfg, testLogger())
+	newW, newH, ok, err := OptimizeFile(path, cfg, testLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !ok {
 		t.Fatal("expected image to be resized")
+	}
+	if newW > cfg.MaxWidth || newH > cfg.MaxHeight {
+		t.Errorf("returned dimensions %dx%d exceed max %dx%d", newW, newH, cfg.MaxWidth, cfg.MaxHeight)
 	}
 
 	// Verify output dimensions.
@@ -105,7 +108,7 @@ func TestOptimizeFile_SkipsPNG(t *testing.T) {
 	}
 
 	cfg := DefaultConfig()
-	ok, err := OptimizeFile(path, cfg, testLogger())
+	_, _, ok, err := OptimizeFile(path, cfg, testLogger())
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}

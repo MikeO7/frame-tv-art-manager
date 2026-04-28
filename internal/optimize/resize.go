@@ -38,29 +38,22 @@ func DefaultConfig() Config {
 }
 
 // OptimizeFile checks if an image needs resizing and optimizes it
-// in-place. Returns true if the file was modified.
-//
-// The function:
-//  1. Decodes the image to get dimensions
-//  2. If larger than MaxWidth×MaxHeight, resizes using Lanczos resampling
-//  3. Re-encodes at the target JPEG quality
-//  4. Writes atomically (temp file + rename)
-//  5. Skips PNG files (may need transparency for matte effects)
-func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
+// in-place. Returns the new width, height, and whether the file was modified.
+func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool, error) {
 	if !cfg.Enabled {
-		return false, nil
+		return 0, 0, false, nil
 	}
 
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == ".png" {
 		// Skip PNG — may need transparency for matte effects.
-		return false, nil
+		return 0, 0, false, nil
 	}
 
 	// Decode the image.
 	img, err := decodeImage(path)
 	if err != nil {
-		return false, err
+		return 0, 0, false, err
 	}
 
 	bounds := img.Bounds()
@@ -83,7 +76,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 			"width", origW,
 			"height", origH,
 		)
-		return false, nil
+		return origW, origH, false, nil
 	}
 
 	var dst image.Image
@@ -94,10 +87,14 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (bool, error) {
 	}
 
 	if err != nil {
-		return false, err
+		return 0, 0, false, err
 	}
 
-	return atomicWriteImage(path, dst, cfg.OptimizeJPEGQuality, logger)
+	ok, err := atomicWriteImage(path, dst, cfg.OptimizeJPEGQuality, logger)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return dst.Bounds().Dx(), dst.Bounds().Dy(), ok, nil
 }
 
 func decodeImage(path string) (image.Image, error) {

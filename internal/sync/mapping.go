@@ -80,6 +80,19 @@ func (m *Mapping) Delete(filename string) {
 	delete(m.data, filename)
 }
 
+// Rename updates a filename in the mapping while preserving its content_id.
+// Returns true if the old filename was found and migrated.
+func (m *Mapping) Rename(oldName, newName string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id, ok := m.data[oldName]; ok {
+		delete(m.data, oldName)
+		m.data[newName] = id
+		return true
+	}
+	return false
+}
+
 // GetContentID returns the content_id for a filename, and whether it exists.
 func (m *Mapping) GetContentID(filename string) (string, bool) {
 	m.mu.RLock()

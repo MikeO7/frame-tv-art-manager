@@ -299,14 +299,13 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 	// Get image dimensions for the filename.
 	dims := l.imageDimensions(path)
 
-	// Rename to include hash for future sync cycles.
+	// Rename to include hash and dimensions for future sync cycles.
 	ext := filepath.Ext(filename)
 	identity := strings.TrimSuffix(filename, ext)
 
-	// If it already has a hash, don't double-hash.
-	if strings.Contains(identity, ".h_") {
-		l.index[hash] = filename
-		return filename, true
+	// Strip existing hash/meta if any (e.g. from previous runs) to normalize.
+	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
+		identity = parts[0]
 	}
 
 	finalName := fmt.Sprintf("%s_%s.h_%s%s", identity, dims, hash[:12], ext)
@@ -769,7 +768,20 @@ func (l *Loader) buildContentIndex() {
 			hash = parts[1]
 		}
 
-		l.prefixMap[identity] = filename
+		// Clean identity of metadata suffixes (WxH, _opt) for stable lookups.
+		cleanIdentity := identity
+		cleanIdentity = strings.Split(cleanIdentity, "_opt")[0]
+		if lastUnderscore := strings.LastIndex(cleanIdentity, "_"); lastUnderscore != -1 {
+			suffix := cleanIdentity[lastUnderscore+1:]
+			if strings.Contains(suffix, "x") {
+				var w, h int
+				if n, _ := fmt.Sscanf(suffix, "%dx%d", &w, &h); n == 2 {
+					cleanIdentity = cleanIdentity[:lastUnderscore]
+				}
+			}
+		}
+
+		l.prefixMap[cleanIdentity] = filename
 
 		// If no hash in filename, we must calculate it (once).
 		if hash == "" {
