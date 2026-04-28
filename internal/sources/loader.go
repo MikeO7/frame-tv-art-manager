@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
@@ -326,19 +325,6 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 	return finalName, true
 }
 
-func (l *Loader) imageDimensions(path string) string {
-	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return "unknown"
-	}
-	defer func() { _ = f.Close() }()
-
-	cfg, _, err := image.DecodeConfig(f)
-	if err != nil {
-		return "unknown"
-	}
-	return fmt.Sprintf("%dx%d", cfg.Width, cfg.Height)
-}
 
 // urlToSlug generates a deterministic slug from a URL.
 func (l *Loader) urlToSlug(url string) string {

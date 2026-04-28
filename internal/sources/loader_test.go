@@ -110,21 +110,21 @@ func TestLoader_HandlesHTTPError(t *testing.T) {
 	}
 }
 
-func TestURLToFilename_Deterministic(t *testing.T) {
+func TestURLToSlug_Deterministic(t *testing.T) {
 	l := &Loader{}
 	url := "https://example.com/photo.jpg?w=3840"
-	f1 := l.urlToFilename(url)
-	f2 := l.urlToFilename(url)
-	if f1 != f2 {
-		t.Errorf("urlToFilename should be deterministic: %q != %q", f1, f2)
+	s1 := l.urlToSlug(url)
+	s2 := l.urlToSlug(url)
+	if s1 != s2 {
+		t.Errorf("urlToSlug should be deterministic: %q != %q", s1, s2)
 	}
 }
 
-func TestURLToFilename_DifferentURLs(t *testing.T) {
+func TestURLToSlug_DifferentURLs(t *testing.T) {
 	l := &Loader{}
-	f1 := l.urlToFilename("https://example.com/a.jpg")
-	f2 := l.urlToFilename("https://example.com/b.jpg")
-	if f1 == f2 {
-		t.Error("different URLs should produce different filenames")
+	s1 := l.urlToSlug("https://example.com/a.jpg")
+	s2 := l.urlToSlug("https://example.com/b.jpg")
+	if s1 == s2 {
+		t.Error("different URLs should produce different slugs")
 	}
 }
