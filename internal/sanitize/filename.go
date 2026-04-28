@@ -8,9 +8,6 @@ import (
 )
 
 var (
-	// reUnsafe matches any character that is NOT alphanumeric, space, hyphen, or underscore.
-	reUnsafe = regexp.MustCompile(`[^a-zA-Z0-9 _-]`)
-
 	// reSpaces collapses multiple consecutive spaces into one.
 	reSpaces = regexp.MustCompile(` +`)
 )
@@ -28,13 +25,16 @@ func Filename(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	stem := strings.TrimSuffix(name, filepath.Ext(name))
 
-	// Remove unsafe characters.
-	stem = reUnsafe.ReplaceAllString(stem, "")
+	// Remove unsafe characters (allow dots, hyphens, underscores).
+	stem = regexp.MustCompile(`[^a-zA-Z0-9 _.-]`).ReplaceAllString(stem, "")
 
 	// Collapse multiple spaces and trim.
 	stem = reSpaces.ReplaceAllString(strings.TrimSpace(stem), " ")
 
-	if stem == "" {
+	// Collapse multiple dots to prevent ".." or similar.
+	stem = regexp.MustCompile(`\.+`).ReplaceAllString(stem, ".")
+
+	if stem == "" || stem == "." {
 		stem = "image"
 	}
 
