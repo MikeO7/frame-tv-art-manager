@@ -230,10 +230,15 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	}
 	summary.ArtMode = true
 
-	// Save detailed metadata for auditing.
-	if err := client.SaveMetadata(ctx); err != nil {
-		log.Warn("could not save metadata", "error", err)
-	}
+	// Save detailed metadata for auditing in the background to prevent blocking sync.
+	go func(bgCtx context.Context) {
+		// Use a sub-timeout to ensure it doesn't leak if the TV stalls.
+		ctx, cancel := context.WithTimeout(bgCtx, 1*time.Minute)
+		defer cancel()
+		if err := client.SaveMetadata(ctx); err != nil {
+			log.Debug("could not save metadata", "error", err)
+		}
+	}(ctx)
 
 	// Load filename→content_id mapping.
 	mapping, err := LoadMapping(e.cfg.TokenDir, ip)

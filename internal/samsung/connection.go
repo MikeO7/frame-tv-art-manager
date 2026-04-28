@@ -259,6 +259,9 @@ func (c *Connection) Send(payload []byte) error {
 	}
 
 	c.logger.Debug("WS SEND", "payload", string(payload))
+	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
+		return fmt.Errorf("set write deadline: %w", err)
+	}
 	return c.conn.WriteMessage(websocket.TextMessage, payload)
 }
 
