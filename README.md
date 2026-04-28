@@ -43,9 +43,12 @@ services:
       # Sync every 15 minutes instead of the default 5
       SYNC_INTERVAL_MINUTES: "15"
 
-      # Resize oversized images to 4K and smart-crop to 16:9
+      # Resize oversized images to 4K and center-pad non-16:9 images
       IMAGE_OPTIMIZE_ENABLED: "true"
-      SMART_CROP_ENABLED: "true"
+      
+      # SMART_CROP_ENABLED: "false" (Default: false)
+      # When false, images are centered and padded to 4K ("True to Form").
+      # When true, images are intelligently cropped to exactly 16:9.
 
       # Shuffle through images every hour
       SLIDESHOW_ENABLED: "true"

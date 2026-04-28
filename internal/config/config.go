@@ -215,7 +215,7 @@ func Load() (*Config, error) {
 		OptimizeEnabled:     envBoolWithDefault("IMAGE_OPTIMIZE_ENABLED", true),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
-		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", true),
+		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", false),
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 92),
 		HealthPort:          envInt("HEALTH_PORT", 0),
 		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,
