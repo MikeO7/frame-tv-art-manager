@@ -20,7 +20,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: mikeo7/frame-tv-art-manager
 
 jobs:
   # The Build job runs 3 times in parallel (amd64, arm64, arm/v7)
