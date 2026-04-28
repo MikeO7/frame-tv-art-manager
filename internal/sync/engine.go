@@ -529,30 +529,32 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		switch tv.Status {
 		case "ok":
 			sb.WriteString("║    Status:     ✔ Art Mode                        ║\n")
-			fmt.Fprintf(&sb, "║    Uploaded:   %-3d new  │  Deleted: %-3d            ║\n", tv.Uploaded, tv.Deleted)
+			fmt.Fprintf(&sb, "║    Uploaded:   %-3d new  │  Deleted: %-13d║\n", tv.Uploaded, tv.Deleted)
 			fmt.Fprintf(&sb, "║    Total:      %-3d images on TV                   ║\n", tv.TotalImages)
 			if tv.Brightness != "" {
-				fmt.Fprintf(&sb, "║    Brightness: %-35s║\n", tv.Brightness)
+				fmt.Fprintf(&sb, "║    Brightness: %-34s║\n", tv.Brightness)
 			}
 			if tv.Slideshow != "" {
-				fmt.Fprintf(&sb, "║    Slideshow:  %-35s║\n", tv.Slideshow)
+				fmt.Fprintf(&sb, "║    Slideshow:  %-34s║\n", tv.Slideshow)
 			}
 		case "backoff":
 			sb.WriteString("║    Status:     ⏸ Backing off (unreachable)        ║\n")
 		default:
-			fmt.Fprintf(&sb, "║    Status:     %-35s║\n", tv.Status)
+			fmt.Fprintf(&sb, "║    Status:     %-34s║\n", tv.Status)
 		}
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
 
-	fmt.Fprintf(&sb, "║  Local:  %-3d images", totalLocal)
+	// Local collection summary.
+	localSummary := fmt.Sprintf("Local:  %d files", totalLocal)
 	if fromSources > 0 {
-		fmt.Fprintf(&sb, "  │  %d from URLs", fromSources)
+		localSummary += fmt.Sprintf(" │ %d from URLs", fromSources)
 	}
 	if optimized > 0 {
-		fmt.Fprintf(&sb, "  │  %d resized", optimized)
+		localSummary += fmt.Sprintf(" │ %d optimized", optimized)
 	}
-	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "║  %-48s║\n", localSummary)
+
 	fmt.Fprintf(&sb, "║  Took:   %-40s║\n", elapsed.String())
 	fmt.Fprintf(&sb, "║  Next:   %-40s║\n", nextSync.Format("15:04:05"))
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
@@ -606,6 +608,11 @@ func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 	}
 
 	for filename := range localFiles {
+		// Ignore hidden Mac metadata files (AppleDouble).
+		if strings.HasPrefix(filename, "._") {
+			delete(localFiles, filename)
+			continue
+		}
 		wasModified, ok := e.handleSingleOptimization(filename, localFiles, optCfg)
 		if !ok {
 			continue

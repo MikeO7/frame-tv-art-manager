@@ -26,7 +26,7 @@ func Filename(name string) string {
 	stem := strings.TrimSuffix(name, filepath.Ext(name))
 
 	// Remove unsafe characters (allow dots, hyphens, underscores).
-	stem = regexp.MustCompile(`[^a-zA-Z0-9 _.-]`).ReplaceAllString(stem, "")
+	stem = regexp.MustCompile(`[^a-zA-Z0-9 \._\-]`).ReplaceAllString(stem, "")
 
 	// Collapse multiple spaces and trim.
 	stem = reSpaces.ReplaceAllString(strings.TrimSpace(stem), " ")
