@@ -22,6 +22,11 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
+const (
+	ssTypeShuffle    = "shuffleslideshow"
+	ssTypeSequential = "slideshow"
+)
+
 // Engine orchestrates artwork synchronization across all configured TVs.
 // It implements the full sync lifecycle: sources → optimize → scan →
 // connect → diff → upload → delete → select → brightness → auto-off.
@@ -303,12 +308,34 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	// Determine slideshow settings.
 	var desiredSlideshow *samsung.SlideshowStatus
 	if e.cfg.SlideshowOverride && e.cfg.SlideshowEnabled {
-		ssType := "shuffleslideshow"
-		if e.cfg.SlideshowType == "sequential" {
-			ssType = "slideshow"
+		ssType := ssTypeShuffle
+		if e.cfg.SlideshowType == "sequential" || e.cfg.SlideshowType == "order" {
+			ssType = ssTypeSequential
 		}
+
+		interval := fmt.Sprintf("%d", e.cfg.SlideshowInterval)
+		
+		// Validate against known supported values for 2024 models
+		// Supported: 3, 15, 60 (1h), 720 (12h), 1440 (1d), 10080 (7d)
+		isValid := false
+		supported := []string{"3", "15", "60", "720", "1440", "10080"}
+		for _, s := range supported {
+			if interval == s {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			log.Warn("invalid slideshow interval detected for 2024 model, defaulting to 3m shuffle", 
+				"requested", interval,
+				"supported", supported)
+			interval = "3"
+			ssType = ssTypeShuffle
+		}
+
 		desiredSlideshow = &samsung.SlideshowStatus{
-			Value:      fmt.Sprintf("%d", e.cfg.SlideshowInterval),
+			Value:      interval,
 			Type:       ssType,
 			CategoryID: "MY-C0002",
 		}

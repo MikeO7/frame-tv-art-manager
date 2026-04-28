@@ -148,10 +148,22 @@ type Config struct {
 
 	// SmartCropEnabled enables entropy-based cropping to fit 16:9 perfectly.
 	SmartCropEnabled bool
+	
+	// SmartFillEnabled automatically crops images that are "close enough" to 16:9.
+	SmartFillEnabled bool
+
+	// SmartFillTolerance is the maximum aspect ratio difference allowed for Smart Fill.
+	SmartFillTolerance float64
 
 	// ImageMatteMode controls the background for non-16:9 images.
 	// Options: "extended" (blurred/dimmed/vignette) or "black" (solid bars).
 	ImageMatteMode string
+
+	// AmbientDimming is the brightness multiplier for the blurred background.
+	AmbientDimming float64
+
+	// AmbientVignette is the strength of the vignette (0-1).
+	AmbientVignette float64
 
 	// --- Health Server ---
 
@@ -220,8 +232,12 @@ func Load() (*Config, error) {
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
 		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", false),
+		SmartFillEnabled:    envBoolWithDefault("IMAGE_SMART_FILL_ENABLED", true),
+		SmartFillTolerance:  float64(envInt("IMAGE_SMART_FILL_TOLERANCE", 12)) / 100.0,
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 92),
 		ImageMatteMode:      strings.ToLower(envStr("IMAGE_MATTE_MODE", "extended")),
+		AmbientDimming:      envFloat("IMAGE_AMBIENT_DIMMING", 1.1),
+		AmbientVignette:     envFloat("IMAGE_AMBIENT_VIGNETTE", 0.0),
 		HealthPort:          envInt("HEALTH_PORT", 0),
 		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,
 		APITimeout:          time.Duration(envInt("API_TIMEOUT_SECONDS", 60)) * time.Second,

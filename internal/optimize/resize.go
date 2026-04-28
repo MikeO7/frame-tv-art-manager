@@ -25,7 +25,11 @@ type Config struct {
 	MaxHeight           int
 	OptimizeJPEGQuality int
 	SmartCropEnabled    bool
+	SmartFillEnabled    bool
+	SmartFillTolerance  float64
 	ImageMatteMode      string
+	AmbientDimming      float64
+	AmbientVignette     float64
 }
 
 // DefaultConfig returns sensible defaults for Frame TV display.
@@ -36,7 +40,11 @@ func DefaultConfig() Config {
 		MaxHeight:           2160,
 		OptimizeJPEGQuality: 92,
 		SmartCropEnabled:    false,
+		SmartFillEnabled:    true,
+		SmartFillTolerance:  0.12,
 		ImageMatteMode:      "extended",
+		AmbientDimming:      1.1, // "B3" style: 1.1 (bright). Set to 1.0 for "B2" style.
+		AmbientVignette:     0.0, // "B3" style: 0.0 (no vignette). Set to 0.3 for "B2" style.
 	}
 }
 
@@ -67,9 +75,9 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 	aspectRatio := float64(cfg.MaxWidth) / float64(cfg.MaxHeight)
 	imgRatio := float64(origW) / float64(origH)
 
-	// Tolerance for "Smart Fill": If the image is within 5% of the target 16:9 ratio,
+	// Tolerance for "Smart Fill": If the image is within 12% of the target 16:9 ratio,
 	// we perform a slight center-crop to avoid tiny black slivers.
-	const fillTolerance = 0.05
+	const fillTolerance = 0.12
 	ratioDiff := (imgRatio - aspectRatio) / aspectRatio
 	if ratioDiff < 0 {
 		ratioDiff = -ratioDiff
@@ -92,13 +100,14 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 	}
 
 	var dst image.Image
-	// If SmartCrop is enabled OR we are "close enough" to fill the screen, we crop.
-	if cfg.SmartCropEnabled || isCloseEnoughToFill {
-		if isCloseEnoughToFill && !cfg.SmartCropEnabled {
-			logger.Debug("performing subtle smart-fill crop to remove slivers", "file", filepath.Base(path))
-		}
+	// Prioritize cropping logic: SmartCrop (Explicit) > SmartFill (Tolerance) > Standard Resize (Blur)
+	switch {
+	case cfg.SmartCropEnabled:
 		dst, err = smartCrop(img, cfg)
-	} else {
+	case cfg.SmartFillEnabled && isCloseEnoughToFill:
+		logger.Debug("performing subtle smart-fill crop to remove slivers", "file", filepath.Base(path))
+		dst, err = smartCrop(img, cfg)
+	default:
 		dst = fitResize(img, cfg)
 	}
 
@@ -237,7 +246,7 @@ func fitResize(img image.Image, cfg Config) image.Image {
 		draw.BiLinear.Scale(ambientBg, ambientBg.Bounds(), blurredLowRes, blurredLowRes.Bounds(), draw.Over, nil)
 
 		// Apply "Jazz-up" effects (Dimming + Vignette)
-		applyAmbientEffects(ambientBg)
+		applyAmbientEffects(ambientBg, cfg.AmbientDimming, cfg.AmbientVignette)
 	}
 
 	// Create the final destination canvas.
@@ -253,8 +262,8 @@ func fitResize(img image.Image, cfg Config) image.Image {
 	return finalDst
 }
 
-// applyAmbientEffects darkens and adds a vignette to the background for a premium look.
-func applyAmbientEffects(img *image.RGBA) {
+// applyAmbientEffects adjusts brightness and adds a vignette to the background.
+func applyAmbientEffects(img *image.RGBA, dimFactor, vignetteStrength float64) {
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	centerX, centerY := float64(w)/2, float64(h)/2
@@ -262,30 +271,40 @@ func applyAmbientEffects(img *image.RGBA) {
 
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			// 1. Calculate Vignette (Radial darkening)
-			dx := float64(x) - centerX
-			dy := float64(y) - centerY
-			dist := math.Sqrt(dx*dx + dy*dy)
-
-			// Vignette factor: 1.0 at center, drops off toward corners.
-			// We start darkening after 50% of the distance.
 			vignette := 1.0
-			if dist > maxDist*0.4 {
-				vignette = 1.0 - (dist-maxDist*0.4)/(maxDist*0.6)*0.4
-			}
-			if vignette < 0.6 {
-				vignette = 0.6
+			if vignetteStrength > 0 {
+				dx := float64(x) - centerX
+				dy := float64(y) - centerY
+				dist := math.Sqrt(dx*dx + dy*dy)
+
+				// Vignette factor: 1.0 at center, drops off toward corners.
+				if dist > maxDist*0.3 {
+					vignette = 1.0 - (dist-maxDist*0.3)/(maxDist*0.7)*vignetteStrength
+				}
+				if vignette < 1.0-vignetteStrength {
+					vignette = 1.0 - vignetteStrength
+				}
 			}
 
-			// 2. Base Dimming (Darken by another 20%)
-			dimFactor := 0.75 * vignette
+			finalDim := dimFactor * vignette
 
 			i := y*img.Stride + x*4
-			img.Pix[i] = uint8(float64(img.Pix[i]) * dimFactor)
-			img.Pix[i+1] = uint8(float64(img.Pix[i+1]) * dimFactor)
-			img.Pix[i+2] = uint8(float64(img.Pix[i+2]) * dimFactor)
+			// Use a helper to clamp values to 0-255
+			img.Pix[i] = clamp(float64(img.Pix[i]) * finalDim)
+			img.Pix[i+1] = clamp(float64(img.Pix[i+1]) * finalDim)
+			img.Pix[i+2] = clamp(float64(img.Pix[i+2]) * finalDim)
 		}
 	}
+}
+
+func clamp(v float64) uint8 {
+	if v > 255 {
+		return 255
+	}
+	if v < 0 {
+		return 0
+	}
+	return uint8(v)
 }
 
 func fitDimensions(origW, origH, maxW, maxH int) (int, int) {

@@ -26,6 +26,11 @@ func NewArtAPI(conn *Connection, timeout time.Duration, logger *slog.Logger) *Ar
 	}
 }
 
+// Connection returns the underlying WebSocket connection.
+func (a *ArtAPI) Connection() *Connection {
+	return a.conn
+}
+
 // GetContentList retrieves the list of artwork on the TV, optionally
 // filtered by category. Use "MY-C0002" for user-uploaded photos.
 func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtContent, error) {

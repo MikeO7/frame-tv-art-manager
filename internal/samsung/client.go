@@ -225,6 +225,11 @@ func (c *Client) TurnOff(ctx context.Context) error {
 	)
 }
 
+// ArtAPI returns the internal ArtAPI instance.
+func (c *Client) ArtAPI() *ArtAPI {
+	return c.artAPI
+}
+
 // DeviceInfo returns the cached device info, or nil if not fetched.
 func (c *Client) DeviceInfo() *DeviceInfo {
 	return c.info

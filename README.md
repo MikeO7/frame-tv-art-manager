@@ -154,12 +154,24 @@ Everything is configured through environment variables. Only `TV_IPS` is require
 |---|---|---|
 | `IMAGE_OPTIMIZE_ENABLED` | `true` | Resize oversized images to fit within max dimensions |
 | `IMAGE_MATTE_MODE` | `extended` | Background for non-16:9 images: `extended` (blurred) or `black` |
+| `IMAGE_SMART_FILL_ENABLED` | `true` | Automatically crop images that are "close enough" to 16:9 |
+| `IMAGE_SMART_FILL_TOLERANCE`| `12` | % difference allowed for Smart Fill (1-100) |
 | `SMART_CROP_ENABLED` | `false` | Crop images to 16:9 using entropy-based analysis |
+| `IMAGE_AMBIENT_DIMMING` | `1.1` | Background brightness multiplier (1.0 = original) |
+| `IMAGE_AMBIENT_VIGNETTE` | `0.0` | Strength of background vignette (0.0 to 1.0) |
 | `IMAGE_MAX_WIDTH` | `3840` | Maximum width in pixels |
 | `IMAGE_MAX_HEIGHT` | `2160` | Maximum height in pixels |
 | `IMAGE_JPEG_QUALITY` | `92` | JPEG quality for re-encoded images (1–100) |
 
-Smart crop uses the [smartcrop](https://github.com/muesli/smartcrop) library to find the most visually interesting region of the image, then scales the cropped result to exactly 3840×2160 using CatmullRom resampling. PNG files are skipped (they may need transparency for matte effects). Even with optimization disabled, every image is still validated by decoding it — corrupt files are logged and excluded.
+**Smart Fill vs. Smart Crop:**
+- **Smart Fill (Default: 12%)**: If an image is within 12% of the 16:9 aspect ratio, it will be subtly cropped to fill the screen. This removes small, jarring blur bars on nearly-optimal images.
+- **Smart Crop**: When enabled, *every* image is cropped to 16:9 using an algorithm that preserves the most interesting part of the photo (faces, mountains, etc.).
+
+**Ambient Background Styles (Extended Mode):**
+The `extended` matte mode uses a blurred version of your photo as the background. You can customize the look using the `DIMMING` and `VIGNETTE` settings:
+- **Default (B3 style)**: `DIMMING: 1.1`, `VIGNETTE: 0.0` (High brightness, no border feel).
+- **High Contrast (B2 style)**: `DIMMING: 1.0`, `VIGNETTE: 0.3` (Natural brightness with soft corners).
+- **Classic Look**: `DIMMING: 0.75`, `VIGNETTE: 0.4` (Darker background, main image pops).
 
 ### Matte / Border Style
 
@@ -182,15 +194,27 @@ You can also set per-image overrides — see [Per-Image Matte Overrides](#per-im
 | Variable | Default | Description |
 |---|---|---|
 | `SLIDESHOW_ENABLED` | `false` | Override the TV's slideshow settings |
-| `SLIDESHOW_INTERVAL` | `15` | Minutes between slide transitions |
+| `SLIDESHOW_INTERVAL` | `15` | Minutes between slide transitions (see note below) |
 | `SLIDESHOW_TYPE` | `shuffle` | `shuffle` or `sequential` |
+
+> [!IMPORTANT]
+> **2024 Model Limitation (LS03D / Tizen 8.0)**
+> Newer Frame TVs only support a specific subset of intervals via the API. If you provide an unsupported value, the manager will default to **3 minutes (Shuffle)** and log a warning.
+>
+> **Supported Intervals:**
+> - `3` (3 Minutes)
+> - `15` (15 Minutes)
+> - `60` (1 Hour)
+> - `720` (12 Hours)
+> - `1440` (1 Day)
+> - `10080` (7 Days)
 
 If you **don't set any** of these three variables, the manager preserves the TV's current slideshow settings. As soon as you set any one of them, the manager takes control of slideshow behavior.
 
-Example — rotate through images randomly every 30 minutes:
+Example — rotate through images randomly every 15 minutes:
 ```yaml
 SLIDESHOW_ENABLED: "true"
-SLIDESHOW_INTERVAL: "30"
+SLIDESHOW_INTERVAL: "15"
 SLIDESHOW_TYPE: "shuffle"
 ```
 
