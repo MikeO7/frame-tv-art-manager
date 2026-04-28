@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -339,7 +340,27 @@ func (l *Loader) imageDimensions(path string) string {
 // SHA256 hashing. This ensures idempotent downloads.
 func (l *Loader) urlToFilename(url string) string {
 	hash := sha256.Sum256([]byte(url))
-	return fmt.Sprintf("src_%x%s", hash[:8], extJPG) // 16 hex chars
+	stem := "src"
+
+	if u, err := neturl.Parse(url); err == nil && u.Host != "" {
+		host := sanitize.Filename(u.Host)
+		path := ""
+		if p := strings.Split(strings.Trim(u.Path, "/"), "/"); len(p) > 0 {
+			path = sanitize.Filename(p[0])
+		}
+		if path != "" {
+			stem = fmt.Sprintf("src_%s_%s", host, path)
+		} else {
+			stem = fmt.Sprintf("src_%s", host)
+		}
+	}
+
+	// Limit stem to keep room for hash and metadata.
+	if len(stem) > 150 {
+		stem = stem[:150]
+	}
+
+	return fmt.Sprintf("%s.h_%x%s", stem, hash[:8], extJPG)
 }
 
 // extensionFromResponse determines the file extension from the HTTP
@@ -409,8 +430,8 @@ func (l *Loader) handleUnsplashLine(line, prefix string) (int, error) {
 
 		// Use a descriptive identity including provider and source.
 		coll := parts[2]
-		if len(coll) > 100 {
-			coll = coll[:100]
+		if len(coll) > 180 {
+			coll = coll[:180]
 		}
 		identity := fmt.Sprintf("%sunsplash_collection-%s_%s", prefix, coll, p.ID)
 		if parts[1] == "photo" {
@@ -484,12 +505,15 @@ func (l *Loader) handleNASALine(line, prefix string) (int, error) {
 			if len(parts) > 0 {
 				last := parts[len(parts)-1]
 				id := strings.Split(last, "~")[0]
-				// Limit length to keep filenames safe (max 255 on Linux).
+				// Limit length to keep filenames safe (250 total char limit).
+				// We leave room for metadata suffixes (_WxH_opt.h_HASH).
 				cleanID := sanitize.Filename(id)
-				if len(cleanID) > 100 {
-					cleanID = cleanID[:100]
+				if len(cleanID) > 180 {
+					cleanID = cleanID[:180]
 				}
-				identity = fmt.Sprintf("%snasa_%s", prefix, cleanID)
+
+				querySlug := sanitize.Filename(parts[1] + "-" + parts[2])
+				identity = fmt.Sprintf("%snasa_%s_%s", prefix, querySlug, cleanID)
 			}
 		}
 
@@ -540,7 +564,8 @@ func (l *Loader) handleArticLine(line, prefix string) (int, error) {
 			// Try to extract image_id for a nicer filename.
 			parts := strings.Split(u, "/")
 			if len(parts) > 5 {
-				identity = fmt.Sprintf("%sartic_%s", prefix, parts[5])
+				querySlug := sanitize.Filename(parts[1] + "-" + parts[2])
+				identity = fmt.Sprintf("%sartic_%s_%s", prefix, querySlug, parts[5])
 			}
 		}
 
