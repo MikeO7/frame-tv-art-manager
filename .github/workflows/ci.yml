@@ -50,6 +50,7 @@ jobs:
           go-version-input: '1.24'
           check-latest: true
           repo-checkout: false
+          cache: false
 
   # Lane 3: Workflow Linting
   actionlint:
