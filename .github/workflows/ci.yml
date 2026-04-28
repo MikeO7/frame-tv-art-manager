@@ -10,43 +10,64 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test
+  # Lane 1: High-speed Linting
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
-    - name: Check out code
-      uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
 
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: '1.25'
-        cache: true
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Install tools
-      run: make tools
-
-    - name: Run checks
-      run: make check
-
-  build:
-    name: Build
+  # Lane 2: Security Scan
+  security:
+    name: Security
     runs-on: ubuntu-latest
     steps:
-    - name: Check out code
-      uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: govulncheck
+        uses: google/govulncheck-action@v1
+        with:
+          go-version: '1.26'
 
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: '1.25'
-        cache: true
+  # Lane 3: Workflow Linting
+  actionlint:
+    name: Actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        uses: reviewdog/action-actionlint@v1
 
-    - name: Build binary
-      run: make build
+  # Lane 4: Test & Build
+  test-build:
+    name: Test and Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      
+      - name: Download dependencies
+        run: go mod download
 
-    - name: Verify binary runs
-      run: ./frame-tv-art-manager --help
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Build binary
+        run: go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
+
+      - name: Verify binary
+        run: ./frame-tv-art-manager --help
