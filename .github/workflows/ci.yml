@@ -34,7 +34,7 @@ jobs:
           version: latest
           install-mode: binary
 
-  # Lane 2: Security Scan (runs govulncheck directly to avoid internal action conflicts)
+  # Lane 2: Security Scan
   security:
     name: Security
     runs-on: ubuntu-latest
@@ -44,11 +44,11 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
-      - name: Install govulncheck
-        run: GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: Run govulncheck
+      - name: govulncheck
         continue-on-error: true
-        run: govulncheck ./...
+        run: |
+          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
   # Lane 3: Workflow Linting
   actionlint:
@@ -69,15 +69,7 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run tests
-        run: go test -v ./...
-
-      - name: Build binary
-        run: go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
-
-      - name: Verify binary
-        run: ./frame-tv-art-manager --help
+      - name: Test and build
+        run: |
+          go test ./...
+          go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager

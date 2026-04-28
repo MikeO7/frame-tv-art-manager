@@ -79,8 +79,8 @@ jobs:
           VERSION=${{ steps.meta.outputs.version }}
           GIT_COMMIT=${{ github.sha }}
           BUILD_DATE=${{ steps.build-meta.outputs.date }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=${{ matrix.platform }}
+        cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
         provenance: false
         sbom: false
 
