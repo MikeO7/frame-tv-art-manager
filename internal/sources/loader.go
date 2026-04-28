@@ -408,7 +408,11 @@ func (l *Loader) handleUnsplashLine(line, prefix string) (int, error) {
 		url := p.URLs.Raw + "&w=3840&q=95&fm=jpg"
 
 		// Use a descriptive identity including provider and source.
-		identity := fmt.Sprintf("%sunsplash_collection-%s_%s", prefix, parts[2], p.ID)
+		coll := parts[2]
+		if len(coll) > 20 {
+			coll = coll[:20]
+		}
+		identity := fmt.Sprintf("%sunsplash_coll-%s_%s", prefix, coll, p.ID)
 		if parts[1] == "photo" {
 			identity = fmt.Sprintf("%sunsplash_photo_%s", prefix, p.ID)
 		}
@@ -533,11 +537,10 @@ func (l *Loader) handleArticLine(line, prefix string) (int, error) {
 	for _, u := range urls {
 		identity := strings.TrimSuffix(l.urlToFilename(u), ".jpg")
 		if strings.Contains(u, "artic.edu") {
-			// Try to extract image_id for a nicer filename
+			// Try to extract image_id for a nicer filename.
 			parts := strings.Split(u, "/")
 			if len(parts) > 5 {
-				querySlug := sanitize.Filename(parts[1] + "-" + parts[2])
-				identity = fmt.Sprintf("%sartic_%s_%s", prefix, querySlug, parts[5])
+				identity = fmt.Sprintf("%sartic_%s", prefix, parts[5])
 			}
 		}
 
