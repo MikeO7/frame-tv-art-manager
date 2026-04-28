@@ -33,7 +33,7 @@ func DefaultConfig() Config {
 		MaxWidth:            3840,
 		MaxHeight:           2160,
 		OptimizeJPEGQuality: 92,
-		SmartCropEnabled:    true,
+		SmartCropEnabled:    false,
 	}
 }
 
@@ -196,8 +196,21 @@ func fitResize(img image.Image, cfg Config) image.Image {
 	origH := img.Bounds().Dy()
 	newW, newH := fitDimensions(origW, origH, cfg.MaxWidth, cfg.MaxHeight)
 
-	finalDst := image.NewRGBA(image.Rect(0, 0, newW, newH))
-	draw.CatmullRom.Scale(finalDst, finalDst.Bounds(), img, img.Bounds(), draw.Over, nil)
+	// Create a new image scaled to fit.
+	scaledImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.CatmullRom.Scale(scaledImg, scaledImg.Bounds(), img, img.Bounds(), draw.Over, nil)
+
+	// Create a full 4K background (default black) to ensure 1-1 pixel mapping on TV.
+	// This prevents the TV from trying to stretch or "smart fill" a non-16:9 image.
+	finalDst := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+
+	// Calculate center offset.
+	offsetX := (cfg.MaxWidth - newW) / 2
+	offsetY := (cfg.MaxHeight - newH) / 2
+
+	// Draw the scaled image onto the center of the 4K canvas.
+	draw.Draw(finalDst, image.Rect(offsetX, offsetY, offsetX+newW, offsetY+newH), scaledImg, scaledImg.Bounds().Min, draw.Src)
+
 	return finalDst
 }
 
