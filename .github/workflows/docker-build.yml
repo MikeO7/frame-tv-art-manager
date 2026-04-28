@@ -74,7 +74,6 @@ jobs:
       with:
         context: .
         platforms: ${{ matrix.platform }}
-        # We push by digest to a temporary location so the manifest job can join them
         outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
         build-args: |
           VERSION=${{ steps.meta.outputs.version }}
@@ -125,31 +124,20 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v6
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern=latest
-          type=raw,value=latest,enable={{is_default_branch}}
-        labels: |
-          org.opencontainers.image.title=Frame TV Art Manager
-          org.opencontainers.image.description=Automatic artwork sync for Samsung Frame TVs
-
     - name: Create manifest list and push
       working-directory: /tmp/digests
       run: |
-        # Generate the list of digests to merge
-        DIGESTS=$(find . -type f -exec printf "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s " {} +)
-        
+        # Build the tag arguments
+        TAGS=("--tag" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest")
+
+        # Build the source list from digest files
+        SOURCES=()
+        for f in *; do
+          SOURCES+=("${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:${f}")
+        done
+
         # Create and push the multi-arch manifest
-        # shellcheck disable=SC2086
-        docker buildx imagetools create $DIGESTS \
-          --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" \
-          "$(echo "${{ steps.meta.outputs.tags }}" | xargs -I {} echo "--tag {}")"
+        docker buildx imagetools create "${TAGS[@]}" "${SOURCES[@]}"
 
     - name: Inspect image
       run: |
