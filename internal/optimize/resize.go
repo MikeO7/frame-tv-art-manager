@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/muesli/smartcrop"
 	"github.com/muesli/smartcrop/nfnt"
@@ -288,39 +289,117 @@ func FitResize(img image.Image, cfg Config) image.Image {
 }
 
 // applyAmbientEffects adjusts brightness and adds a vignette to the background.
+//nolint:gocyclo // Highly optimized performance-critical loop
 func applyAmbientEffects(img *image.RGBA, dimFactor, vignetteStrength float64) {
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
+
+	// Fast path: No vignette and no dimming
+	if vignetteStrength <= 0 && dimFactor == 1.0 {
+		for y := 0; y < h; y++ {
+			offset := y * img.Stride
+			endOffset := offset + w*4
+			for i := offset + 3; i < endOffset; i += 4 {
+				img.Pix[i] = 255 // Ensure fully opaque
+			}
+		}
+		return
+	}
+
+	// Fast path: Constant dimming without vignette
+	if vignetteStrength <= 0 {
+		var wg sync.WaitGroup
+		numWorkers := 8
+		rowsPerWorker := h / numWorkers
+		if rowsPerWorker == 0 {
+			rowsPerWorker = 1
+		}
+		for worker := 0; worker < numWorkers; worker++ {
+			startY := worker * rowsPerWorker
+			endY := (worker + 1) * rowsPerWorker
+			if worker == numWorkers-1 {
+				endY = h
+			}
+			if startY >= h {
+				break
+			}
+			wg.Add(1)
+			go func(sY, eY int) {
+				defer wg.Done()
+				for y := sY; y < eY; y++ {
+					offset := y * img.Stride
+					endOffset := offset + w*4
+					for i := offset; i < endOffset; i += 4 {
+						img.Pix[i] = clamp(float64(img.Pix[i]) * dimFactor)
+						img.Pix[i+1] = clamp(float64(img.Pix[i+1]) * dimFactor)
+						img.Pix[i+2] = clamp(float64(img.Pix[i+2]) * dimFactor)
+						img.Pix[i+3] = 255 // Ensure fully opaque
+					}
+				}
+			}(startY, endY)
+		}
+		wg.Wait()
+		return
+	}
+
+	// Standard path with parallelization and optimized math
 	centerX, centerY := float64(w)/2, float64(h)/2
 	maxDist := math.Sqrt(centerX*centerX + centerY*centerY)
 
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			vignette := 1.0
-			if vignetteStrength > 0 {
-				dx := float64(x) - centerX
-				dy := float64(y) - centerY
-				dist := math.Sqrt(dx*dx + dy*dy)
+	// Precalculate constants for vignette
+	threshold := maxDist * 0.3
+	scale := maxDist * 0.7
+	minVignette := 1.0 - vignetteStrength
 
-				// Vignette factor: 1.0 at center, drops off toward corners.
-				if dist > maxDist*0.3 {
-					vignette = 1.0 - (dist-maxDist*0.3)/(maxDist*0.7)*vignetteStrength
-				}
-				if vignette < 1.0-vignetteStrength {
-					vignette = 1.0 - vignetteStrength
+	var wg sync.WaitGroup
+	numWorkers := 8
+	rowsPerWorker := h / numWorkers
+	if rowsPerWorker == 0 {
+		rowsPerWorker = 1
+	}
+
+	for worker := 0; worker < numWorkers; worker++ {
+		startY := worker * rowsPerWorker
+		endY := (worker + 1) * rowsPerWorker
+		if worker == numWorkers-1 {
+			endY = h
+		}
+		if startY >= h {
+			break
+		}
+
+		wg.Add(1)
+		go func(sY, eY int) {
+			defer wg.Done()
+			for y := sY; y < eY; y++ {
+				dy := float64(y) - centerY
+				dy2 := dy * dy
+				offset := y * img.Stride
+
+				for x := 0; x < w; x++ {
+					dx := float64(x) - centerX
+					dist := math.Sqrt(dx*dx + dy2)
+
+					vignette := 1.0
+					if dist > threshold {
+						vignette = 1.0 - ((dist-threshold)/scale)*vignetteStrength
+						if vignette < minVignette {
+							vignette = minVignette
+						}
+					}
+
+					finalDim := dimFactor * vignette
+
+					i := offset + x*4
+					img.Pix[i] = clamp(float64(img.Pix[i]) * finalDim)
+					img.Pix[i+1] = clamp(float64(img.Pix[i+1]) * finalDim)
+					img.Pix[i+2] = clamp(float64(img.Pix[i+2]) * finalDim)
+					img.Pix[i+3] = 255 // Ensure fully opaque
 				}
 			}
-
-			finalDim := dimFactor * vignette
-
-			i := y*img.Stride + x*4
-			// Use a helper to clamp values to 0-255
-			img.Pix[i] = clamp(float64(img.Pix[i]) * finalDim)
-			img.Pix[i+1] = clamp(float64(img.Pix[i+1]) * finalDim)
-			img.Pix[i+2] = clamp(float64(img.Pix[i+2]) * finalDim)
-			img.Pix[i+3] = 255 // Ensure fully opaque
-		}
+		}(startY, endY)
 	}
+	wg.Wait()
 }
 
 func clamp(v float64) uint8 {
