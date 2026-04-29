@@ -155,10 +155,6 @@ type Config struct {
 	// SmartFillTolerance is the maximum aspect ratio difference allowed for Smart Fill.
 	SmartFillTolerance float64
 
-	// ImageMatteMode controls the background for non-16:9 images.
-	// Options: "extended" (blurred/dimmed/vignette) or "black" (solid bars).
-	ImageMatteMode string
-
 	// AmbientDimming is the brightness multiplier for the blurred background.
 	AmbientDimming float64
 
@@ -235,7 +231,6 @@ func Load() (*Config, error) {
 		SmartFillEnabled:    envBoolWithDefault("IMAGE_SMART_FILL_ENABLED", true),
 		SmartFillTolerance:  float64(envInt("IMAGE_SMART_FILL_TOLERANCE", 12)) / 100.0,
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 92),
-		ImageMatteMode:      strings.ToLower(envStr("IMAGE_MATTE_MODE", "extended")),
 		AmbientDimming:      envFloat("IMAGE_AMBIENT_DIMMING", 1.1),
 		AmbientVignette:     envFloat("IMAGE_AMBIENT_VIGNETTE", 0.0),
 		HealthPort:          envInt("HEALTH_PORT", 0),
@@ -322,14 +317,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf(
 			"LOG_LEVEL must be one of debug, info, warn, error; got %q",
 			cfg.LogLevel,
-		)
-	}
-
-	validMatteModes := map[string]bool{"extended": true, "black": true}
-	if !validMatteModes[cfg.ImageMatteMode] {
-		return nil, fmt.Errorf(
-			"IMAGE_MATTE_MODE must be 'extended' or 'black', got %q",
-			cfg.ImageMatteMode,
 		)
 	}
 
