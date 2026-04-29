@@ -80,6 +80,15 @@ func (m *Mapping) Delete(filename string) {
 	delete(m.data, filename)
 }
 
+// DeleteBatch removes multiple filenames from the mapping under a single lock.
+func (m *Mapping) DeleteBatch(filenames []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, filename := range filenames {
+		delete(m.data, filename)
+	}
+}
+
 // Rename updates a filename in the mapping while preserving its content_id.
 // Returns true if the old filename was found and migrated.
 func (m *Mapping) Rename(oldName, newName string) bool {
