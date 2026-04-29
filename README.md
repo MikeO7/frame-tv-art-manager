@@ -45,14 +45,9 @@ services:
 
       # Resize oversized images to 4K and center-pad non-16:9 images
       IMAGE_OPTIMIZE_ENABLED: "true"
-      
-      # IMAGE_MATTE_MODE: "extended" (Default: extended)
-      # "extended": Premium blurred/dimmed background (recommended)
-      # "black": Traditional solid black bars
-      IMAGE_MATTE_MODE: "extended"
 
       # SMART_CROP_ENABLED: "false" (Default: false)
-      # When false, non-16:9 images use the background set in IMAGE_MATTE_MODE.
+      # When false, non-16:9 images are center-padded with a blurred background.
       # When true, images are intelligently cropped to fill the full 16:9 screen.
 
       # Shuffle through images every hour
@@ -153,7 +148,6 @@ Everything is configured through environment variables. Only `TV_IPS` is require
 | Variable | Default | Description |
 |---|---|---|
 | `IMAGE_OPTIMIZE_ENABLED` | `true` | Resize oversized images to fit within max dimensions |
-| `IMAGE_MATTE_MODE` | `extended` | Background for non-16:9 images: `extended` (blurred) or `black` |
 | `IMAGE_SMART_FILL_ENABLED` | `true` | Automatically crop images that are "close enough" to 16:9 |
 | `IMAGE_SMART_FILL_TOLERANCE`| `12` | % difference allowed for Smart Fill (1-100) |
 | `SMART_CROP_ENABLED` | `false` | Crop images to 16:9 using entropy-based analysis |
@@ -167,8 +161,8 @@ Everything is configured through environment variables. Only `TV_IPS` is require
 - **Smart Fill (Default: 12%)**: If an image is within 12% of the 16:9 aspect ratio, it will be subtly cropped to fill the screen. This removes small, jarring blur bars on nearly-optimal images.
 - **Smart Crop**: When enabled, *every* image is cropped to 16:9 using an algorithm that preserves the most interesting part of the photo (faces, mountains, etc.).
 
-**Ambient Background Styles (Extended Mode):**
-The `extended` matte mode uses a blurred version of your photo as the background. You can customize the look using the `DIMMING` and `VIGNETTE` settings:
+**Ambient Background Styles:**
+Non-16:9 images will automatically use an aspect-filled blurred version of the photo as the background. You can customize the look using the `DIMMING` and `VIGNETTE` settings:
 - **Default (B3 style)**: `DIMMING: 1.1`, `VIGNETTE: 0.0` (High brightness, no border feel).
 - **High Contrast (B2 style)**: `DIMMING: 1.0`, `VIGNETTE: 0.3` (Natural brightness with soft corners).
 - **Classic Look**: `DIMMING: 0.75`, `VIGNETTE: 0.4` (Darker background, main image pops).

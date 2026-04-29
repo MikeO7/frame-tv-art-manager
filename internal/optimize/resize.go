@@ -27,7 +27,6 @@ type Config struct {
 	SmartCropEnabled    bool
 	SmartFillEnabled    bool
 	SmartFillTolerance  float64
-	ImageMatteMode      string
 	AmbientDimming      float64
 	AmbientVignette     float64
 }
@@ -42,7 +41,6 @@ func DefaultConfig() Config {
 		SmartCropEnabled:    false,
 		SmartFillEnabled:    true,
 		SmartFillTolerance:  0.12,
-		ImageMatteMode:      "extended",
 		AmbientDimming:      1.1, // "B3" style: 1.1 (bright). Set to 1.0 for "B2" style.
 		AmbientVignette:     0.0, // "B3" style: 0.0 (no vignette). Set to 0.3 for "B2" style.
 	}
@@ -229,34 +227,57 @@ func FitResize(img image.Image, cfg Config) image.Image {
 	scaledImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
 	draw.CatmullRom.Scale(scaledImg, scaledImg.Bounds(), img, img.Bounds(), draw.Over, nil)
 
-	// Create the background based on the configured mode.
-	var ambientBg *image.RGBA
-	if cfg.ImageMatteMode == "black" {
-		// Classic Black Bars
-		ambientBg = image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
-		// Default is already transparent/black (0,0,0,0), but we ensure it's opaque black.
-		for i := 0; i < len(ambientBg.Pix); i += 4 {
-			ambientBg.Pix[i+3] = 255 // Set Alpha to 255
-		}
+	// Create the "Extended Look" background (Blurred + Jazzed-up).
+	// To preserve the aspect ratio and make it look like the photo is extended naturally,
+	// we calculate a crop of the original image that matches the target aspect ratio,
+	// then scale and blur it to become the background.
+	targetRatio := float64(cfg.MaxWidth) / float64(cfg.MaxHeight)
+	origRatio := float64(origW) / float64(origH)
+
+	var cropW, cropH int
+	if origRatio > targetRatio {
+		// Original is wider than target, crop sides
+		cropH = origH
+		cropW = int(float64(origH) * targetRatio)
 	} else {
-		// Premium "Extended Look" (Blurred + Jazzed-up)
-		bgW, bgH := 640, 360
-		lowRes := image.NewRGBA(image.Rect(0, 0, bgW, bgH))
-		draw.BiLinear.Scale(lowRes, lowRes.Bounds(), img, img.Bounds(), draw.Over, nil)
-
-		blurredLowRes := GaussianBlur(lowRes, 8.0)
-
-		ambientBg = image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
-		draw.BiLinear.Scale(ambientBg, ambientBg.Bounds(), blurredLowRes, blurredLowRes.Bounds(), draw.Over, nil)
-
-		// Apply "Jazz-up" effects (Dimming + Vignette)
-		applyAmbientEffects(ambientBg, cfg.AmbientDimming, cfg.AmbientVignette)
+		// Original is taller than target, crop top/bottom
+		cropW = origW
+		cropH = int(float64(origW) / targetRatio)
 	}
+
+	cropX := (origW - cropW) / 2
+	cropY := (origH - cropH) / 2
+	cropRect := image.Rect(cropX, cropY, cropX+cropW, cropY+cropH)
+
+	// Extract the cropped region. If subImager isn't supported, draw to an intermediate.
+	type subImager interface {
+		SubImage(r image.Rectangle) image.Image
+	}
+	var croppedImg image.Image
+	if si, ok := img.(subImager); ok {
+		croppedImg = si.SubImage(cropRect)
+	} else {
+		tempDst := image.NewRGBA(img.Bounds())
+		draw.Draw(tempDst, tempDst.Bounds(), img, img.Bounds().Min, draw.Src)
+		croppedImg = tempDst.SubImage(cropRect)
+	}
+
+	bgW, bgH := 640, 360
+	lowRes := image.NewRGBA(image.Rect(0, 0, bgW, bgH))
+	draw.BiLinear.Scale(lowRes, lowRes.Bounds(), croppedImg, croppedImg.Bounds(), draw.Over, nil)
+
+	blurredLowRes := GaussianBlur(lowRes, 8.0)
+
+	ambientBg := image.NewRGBA(image.Rect(0, 0, cfg.MaxWidth, cfg.MaxHeight))
+	draw.BiLinear.Scale(ambientBg, ambientBg.Bounds(), blurredLowRes, blurredLowRes.Bounds(), draw.Over, nil)
+
+	// Apply "Jazz-up" effects (Dimming + Vignette)
+	applyAmbientEffects(ambientBg, cfg.AmbientDimming, cfg.AmbientVignette)
 
 	// Create the final destination canvas.
 	finalDst := ambientBg
 
-	// Calculate center offset.
+	// Calculate center offset for the sharp scaled foreground image.
 	offsetX := (cfg.MaxWidth - newW) / 2
 	offsetY := (cfg.MaxHeight - newH) / 2
 
