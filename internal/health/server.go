@@ -90,6 +90,9 @@ func (s *Server) Start() {
 		Addr:              fmt.Sprintf(":%d", s.port),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
