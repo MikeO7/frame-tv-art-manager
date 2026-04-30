@@ -28,22 +28,30 @@ func GaussianBlur(src *image.RGBA, sigma float64) *image.RGBA {
 		kernel[i] /= sum
 	}
 
+	fullKernel := make([]float64, 2*radius+1)
+	for i := -radius; i <= radius; i++ {
+		fullKernel[i+radius] = kernel[abs(i)]
+	}
+
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
 	// 1. Horizontal pass
 	tmp := image.NewRGBA(bounds)
-	applyHorizontalPass(src, tmp, kernel, radius, width, height)
+	applyHorizontalPass(src, tmp, fullKernel, radius, width, height)
 
 	// 2. Vertical pass
 	dst := image.NewRGBA(bounds)
-	applyVerticalPass(tmp, dst, kernel, radius, width, height)
+	applyVerticalPass(tmp, dst, fullKernel, radius, width, height)
 
 	return dst
 }
 
 //nolint:dupl // Separable horizontal pass
-func applyHorizontalPass(src, dst *image.RGBA, kernel []float64, radius, width, height int) {
+func applyHorizontalPass(src, dst *image.RGBA, fullKernel []float64, radius, width, height int) {
+	// Optimization: Skip bounds checking if the image is too small to split into edge and center logic.
+	canOptimizeBounds := (2*radius) < width
+
 	var wg sync.WaitGroup
 	numWorkers := 8
 	rowsPerWorker := height / numWorkers
@@ -62,24 +70,84 @@ func applyHorizontalPass(src, dst *image.RGBA, kernel []float64, radius, width, 
 		go func(sY, eY int) {
 			defer wg.Done()
 			for y := sY; y < eY; y++ {
-				for x := 0; x < width; x++ {
-					var r, g, b, a float64
-					for i := -radius; i <= radius; i++ {
-						ix := x + i
-						if ix < 0 {
-							ix = 0
-						} else if ix >= width {
-							ix = width - 1
+				srcRowOffset := y * src.Stride
+				dstRowOffset := y * dst.Stride
+
+				if canOptimizeBounds {
+					// left edge
+					for x := 0; x < radius; x++ {
+						var r, g, b, a float64
+						for i := -radius; i <= radius; i++ {
+							ix := x + i
+							if ix < 0 {
+								ix = 0
+							}
+							weight := fullKernel[i+radius]
+							idx := srcRowOffset + ix*4
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
 						}
-						weight := kernel[abs(i)]
-						idx := y*src.Stride + ix*4
-						r += float64(src.Pix[idx]) * weight
-						g += float64(src.Pix[idx+1]) * weight
-						b += float64(src.Pix[idx+2]) * weight
-						a += float64(src.Pix[idx+3]) * weight
+						idx := dstRowOffset + x*4
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
 					}
-					idx := y*dst.Stride + x*4
-					dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+
+					// center: Unsafe access safely wrapped, optimized by removing conditionals in deepest loop
+					for x := radius; x < width-radius; x++ {
+						var r, g, b, a float64
+						base := srcRowOffset + x*4
+						for i := -radius; i <= radius; i++ {
+							weight := fullKernel[i+radius]
+							idx := base + i*4
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
+						}
+						idx := dstRowOffset + x*4
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+					}
+
+					// right edge
+					for x := width - radius; x < width; x++ {
+						var r, g, b, a float64
+						for i := -radius; i <= radius; i++ {
+							ix := x + i
+							if ix >= width {
+								ix = width - 1
+							}
+							weight := fullKernel[i+radius]
+							idx := srcRowOffset + ix*4
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
+						}
+						idx := dstRowOffset + x*4
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+					}
+				} else {
+					// Fallback for narrow images to prevent out-of-bounds access
+					for x := 0; x < width; x++ {
+						var r, g, b, a float64
+						for i := -radius; i <= radius; i++ {
+							ix := x + i
+							if ix < 0 {
+								ix = 0
+							} else if ix >= width {
+								ix = width - 1
+							}
+							weight := fullKernel[i+radius]
+							idx := srcRowOffset + ix*4
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
+						}
+						idx := dstRowOffset + x*4
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+					}
 				}
 			}
 		}(startY, endY)
@@ -88,7 +156,10 @@ func applyHorizontalPass(src, dst *image.RGBA, kernel []float64, radius, width, 
 }
 
 //nolint:dupl // Separable vertical pass
-func applyVerticalPass(src, dst *image.RGBA, kernel []float64, radius, width, height int) {
+func applyVerticalPass(src, dst *image.RGBA, fullKernel []float64, radius, width, height int) {
+	// Optimization: Skip bounds checking if the image is too small to split into edge and center logic.
+	canOptimizeBounds := (2*radius) < height
+
 	var wg sync.WaitGroup
 	numWorkers := 8
 	colsPerWorker := width / numWorkers
@@ -107,24 +178,81 @@ func applyVerticalPass(src, dst *image.RGBA, kernel []float64, radius, width, he
 		go func(sX, eX int) {
 			defer wg.Done()
 			for x := sX; x < eX; x++ {
-				for y := 0; y < height; y++ {
-					var r, g, b, a float64
-					for i := -radius; i <= radius; i++ {
-						iy := y + i
-						if iy < 0 {
-							iy = 0
-						} else if iy >= height {
-							iy = height - 1
+				xOffset := x * 4
+				if canOptimizeBounds {
+					// top edge
+					for y := 0; y < radius; y++ {
+						var r, g, b, a float64
+						for i := -radius; i <= radius; i++ {
+							iy := y + i
+							if iy < 0 {
+								iy = 0
+							}
+							weight := fullKernel[i+radius]
+							idx := iy*src.Stride + xOffset
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
 						}
-						weight := kernel[abs(i)]
-						idx := iy*src.Stride + x*4
-						r += float64(src.Pix[idx]) * weight
-						g += float64(src.Pix[idx+1]) * weight
-						b += float64(src.Pix[idx+2]) * weight
-						a += float64(src.Pix[idx+3]) * weight
+						idx := y*dst.Stride + xOffset
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
 					}
-					idx := y*dst.Stride + x*4
-					dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+
+					// center: Unsafe access safely wrapped, optimized by removing conditionals in deepest loop
+					for y := radius; y < height-radius; y++ {
+						var r, g, b, a float64
+						for i := -radius; i <= radius; i++ {
+							weight := fullKernel[i+radius]
+							idx := (y+i)*src.Stride + xOffset
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
+						}
+						idx := y*dst.Stride + xOffset
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+					}
+
+					// bottom edge
+					for y := height - radius; y < height; y++ {
+						var r, g, b, a float64
+						for i := -radius; i <= radius; i++ {
+							iy := y + i
+							if iy >= height {
+								iy = height - 1
+							}
+							weight := fullKernel[i+radius]
+							idx := iy*src.Stride + xOffset
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
+						}
+						idx := y*dst.Stride + xOffset
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+					}
+				} else {
+					// Fallback for short images to prevent out-of-bounds access
+					for y := 0; y < height; y++ {
+						var r, g, b, a float64
+						for i := -radius; i <= radius; i++ {
+							iy := y + i
+							if iy < 0 {
+								iy = 0
+							} else if iy >= height {
+								iy = height - 1
+							}
+							weight := fullKernel[i+radius]
+							idx := iy*src.Stride + xOffset
+							r += float64(src.Pix[idx]) * weight
+							g += float64(src.Pix[idx+1]) * weight
+							b += float64(src.Pix[idx+2]) * weight
+							a += float64(src.Pix[idx+3]) * weight
+						}
+						idx := y*dst.Stride + xOffset
+						dst.Pix[idx], dst.Pix[idx+1], dst.Pix[idx+2], dst.Pix[idx+3] = uint8(r), uint8(g), uint8(b), uint8(a)
+					}
 				}
 			}
 		}(startX, endX)
