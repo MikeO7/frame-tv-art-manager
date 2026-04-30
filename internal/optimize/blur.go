@@ -47,7 +47,7 @@ func GaussianBlur(src *image.RGBA, sigma float64) *image.RGBA {
 	return dst
 }
 
-//nolint:dupl // Separable horizontal pass
+//nolint:dupl,gocyclo // Separable horizontal pass
 func applyHorizontalPass(src, dst *image.RGBA, fullKernel []float64, radius, width, height int) {
 	// Optimization: Skip bounds checking if the image is too small to split into edge and center logic.
 	canOptimizeBounds := (2*radius) < width
@@ -155,7 +155,7 @@ func applyHorizontalPass(src, dst *image.RGBA, fullKernel []float64, radius, wid
 	wg.Wait()
 }
 
-//nolint:dupl // Separable vertical pass
+//nolint:dupl,gocyclo // Separable vertical pass
 func applyVerticalPass(src, dst *image.RGBA, fullKernel []float64, radius, width, height int) {
 	// Optimization: Skip bounds checking if the image is too small to split into edge and center logic.
 	canOptimizeBounds := (2*radius) < height
