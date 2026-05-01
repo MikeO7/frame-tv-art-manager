@@ -48,16 +48,17 @@ services:
 
 ---
 
-## The "Gallery Edition" Pipeline
+### 🎨 The "Artifact Edition" Pipeline (Museum-Grade Realism)
 
-### 🏛️ Museum Mode (The Gallery Engine)
-When `IMAGE_MUSEUM_MODE=true` is enabled, the manager activates a high-fidelity visual pipeline based on academic research in fine-art reproduction and perceptual science.
+The engine has been transformed from a simple image resizer into a professional-grade **Physical Material Simulator**. Every piece of art is processed through a pipeline rooted in academic color science and material reproduction research.
 
-*   **Asymmetric 10px Weave (Peli 1990 / Zhao et al. 2011)**: A procedural warp-and-weft engine that simulates physical fabric. Uses a **10px frequency** (mathematically optimized for 4K human contrast sensitivity) and asymmetric threads to break the "digital grid" illusion.
-*   **Luminance Headroom Clamping (Berns 2001)**: Clamps peak luminance to **215/255**. This kills "electronic glow" and provides the necessary headroom for physical room light to provide natural specular highlights.
-*   **Archive-Varnish Standard (Berns 1994)**: A blue-light absorption model that simulates the natural ambering and yellowing of organic resins over decades.
-*   **RMS Contrast Normalization**: Standardizes the "energy" of the image to ensure consistent depth across diverse collections.
-*   **Pigment Mineralization**: Maps vibrant digital RGB values to the muted, earthy profiles of mineral-based paints.
+*   **Academic 10px Asymmetric Weave (Zhao 2011 / Peli 1990)**: A procedural warp-and-weft engine that simulates physical canvas fibers. It uses a 10px frequency optimized for 4K tangibility and features **Organic Slub Noise** to break digital patterns.
+*   **Physics-Correct Linear Pipeline**: All color mixing and topography calculations are performed in a **64-bit Linear Space**. This ensures that light falloff and pigment blending are mathematically accurate, removing the "digital glow."
+*   **Bipolar 3D Topography (Virtual Impasto)**: Instead of flat filters, the engine calculates a **3D Normal Map** for brushstrokes. It applies both **Highlights and Shadows** to the paint ridges, creating physical "body" and volume on your display.
+*   **Black-Point Preserving Gamma**: Uses a non-linear contrast model that "pins" the 0.0 (Black) point. This restores rich, inky depth and prevents the "white-washed" or milky film common in digital displays.
+*   **Procedural Craquelure (History Simulation)**: Implements a stress-fractal engine that overlays microscopic, age-related cracking in the paint, giving the art a sense of physical age and museum-grade artifacting.
+*   **Topography-Aware Archive Varnish**: A liquid varnish simulation that "pools" in the valleys of the canvas weave and thins on the peaks, following real physical fluid dynamics.
+*   **Luminance Headroom (Berns 2001)**: Peak brightness is relaxed to **235**, providing punchy whites while maintaining enough "surface headroom" for the TV panel to act as a natural reflective canvas.
 *   **Inner Depth Matte Bevel**: Simulates the 1px physical cut of a cardboard matte with light-aware highlights and shadows.
 
 ## Configuration Reference
