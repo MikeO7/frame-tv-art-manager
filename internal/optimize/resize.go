@@ -502,9 +502,10 @@ func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
 // Uses a 3D Normal-Mapping simulation for light-aware depth and anisotropic grain.
 // UPDATED: Now includes Virtual Impasto (stroke height) and Craquelure (age splitting).
 func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	opacity := 0.04 * math.Pow(1.28, float64(intensity-1))
-	if opacity > 0.50 {
-		opacity = 0.50
+	// 1. Updated Opacity Curve (1.32 multiplier for more distinct jumps)
+	opacity := 0.04 * math.Pow(1.32, float64(intensity-1))
+	if opacity > 0.60 {
+		opacity = 0.60
 	}
 
 	bounds := src.Bounds()
