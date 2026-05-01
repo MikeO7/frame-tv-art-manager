@@ -495,41 +495,63 @@ func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
 	return src
 }
 
-// ApplyCanvasTexture overlays a research-backed weave pattern to simulate material depth.
-// Uses a logarithmic scale and Soft-Light blending for professional-grade realism.
+// ApplyCanvasTexture simulates a physical interlocking warp-and-weft weave.
+// This replaces the "grid" look with a true procedural fabric simulation.
 func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	// 1. Calculate Opacity using a Logarithmic Scale (2% to 25%)
-	// Level 1: ~0.02 (Visible micro-grain)
-	// Level 10: ~0.25 (Rich tactile weave)
-	opacity := 0.02 * math.Pow(1.35, float64(intensity-1))
-	if opacity > 0.40 {
-		opacity = 0.40 // Hard cap to prevent distortion
+	// 1. Calculate Opacity using a Logarithmic Scale (3% to 30%)
+	// Level 1: ~0.03 (Subtle fabric feel)
+	// Level 10: ~0.30 (Heavy gallery canvas)
+	opacity := 0.03 * math.Pow(1.30, float64(intensity-1))
+	if opacity > 0.45 {
+		opacity = 0.45
 	}
 
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
+
+	// Create a random seed for slubs/fiber noise
+	rng := rand.New(rand.NewSource(42)) //nolint:gosec
+
 	for y := 0; y < height; y++ {
 		offset := y * src.Stride
 		for x := 0; x < width; x++ {
 			i := offset + x*4
 
-			// 2. Weave Frequency (6px frequency matches 4K physical scale)
-			// High contrast threads for better visibility
+			// 2. Interlocking Weave Logic (6px frequency)
+			idX, idY := x/6, y/6
+			cellX, cellY := x%6, y%6
+
+			// Checkerboard determines if this segment is Warp (Vertical) or Weft (Horizontal)
+			isVertical := (idX+idY)%2 == 0
+
 			weave := 0.5 // Neutral gray baseline
-			if x%6 == 0 {
-				weave -= 0.4 // Deep thread
-			}
-			if (y+3)%6 == 0 {
-				weave += 0.4 // Bright thread (highlight)
+			var threadProfile float64
+
+			if isVertical {
+				// Vertical thread: Rounded profile (hump)
+				dist := math.Abs(float64(cellX) - 2.5)
+				threadProfile = 1.0 - (dist / 3.0)
+				// Add subtle fiber noise (slub)
+				if rng.Float64() > 0.98 {
+					threadProfile += 0.2
+				}
+				weave -= 0.3 * threadProfile
+			} else {
+				// Horizontal thread: Rounded profile
+				dist := math.Abs(float64(cellY) - 2.5)
+				threadProfile = 1.0 - (dist / 3.0)
+				// Add subtle highlight on the crown of the thread
+				if threadProfile > 0.8 {
+					weave += 0.1
+				}
+				weave -= 0.3 * threadProfile
 			}
 
 			// 3. Soft-Light Blending Logic
-			// This interacts with the underlying art color naturally rather than just subtracting.
 			for c := 0; c < 3; c++ {
 				a := float64(src.Pix[i+c]) / 255.0
 				b := weave
 
-				// Standard Soft-Light formula for organic blending
 				var res float64
 				if b <= 0.5 {
 					res = a - (1.0-2.0*b)*a*(1.0-a)
