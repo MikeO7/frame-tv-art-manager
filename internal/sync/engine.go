@@ -699,12 +699,14 @@ func boolCount(cond bool, count int) int {
 
 func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 	var optimizedCount int64
+
 	optCfg := optimize.Config{
 		Enabled:             e.cfg.OptimizeEnabled,
 		MaxWidth:            e.cfg.OptimizeMaxWidth,
 		MaxHeight:           e.cfg.OptimizeMaxHeight,
 		OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
 		MuseumModeEnabled:   e.cfg.MuseumModeEnabled,
+		MuseumModeIntensity: e.cfg.MuseumModeIntensity,
 	}
 
 	// 1. Collect all filenames to process.

@@ -150,12 +150,28 @@ Everything is configured through environment variables. Only `TV_IPS` is require
 |---|---|---|
 | `IMAGE_OPTIMIZE_ENABLED` | `true` | Resize oversized images to fit within max dimensions |
 | `SMART_CROP_ENABLED` | `false` | Crop images to 16:9 using entropy-based analysis |
-| `IMAGE_NORMALIZE_LUMINANCE` | `true` | Balance image brightness for a consistent gallery experience |
+| `IMAGE_NORMALIZE_LUMINANCE` | `true` | Balance image brightness (target: 115) for collection cohesion |
 | `IMAGE_MAX_WIDTH` | `3840` | Maximum width in pixels |
 | `IMAGE_MAX_HEIGHT` | `2160` | Maximum height in pixels |
 | `IMAGE_JPEG_QUALITY` | `95` | JPEG quality for re-encoded images (1–100) |
-| `IMAGE_MUSEUM_MODE` | `false` | Apply canvas texture and black lifting for "real art" look |
-| `IMAGE_MUSEUM_INTENSITY` | `1` | Strength of museum effects (Range: `1` to `10`) |
+| `IMAGE_MUSEUM_MODE` | `false` | Enable the professional "Gallery Edition" processing pipeline |
+| `IMAGE_MUSEUM_INTENSITY` | `1` | Strength of the physical canvas texture (Range: `1` to `10`) |
+
+### The "Gallery Edition" Pipeline
+
+When `IMAGE_MUSEUM_MODE` is enabled, every image is processed through a multi-stage realism pipeline to ensure your digital files look like physical artwork:
+
+1. **Luminance Normalization**: Standardizes brightness across the entire collection so no image "pops" or "glows" unexpectedly.
+2. **Gallery Master Pass**:
+    - **Peak Brightness Clamping**: Highlights are capped at `230` to kill the electronic glow.
+    - **Pigment Limiter**: Pulls vibrant colors into the range of natural earth pigments.
+    - **Micro-Paper Grain**: Adds high-frequency noise to simulate physical substrate fibers.
+3. **Museum Signature Suite**:
+    - **Matte Bevel Simulation**: Adds a 1px highlight/shadow to simulate the depth of a physical matte cut.
+    - **Aged Varnish Tint**: A subtle 1% warming shift to unify the collection's "archive" feel.
+    - **Inner Depth Shadow**: A soft 6px inner shadow to simulate the gap between the frame and the canvas.
+4. **Physical Texture**: Applies a procedurally generated canvas weave based on your `IMAGE_MUSEUM_INTENSITY` setting.
+5. **Gallery Lighting**: Applies a subtle corner vignette to simulate physical spotlight falloff.
 
 Every image that doesn't match the 16:9 aspect ratio is automatically center-cropped. This ensures that all artwork fills the Frame TV's screen perfectly without black bars or blurred borders.
 
@@ -511,6 +527,16 @@ Things that make this safe to leave running indefinitely:
 - **Token file** (`tv_<ip>.txt`) — The auth token saved after the first Allow/Deny prompt. Delete this file to force re-authorization.
 - **Mapping file** (`tv_<ip>_mapping.json`) — Tracks which local filename maps to which `content_id` on the TV. This is how the manager knows what needs uploading or deleting on the next cycle.
 - **Metadata file** (`tv_<ip>_metadata.json`) — Refreshed every cycle. Contains device info (model name, firmware version), slideshow status, and the TV's artwork category list. Useful for debugging.
+
+---
+
+## Professional Standards
+
+This repository is maintained as a production-grade project with high-quality workflow protections:
+
+- **Strict Branch Protection**: All changes must pass a CI suite before being merged to `main`.
+- **Security First**: Includes automated Secret Scanning, Dependabot updates, and Private Vulnerability Reporting.
+- **Structured Contribution**: Professional [Issue Templates](.github/ISSUE_TEMPLATE/) and [Pull Request Templates](.github/PULL_REQUEST_TEMPLATE.md) ensure clear communication.
 
 ---
 
