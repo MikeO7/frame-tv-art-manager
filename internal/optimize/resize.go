@@ -252,8 +252,9 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	// 4. Texture look is the only thing impacted by the user-defined intensity setting.
 	img = ApplyCanvasTexture(img, intensity)
 
-	// 5. Final polish: Unify the collection and add physical depth.
+	// 5. Final polish: Unify the collection, add physical depth, and apply Gallery Master techniques.
 	img = UnifyCollection(img)
+	img = GalleryMasterPolish(img)
 	img = Dither(img)
 
 	return img
@@ -312,6 +313,53 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 			src.Pix[i] = uint8(math.Min(255, r))
 			src.Pix[i+1] = uint8(math.Min(255, g))
 			src.Pix[i+2] = uint8(math.Min(255, b))
+		}
+	}
+	return src
+}
+
+// GalleryMasterPolish implements high-end gallery techniques to remove "digital glow".
+func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
+	bounds := src.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
+			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
+
+			// 1. Peak Brightness Clamping (Kill the electronic glow)
+			// Ensure no highlight exceeds 230, which mimics passive light reflection
+			const maxBright = 230.0
+			if r > maxBright {
+				r = maxBright
+			}
+			if g > maxBright {
+				g = maxBright
+			}
+			if b > maxBright {
+				b = maxBright
+			}
+
+			// 2. Pigment Saturation Limiter (Earth tones)
+			// Pull vibrant colors 10% closer to their gray value
+			avg := (r + g + b) / 3
+			r = r*0.90 + avg*0.10
+			g = g*0.90 + avg*0.10
+			b = b*0.90 + avg*0.10
+
+			// 3. Micro-Paper Grain (Simulate physical substrate fibers)
+			// Adding a tiny amount of high-frequency noise
+			//nolint:gosec // Weak random is perfectly fine for visual grain
+			noise := (rand.Float64() - 0.5) * 4.0
+			r += noise
+			g += noise
+			b += noise
+
+			src.Pix[i] = uint8(math.Max(0, math.Min(255, r)))
+			src.Pix[i+1] = uint8(math.Max(0, math.Min(255, g)))
+			src.Pix[i+2] = uint8(math.Max(0, math.Min(255, b)))
 		}
 	}
 	return src
