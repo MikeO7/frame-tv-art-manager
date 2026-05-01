@@ -1,0 +1,60 @@
+services:
+  frame-tv-art-manager:
+    image: mikeo/frame-tv-art-manager
+    build: .
+    restart: unless-stopped
+    environment:
+      # Comma-separated list of TV IP addresses (REQUIRED)
+      TV_IPS: "192.168.1.100"
+
+      # --- Optional Settings (uncomment to customize) ---
+
+      # SYNC_INTERVAL_MINUTES: "5"
+      # CLIENT_NAME: "Frame Art Manager"
+      # MATTE_STYLE: "none"
+      # LOG_LEVEL: "info"
+      # REMOVE_UNKNOWN_IMAGES: "false"
+      # IMAGE_OPTIMIZE_ENABLED: "true"
+      # SMART_CROP_ENABLED: "true"
+
+      # --- Optional: Wake-on-LAN ---
+      # TV_MAC: "AA:BB:CC:DD:EE:FF"
+
+      # --- Optional: REST Gate (art mode detection before connecting) ---
+      # Not all firmware supports this. If your TV returns 404 on
+      # GET /ms/art regardless of mode, leave this disabled.
+      # ENABLE_REST_GATE: "false"
+
+      # --- Optional: Slideshow Control ---
+      # Uncomment to override TV's slideshow settings:
+      # SLIDESHOW_ENABLED: "true"
+      # SLIDESHOW_INTERVAL: "15"    # minutes (e.g. 3, 15, 60, 720, 1440)
+      # SLIDESHOW_TYPE: "shuffle"   # shuffle or sequential
+
+      # --- Optional: Brightness Control (choose one) ---
+      #
+      # Manual brightness (fixed value):
+      # BRIGHTNESS: "5"
+      #
+      # Solar-based brightness (automatic):
+      # SOLAR_BRIGHTNESS_ENABLED: "true"
+      # LOCATION_LATITUDE: "42.3601"
+      # LOCATION_LONGITUDE: "-71.0589"
+      # LOCATION_TIMEZONE: "America/New_York"
+      # BRIGHTNESS_MIN: "2"
+      # BRIGHTNESS_MAX: "10"
+
+      # --- Optional: Auto-Off ---
+      # Turn off TVs at a specific time (only when in art mode).
+      # Requires LOCATION_TIMEZONE to be set.
+      # AUTO_OFF_TIME: "22:00"
+      # AUTO_OFF_GRACE_HOURS: "2"
+
+      # --- Optional: Image Sources (Unsplash & NASA) ---
+      # ARTWORK_SOURCES_FILE: "/data/sources.txt"
+      # UNSPLASH_ACCESS_KEY: "your_key_here"
+      # NASA_API_KEY: "DEMO_KEY"  # Default is DEMO_KEY if unset
+    volumes:
+      # Mount a single data directory. The app will automatically create
+      # frame-tv-art-manager/artwork and frame-tv-art-manager/tokens subfolders.
+      - ./data:/data

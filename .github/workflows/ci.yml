@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+
+jobs:
+  # Lane 1: High-speed Linting
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          install-mode: binary
+
+  # Lane 2: Security Scan
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: govulncheck
+        continue-on-error: true
+        run: |
+          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  # Lane 3: Workflow Linting
+  actionlint:
+    name: Actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: actionlint
+        uses: reviewdog/action-actionlint@v1
+
+  # Lane 4: Test & Build
+  test-build:
+    name: Test and Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Test and build
+        run: |
+          go test ./...
+          go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
