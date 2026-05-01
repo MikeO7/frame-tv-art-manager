@@ -281,11 +281,11 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 
-	// Target Gallery RMS (subtle but present contrast)
-	const targetRMS = 45.0
+	// Target Gallery RMS (increased to 55 for more "punch")
+	const targetRMS = 55.0
 	contrastFactor := targetRMS / (rms + 1.0)
-	// Dampen the factor to avoid extreme distortion
-	contrastFactor = 1.0 + (contrastFactor-1.0)*0.5
+	// Heavily dampen the factor to preserve native character
+	contrastFactor = 1.0 + (contrastFactor-1.0)*0.3
 
 	for y := 0; y < height; y++ {
 		offset := y * src.Stride
@@ -297,17 +297,18 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 			gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
 			bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
 
-			// 2. Apply Collection-Wide Contrast Scaling
-			rLin = ((rLin - 0.5) * contrastFactor) + 0.5
-			gLin = ((gLin - 0.5) * contrastFactor) + 0.5
-			bLin = ((bLin - 0.5) * contrastFactor) + 0.5
+			// 2. Apply Non-Linear Contrast Scaling (Protect the Black Floor)
+			// We pivot around 0.4 instead of 0.5 to keep deep tones richer
+			pivot := 0.4
+			rLin = ((rLin - pivot) * contrastFactor) + pivot
+			gLin = ((gLin - pivot) * contrastFactor) + pivot
+			bLin = ((bLin - pivot) * contrastFactor) + pivot
 
 			// 3. Pigment Gamut Compression (Mineral Palette)
-			// Move colors slightly toward the average to harmonize the palette
 			avg := (rLin + gLin + bLin) / 3
-			rLin = rLin*0.95 + avg*0.05
-			gLin = gLin*0.95 + avg*0.05
-			bLin = bLin*0.95 + avg*0.05
+			rLin = rLin*0.96 + avg*0.04
+			gLin = gLin*0.96 + avg*0.04
+			bLin = bLin*0.96 + avg*0.04
 
 			// Re-process to sRGB
 			src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
