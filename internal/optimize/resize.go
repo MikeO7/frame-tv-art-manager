@@ -262,12 +262,12 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 }
 
 // UnifyCollection ensures that diverse images share a consistent "visual DNA".
-// Uses RMS Contrast scaling and Pigment Gamut compression.
+// Uses a Black-Point Preserving Power Curve to maintain depth.
 func UnifyCollection(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	// 1. Calculate RMS Contrast (Visual Energy)
+	// 1. Calculate Perceptual Contrast
 	var sumSq, sum float64
 	for y := 0; y < height; y++ {
 		offset := y * src.Stride
@@ -281,11 +281,17 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 
-	// Target Gallery RMS (increased to 55 for more "punch")
-	const targetRMS = 55.0
-	contrastFactor := targetRMS / (rms + 1.0)
-	// Heavily dampen the factor to preserve native character
-	contrastFactor = 1.0 + (contrastFactor-1.0)*0.3
+	// Target Gallery RMS (Rich Contrast)
+	const targetRMS = 58.0
+	// Calculate a Gamma-based contrast shift instead of linear
+	contrastGamma := 1.0 + (rms-targetRMS)/100.0
+	// Clamp gamma to a safe range
+	if contrastGamma < 0.85 {
+		contrastGamma = 0.85
+	}
+	if contrastGamma > 1.15 {
+		contrastGamma = 1.15
+	}
 
 	for y := 0; y < height; y++ {
 		offset := y * src.Stride
@@ -297,18 +303,16 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 			gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
 			bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
 
-			// 2. Apply Non-Linear Contrast Scaling (Protect the Black Floor)
-			// We pivot around 0.4 instead of 0.5 to keep deep tones richer
-			pivot := 0.4
-			rLin = ((rLin - pivot) * contrastFactor) + pivot
-			gLin = ((gLin - pivot) * contrastFactor) + pivot
-			bLin = ((bLin - pivot) * contrastFactor) + pivot
+			// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
+			rLin = math.Pow(rLin, contrastGamma)
+			gLin = math.Pow(gLin, contrastGamma)
+			bLin = math.Pow(bLin, contrastGamma)
 
-			// 3. Pigment Gamut Compression (Mineral Palette)
+			// 3. Pigment Gamut Compression
 			avg := (rLin + gLin + bLin) / 3
-			rLin = rLin*0.96 + avg*0.04
-			gLin = gLin*0.96 + avg*0.04
-			bLin = bLin*0.96 + avg*0.04
+			rLin = rLin*0.97 + avg*0.03
+			gLin = gLin*0.97 + avg*0.03
+			bLin = bLin*0.97 + avg*0.03
 
 			// Re-process to sRGB
 			src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
@@ -331,7 +335,8 @@ func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
 
 			// 1. Research-Backed Peak Brightness Clamping (Berns 2001)
-			const maxBright = 215.0
+			// CAP at 235 instead of 215 to restore whites while maintaining surface reflection headroom.
+			const maxBright = 235.0
 			if r > maxBright {
 				r = maxBright
 			}
@@ -511,33 +516,30 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 		for x := 1; x < width-1; x++ {
 			i := offset + x*4
 
-			// 1. Virtual Impasto (Luminance-Ridge Mapping)
-			impasto := calculateImpasto(src, i)
+			// 1. Bipolar Virtual Impasto
+			impasto := calculateBipolarImpasto(src, i)
 
-			// 2. 3D Interlocking Weave (10px frequency)
+			// 2. 3D Interlocking Weave
 			weave, varnishPool := calculateWeave(x, y, rng)
 
-			// 3. Procedural Craquelure (Microscopic Age-Splitting)
-			if rng.Float64() > 0.9995 {
-				weave -= 0.4 // A deep, sharp crack
+			// 3. Procedural Craquelure
+			if rng.Float64() > 0.9997 {
+				weave -= 0.5
 			}
 
+			// Merge topography
 			weave += impasto
 
 			// 4. Blending & Archive Varnish
 			for c := 0; c < 3; c++ {
 				a := float64(src.Pix[i+c]) / 255.0
 
-				// Apply thickness-dependent varnish shift
 				if c == 0 {
-					a *= 1.02
-				} // Red
-				if c == 1 {
 					a *= 1.01
-				} // Green
+				} // Subtle Red
 				if c == 2 {
-					a *= varnishPool
-				} // Blue (Pooled)
+					a *= (varnishPool * 0.99)
+				} // Blue absorption
 
 				src.Pix[i+c] = applySoftLight(a, weave, opacity)
 			}
@@ -546,13 +548,19 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	return src
 }
 
-func calculateImpasto(src *image.RGBA, i int) float64 {
+func calculateBipolarImpasto(src *image.RGBA, i int) float64 {
+	// Detect ridge direction (Normal Mapping)
 	center := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
-	right := 0.299*float64(src.Pix[i+4]) + 0.587*float64(src.Pix[i+5]) + 0.114*float64(src.Pix[i+6])
-	bottom := 0.299*float64(src.Pix[i+src.Stride]) + 0.587*float64(src.Pix[i+src.Stride+1]) + 0.114*float64(src.Pix[i+src.Stride+2])
+	left := 0.299*float64(src.Pix[i-4]) + 0.587*float64(src.Pix[i-3]) + 0.114*float64(src.Pix[i-2])
+	top := 0.299*float64(src.Pix[i-src.Stride]) + 0.587*float64(src.Pix[i-src.Stride+1]) + 0.114*float64(src.Pix[i-src.Stride+2])
 
-	ridge := math.Abs(center-right) + math.Abs(center-bottom)
-	return (ridge / 255.0) * 0.15
+	// Create a bipolar offset (-0.15 to 0.15) based on edge direction
+	// This creates highlights on one side of a stroke and shadows on the other
+	dx := (center - left) / 255.0
+	dy := (center - top) / 255.0
+
+	// Virtual Light from Top-Left (-1, -1)
+	return (dx + dy) * 0.15
 }
 
 func calculateWeave(x, y int, rng *rand.Rand) (float64, float64) {
