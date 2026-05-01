@@ -255,6 +255,7 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	// 5. Final polish: Unify the collection, add physical depth, and apply Gallery Master techniques.
 	img = UnifyCollection(img)
 	img = GalleryMasterPolish(img)
+	img = ApplyMuseumSignature(img)
 	img = Dither(img)
 
 	return img
@@ -360,6 +361,42 @@ func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 			src.Pix[i] = uint8(math.Max(0, math.Min(255, r)))
 			src.Pix[i+1] = uint8(math.Max(0, math.Min(255, g)))
 			src.Pix[i+2] = uint8(math.Max(0, math.Min(255, b)))
+		}
+	}
+	return src
+}
+
+// ApplyMuseumSignature adds the final "Archive" touches: Bevel, Varnish, and Grain.
+func ApplyMuseumSignature(src *image.RGBA) *image.RGBA {
+	bounds := src.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
+			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
+
+			// 1. Aged Varnish Tint (1% shift toward yellow-green)
+			r *= 1.01
+			g *= 1.005
+			b *= 0.98
+
+			// 2. Matte Bevel Simulation (1px highlight/shadow at edges)
+			// This simulates the physical cut in the cardboard matte
+			if x == 0 || y == 0 {
+				r *= 1.15 // Top/Left Highlight
+				g *= 1.15
+				b *= 1.15
+			} else if x == width-1 || y == height-1 {
+				r *= 0.85 // Bottom/Right Shadow
+				g *= 0.85
+				b *= 0.85
+			}
+
+			src.Pix[i] = uint8(math.Min(255, r))
+			src.Pix[i+1] = uint8(math.Min(255, g))
+			src.Pix[i+2] = uint8(math.Min(255, b))
 		}
 	}
 	return src
