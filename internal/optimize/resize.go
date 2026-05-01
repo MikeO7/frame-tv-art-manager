@@ -498,12 +498,12 @@ func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
 // ApplyCanvasTexture overlays a research-backed weave pattern to simulate material depth.
 // Uses a logarithmic scale and Soft-Light blending for professional-grade realism.
 func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	// 1. Calculate Opacity using a Logarithmic Scale (0.5% to 15%)
-	// Level 1: ~0.005 (Perceptual baseline)
-	// Level 10: ~0.15 (Gallery maximum)
-	opacity := 0.005 * math.Pow(1.4, float64(intensity-1))
-	if opacity > 0.15 {
-		opacity = 0.15
+	// 1. Calculate Opacity using a Logarithmic Scale (2% to 25%)
+	// Level 1: ~0.02 (Visible micro-grain)
+	// Level 10: ~0.25 (Rich tactile weave)
+	opacity := 0.02 * math.Pow(1.35, float64(intensity-1))
+	if opacity > 0.40 {
+		opacity = 0.40 // Hard cap to prevent distortion
 	}
 
 	bounds := src.Bounds()
@@ -514,12 +514,13 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 			i := offset + x*4
 
 			// 2. Weave Frequency (6px frequency matches 4K physical scale)
+			// High contrast threads for better visibility
 			weave := 0.5 // Neutral gray baseline
 			if x%6 == 0 {
-				weave -= 0.1 // Darker thread
+				weave -= 0.4 // Deep thread
 			}
 			if (y+3)%6 == 0 {
-				weave += 0.1 // Lighter thread (depth)
+				weave += 0.4 // Bright thread (highlight)
 			}
 
 			// 3. Soft-Light Blending Logic
