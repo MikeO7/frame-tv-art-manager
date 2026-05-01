@@ -91,18 +91,13 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 	// 3. Sharpening pass.
 	rgba = Sharpen(rgba)
 
-	// 4. Luminance Normalization (consistent brightness).
-	if cfg.NormalizeLuminance {
-		rgba = NormalizeLuminance(rgba)
-	}
-
-	// 5. Dithering pass.
-	rgba = Dither(rgba)
-
-	// 5. Apply Museum Mode aesthetic if enabled.
+	// 4. Apply Museum Mode aesthetic if enabled.
 	if cfg.MuseumModeEnabled {
 		rgba = ApplyMuseumMode(rgba, cfg.MuseumModeIntensity)
 	}
+
+	// 5. Final Dithering pass (always last to prevent banding).
+	rgba = Dither(rgba)
 
 	// 6. Save back to disk.
 	//nolint:gosec // Path is internally controlled
@@ -239,24 +234,14 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 		intensity = 1
 	}
 
-	// 1. Normalize Luminance (unify brightness across the collection).
-	img := NormalizeLuminance(src)
+	// 1. Unify the collection (Luminance and Color DNA)
+	img := UnifyCollection(src)
 
-	// 2. Colors and Black Lift stay at a fixed, subtle baseline (intensity 1).
-	img = LiftBlacks(img, 1)
-	img = ApplyWarmth(img, 1)
-
-	// 3. Gallery Lighting (subtle vignette for spotlight effect).
-	img = ApplyGalleryLighting(img)
-
-	// 4. Texture look is the only thing impacted by the user-defined intensity setting.
+	// 2. Apply Physical Texture (Weave, Impasto, Craquelure, Varnish)
 	img = ApplyCanvasTexture(img, intensity)
 
-	// 5. Final polish: Unify the collection, add physical depth, and apply Gallery Master techniques.
-	img = UnifyCollection(img)
+	// 3. Final Museum Polish (Peak Clamping)
 	img = GalleryMasterPolish(img)
-	img = ApplyMuseumSignature(img)
-	img = Dither(img)
 
 	return img
 }
@@ -363,136 +348,6 @@ func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 			src.Pix[i] = uint8(math.Max(0, math.Min(255, r)))
 			src.Pix[i+1] = uint8(math.Max(0, math.Min(255, g)))
 			src.Pix[i+2] = uint8(math.Max(0, math.Min(255, b)))
-		}
-	}
-	return src
-}
-
-// ApplyMuseumSignature adds the final "Archive" touches: Bevel, Varnish, and Grain.
-func ApplyMuseumSignature(src *image.RGBA) *image.RGBA {
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
-
-			// 1. Aged Archive Varnish (Berns 1994)
-			// Simulates blue-light absorption in organic resins over time
-			r *= 1.02
-			g *= 1.01
-			b *= 0.96
-
-			// 2. Matte Bevel Simulation (1px highlight/shadow at edges)
-			// This simulates the physical cut in the cardboard matte
-			if x == 0 || y == 0 {
-				r *= 1.15 // Top/Left Highlight
-				g *= 1.15
-				b *= 1.15
-			} else if x == width-1 || y == height-1 {
-				r *= 0.85 // Bottom/Right Shadow
-				g *= 0.85
-				b *= 0.85
-			}
-
-			src.Pix[i] = uint8(math.Min(255, r))
-			src.Pix[i+1] = uint8(math.Min(255, g))
-			src.Pix[i+2] = uint8(math.Min(255, b))
-		}
-	}
-	return src
-}
-
-// ApplyGalleryLighting adds a soft vignette to simulate gallery spotlighting.
-func ApplyGalleryLighting(src *image.RGBA) *image.RGBA {
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	centerX, centerY := float64(width)/2, float64(height)/2
-	maxDist := math.Sqrt(centerX*centerX + centerY*centerY)
-
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			dx, dy := float64(x)-centerX, float64(y)-centerY
-			dist := math.Sqrt(dx*dx + dy*dy)
-
-			// Soft falloff starting from the center
-			factor := 1.0 - (dist/maxDist)*0.15 // Max 15% darkening at corners
-
-			for c := 0; c < 3; c++ {
-				val := float64(src.Pix[i+c]) * factor
-				src.Pix[i+c] = uint8(val)
-			}
-		}
-	}
-	return src
-}
-
-// LiftBlacks raises the black point to simulate ink-on-canvas rather than digital pixels.
-func LiftBlacks(src *image.RGBA, intensity int) *image.RGBA {
-	// Re-mapped: The old 6 is the new 10. Multiplier 5 (10*5=50).
-	val := 5 * intensity
-	if val > 100 {
-		val = 100 // Cap to prevent washing out the image too much
-	}
-	lift := uint8(val)
-
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			for c := 0; c < 3; c++ {
-				val := int(src.Pix[i+c])
-				if val < int(lift) {
-					// Soft ramp up to the lift point
-					val = int(lift) + (val * (255 - int(lift)) / 255)
-				} else {
-					// Compress the remaining range
-					val = int(lift) + (val-int(lift))*(255-int(lift))/(255-int(lift))
-				}
-				if val > 255 {
-					val = 255
-				}
-				src.Pix[i+c] = uint8(val)
-			}
-		}
-	}
-	return src
-}
-
-// ApplyWarmth adds a subtle amber tint to simulate gallery spotlighting.
-func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
-	// Re-mapped: The old 6 is the new 10. Multiplier 1 (10*1=10).
-	val := 1 * intensity
-	if val > 50 {
-		val = 50 // Cap to prevent turning the image deep orange
-	}
-	warmth := uint8(val)
-
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			// Red up
-			r := int(src.Pix[i]) + int(warmth)
-			if r > 255 {
-				r = 255
-			}
-			src.Pix[i] = uint8(r)
-
-			// Blue down
-			b := int(src.Pix[i+2]) - int(warmth)
-			if b < 0 {
-				b = 0
-			}
-			src.Pix[i+2] = uint8(b)
 		}
 	}
 	return src
@@ -608,62 +463,6 @@ func applySoftLight(a, b, opacity float64) uint8 {
 	}
 	final := a*(1.0-opacity) + res*opacity
 	return uint8(math.Min(255, math.Max(0, final*255.0)))
-}
-
-// NormalizeLuminance balances the overall brightness of an image to a consistent gallery target.
-func NormalizeLuminance(src *image.RGBA) *image.RGBA {
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	if width == 0 || height == 0 {
-		return src
-	}
-
-	// 1. Calculate current average luminance.
-	var totalLum float64
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
-			// Rec. 601 luminance formula.
-			lum := 0.299*r + 0.587*g + 0.114*b
-			totalLum += lum
-		}
-	}
-	avgLum := totalLum / float64(width*height)
-
-	// Target luminance 115 (subtle, rich look).
-	const targetLum = 115.0
-
-	// Guard against extreme images that would produce artifacts.
-	if avgLum < 10 || avgLum > 240 {
-		return src
-	}
-
-	scale := targetLum / avgLum
-	// Clamp scale to avoid extreme shifts (max 1.8x up, 0.6x down).
-	if scale > 1.8 {
-		scale = 1.8
-	}
-	if scale < 0.6 {
-		scale = 0.6
-	}
-
-	// 2. Apply scale to RGB channels.
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			for c := 0; c < 3; c++ {
-				val := float64(src.Pix[i+c]) * scale
-				if val > 255 {
-					val = 255
-				}
-				src.Pix[i+c] = uint8(val)
-			}
-		}
-	}
-	return src
 }
 
 // Dither applies a subtle random jitter to pixel values to break up banding in gradients.
