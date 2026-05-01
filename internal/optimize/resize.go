@@ -492,10 +492,10 @@ func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
 	return src
 }
 
-// // ApplyCanvasTexture simulates a physical interlocking warp-and-weft weave.
+// ApplyCanvasTexture simulates a physical interlocking warp-and-weft weave.
 // Uses a 3D Normal-Mapping simulation for light-aware depth and anisotropic grain.
+// UPDATED: Now includes Virtual Impasto (stroke height) and Craquelure (age splitting).
 func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	// 1. Opacity Curve (Logarithmic 4% to 40%)
 	opacity := 0.04 * math.Pow(1.28, float64(intensity-1))
 	if opacity > 0.50 {
 		opacity = 0.50
@@ -505,76 +505,99 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	width, height := bounds.Dx(), bounds.Dy()
 	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 
-	for y := 0; y < height; y++ {
+	for y := 1; y < height-1; y++ {
 		offset := y * src.Stride
-		for x := 0; x < width; x++ {
+		for x := 1; x < width-1; x++ {
 			i := offset + x*4
 
+			// 1. Virtual Impasto (Luminance-Ridge Mapping)
+			impasto := calculateImpasto(src, i)
+
 			// 2. 3D Interlocking Weave (10px frequency)
-			idX, idY := x/10, y/10
-			cellX, cellY := x%10, y%10
+			weave, varnishPool := calculateWeave(x, y, rng)
 
-			isWarp := (idX+idY)%2 == 0 // Vertical
-			var weave float64
-
-			// Virtual Light Direction (Top-Left spotlight)
-			lightDirX, lightDirY := -0.707, -0.707
-
-			if isWarp {
-				// Warp thread (Vertical) - Normal Map Simulation
-				// Normal points left/right (-1 to 1)
-				nx := (float64(cellX) - 4.5) / 5.0
-
-				// Dot product with virtual light for shading
-				diffuse := math.Max(0, nx*lightDirX)
-				weave = 0.4 + (diffuse * 0.3)
-
-				// Add longitudinal fiber grain (stretched vertically)
-				if rng.Float64() > 0.95 {
-					weave -= 0.05
-				}
-			} else {
-				// Weft thread (Horizontal) - Normal Map Simulation
-				// Normal points up/down
-				ny := (float64(cellY) - 4.5) / 5.0
-
-				diffuse := math.Max(0, ny*lightDirY)
-				weave = 0.4 + (diffuse * 0.3)
-
-				// Specular "crown" highlight
-				if math.Abs(ny) < 0.2 {
-					weave += 0.15
-				}
-
-				// Add longitudinal fiber grain (stretched horizontally)
-				if rng.Float64() > 0.95 {
-					weave -= 0.05
-				}
+			// 3. Procedural Craquelure (Microscopic Age-Splitting)
+			if rng.Float64() > 0.9995 {
+				weave -= 0.4 // A deep, sharp crack
 			}
 
-			// Micro-occlusion (valleys between threads)
-			if cellX == 0 || cellX == 9 || cellY == 0 || cellY == 9 {
-				weave *= 0.8
-			}
+			weave += impasto
 
-			// 3. Soft-Light Blending (Linear Space Spirit)
+			// 4. Blending & Archive Varnish
 			for c := 0; c < 3; c++ {
 				a := float64(src.Pix[i+c]) / 255.0
-				b := weave
 
-				var res float64
-				if b <= 0.5 {
-					res = a - (1.0-2.0*b)*a*(1.0-a)
-				} else {
-					res = a + (2.0*b-1.0)*(math.Sqrt(a)-a)
-				}
+				// Apply thickness-dependent varnish shift
+				if c == 0 {
+					a *= 1.02
+				} // Red
+				if c == 1 {
+					a *= 1.01
+				} // Green
+				if c == 2 {
+					a *= varnishPool
+				} // Blue (Pooled)
 
-				final := a*(1.0-opacity) + res*opacity
-				src.Pix[i+c] = uint8(math.Min(255, math.Max(0, final*255.0)))
+				src.Pix[i+c] = applySoftLight(a, weave, opacity)
 			}
 		}
 	}
 	return src
+}
+
+func calculateImpasto(src *image.RGBA, i int) float64 {
+	center := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
+	right := 0.299*float64(src.Pix[i+4]) + 0.587*float64(src.Pix[i+5]) + 0.114*float64(src.Pix[i+6])
+	bottom := 0.299*float64(src.Pix[i+src.Stride]) + 0.587*float64(src.Pix[i+src.Stride+1]) + 0.114*float64(src.Pix[i+src.Stride+2])
+
+	ridge := math.Abs(center-right) + math.Abs(center-bottom)
+	return (ridge / 255.0) * 0.15
+}
+
+func calculateWeave(x, y int, rng *rand.Rand) (float64, float64) {
+	idX, idY := x/10, y/10
+	cellX, cellY := x%10, y%10
+	isWarp := (idX+idY)%2 == 0
+
+	var weave float64
+	lightDirX, lightDirY := -0.707, -0.707
+
+	if isWarp {
+		nx := (float64(cellX) - 4.5) / 5.0
+		diffuse := math.Max(0, nx*lightDirX)
+		weave = 0.4 + (diffuse * 0.3)
+	} else {
+		ny := (float64(cellY) - 4.5) / 5.0
+		diffuse := math.Max(0, ny*lightDirY)
+		weave = 0.4 + (diffuse * 0.3)
+		if math.Abs(ny) < 0.2 {
+			weave += 0.15
+		}
+	}
+
+	// Add organic slub noise (fiber irregularities)
+	if rng.Float64() > 0.98 {
+		weave -= 0.05
+	}
+
+	isValley := cellX == 0 || cellX == 9 || cellY == 0 || cellY == 9
+	varnishPool := 1.0
+	if isValley {
+		weave *= 0.8
+		varnishPool = 0.96
+	}
+	return weave, varnishPool
+}
+
+func applySoftLight(a, b, opacity float64) uint8 {
+	var res float64
+	if b <= 0.5 {
+		res = a - (1.0-2.0*b)*a*(1.0-a)
+	} else {
+		res = a + (2.0*b-1.0)*(math.Sqrt(a)-a)
+	}
+	final := a*(1.0-opacity) + res*opacity
+	return uint8(math.Min(255, math.Max(0, final*255.0)))
 }
 
 // NormalizeLuminance balances the overall brightness of an image to a consistent gallery target.
