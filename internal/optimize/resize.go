@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"golang.org/x/image/draw"
@@ -561,23 +560,4 @@ func fitDimensions(w, h, maxW, maxH int) (int, int) {
 	// For Frame TV, we actually want to fill the native 4K resolution
 	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
 	return int(float64(w) * scale), int(float64(h) * scale)
-}
-
-// ParseDimensionsFromFilename extracts width and height from an optimized filename.
-func ParseDimensionsFromFilename(filename string) (int, int, bool) {
-	parts := strings.Split(filename, "_opt.h_")
-	if len(parts) < 2 {
-		return 0, 0, false
-	}
-	dimPart := parts[1]
-	if idx := strings.Index(dimPart, "."); idx != -1 {
-		dimPart = dimPart[:idx]
-	}
-	dims := strings.Split(dimPart, "x")
-	if len(dims) != 2 {
-		return 0, 0, false
-	}
-	w, _ := strconv.Atoi(dims[0])
-	h, _ := strconv.Atoi(dims[1])
-	return w, h, true
 }
