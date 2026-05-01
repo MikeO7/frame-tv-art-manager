@@ -497,8 +497,16 @@ func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
 
 // ApplyCanvasTexture overlays a procedural weave pattern to simulate material depth.
 func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	// Re-mapped: The old 6 is the new 10. Multiplier 4 (10*4=40).
-	grain := 4 * intensity
+	// Re-mapped: We now use a much softer baseline.
+	// Level 1 should be nearly invisible.
+	var grain float64
+	if intensity <= 4 {
+		// Micro-fine tier: 0.5 to 2.0 range
+		grain = float64(intensity) * 0.5
+	} else {
+		// Gallery weave tier: 2.0 to 10.0 range
+		grain = 2.0 + float64(intensity-4)*1.33
+	}
 
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -506,21 +514,22 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 		offset := y * src.Stride
 		for x := 0; x < width; x++ {
 			i := offset + x*4
-			// Create a 4x4 weave pattern
-			// Vertical threads
+
+			// Use a more organic, staggered weave pattern instead of a harsh grid
+			var factor float64 = 0
+
+			// Vertical threads (every 4 pixels)
 			if x%4 == 0 {
-				for c := 0; c < 3; c++ {
-					val := int(src.Pix[i+c]) - grain
-					if val < 0 {
-						val = 0
-					}
-					src.Pix[i+c] = uint8(val)
-				}
+				factor += 0.5
 			}
-			// Horizontal threads
-			if y%4 == 0 {
+			// Horizontal threads (every 4 pixels, staggered by 2)
+			if (y+2)%4 == 0 {
+				factor += 0.5
+			}
+
+			if factor > 0 {
 				for c := 0; c < 3; c++ {
-					val := int(src.Pix[i+c]) - grain
+					val := float64(src.Pix[i+c]) - (grain * factor)
 					if val < 0 {
 						val = 0
 					}
