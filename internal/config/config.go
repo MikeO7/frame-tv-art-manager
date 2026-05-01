@@ -155,9 +155,6 @@ type Config struct {
 	// OptimizeJPEGQuality is the JPEG encoding quality (1-100, default 95).
 	OptimizeJPEGQuality int
 
-	// NormalizeLuminance ensures images have a consistent average brightness.
-	NormalizeLuminance bool
-
 	// MuseumModeEnabled applies canvas texture, black lifting, and warming for a "real art" look.
 	MuseumModeEnabled bool
 
@@ -234,7 +231,6 @@ func Load() (*Config, error) {
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
 		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 95),
-		NormalizeLuminance:  envBoolWithDefault("IMAGE_NORMALIZE_LUMINANCE", true),
 		MuseumModeEnabled:   envBoolWithDefault("IMAGE_MUSEUM_MODE", false),
 		MuseumModeIntensity: envInt("IMAGE_MUSEUM_INTENSITY", 5),
 		HealthPort:          envInt("HEALTH_PORT", 0),
