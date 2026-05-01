@@ -492,13 +492,13 @@ func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
 	return src
 }
 
-// ApplyCanvasTexture simulates a physical interlocking warp-and-weft weave.
-// Frequency (10px) and asymmetry (Warp/Weft) are based on Peli (1990) and Zhao et al. (2011).
+// // ApplyCanvasTexture simulates a physical interlocking warp-and-weft weave.
+// Uses a 3D Normal-Mapping simulation for light-aware depth and anisotropic grain.
 func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	// 1. Opacity Curve (Logarithmic 4% to 35%)
-	opacity := 0.04 * math.Pow(1.25, float64(intensity-1))
-	if opacity > 0.45 {
-		opacity = 0.45
+	// 1. Opacity Curve (Logarithmic 4% to 40%)
+	opacity := 0.04 * math.Pow(1.28, float64(intensity-1))
+	if opacity > 0.50 {
+		opacity = 0.50
 	}
 
 	bounds := src.Bounds()
@@ -510,35 +510,54 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 		for x := 0; x < width; x++ {
 			i := offset + x*4
 
-			// 2. Asymmetric Interlocking Weave (10px frequency for perceptual tangibility)
-			// Zhao et al (2011) - Warp/Weft should be asymmetric
+			// 2. 3D Interlocking Weave (10px frequency)
 			idX, idY := x/10, y/10
 			cellX, cellY := x%10, y%10
 
 			isWarp := (idX+idY)%2 == 0 // Vertical
-			weave := 0.5
+			var weave float64
+
+			// Virtual Light Direction (Top-Left spotlight)
+			lightDirX, lightDirY := -0.707, -0.707
 
 			if isWarp {
-				// Warp thread (Vertical) - Slightly thicker
-				dist := math.Abs(float64(cellX) - 4.5)
-				profile := 1.0 - (dist / 5.0)
-				weave -= 0.35 * profile // Absorption
-			} else {
-				// Weft thread (Horizontal) - Slightly thinner, higher specular
-				dist := math.Abs(float64(cellY) - 4.5)
-				profile := 1.0 - (dist / 4.0)
-				if profile > 0.8 {
-					weave += 0.15 // Specular "crown" (Zhao et al)
+				// Warp thread (Vertical) - Normal Map Simulation
+				// Normal points left/right (-1 to 1)
+				nx := (float64(cellX) - 4.5) / 5.0
+
+				// Dot product with virtual light for shading
+				diffuse := math.Max(0, nx*lightDirX)
+				weave = 0.4 + (diffuse * 0.3)
+
+				// Add longitudinal fiber grain (stretched vertically)
+				if rng.Float64() > 0.95 {
+					weave -= 0.05
 				}
-				weave -= 0.25 * profile
+			} else {
+				// Weft thread (Horizontal) - Normal Map Simulation
+				// Normal points up/down
+				ny := (float64(cellY) - 4.5) / 5.0
+
+				diffuse := math.Max(0, ny*lightDirY)
+				weave = 0.4 + (diffuse * 0.3)
+
+				// Specular "crown" highlight
+				if math.Abs(ny) < 0.2 {
+					weave += 0.15
+				}
+
+				// Add longitudinal fiber grain (stretched horizontally)
+				if rng.Float64() > 0.95 {
+					weave -= 0.05
+				}
 			}
 
-			// Micro-fiber "slub" noise (Zhao et al)
-			if rng.Float64() > 0.99 {
-				weave -= 0.1
+			// Micro-occlusion (valleys between threads)
+			if cellX == 0 || cellX == 9 || cellY == 0 || cellY == 9 {
+				weave *= 0.8
 			}
 
-			// 3. Soft-Light Blending (Campbell & Robson)
+			// 3. Soft-Light Blending (Linear Space Spirit)
 			for c := 0; c < 3; c++ {
 				a := float64(src.Pix[i+c]) / 255.0
 				b := weave
