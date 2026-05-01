@@ -252,10 +252,69 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	// 4. Texture look is the only thing impacted by the user-defined intensity setting.
 	img = ApplyCanvasTexture(img, intensity)
 
-	// 5. Final polish: Dither to prevent digital banding.
+	// 5. Final polish: Unify the collection and add physical depth.
+	img = UnifyCollection(img)
 	img = Dither(img)
 
 	return img
+}
+
+// UnifyCollection applies final "real art" touches to harmonize the entire gallery.
+func UnifyCollection(src *image.RGBA) *image.RGBA {
+	bounds := src.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
+			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
+
+			// 1. Gallery White Tinting (Creamy highlights)
+			// If it's a bright highlight, shift it slightly toward warm cream
+			if r > 200 && g > 200 && b > 180 {
+				r *= 1.0  // Keep red
+				g *= 0.98 // Drop green slightly
+				b *= 0.92 // Drop blue more for that amber/cream feel
+			}
+
+			// 2. Color Compression (Avoid neon/digital saturation)
+			// Move colors slightly toward the average to harmonize the palette
+			avg := (r + g + b) / 3
+			r = r*0.95 + avg*0.05
+			g = g*0.95 + avg*0.05
+			b = b*0.95 + avg*0.05
+
+			// 3. Inner Depth Shadow (Simulate gap between canvas and frame)
+			const shadowWidth = 6
+			if x < shadowWidth || y < shadowWidth || x > width-shadowWidth || y > height-shadowWidth {
+				dist := shadowWidth
+				if x < dist {
+					dist = x
+				}
+				if y < dist {
+					dist = y
+				}
+				if width-x < dist {
+					dist = width - x
+				}
+				if height-y < dist {
+					dist = height - y
+				}
+
+				// Subtle 10% darkening falloff
+				factor := 0.90 + (float64(dist)/float64(shadowWidth))*0.10
+				r *= factor
+				g *= factor
+				b *= factor
+			}
+
+			src.Pix[i] = uint8(math.Min(255, r))
+			src.Pix[i+1] = uint8(math.Min(255, g))
+			src.Pix[i+2] = uint8(math.Min(255, b))
+		}
+	}
+	return src
 }
 
 // ApplyGalleryLighting adds a soft vignette to simulate gallery spotlighting.
