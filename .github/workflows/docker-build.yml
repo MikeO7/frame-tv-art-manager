@@ -1,0 +1,144 @@
+name: Docker Build and Push
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: mikeo7/frame-tv-art-manager
+
+jobs:
+  # The Build job runs 3 times in parallel (amd64, arm64, arm/v7)
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64, linux/arm/v7]
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v6
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Log in to GitHub Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels)
+      id: meta
+      uses: docker/metadata-action@v6
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=sha,format=short
+          type=ref,event=branch
+          type=ref,event=pr
+
+    - name: Set build metadata
+      id: build-meta
+      run: |
+        echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+    - name: Build and push by digest
+      id: build
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        platforms: ${{ matrix.platform }}
+        outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+        build-args: |
+          VERSION=${{ steps.meta.outputs.version }}
+          GIT_COMMIT=${{ github.sha }}
+          BUILD_DATE=${{ steps.build-meta.outputs.date }}
+        cache-from: type=gha,scope=${{ matrix.platform }}
+        cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+        provenance: false
+        sbom: false
+
+    - name: Export digest
+      run: |
+        mkdir -p /tmp/digests
+        digest="${{ steps.build.outputs.digest }}"
+        touch "/tmp/digests/${digest#sha256:}"
+
+    - name: Upload digest
+      uses: actions/upload-artifact@v7
+      with:
+        name: digests-${{ strategy.job-index }}
+        path: /tmp/digests/*
+        if-no-files-found: error
+        retention-days: 1
+
+  # The Merge job joins the 3 parallel builds into a single multi-arch manifest
+  merge:
+    name: Merge Manifests
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    needs: [build]
+    permissions:
+      packages: write
+    steps:
+    - name: Download digests
+      uses: actions/download-artifact@v7
+      with:
+        path: /tmp/digests
+        pattern: digests-*
+        merge-multiple: true
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create manifest list and push
+      working-directory: /tmp/digests
+      run: |
+        # Build the tag arguments
+        TAGS=("--tag" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest")
+
+        # Build the source list from digest files
+        SOURCES=()
+        for f in *; do
+          SOURCES+=("${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:${f}")
+        done
+
+        # Create and push the multi-arch manifest
+        docker buildx imagetools create "${TAGS[@]}" "${SOURCES[@]}"
+
+    - name: Inspect image
+      run: |
+        docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

@@ -1,0 +1,10 @@
+.git
+.gitignore
+.github
+*.md
+!README.md
+tokens/
+artwork/
+.DS_Store
+.vscode/
+.idea/
