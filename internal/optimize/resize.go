@@ -261,59 +261,58 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	return img
 }
 
-// UnifyCollection applies final "real art" touches to harmonize the entire gallery.
+// UnifyCollection ensures that diverse images share a consistent "visual DNA".
+// Uses RMS Contrast scaling and Pigment Gamut compression.
 func UnifyCollection(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
+
+	// 1. Calculate RMS Contrast (Visual Energy)
+	var sumSq, sum float64
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
+			lum := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
+			sum += lum
+			sumSq += lum * lum
+		}
+	}
+	mean := sum / float64(width*height)
+	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
+
+	// Target Gallery RMS (subtle but present contrast)
+	const targetRMS = 45.0
+	contrastFactor := targetRMS / (rms + 1.0)
+	// Dampen the factor to avoid extreme distortion
+	contrastFactor = 1.0 + (contrastFactor-1.0)*0.5
 
 	for y := 0; y < height; y++ {
 		offset := y * src.Stride
 		for x := 0; x < width; x++ {
 			i := offset + x*4
-			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
 
-			// 1. Gallery White Tinting (Creamy highlights)
-			// If it's a bright highlight, shift it slightly toward warm cream
-			if r > 200 && g > 200 && b > 180 {
-				r *= 1.0  // Keep red
-				g *= 0.98 // Drop green slightly
-				b *= 0.92 // Drop blue more for that amber/cream feel
-			}
+			// Physics-Based Linear Processing
+			rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
+			gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
+			bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
 
-			// 2. Color Compression (Avoid neon/digital saturation)
+			// 2. Apply Collection-Wide Contrast Scaling
+			rLin = ((rLin - 0.5) * contrastFactor) + 0.5
+			gLin = ((gLin - 0.5) * contrastFactor) + 0.5
+			bLin = ((bLin - 0.5) * contrastFactor) + 0.5
+
+			// 3. Pigment Gamut Compression (Mineral Palette)
 			// Move colors slightly toward the average to harmonize the palette
-			avg := (r + g + b) / 3
-			r = r*0.95 + avg*0.05
-			g = g*0.95 + avg*0.05
-			b = b*0.95 + avg*0.05
+			avg := (rLin + gLin + bLin) / 3
+			rLin = rLin*0.95 + avg*0.05
+			gLin = gLin*0.95 + avg*0.05
+			bLin = bLin*0.95 + avg*0.05
 
-			// 3. Inner Depth Shadow (Simulate gap between canvas and frame)
-			const shadowWidth = 6
-			if x < shadowWidth || y < shadowWidth || x > width-shadowWidth || y > height-shadowWidth {
-				dist := shadowWidth
-				if x < dist {
-					dist = x
-				}
-				if y < dist {
-					dist = y
-				}
-				if width-x < dist {
-					dist = width - x
-				}
-				if height-y < dist {
-					dist = height - y
-				}
-
-				// Subtle 10% darkening falloff
-				factor := 0.90 + (float64(dist)/float64(shadowWidth))*0.10
-				r *= factor
-				g *= factor
-				b *= factor
-			}
-
-			src.Pix[i] = uint8(math.Min(255, r))
-			src.Pix[i+1] = uint8(math.Min(255, g))
-			src.Pix[i+2] = uint8(math.Min(255, b))
+			// Re-process to sRGB
+			src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
+			src.Pix[i+1] = uint8(math.Min(255, math.Max(0, math.Pow(gLin, 1.0/2.2)*255.0)))
+			src.Pix[i+2] = uint8(math.Min(255, math.Max(0, math.Pow(bLin, 1.0/2.2)*255.0)))
 		}
 	}
 	return src

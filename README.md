@@ -50,13 +50,15 @@ services:
 
 ## The "Gallery Edition" Pipeline
 
-Most digital images look "flat" on a TV because they're too bright and too sharp. If you enable `IMAGE_MUSEUM_MODE=true`, the manager runs each image through a realism pipeline before uploading:
+### 🏛️ Museum Mode (The Gallery Engine)
+When `IMAGE_MUSEUM_MODE=true` is enabled, the manager activates a high-fidelity visual pipeline based on academic research in fine-art reproduction and perceptual science.
 
-*   **The Matte Bevel**: Adds a subtle 1px "cut" line to simulate the depth of a physical matte board.
-*   **Glow Suppression**: Caps peak brightness so the art reflects your room's light instead of emitting its own "electronic" light.
-*   **Archive Tint**: Applies a very light varnish-like warmth to unify a collection.
-*   **Substrate Grain**: Adds micro-noise that mimics the physical fibers of paper or canvas.
-*   **Inner Depth Shadow**: A soft shadow at the edges to simulate the gap between the frame and the canvas.
+*   **Asymmetric 10px Weave (Peli 1990 / Zhao et al. 2011)**: A procedural warp-and-weft engine that simulates physical fabric. Uses a **10px frequency** (mathematically optimized for 4K human contrast sensitivity) and asymmetric threads to break the "digital grid" illusion.
+*   **Luminance Headroom Clamping (Berns 2001)**: Clamps peak luminance to **215/255**. This kills "electronic glow" and provides the necessary headroom for physical room light to provide natural specular highlights.
+*   **Archive-Varnish Standard (Berns 1994)**: A blue-light absorption model that simulates the natural ambering and yellowing of organic resins over decades.
+*   **RMS Contrast Normalization**: Standardizes the "energy" of the image to ensure consistent depth across diverse collections.
+*   **Pigment Mineralization**: Maps vibrant digital RGB values to the muted, earthy profiles of mineral-based paints.
+*   **Inner Depth Matte Bevel**: Simulates the 1px physical cut of a cardboard matte with light-aware highlights and shadows.
 
 ## Configuration Reference
 
