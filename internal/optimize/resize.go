@@ -495,17 +495,15 @@ func ApplyWarmth(src *image.RGBA, intensity int) *image.RGBA {
 	return src
 }
 
-// ApplyCanvasTexture overlays a procedural weave pattern to simulate material depth.
+// ApplyCanvasTexture overlays a research-backed weave pattern to simulate material depth.
+// Uses a logarithmic scale and Soft-Light blending for professional-grade realism.
 func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	// Re-mapped: We now use a much softer baseline.
-	// Level 1 should be nearly invisible.
-	var grain float64
-	if intensity <= 4 {
-		// Micro-fine tier: 0.5 to 2.0 range
-		grain = float64(intensity) * 0.5
-	} else {
-		// Gallery weave tier: 2.0 to 10.0 range
-		grain = 2.0 + float64(intensity-4)*1.33
+	// 1. Calculate Opacity using a Logarithmic Scale (0.5% to 15%)
+	// Level 1: ~0.005 (Perceptual baseline)
+	// Level 10: ~0.15 (Gallery maximum)
+	opacity := 0.005 * math.Pow(1.4, float64(intensity-1))
+	if opacity > 0.15 {
+		opacity = 0.15
 	}
 
 	bounds := src.Bounds()
@@ -515,26 +513,32 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 		for x := 0; x < width; x++ {
 			i := offset + x*4
 
-			// Use a more organic, staggered weave pattern instead of a harsh grid
-			var factor float64 = 0
-
-			// Vertical threads (every 4 pixels)
-			if x%4 == 0 {
-				factor += 0.5
+			// 2. Weave Frequency (6px frequency matches 4K physical scale)
+			weave := 0.5 // Neutral gray baseline
+			if x%6 == 0 {
+				weave -= 0.1 // Darker thread
 			}
-			// Horizontal threads (every 4 pixels, staggered by 2)
-			if (y+2)%4 == 0 {
-				factor += 0.5
+			if (y+3)%6 == 0 {
+				weave += 0.1 // Lighter thread (depth)
 			}
 
-			if factor > 0 {
-				for c := 0; c < 3; c++ {
-					val := float64(src.Pix[i+c]) - (grain * factor)
-					if val < 0 {
-						val = 0
-					}
-					src.Pix[i+c] = uint8(val)
+			// 3. Soft-Light Blending Logic
+			// This interacts with the underlying art color naturally rather than just subtracting.
+			for c := 0; c < 3; c++ {
+				a := float64(src.Pix[i+c]) / 255.0
+				b := weave
+
+				// Standard Soft-Light formula for organic blending
+				var res float64
+				if b <= 0.5 {
+					res = a - (1.0-2.0*b)*a*(1.0-a)
+				} else {
+					res = a + (2.0*b-1.0)*(math.Sqrt(a)-a)
 				}
+
+				// Apply based on opacity/intensity
+				final := a*(1.0-opacity) + res*opacity
+				src.Pix[i+c] = uint8(math.Min(255, math.Max(0, final*255.0)))
 			}
 		}
 	}
