@@ -64,18 +64,28 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 	}
 	defer func() { _ = f.Close() }()
 
-	img, _, err := image.Decode(f)
+	// 1. Fast path: check dimensions without full decode.
+	imgCfg, _, err := image.DecodeConfig(f)
 	if err != nil {
-		return 0, 0, false, fmt.Errorf("decode image: %w", err)
+		return 0, 0, false, fmt.Errorf("decode image config: %w", err)
 	}
 
-	bounds := img.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
+	width, height := imgCfg.Width, imgCfg.Height
 
 	// Only optimize if dimensions don't match target exactly or museum mode requires it.
 	needsAdjustment := width != cfg.MaxWidth || height != cfg.MaxHeight
 	if !needsAdjustment && !cfg.MuseumModeEnabled {
 		return width, height, false, nil
+	}
+
+	// 2. Full decode required.
+	if _, err := f.Seek(0, 0); err != nil {
+		return 0, 0, false, fmt.Errorf("seek to start: %w", err)
+	}
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return 0, 0, false, fmt.Errorf("decode image: %w", err)
 	}
 
 	logger.Info("optimizing image", "file", filepath.Base(path), "original_dims", fmt.Sprintf("%dx%d", width, height))

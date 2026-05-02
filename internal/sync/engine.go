@@ -830,32 +830,50 @@ func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified
 
 	ext := filepath.Ext(filename)
 	identity := strings.TrimSuffix(filename, ext)
+	var hash string
 
-	// Strip hash and existing metadata to get clean identity.
+	// Extract identity and hash using both possible separators.
 	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
 		identity = parts[0]
-		hash := parts[1]
+		hash = parts[1]
+	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
+		hash = parts[len(parts)-1]
+		identity = strings.Join(parts[:len(parts)-1], "__")
+	} else {
+		// If no hash/separator found, we can't safely rename to the canonical format.
+		return
+	}
 
-		// Strip existing dimensions/opt tags from identity.
-		identity = strings.Split(identity, "_"+fmt.Sprintf("%dx%d", currentW, currentH))[0]
-		identity = strings.Split(identity, "_opt")[0]
-
-		newFilename := fmt.Sprintf("%s_%dx%d_opt.h_%s%s", identity, newW, newH, hash, ext)
-		if newFilename == filename {
-			return
+	// Clean identity by removing existing metadata tags.
+	// Strip existing dimensions (e.g., _3840x2160).
+	if lastUnderscore := strings.LastIndex(identity, "_"); lastUnderscore != -1 {
+		suffix := identity[lastUnderscore+1:]
+		if strings.Contains(suffix, "x") {
+			var w, h int
+			if n, _ := fmt.Sscanf(suffix, "%dx%d", &w, &h); n == 2 {
+				identity = identity[:lastUnderscore]
+			}
 		}
+	}
+	// Strip _opt if it exists.
+	identity = strings.Split(identity, "_opt")[0]
 
-		path := filepath.Join(e.cfg.ArtworkDir, filename)
-		newPath := filepath.Join(e.cfg.ArtworkDir, newFilename)
+	// Construct canonical optimized filename.
+	newFilename := fmt.Sprintf("%s_%dx%d_opt.h_%s%s", identity, newW, newH, hash, ext)
+	if newFilename == filename {
+		return
+	}
 
-		if err := os.Rename(path, newPath); err == nil {
-			e.logger.Info("updated optimized filename", "old", filename, "new", newFilename)
-			e.updateMappings(filename, newFilename)
-			mu.Lock()
-			delete(localFiles, filename)
-			localFiles[newFilename] = struct{}{}
-			mu.Unlock()
-		}
+	path := filepath.Join(e.cfg.ArtworkDir, filename)
+	newPath := filepath.Join(e.cfg.ArtworkDir, newFilename)
+
+	if err := os.Rename(path, newPath); err == nil {
+		e.logger.Info("updated optimized filename", "old", filename, "new", newFilename)
+		e.updateMappings(filename, newFilename)
+		mu.Lock()
+		delete(localFiles, filename)
+		localFiles[newFilename] = struct{}{}
+		mu.Unlock()
 	}
 }
 
@@ -877,11 +895,15 @@ func (e *Engine) updateMappings(oldName, newName string) {
 func parseDimensions(filename string) (int, int, bool) {
 	ext := filepath.Ext(filename)
 	identity := strings.TrimSuffix(filename, ext)
+
+	// Handle both possible separators to extract clean identity.
 	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
 		identity = parts[0]
+	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
+		identity = strings.Join(parts[:len(parts)-1], "__")
 	}
 
-	// Look for [WxH] pattern.
+	// Look for [WxH] pattern in the remaining identity.
 	parts := strings.Split(identity, "_")
 	for _, p := range parts {
 		if strings.Contains(p, "x") {
