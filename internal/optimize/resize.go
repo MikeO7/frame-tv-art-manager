@@ -13,7 +13,9 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"golang.org/x/image/draw"
 )
@@ -251,17 +253,25 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	// 1. Calculate Perceptual Contrast
+	// 1. Calculate Perceptual Contrast in parallel
 	var sumSq, sum float64
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			lum := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
-			sum += lum
-			sumSq += lum * lum
+	var mu sync.Mutex
+	parallelProcessRows(height, func(startY, endY int) {
+		var localSum, localSumSq float64
+		for y := startY; y < endY; y++ {
+			offset := y * src.Stride
+			for x := 0; x < width; x++ {
+				i := offset + x*4
+				lum := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
+				localSum += lum
+				localSumSq += lum * lum
+			}
 		}
-	}
+		mu.Lock()
+		sum += localSum
+		sumSq += localSumSq
+		mu.Unlock()
+	})
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 
@@ -277,33 +287,35 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 		contrastGamma = 1.15
 	}
 
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
+	parallelProcessRows(height, func(startY, endY int) {
+		for y := startY; y < endY; y++ {
+			offset := y * src.Stride
+			for x := 0; x < width; x++ {
+				i := offset + x*4
 
-			// Physics-Based Linear Processing
-			rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
-			gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
-			bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
+				// Physics-Based Linear Processing
+				rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
+				gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
+				bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
 
-			// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
-			rLin = math.Pow(rLin, contrastGamma)
-			gLin = math.Pow(gLin, contrastGamma)
-			bLin = math.Pow(bLin, contrastGamma)
+				// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
+				rLin = math.Pow(rLin, contrastGamma)
+				gLin = math.Pow(gLin, contrastGamma)
+				bLin = math.Pow(bLin, contrastGamma)
 
-			// 3. Pigment Gamut Compression
-			avg := (rLin + gLin + bLin) / 3
-			rLin = rLin*0.97 + avg*0.03
-			gLin = gLin*0.97 + avg*0.03
-			bLin = bLin*0.97 + avg*0.03
+				// 3. Pigment Gamut Compression
+				avg := (rLin + gLin + bLin) / 3
+				rLin = rLin*0.97 + avg*0.03
+				gLin = gLin*0.97 + avg*0.03
+				bLin = bLin*0.97 + avg*0.03
 
-			// Re-process to sRGB
-			src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
-			src.Pix[i+1] = uint8(math.Min(255, math.Max(0, math.Pow(gLin, 1.0/2.2)*255.0)))
-			src.Pix[i+2] = uint8(math.Min(255, math.Max(0, math.Pow(bLin, 1.0/2.2)*255.0)))
+				// Re-process to sRGB
+				src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
+				src.Pix[i+1] = uint8(math.Min(255, math.Max(0, math.Pow(gLin, 1.0/2.2)*255.0)))
+				src.Pix[i+2] = uint8(math.Min(255, math.Max(0, math.Pow(bLin, 1.0/2.2)*255.0)))
+			}
 		}
-	}
+	})
 	return src
 }
 
@@ -560,4 +572,37 @@ func fitDimensions(w, h, maxW, maxH int) (int, int) {
 	// For Frame TV, we actually want to fill the native 4K resolution
 	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
 	return int(float64(w) * scale), int(float64(h) * scale)
+}
+
+// parallelProcessRows splits the image into vertical chunks and processes them in parallel.
+func parallelProcessRows(height int, fn func(startY, endY int)) {
+	numCPUs := runtime.NumCPU()
+	if numCPUs < 1 {
+		numCPUs = 1
+	}
+
+	// For very small images, don't bother with overhead.
+	if height < numCPUs*10 {
+		fn(0, height)
+		return
+	}
+
+	var wg sync.WaitGroup
+	rowsPerWorker := height / numCPUs
+
+	for i := 0; i < numCPUs; i++ {
+		startY := i * rowsPerWorker
+		endY := (i + 1) * rowsPerWorker
+		if i == numCPUs-1 {
+			endY = height
+		}
+
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			fn(s, e)
+		}(startY, endY)
+	}
+
+	wg.Wait()
 }
