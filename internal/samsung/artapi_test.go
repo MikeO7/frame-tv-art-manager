@@ -209,8 +209,12 @@ func TestArtAPI_SetBrightness(t *testing.T) {
 	}
 }
 
+const testValue = "value"
+const testCat1 = "cat1"
+const testContentID = "content_id"
+
 func TestArtAPI_GetArtModeStatus(t *testing.T) {
-	server := setupMockArtServer("get_artmode_status", map[string]any{"value": "on"})
+	server := setupMockArtServer("get_artmode_status", map[string]any{testValue: "on"})
 	defer server.Close()
 
 	conn := startTestConnection(t, server)
@@ -228,9 +232,9 @@ func TestArtAPI_GetArtModeStatus(t *testing.T) {
 
 func TestArtAPI_GetSlideshowStatus(t *testing.T) {
 	server := setupMockArtServer("get_slideshow_status", map[string]any{
-		"value":       "3",
+		testValue:     "3",
 		"type":        "slideshow",
-		"category_id": "cat1",
+		"category_id": testCat1,
 	})
 	defer server.Close()
 
@@ -297,7 +301,7 @@ func TestArtAPI_WaitForImageAdded(t *testing.T) {
 
 		// Send event after a short delay
 		time.Sleep(100 * time.Millisecond)
-		artResp := map[string]any{"event": "image_added", "content_id": "new-id"}
+		artResp := map[string]any{"event": "image_added", testContentID: "new-id"}
 		artRespBytes, _ := json.Marshal(artResp)
 		respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
 		respBytes, _ := json.Marshal(respMsg)

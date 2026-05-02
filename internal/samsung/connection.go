@@ -118,7 +118,7 @@ func (c *Connection) Open(ctx context.Context) error {
 	}
 
 	switch resp.Event {
-	case "ms.channel.connect":
+	case EventChannelConnect:
 		c.extractAndSaveToken(resp.Data)
 	case "ms.channel.unauthorized":
 		_ = conn.Close()
@@ -402,6 +402,8 @@ type wsResponse struct {
 // ArtAppRequest builds the outer WebSocket message for an art API request.
 const keyMethod = "method"
 const keyParams = "params"
+const keyEvent = "event"
+const keyData = "data"
 
 func ArtAppRequest(data map[string]any) ([]byte, error) {
 	inner, err := json.Marshal(data)
@@ -412,9 +414,9 @@ func ArtAppRequest(data map[string]any) ([]byte, error) {
 	outer := map[string]any{
 		keyMethod: "ms.channel.emit",
 		keyParams: map[string]any{
-			"event": "art_app_request",
-			"to":    "host",
-			"data":  string(inner),
+			keyEvent: "art_app_request",
+			"to":     "host",
+			keyData:  string(inner),
 		},
 	}
 	return json.Marshal(outer)

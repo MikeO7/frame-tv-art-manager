@@ -21,7 +21,7 @@ func TestRemote_EnsureToken(t *testing.T) {
 		defer func() { _ = conn.Close() }()
 
 		handshakeResp := map[string]any{
-			"event": "ms.channel.connect",
+			keyEvent: EventChannelConnect,
 			"data": map[string]any{
 				"token": "remote-token",
 			},

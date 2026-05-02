@@ -75,8 +75,8 @@ func TestConnection_SendAndWait(t *testing.T) {
 
 		// 1. Send Handshake Connect
 		handshakeResp := map[string]any{
-			"event": "ms.channel.connect",
-			"data": map[string]any{
+			keyEvent: EventChannelConnect,
+			keyData: map[string]any{
 				"token": "test-token",
 			},
 		}
