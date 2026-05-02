@@ -840,8 +840,9 @@ func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified
 		hash = parts[len(parts)-1]
 		identity = strings.Join(parts[:len(parts)-1], "__")
 	} else {
-		// If no hash/separator found, we can't safely rename to the canonical format.
-		return
+		// If no hash/separator found, it is a manually added file.
+		// Use a default hash so it gets the canonical format and isn't re-processed on every restart.
+		hash = "local"
 	}
 
 	// Clean identity by removing existing metadata tags.
