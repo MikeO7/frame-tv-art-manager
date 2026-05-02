@@ -78,7 +78,7 @@ func TestEnsureToken(t *testing.T) {
 			return
 		}
 		defer func() { _ = conn.Close() }()
-		resp := wsResponse{Event: "ms.channel.connect", Data: json.RawMessage(`{"token":"new-token"}`)}
+		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"new-token"}`)}
 		b, _ := json.Marshal(resp)
 		_ = conn.WriteMessage(websocket.TextMessage, b)
 	}))
