@@ -1,7 +1,10 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,6 +45,44 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if resp["sync_count"].(float64) != 1 {
 		t.Errorf("expected sync_count=1, got %v", resp["sync_count"])
+	}
+}
+
+func TestServer_Routes(t *testing.T) {
+	status := NewStatus()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := NewServer(0, status, logger) // Port 0 doesn't actually start, but we can call handlers.
+
+	// Test handleHealth
+	req := httptest.NewRequest("GET", "/health", nil)
+	rr := httptest.NewRecorder()
+	server.handleHealth(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusOK)
+	}
+
+	// Test handleStatus
+	req = httptest.NewRequest("GET", "/status", nil)
+	rr = httptest.NewRecorder()
+	server.handleStatus(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusOK)
+	}
+}
+
+func TestServer_Shutdown(t *testing.T) {
+	status := NewStatus()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := NewServer(12345, status, logger)
+
+	// Start server in background
+	server.Start()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		t.Errorf("Shutdown failed: %v", err)
 	}
 }
 

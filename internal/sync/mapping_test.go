@@ -122,3 +122,51 @@ func TestMapping_TrackedFilenames(t *testing.T) {
 		t.Errorf("expected %v, got %v", expected, got)
 	}
 }
+
+func TestMapping_DeleteBatch(t *testing.T) {
+	m := &Mapping{
+		data: map[string]string{
+			"a.jpg": "id-a",
+			"b.jpg": "id-b",
+			"c.jpg": "id-c",
+		},
+	}
+
+	m.DeleteBatch([]string{"a.jpg", "c.jpg"})
+
+	if _, ok := m.data["a.jpg"]; ok {
+		t.Error("expected a.jpg to be deleted")
+	}
+	if _, ok := m.data["c.jpg"]; ok {
+		t.Error("expected c.jpg to be deleted")
+	}
+	if id, ok := m.data["b.jpg"]; !ok || id != "id-b" {
+		t.Error("expected b.jpg to remain")
+	}
+}
+
+func TestMapping_Rename(t *testing.T) {
+	m := &Mapping{
+		data: map[string]string{
+			"old.jpg": "id-123",
+		},
+	}
+
+	// Successful rename
+	ok := m.Rename("old.jpg", "new.jpg")
+	if !ok {
+		t.Error("expected rename to return true")
+	}
+	if _, ok := m.data["old.jpg"]; ok {
+		t.Error("expected old.jpg to be removed")
+	}
+	if id, ok := m.data["new.jpg"]; !ok || id != "id-123" {
+		t.Errorf("expected new.jpg to have id-123, got %s", id)
+	}
+
+	// Unsuccessful rename
+	ok = m.Rename("missing.jpg", "other.jpg")
+	if ok {
+		t.Error("expected rename of missing file to return false")
+	}
+}

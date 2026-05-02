@@ -65,11 +65,14 @@ func NewLoader(sourcesFile, artworkDir string, unsplashAppID, unsplashAccessKey,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		unsplash: NewUnsplashClient(unsplashAppID, unsplashAccessKey, unsplashSecretKey, logger),
-		nasa:     NewNASAClient(nasaKey, logger),
-		artic:    NewArticClient(logger),
-		pexels:   NewPexelsClient(pexelsKey, logger),
-		pixabay:  NewPixabayClient(pixabayKey, logger),
+		unsplash:  NewUnsplashClient(unsplashAppID, unsplashAccessKey, unsplashSecretKey, logger),
+		nasa:      NewNASAClient(nasaKey, logger),
+		artic:     NewArticClient(logger),
+		pexels:    NewPexelsClient(pexelsKey, logger),
+		pixabay:   NewPixabayClient(pixabayKey, logger),
+		index:     make(map[string]string),
+		prefixMap: make(map[string]string),
+		visited:   make(map[string]bool),
 	}
 }
 

@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -196,5 +197,140 @@ func TestLoader_UrlToSlug_Long(t *testing.T) {
 	slug := l.urlToSlug(longURL)
 	if len(slug) > 100 {
 		t.Errorf("slug too long: %d", len(slug))
+	}
+}
+
+func mockProviderHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	path := r.URL.Path
+	switch {
+	case strings.Contains(path, "/photos") || strings.Contains(path, "/collections"): // Unsplash
+		_, _ = w.Write([]byte(`[{"id": "u1", "links": {"download_location": "http://example.com/download"}}]`))
+	case strings.Contains(path, "/search") && strings.Contains(r.URL.RawQuery, "nasa"): // NASA Search
+		_, _ = w.Write([]byte(`{"collection": {"items": [{"href": "http://example.com/nasa1", "data": [{"nasa_id": "n1", "media_type": "image"}]}]}}`))
+	case strings.Contains(path, "/artic"): // Artic
+		_, _ = w.Write([]byte(`{"data": {"id": 456, "image_id": "a1"}}`))
+	case strings.Contains(path, "/curated") || strings.Contains(path, "/collections/"): // Pexels
+		_, _ = w.Write([]byte(`{"photos": [{"id": 789, "src": {"original": "http://example.com/p1.jpg"}}]}`))
+	case (strings.Contains(path, "/api") || strings.Contains(path, "/?key=")) && (strings.Contains(r.URL.RawQuery, "editors_choice") || strings.Contains(r.URL.RawQuery, "q=") || strings.Contains(r.URL.RawQuery, "user=")): // Pixabay
+		_, _ = w.Write([]byte(`{"hits": [{"id": 101, "largeImageURL": "http://example.com/pix1.jpg"}]}`))
+	case strings.Contains(path, "/nasa1"): // NASA asset manifest
+		_, _ = w.Write([]byte(`["http://example.com/nasa1.jpg"]`))
+	case strings.Contains(path, "/apod"): // NASA APOD
+		_, _ = w.Write([]byte(`{"url": "http://example.com/apod.jpg", "media_type": "image"}`))
+	default:
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write([]byte("fake-image-data"))
+	}
+}
+
+func TestLoader_Sync_Providers(t *testing.T) {
+	artworkDir := t.TempDir()
+	sourcesFile := filepath.Join(t.TempDir(), "sources_providers.txt")
+
+	// Mock server for all providers
+	server := httptest.NewServer(http.HandlerFunc(mockProviderHandler))
+	defer server.Close()
+
+	content := "unsplash:photo:123\nunsplash:collection:456\nnasa:apod\nnasa:search:mars\nartic:photo:456\npexels:curated\npexels:collection:789\npixabay:editors_choice\npixabay:search:nature\npixabay:user:mike\n"
+	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
+
+	l := NewLoader(sourcesFile, artworkDir, "app", "key", "secret", "nasa", "pexels", "pixabay", 0, 0, slog.Default())
+	// Override BaseURLs to point to our mock server
+	l.unsplash.BaseURL = server.URL
+	l.nasa.BaseURL = server.URL
+	l.nasa.SearchURL = server.URL
+	l.artic.BaseURL = server.URL
+	l.pexels.BaseURL = server.URL
+	l.pixabay.BaseURL = server.URL
+
+	_, err := l.Sync()
+	if err != nil {
+		t.Fatalf("Sync with providers failed: %v", err)
+	}
+}
+
+func TestLoader_Sync_Yaml(t *testing.T) {
+	artworkDir := t.TempDir()
+	sourcesFile := filepath.Join(t.TempDir(), "sources.yaml")
+
+	content := `
+sources:
+  - unsplash:photo:123
+  - nasa:apod
+`
+	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
+
+	l := NewLoader(sourcesFile, artworkDir, "app", "key", "secret", "nasa", "pexels", "pixabay", 0, 0, slog.Default())
+
+	// Mock server for downloads
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/photos") {
+			_, _ = w.Write([]byte(`{"id": "u1", "links": {"download_location": "http://example.com/download"}}`))
+		} else {
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write([]byte("fake-image-data"))
+		}
+	}))
+	defer server.Close()
+	l.unsplash.BaseURL = server.URL
+
+	_, _ = l.Sync()
+}
+
+func TestLoader_UtilityMethods(t *testing.T) {
+	// truncateURL
+	u := "https://example.com/very/long/path/to/image.jpg?query=param"
+	trunc := truncateURL(u)
+	if len(trunc) > 80 {
+		t.Errorf("expected truncated URL, got %s", trunc)
+	}
+
+	// extensionFromResponse
+	resp := &http.Response{
+		Header: make(http.Header),
+	}
+	resp.Header.Set("Content-Type", "image/png")
+	ext := extensionFromResponse(resp, "file.jpg")
+	if ext != ".png" {
+		t.Errorf("expected .png, got %s", ext)
+	}
+
+	resp.Header.Set("Content-Type", "application/octet-stream")
+	ext = extensionFromResponse(resp, "file.png")
+	if ext != ".png" {
+		t.Errorf("expected .png from filename, got %s", ext)
+	}
+}
+
+func TestLoader_handleArticLine_Search(t *testing.T) {
+	artworkDir := t.TempDir()
+	l := NewLoader("", artworkDir, "", "", "", "", "", "", 0, 0, slog.Default())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/search") {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []any{
+					map[string]any{"id": 1, "image_id": "img1"},
+				},
+			})
+		} else {
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write([]byte("fake-image-data"))
+		}
+	}))
+	defer server.Close()
+	l.artic.BaseURL = server.URL
+	l.artic.IIIFBaseURL = server.URL
+
+	var globalIndex int32
+	count, err := l.handleArticLine("artic:search:monet", &globalIndex)
+	if err != nil {
+		t.Fatalf("handleArticLine failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 URL, got %d", count)
 	}
 }

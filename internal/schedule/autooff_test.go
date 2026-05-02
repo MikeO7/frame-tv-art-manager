@@ -114,3 +114,32 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestIsWithinAutoOffWindow_Live(t *testing.T) {
+	// Call the live version just for coverage.
+	// We can't easily assert the result since it depends on the current time,
+	// but we can pass an empty offTime to guarantee a false result.
+	if IsWithinAutoOffWindow("", 2, "UTC") != false {
+		t.Error("expected false for empty offTime")
+	}
+}
+
+func TestFormatGraceDisplay(t *testing.T) {
+	tests := []struct {
+		hours float64
+		want  string
+	}{
+		{2.0, "2"},
+		{1.5, "1.5"},
+		{0.0, "0"},
+		{12.0, "12"},
+		{0.1, "0.1"},
+	}
+
+	for _, tc := range tests {
+		got := FormatGraceDisplay(tc.hours)
+		if got != tc.want {
+			t.Errorf("FormatGraceDisplay(%.1f) = %q, want %q", tc.hours, got, tc.want)
+		}
+	}
+}

@@ -11,9 +11,10 @@ import (
 
 // ArticClient handles communication with the Art Institute of Chicago API.
 type ArticClient struct {
-	client  *http.Client
-	logger  *slog.Logger
-	BaseURL string
+	client      *http.Client
+	logger      *slog.Logger
+	BaseURL     string
+	IIIFBaseURL string
 }
 
 // NewArticClient creates a new Art Institute of Chicago API client.
@@ -22,8 +23,9 @@ func NewArticClient(logger *slog.Logger) *ArticClient {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger:  logger,
-		BaseURL: "https://api.artic.edu",
+		logger:      logger,
+		BaseURL:     "https://api.artic.edu",
+		IIIFBaseURL: "https://www.artic.edu/iiif/2",
 	}
 }
 
@@ -67,7 +69,7 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 	for _, art := range result.Data {
 		if art.ImageID != "" {
 			// Construct the IIIF high-resolution URL (using !3840,2160 for best fit)
-			imgURL := fmt.Sprintf("https://www.artic.edu/iiif/2/%s/full/!3840,2160/0/default.jpg", art.ImageID)
+			imgURL := fmt.Sprintf("%s/%s/full/!3840,2160/0/default.jpg", c.IIIFBaseURL, art.ImageID)
 			imageUrls = append(imageUrls, imgURL)
 		}
 	}
@@ -107,5 +109,5 @@ func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error)
 		return "", fmt.Errorf("artwork %s has no image_id", id)
 	}
 
-	return fmt.Sprintf("https://www.artic.edu/iiif/2/%s/full/!3840,2160/0/default.jpg", result.Data.ImageID), nil
+	return fmt.Sprintf("%s/%s/full/!3840,2160/0/default.jpg", c.IIIFBaseURL, result.Data.ImageID), nil
 }
