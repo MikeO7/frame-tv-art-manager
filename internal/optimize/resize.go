@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/image/draw"
 )
@@ -163,14 +164,15 @@ func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 	return final
 }
 
-// findBestDirectorCrop implements the 'Director's Cut' Smart Crop v3.0.
-// It combines Boolean Map Saliency (BMS) for object detection, Sobel for structural edges,
-// and a high-performance Integral Image (Summed-Area Table) search to find the optimal focal point.
+// findBestDirectorCrop implements the 'Director's Cut' Smart Crop v4.0.
+// It uses a two-pass system:
+// 1. Global BMS analysis at 256px to find the primary Region of Interest.
+// 2. High-res Micro-Refinement at the focal point to optimize for edge alignment.
 func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool) int {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
 
-	// 1. Generate Saliency Map at working resolution (256px)
+	// PASS 1: Global Analysis (256px)
 	const workSize = 256
 	scale := float64(workSize) / float64(srcW)
 	if !horizontal {
@@ -181,11 +183,8 @@ func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool
 	draw.NearestNeighbor.Scale(workImg, workImg.Bounds(), src, src.Bounds(), draw.Src, nil)
 
 	saliencyMap := generateSaliencyMap(workImg)
+	integral := calculateIntegralImage(saliencyMap, workW, workH)
 
-	// 2. Create Integral Image (Summed-Area Table) for O(1) window sums
-	integral := calculateIntegralImage(saliencyMap)
-
-	// 3. Exhaustive search for the best window
 	mapWinW := int(float64(windowW) * scale)
 	mapWinH := int(float64(windowH) * scale)
 	if mapWinW < 1 {
@@ -207,7 +206,6 @@ func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool
 				bestMapPos = mx
 			}
 		}
-		return int(float64(bestMapPos) / scale)
 	} else {
 		maxMapY := workH - mapWinH
 		for my := 0; my <= maxMapY; my++ {
@@ -217,8 +215,84 @@ func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool
 				bestMapPos = my
 			}
 		}
-		return int(float64(bestMapPos) / scale)
 	}
+
+	globalOffset := int(float64(bestMapPos) / scale)
+
+	// PASS 2: High-Res Micro-Refinement (Fine-tuning at the focal point)
+	// We search within a +/- 5% range at a higher resolution to snap to sharp edges.
+	return refineOffset(src, globalOffset, windowW, windowH, horizontal)
+}
+
+// refineOffset performs a local search at high resolution to fine-tune the crop.
+func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizontal bool) int {
+	srcBounds := src.Bounds()
+	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
+
+	// Search range: +/- 2% of the total dimension
+	searchRange := 0
+	if horizontal {
+		searchRange = int(float64(srcW) * 0.02)
+	} else {
+		searchRange = int(float64(srcH) * 0.02)
+	}
+	if searchRange < 1 {
+		return globalOffset
+	}
+
+	bestOffset := globalOffset
+	maxScore := -1.0
+
+	// Local search at high resolution
+	for delta := -searchRange; delta <= searchRange; delta++ {
+		offset := globalOffset + delta
+
+		// Clamp to bounds
+		if horizontal {
+			if offset < 0 {
+				offset = 0
+			}
+			if offset+windowW > srcW {
+				offset = srcW - windowW
+			}
+		} else {
+			if offset < 0 {
+				offset = 0
+			}
+			if offset+windowH > srcH {
+				offset = srcH - windowH
+			}
+		}
+
+		// Quick edge-score of the boundary
+		score := 0.0
+		if horizontal {
+			score = calculateEdgeScore(src, offset, 0, offset+windowW, srcH)
+		} else {
+			score = calculateEdgeScore(src, 0, offset, srcW, offset+windowH)
+		}
+
+		if score > maxScore {
+			maxScore = score
+			bestOffset = offset
+		}
+	}
+
+	return bestOffset
+}
+
+// calculateEdgeScore calculates a simplified Sobel sum for micro-refinement.
+func calculateEdgeScore(src *image.RGBA, x1, y1, x2, y2 int) float64 {
+	score := 0.0
+	// Sample only the corners and midpoints for speed in refinement
+	samples := [][]int{
+		{x1, y1}, {x2 - 1, y1}, {x1, y2 - 1}, {x2 - 1, y2 - 1},
+		{(x1 + x2) / 2, (y1 + y2) / 2},
+	}
+	for _, s := range samples {
+		score += calculateSobelEdge(src, s[0], s[1])
+	}
+	return score
 }
 
 // generateSaliencyMap creates a 2D map where each pixel represents a saliency score.
@@ -244,63 +318,117 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			// 4. Object Saliency (BMS)
 			object := bmsMap[y*w+x]
 
-			// 5. Aesthetic/Compositional Weight (Rule of Thirds)
+			// 5. Perceptual Lab Saliency (Color Contrast in Lab Space)
+			// Lab space is uniform and captures true human color perception.
+			_, a_lab, b_lab := rgbToLab(r, g, b)
+			colorWeight := math.Sqrt(a_lab*a_lab+b_lab*b_lab) / 128.0
+
+			// 6. Aesthetic/Compositional Weight (Rule of Thirds + Balance)
 			aesthetic := calculateAestheticScore(x, y, w, h)
 
-			// Weighted Fusion v3.0
-			fusion := (object * 0.45) + (edge * 0.25) + (skin * 0.30)
+			// Weighted Fusion v4.0
+			// BMS remains the core, but we now incorporate perceptual Lab color weight.
+			fusion := (object * 0.40) + (edge * 0.20) + (skin * 0.25) + (colorWeight * 0.15)
 			mapData[y*w+x] = fusion * (1.0 + aesthetic)
 		}
 	}
 	return mapData
 }
 
+// rgbToLab performs a fast, simplified conversion from RGB to CIE Lab space.
+func rgbToLab(r, g, b uint8) (float64, float64, float64) {
+	// 1. Linearize RGB
+	rf := math.Pow(float64(r)/255.0, 2.2)
+	gf := math.Pow(float64(g)/255.0, 2.2)
+	bf := math.Pow(float64(b)/255.0, 2.2)
+
+	// 2. RGB to XYZ
+	x := rf*0.4124 + gf*0.3576 + bf*0.1805
+	y := rf*0.2126 + gf*0.7152 + bf*0.0722
+	z := rf*0.0193 + gf*0.1192 + bf*0.9505
+
+	// 3. XYZ to Lab (Simplified D65)
+	f := func(t float64) float64 {
+		if t > 0.008856 {
+			return math.Pow(t, 1.0/3.0)
+		}
+		return (7.787*t + 16.0/116.0)
+	}
+
+	l := 116.0*f(y) - 16.0
+	a := 500.0 * (f(x) - f(y))
+	b_lab := 200.0 * (f(y) - f(z))
+
+	return l, a, b_lab
+}
+
 // generateBMSMap implements Boolean Map Saliency's surroundedness principle.
 // It finds regions that are topologically isolated from the image borders.
+// v4.0 is fully parallelized across all threshold channels.
 func generateBMSMap(src *image.RGBA) []float64 {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	bms := make([]float64, w*h)
 
-	// We use 5 threshold levels to capture objects of different brightness.
 	thresholds := []uint8{50, 100, 150, 200, 240}
-	for _, t := range thresholds {
-		boolMap := make([]bool, w*h)
+	results := make([][]float64, len(thresholds))
+	var wg sync.WaitGroup
+
+	for i, t := range thresholds {
+		wg.Add(1)
+		go func(idx int, threshold uint8) {
+			defer wg.Done()
+			results[idx] = processBMSThreshold(src, threshold, w, h)
+		}(i, t)
+	}
+	wg.Wait()
+
+	// Aggregate parallel results
+	for _, res := range results {
 		for i := 0; i < w*h; i++ {
-			idx := i * 4
-			lum := 0.299*float64(src.Pix[idx]) + 0.587*float64(src.Pix[idx+1]) + 0.114*float64(src.Pix[idx+2])
-			if uint8(lum) > t {
-				boolMap[i] = true
-			}
-		}
-
-		bg := make([]bool, w*h)
-		queue := make([]int, 0, w*h)
-		for x := 0; x < w; x++ {
-			queue = checkAndPush(boolMap, bg, queue, x, 0, w, h)
-			queue = checkAndPush(boolMap, bg, queue, x, h-1, w, h)
-		}
-		for y := 0; y < h; y++ {
-			queue = checkAndPush(boolMap, bg, queue, 0, y, w, h)
-			queue = checkAndPush(boolMap, bg, queue, w-1, y, w, h)
-		}
-
-		for len(queue) > 0 {
-			curr := queue[0]
-			queue = queue[1:]
-			cx, cy := curr%w, curr/w
-			queue = checkAndPush(boolMap, bg, queue, cx-1, cy, w, h)
-			queue = checkAndPush(boolMap, bg, queue, cx+1, cy, w, h)
-			queue = checkAndPush(boolMap, bg, queue, cx, cy-1, w, h)
-			queue = checkAndPush(boolMap, bg, queue, cx, cy+1, w, h)
-		}
-
-		for i := 0; i < w*h; i++ {
-			if boolMap[i] && !bg[i] {
-				bms[i] += 1.0 / float64(len(thresholds))
-			}
+			bms[i] += res[i] / float64(len(thresholds))
 		}
 	}
 	return bms
+}
+
+func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
+	res := make([]float64, w*h)
+	boolMap := make([]bool, w*h)
+	for i := 0; i < w*h; i++ {
+		idx := i * 4
+		lum := 0.299*float64(src.Pix[idx]) + 0.587*float64(src.Pix[idx+1]) + 0.114*float64(src.Pix[idx+2])
+		if uint8(lum) > t {
+			boolMap[i] = true
+		}
+	}
+
+	bg := make([]bool, w*h)
+	queue := make([]int, 0, w*h)
+	for x := 0; x < w; x++ {
+		queue = checkAndPush(boolMap, bg, queue, x, 0, w, h)
+		queue = checkAndPush(boolMap, bg, queue, x, h-1, w, h)
+	}
+	for y := 0; y < h; y++ {
+		queue = checkAndPush(boolMap, bg, queue, 0, y, w, h)
+		queue = checkAndPush(boolMap, bg, queue, w-1, y, w, h)
+	}
+
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		cx, cy := curr%w, curr/w
+		queue = checkAndPush(boolMap, bg, queue, cx-1, cy, w, h)
+		queue = checkAndPush(boolMap, bg, queue, cx+1, cy, w, h)
+		queue = checkAndPush(boolMap, bg, queue, cx, cy-1, w, h)
+		queue = checkAndPush(boolMap, bg, queue, cx, cy+1, w, h)
+	}
+
+	for i := 0; i < w*h; i++ {
+		if boolMap[i] && !bg[i] {
+			res[i] = 1.0
+		}
+	}
+	return res
 }
 
 func checkAndPush(boolMap, bg []bool, queue []int, x, y, w, h int) []int {
@@ -340,17 +468,24 @@ func calculateAestheticScore(x, y, w, h int) float64 {
 	dx, dy := nx-0.5, ny-0.5
 	centerBias := 0.1 * (1.0 - math.Sqrt(dx*dx+dy*dy))
 
+	// 1. Rule of Thirds (Gaussian weight around 0.33 and 0.66)
 	tx1, tx2 := nx-0.33, nx-0.66
 	ty1, ty2 := ny-0.33, ny-0.66
 	thirdX := math.Exp(-(tx1*tx1)/0.02) + math.Exp(-(tx2*tx2)/0.02)
 	thirdY := math.Exp(-(ty1*ty1)/0.02) + math.Exp(-(ty2*ty2)/0.02)
 
-	return centerBias + ((thirdX + thirdY) * 0.25)
+	// 2. Visual Mass Balance
+	// We penalize saliency if it's too far to one side unless balanced by something else.
+	// This is a subtle bias toward overall frame harmony.
+	balanceBias := 0.0
+	if math.Abs(dx) > 0.4 {
+		balanceBias = -0.05
+	}
+
+	return centerBias + ((thirdX + thirdY) * 0.25) + balanceBias
 }
 
-func calculateIntegralImage(saliencyMap []float64) []float64 {
-	w := 256 // Fixed working width
-	h := len(saliencyMap) / w
+func calculateIntegralImage(saliencyMap []float64, w, h int) []float64 {
 	integral := make([]float64, w*h)
 	for y := 0; y < h; y++ {
 		rowSum := 0.0
