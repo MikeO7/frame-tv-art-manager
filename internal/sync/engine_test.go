@@ -13,6 +13,8 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
+const testIP = "192.168.1.10"
+
 func TestEngine_RunOnce_Empty(t *testing.T) {
 	tmpDir := t.TempDir()
 	artworkDir := filepath.Join(tmpDir, "artwork")
@@ -21,7 +23,7 @@ func TestEngine_RunOnce_Empty(t *testing.T) {
 	_ = os.MkdirAll(tokenDir, 0700)
 
 	cfg := &config.Config{
-		TVIPs:           []string{"127.0.0.1"},
+		TVIPs:           []string{testIP},
 		ArtworkDir:      artworkDir,
 		TokenDir:        tokenDir,
 		SyncIntervalMin: 1,
@@ -110,7 +112,6 @@ func TestEngine_RunOnce_Full(t *testing.T) {
 	// Create a dummy image
 	_ = os.WriteFile(filepath.Join(artworkDir, "test.jpg"), createSmallJPEG(), 0600)
 
-	const testIP = "192.168.1.10"
 	cfg := &config.Config{
 		TVIPs:           []string{testIP},
 		ArtworkDir:      artworkDir,
@@ -136,7 +137,7 @@ func TestEngine_RunOnce_DryRun(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(artworkDir, "test.jpg"), []byte("data"), 0600)
 
 	cfg := &config.Config{
-		TVIPs:           []string{"192.168.1.10"},
+		TVIPs:           []string{testIP},
 		ArtworkDir:      artworkDir,
 		TokenDir:        t.TempDir(),
 		DryRun:          true,
@@ -155,7 +156,7 @@ func TestEngine_RunOnce_DryRun(t *testing.T) {
 
 func TestEngine_RunOnce_NotArtMode(t *testing.T) {
 	cfg := &config.Config{
-		TVIPs:           []string{"192.168.1.10"},
+		TVIPs:           []string{testIP},
 		ArtworkDir:      t.TempDir(),
 		TokenDir:        t.TempDir(),
 		SyncIntervalMin: 1,
@@ -173,7 +174,7 @@ func TestEngine_RunOnce_NotArtMode(t *testing.T) {
 
 func TestEngine_RunOnce_UnknownRemoval(t *testing.T) {
 	cfg := &config.Config{
-		TVIPs:               []string{"192.168.1.10"},
+		TVIPs:               []string{testIP},
 		ArtworkDir:          t.TempDir(),
 		TokenDir:            t.TempDir(),
 		RemoveUnknownImages: true,
@@ -192,7 +193,7 @@ func TestEngine_RunOnce_UnknownRemoval(t *testing.T) {
 
 func TestEngine_RunLoop(t *testing.T) {
 	cfg := &config.Config{
-		TVIPs:           []string{"192.168.1.10"},
+		TVIPs:           []string{testIP},
 		ArtworkDir:      t.TempDir(),
 		TokenDir:        t.TempDir(),
 		SyncIntervalMin: 1,
@@ -311,7 +312,7 @@ func TestEngine_RunOnce_ScanError(t *testing.T) {
 	_ = os.WriteFile(tmpFile, []byte("data"), 0600)
 
 	cfg := &config.Config{
-		TVIPs:      []string{"192.168.1.10"},
+		TVIPs:      []string{testIP},
 		ArtworkDir: tmpFile,
 		TokenDir:   t.TempDir(),
 	}

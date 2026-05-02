@@ -15,6 +15,10 @@ import (
 	"log/slog"
 )
 
+const (
+	extJPG = ".jpg"
+)
+
 func setupMockArtServer(requestName string, artRespData map[string]any) *httptest.Server {
 	upgrader := websocket.Upgrader{}
 	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +164,7 @@ func TestArtAPI_SendImage(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	api := NewArtAPI(conn, 1*time.Second, slog.Default())
-	info, err := api.SendImage(context.Background(), SendImageRequest{FileType: "jpg", FileSize: 100, Matte: "none"})
+	info, err := api.SendImage(context.Background(), SendImageRequest{FileType: extJPG, FileSize: 100, Matte: "none"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +250,7 @@ func TestArtAPI_GetSlideshowStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ss.Value != "3" || ss.Type != "slideshow" || ss.CategoryID != "cat1" {
+	if ss.Value != "3" || ss.Type != "slideshow" || ss.CategoryID != testCat1 {
 		t.Errorf("unexpected slideshow status: %+v", ss)
 	}
 }
@@ -259,14 +263,14 @@ func TestArtAPI_SetSlideshowStatus(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	api := NewArtAPI(conn, 1*time.Second, slog.Default())
-	err := api.SetSlideshowStatus(context.Background(), SlideshowStatus{Value: "15", Type: "shuffle", CategoryID: "cat1"})
+	err := api.SetSlideshowStatus(context.Background(), SlideshowStatus{Value: "15", Type: "shuffle", CategoryID: testCat1})
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestArtAPI_GetCategories(t *testing.T) {
-	cats := `{"categories":[{"id":"cat1","name":"Category 1"}]}`
+	cats := `{"categories":[{"id":"` + testCat1 + `","name":"Category 1"}]}`
 	server := setupMockArtServer("get_categories", map[string]any{"categories": cats})
 	defer server.Close()
 
@@ -278,7 +282,7 @@ func TestArtAPI_GetCategories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !contains(string(raw), "cat1") {
+	if !contains(string(raw), testCat1) {
 		t.Errorf("expected cat1 in response, got %s", string(raw))
 	}
 }
