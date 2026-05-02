@@ -6,31 +6,38 @@ import (
 	"testing"
 )
 
+const (
+	valID1   = "id1"
+	testJPG  = "test.jpg"
+	testAJPG = "a.jpg"
+	testBJPG = "b.jpg"
+)
+
 func TestMapping_Set(t *testing.T) {
 	m := &Mapping{
 		data: make(map[string]string),
 	}
 
-	m.Set("test.jpg", "id1")
-	if m.data["test.jpg"] != "id1" {
-		t.Errorf("expected id1, got %s", m.data["test.jpg"])
+	m.Set(testJPG, valID1)
+	if m.data[testJPG] != valID1 {
+		t.Errorf("expected id1, got %s", m.data[testJPG])
 	}
 
-	m.Set("test.jpg", "id2")
-	if m.data["test.jpg"] != "id2" {
-		t.Errorf("expected id2, got %s", m.data["test.jpg"])
+	m.Set(testJPG, "id2")
+	if m.data[testJPG] != "id2" {
+		t.Errorf("expected id2, got %s", m.data[testJPG])
 	}
 }
 
 func TestMapping_Delete(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{
-			"test.jpg": "id1",
+			testJPG: valID1,
 		},
 	}
 
-	m.Delete("test.jpg")
-	if _, ok := m.data["test.jpg"]; ok {
+	m.Delete(testJPG)
+	if _, ok := m.data[testJPG]; ok {
 		t.Error("expected test.jpg to be deleted")
 	}
 
@@ -41,12 +48,12 @@ func TestMapping_Delete(t *testing.T) {
 func TestMapping_GetContentID(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{
-			"test.jpg": "id1",
+			testJPG: valID1,
 		},
 	}
 
-	id, ok := m.GetContentID("test.jpg")
-	if !ok || id != "id1" {
+	id, ok := m.GetContentID(testJPG)
+	if !ok || id != valID1 {
 		t.Errorf("expected (id1, true), got (%s, %v)", id, ok)
 	}
 
@@ -59,12 +66,12 @@ func TestMapping_GetContentID(t *testing.T) {
 func TestMapping_GetFilename(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{
-			"test.jpg": "id1",
+			testJPG: valID1,
 		},
 	}
 
-	file, ok := m.GetFilename("id1")
-	if !ok || file != "test.jpg" {
+	file, ok := m.GetFilename(valID1)
+	if !ok || file != testJPG {
 		t.Errorf("expected (test.jpg, true), got (%s, %v)", file, ok)
 	}
 
@@ -76,13 +83,13 @@ func TestMapping_GetFilename(t *testing.T) {
 
 func TestMapping_AllContentIDs(t *testing.T) {
 	initial := map[string]string{
-		"a.jpg": "id-a",
-		"b.jpg": "id-b",
+		testAJPG: "id-a",
+		testBJPG: "id-b",
 	}
 	m := &Mapping{
 		data: map[string]string{
-			"a.jpg": "id-a",
-			"b.jpg": "id-b",
+			testAJPG: "id-a",
+			testBJPG: "id-b",
 		},
 	}
 
@@ -101,13 +108,13 @@ func TestMapping_AllContentIDs(t *testing.T) {
 func TestMapping_TrackedFilenames(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{
-			"a.jpg": "id-a",
-			"b.jpg": "id-b",
+			testAJPG: "id-a",
+			testBJPG: "id-b",
 		},
 	}
 	expected := map[string]struct{}{
-		"a.jpg": {},
-		"b.jpg": {},
+		testAJPG: {},
+		testBJPG: {},
 	}
 
 	got := m.TrackedFilenames()

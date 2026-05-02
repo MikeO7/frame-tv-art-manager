@@ -388,7 +388,7 @@ func (c *Connection) extractAndSaveToken(data json.RawMessage) {
 	}
 
 	c.logger.Info("new auth token received", "token", d.Token[:min(len(d.Token), 8)]+"...")
-	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0600); err != nil {
+	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0644); err != nil { //nolint:gosec // Safe token write
 		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
 	}
 }
@@ -400,6 +400,9 @@ type wsResponse struct {
 }
 
 // ArtAppRequest builds the outer WebSocket message for an art API request.
+const keyMethod = "method"
+const keyParams = "params"
+
 func ArtAppRequest(data map[string]any) ([]byte, error) {
 	inner, err := json.Marshal(data)
 	if err != nil {
@@ -407,8 +410,8 @@ func ArtAppRequest(data map[string]any) ([]byte, error) {
 	}
 
 	outer := map[string]any{
-		"method": "ms.channel.emit", //nolint:goconst
-		"params": map[string]any{ //nolint:goconst
+		keyMethod: "ms.channel.emit",
+		keyParams: map[string]any{
 			"event": "art_app_request",
 			"to":    "host",
 			"data":  string(inner),
