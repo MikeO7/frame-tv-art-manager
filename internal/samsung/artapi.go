@@ -40,7 +40,7 @@ func (a *ArtAPI) Connection() *Connection {
 func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtContent, error) {
 	id := NewRequestID()
 	req := map[string]any{
-		keyRequest:    "get_content_list",
+		keyRequest:   "get_content_list",
 		"id":         id,
 		keyRequestID: id,
 	}
@@ -93,7 +93,7 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 	id := NewRequestID()
 
 	artReq := map[string]any{
-		keyRequest:    "send_image",
+		keyRequest:   "send_image",
 		"file_type":  req.FileType,
 		"id":         id,
 		keyRequestID: id,
@@ -201,7 +201,7 @@ func (a *ArtAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
 	}
 
 	req := map[string]any{
-		keyRequest:         "delete_image_list",
+		keyRequest:        "delete_image_list",
 		"id":              id,
 		keyRequestID:      id,
 		"content_id_list": contentIDList,
@@ -225,7 +225,7 @@ func (a *ArtAPI) SelectImage(ctx context.Context, contentID string, show bool) e
 	id := NewRequestID()
 
 	req := map[string]any{
-		keyRequest:    "select_image",
+		keyRequest:   "select_image",
 		"id":         id,
 		keyRequestID: id,
 		"content_id": contentID,
@@ -250,7 +250,7 @@ func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 	id := NewRequestID()
 
 	req := map[string]any{
-		keyRequest:    "get_artmode_status",
+		keyRequest:   "get_artmode_status",
 		"id":         id,
 		keyRequestID: id,
 	}
@@ -278,7 +278,7 @@ func (a *ArtAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, erro
 	id := NewRequestID()
 
 	req := map[string]any{
-		keyRequest:    "get_slideshow_status",
+		keyRequest:   "get_slideshow_status",
 		"id":         id,
 		keyRequestID: id,
 	}
@@ -314,7 +314,7 @@ func (a *ArtAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) erro
 	id := NewRequestID()
 
 	req := map[string]any{
-		keyRequest:     "set_slideshow_status",
+		keyRequest:    "set_slideshow_status",
 		"id":          id,
 		keyRequestID:  id,
 		"value":       s.Value,
@@ -341,7 +341,7 @@ func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
 	id := NewRequestID()
 
 	req := map[string]any{
-		keyRequest:    "set_brightness",
+		keyRequest:   "set_brightness",
 		"id":         id,
 		keyRequestID: id,
 		"value":      value,
@@ -365,7 +365,7 @@ func (a *ArtAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
 	id := NewRequestID()
 
 	req := map[string]any{
-		keyRequest:    "get_categories",
+		keyRequest:   "get_categories",
 		"id":         id,
 		keyRequestID: id,
 	}
