@@ -741,11 +741,7 @@ func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 		go func() {
 			defer wg.Done()
 			for j := range jobs {
-				// We need to protect the map with a mutex because handleSingleOptimization modifies it
-				mu.Lock()
-				wasModified, ok := e.handleSingleOptimization(j.filename, localFiles, optCfg)
-				mu.Unlock()
-
+				wasModified, ok := e.handleSingleOptimization(j.filename, localFiles, optCfg, &mu)
 				if ok && wasModified {
 					atomic.AddInt64(&optimizedCount, 1)
 				}
@@ -757,7 +753,7 @@ func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 	return int(optimizedCount)
 }
 
-func (e *Engine) handleSingleOptimization(filename string, localFiles map[string]struct{}, optCfg optimize.Config) (bool, bool) {
+func (e *Engine) handleSingleOptimization(filename string, localFiles map[string]struct{}, optCfg optimize.Config, mu *sync.Mutex) (bool, bool) {
 	path := filepath.Join(e.cfg.ArtworkDir, filename)
 
 	// 1. Skip check based on filename metadata (Avoid heavy computing).
@@ -773,7 +769,9 @@ func (e *Engine) handleSingleOptimization(filename string, localFiles map[string
 	if !optCfg.Enabled {
 		if err := optimize.ValidateImage(path); err != nil {
 			e.logger.Warn("skipping corrupt image", "file", filename, "error", err)
+			mu.Lock()
 			delete(localFiles, filename)
+			mu.Unlock()
 			return false, false
 		}
 		return false, true
@@ -782,16 +780,18 @@ func (e *Engine) handleSingleOptimization(filename string, localFiles map[string
 	newW, newH, modified, err := optimize.OptimizeFile(path, optCfg, e.logger)
 	if err != nil {
 		e.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
+		mu.Lock()
 		delete(localFiles, filename)
+		mu.Unlock()
 		return false, false
 	}
 
 	// 3. Handle renaming if modified or if filename metadata is missing/stale.
-	e.ensureCorrectFilename(filename, newW, newH, modified, localFiles)
+	e.ensureCorrectFilename(filename, newW, newH, modified, localFiles, mu)
 	return modified, true
 }
 
-func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified bool, localFiles map[string]struct{}) {
+func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified bool, localFiles map[string]struct{}, mu *sync.Mutex) {
 	currentW, currentH, _ := parseDimensions(filename)
 	isOpt := strings.Contains(filename, "_opt.h_")
 
@@ -822,8 +822,10 @@ func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified
 		if err := os.Rename(path, newPath); err == nil {
 			e.logger.Info("updated optimized filename", "old", filename, "new", newFilename)
 			e.updateMappings(filename, newFilename)
+			mu.Lock()
 			delete(localFiles, filename)
 			localFiles[newFilename] = struct{}{}
+			mu.Unlock()
 		}
 	}
 }

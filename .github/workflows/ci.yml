@@ -40,12 +40,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Gitleaks needs history
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-go@v6
         with:
           go-version: '1.25'
           cache: true
       - name: govulncheck
-        continue-on-error: true
         run: |
           GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
@@ -69,7 +74,14 @@ jobs:
         with:
           go-version: '1.25'
           cache: true
-      - name: Test and build
+      - name: Test
         run: |
-          go test ./...
-          go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
+          go test -v -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage.out
+      - name: Build
+        run: go build -v -o frame-tv-art-manager ./cmd/frame-tv-art-manager
