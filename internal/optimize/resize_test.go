@@ -140,3 +140,11 @@ func TestFitDimensions(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkSharpen(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		Sharpen(img)
+	}
+}
