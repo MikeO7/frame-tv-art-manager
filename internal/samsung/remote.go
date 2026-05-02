@@ -27,8 +27,8 @@ func TurnOffTV(ctx context.Context, host string, port int, clientName, tokenFile
 
 	// Send KEY_POWER press.
 	press := map[string]any{
-		"method": "ms.remote.control",
-		"params": map[string]any{
+		"method": "ms.remote.control", //nolint:goconst
+		"params": map[string]any{ //nolint:goconst
 			"Cmd":          "Press",
 			"DataOfCmd":    "KEY_POWER",
 			"Option":       "false",
@@ -54,8 +54,8 @@ func TurnOffTV(ctx context.Context, host string, port int, clientName, tokenFile
 
 	// Send KEY_POWER release.
 	release := map[string]any{
-		"method": "ms.remote.control",
-		"params": map[string]any{
+		"method": "ms.remote.control", //nolint:goconst
+		"params": map[string]any{ //nolint:goconst
 			"Cmd":          "Release",
 			"DataOfCmd":    "KEY_POWER",
 			"Option":       "false",

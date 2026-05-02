@@ -762,7 +762,7 @@ func (e *Engine) handleSingleOptimization(filename string, localFiles map[string
 
 	// 1. Skip check based on filename metadata (Avoid heavy computing).
 	if optCfg.Enabled && strings.Contains(filename, "_opt.h_") {
-		w, h, ok := optimize.ParseDimensionsFromFilename(filename)
+		w, h, ok := parseDimensions(filename)
 		if ok && w <= optCfg.MaxWidth && h <= optCfg.MaxHeight {
 			e.logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
 			return false, true

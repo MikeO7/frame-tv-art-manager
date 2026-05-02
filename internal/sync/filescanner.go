@@ -47,8 +47,8 @@ func FileTypeFromExt(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
 	case ".png":
-		return "png"
+		return "png" //nolint:goconst
 	default:
-		return "jpg" // .jpg and .jpeg both → "jpg"
+		return "jpg" //nolint:goconst // .jpg and .jpeg both → "jpg"
 	}
 }
