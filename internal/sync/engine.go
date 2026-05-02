@@ -41,8 +41,11 @@ type Engine struct {
 	health    *health.Status
 	srcLoader *sources.Loader
 	cycleNum  int
-	mappings  map[string]*Mapping
-	mapMu     sync.Mutex
+	mappings          map[string]*Mapping
+	mapMu             sync.Mutex
+	lastLocalFiles    map[string]struct{}
+	lastDirModTime    time.Time
+	lastMetadataSaves map[string]time.Time
 }
 
 // NewEngine creates a sync engine with the given configuration.
@@ -65,7 +68,8 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 			cfg.MaxDownloadSizeMB,
 			logger,
 		),
-		mappings: make(map[string]*Mapping),
+		mappings:          make(map[string]*Mapping),
+		lastMetadataSaves: make(map[string]time.Time),
 	}
 }
 
@@ -123,10 +127,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 
 	e.cycleNum++
 	cycleLog := e.logger.With("cycle", e.cycleNum)
-
-	e.mapMu.Lock()
-	e.mappings = make(map[string]*Mapping)
-	e.mapMu.Unlock()
 
 	startTime := time.Now()
 	cycleLog.Info("starting sync cycle",
@@ -275,15 +275,26 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	}
 	summary.ArtMode = true
 
-	// Save detailed metadata for auditing in the background to prevent blocking sync.
-	go func(bgCtx context.Context) {
-		// Use a sub-timeout to ensure it doesn't leak if the TV stalls.
-		ctx, cancel := context.WithTimeout(bgCtx, 1*time.Minute)
-		defer cancel()
-		if err := client.SaveMetadata(ctx); err != nil {
-			log.Debug("could not save metadata", "error", err)
-		}
-	}(ctx)
+	// Save detailed metadata for auditing in the background.
+	// Throttled to once per hour per TV to reduce redundant network/disk ops.
+	e.mapMu.Lock()
+	lastSave := e.lastMetadataSaves[ip]
+	shouldSave := time.Since(lastSave) > 1*time.Hour
+	if shouldSave {
+		e.lastMetadataSaves[ip] = time.Now()
+	}
+	e.mapMu.Unlock()
+
+	if shouldSave {
+		go func(bgCtx context.Context) {
+			// Use a sub-timeout to ensure it doesn't leak if the TV stalls.
+			ctx, cancel := context.WithTimeout(bgCtx, 1*time.Minute)
+			defer cancel()
+			if err := client.SaveMetadata(ctx); err != nil {
+				log.Debug("could not save metadata", "error", err)
+			}
+		}(ctx)
+	}
 
 	// Load filename→content_id mapping from cache or disk.
 	mapping, err := e.getMapping(ip)
@@ -958,10 +969,28 @@ func (e *Engine) scanAndOptimize(cycleLog *slog.Logger) (map[string]struct{}, in
 	if e.health != nil {
 		e.health.SetStage("scanning local artwork")
 	}
+
+	// Optimization: Skip full disk scan if directory modification time hasn't changed.
+	// This saves significant I/O for large collections.
+	info, statErr := os.Stat(e.cfg.ArtworkDir)
+	if statErr == nil {
+		if info.ModTime().Equal(e.lastDirModTime) && e.lastLocalFiles != nil {
+			cycleLog.Debug("skipping disk scan — directory ModTime unchanged")
+			// We return a copy to prevent concurrent modification of the cache.
+			localFiles := make(map[string]struct{}, len(e.lastLocalFiles))
+			for k := range e.lastLocalFiles {
+				localFiles[k] = struct{}{}
+			}
+			return localFiles, 0, nil
+		}
+		e.lastDirModTime = info.ModTime()
+	}
+
 	localFiles, err := ScanArtworkDir(e.cfg.ArtworkDir)
 	if err != nil {
 		return nil, 0, fmt.Errorf("scan artwork: %w", err)
 	}
+	e.lastLocalFiles = localFiles
 
 	if e.health != nil {
 		e.health.SetStage("optimizing artwork")
