@@ -114,6 +114,7 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 		return nil, fmt.Errorf("send_image: %w", err)
 	}
 
+	a.logger.Debug("send_image raw response", "raw", string(raw))
 	var resp ArtResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("parse send_image response: %w", err)
@@ -123,10 +124,12 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 		return nil, fmt.Errorf("send_image: no conn_info in response")
 	}
 
+	a.logger.Debug("send_image conn_info string", "conn_info", resp.ConnInfo)
 	var connInfo ConnInfo
 	if err := json.Unmarshal([]byte(resp.ConnInfo), &connInfo); err != nil {
 		return nil, fmt.Errorf("parse conn_info: %w", err)
 	}
+	a.logger.Debug("send_image parsed conn_info", "ip", connInfo.IP, "port", connInfo.Port)
 
 	return &connInfo, nil
 }

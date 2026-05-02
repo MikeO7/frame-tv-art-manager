@@ -92,6 +92,10 @@ This isn't a script I threw together; it's maintained with a production workflow
 *   **Security**: Secret scanning and Dependabot are active.
 *   **Branch Protection**: The `main` branch is locked to ensure only verified, passing code is shipped.
 
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) and [AI.md](AI.md) for our engineering standards and AI instructions.
+
 ## License
 
 Licensed under the **PolyForm Noncommercial License 1.0.0**. 

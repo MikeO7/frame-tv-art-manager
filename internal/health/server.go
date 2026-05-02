@@ -17,20 +17,23 @@ import (
 type Status struct {
 	mu sync.RWMutex
 
-	StartedAt  time.Time
-	LastSyncAt time.Time
-	LastSyncOK bool
-	SyncCount  int
-	TVStatuses map[string]TVStatus
+	StartedAt        time.Time
+	LastSyncAt       time.Time
+	LastSyncOK       bool
+	LastErrorMessage string
+	SyncCount        int
+	CurrentStage     string
+	TVStatuses       map[string]TVStatus
 }
 
 // TVStatus tracks per-TV health information.
 type TVStatus struct {
-	IP         string `json:"ip"`
-	LastSeen   string `json:"last_seen"`
-	ImageCount int    `json:"image_count"`
-	ArtMode    bool   `json:"art_mode"`
-	Status     string `json:"status"` // "ok", "unreachable", "backoff"
+	IP               string `json:"ip"`
+	LastSeen         string `json:"last_seen"`
+	ImageCount       int    `json:"image_count"`
+	ArtMode          bool   `json:"art_mode"`
+	Status           string `json:"status"` // "ok", "unreachable", "backoff"
+	LastErrorMessage string `json:"last_error,omitempty"`
 }
 
 // NewStatus creates a new health status tracker.
@@ -42,12 +45,24 @@ func NewStatus() *Status {
 }
 
 // RecordSync records the result of a sync cycle.
-func (s *Status) RecordSync(ok bool) {
+func (s *Status) RecordSync(ok bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.LastSyncAt = time.Now()
 	s.LastSyncOK = ok
 	s.SyncCount++
+	if err != nil {
+		s.LastErrorMessage = err.Error()
+	} else {
+		s.LastErrorMessage = ""
+	}
+}
+
+// SetStage updates the current operation stage.
+func (s *Status) SetStage(stage string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CurrentStage = stage
 }
 
 // SetTVStatus updates the status for a specific TV.
@@ -117,11 +132,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	defer s.status.mu.RUnlock()
 
 	resp := map[string]any{
-		"status":       "ok",
-		"uptime":       time.Since(s.status.StartedAt).Round(time.Second).String(),
-		"last_sync":    s.status.LastSyncAt.Format(time.RFC3339),
-		"last_sync_ok": s.status.LastSyncOK,
-		"sync_count":   s.status.SyncCount,
+		"status":        "ok",
+		"uptime":        time.Since(s.status.StartedAt).Round(time.Second).String(),
+		"last_sync":     s.status.LastSyncAt.Format(time.RFC3339),
+		"last_sync_ok":  s.status.LastSyncOK,
+		"last_error":    s.status.LastErrorMessage,
+		"current_stage": s.status.CurrentStage,
+		"sync_count":    s.status.SyncCount,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -134,13 +151,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	defer s.status.mu.RUnlock()
 
 	resp := map[string]any{
-		"status":       "ok",
-		"uptime":       time.Since(s.status.StartedAt).Round(time.Second).String(),
-		"started_at":   s.status.StartedAt.Format(time.RFC3339),
-		"last_sync":    s.status.LastSyncAt.Format(time.RFC3339),
-		"last_sync_ok": s.status.LastSyncOK,
-		"sync_count":   s.status.SyncCount,
-		"tvs":          s.status.TVStatuses,
+		"status":        "ok",
+		"uptime":        time.Since(s.status.StartedAt).Round(time.Second).String(),
+		"started_at":    s.status.StartedAt.Format(time.RFC3339),
+		"last_sync":     s.status.LastSyncAt.Format(time.RFC3339),
+		"last_sync_ok":  s.status.LastSyncOK,
+		"last_error":    s.status.LastErrorMessage,
+		"current_stage": s.status.CurrentStage,
+		"sync_count":    s.status.SyncCount,
+		"tvs":           s.status.TVStatuses,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

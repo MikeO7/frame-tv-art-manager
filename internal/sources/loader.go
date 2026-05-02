@@ -813,7 +813,6 @@ func (l *Loader) buildContentIndex() {
 		return
 	}
 
-
 	jobs := make(chan job, len(entries))
 	results := make(chan indexResult, len(entries))
 
