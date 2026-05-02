@@ -293,14 +293,14 @@ func TestLoader_UtilityMethods(t *testing.T) {
 	}
 	resp.Header.Set("Content-Type", "image/png")
 	ext := extensionFromResponse(resp, "file.jpg")
-	if ext != ".png" {
-		t.Errorf("expected .png, got %s", ext)
+	if ext != extPNG {
+		t.Errorf("expected %s, got %s", extPNG, ext)
 	}
 
 	resp.Header.Set("Content-Type", "application/octet-stream")
-	ext = extensionFromResponse(resp, "file.png")
-	if ext != ".png" {
-		t.Errorf("expected .png from filename, got %s", ext)
+	ext = extensionFromResponse(resp, "file"+extPNG)
+	if ext != extPNG {
+		t.Errorf("expected %s from filename, got %s", extPNG, ext)
 	}
 }
 
