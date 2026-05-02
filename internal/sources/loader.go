@@ -267,7 +267,10 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 // downloadWithIdentity is a helper that handles the full download, hashing,
 // and indexing flow for a given identity.
 func (l *Loader) downloadWithIdentity(url, identity string) (bool, error) {
-	if l.maxImages > 0 && len(l.index) >= l.maxImages {
+	l.mu.Lock()
+	limitReached := l.maxImages > 0 && len(l.visited) >= l.maxImages
+	l.mu.Unlock()
+	if limitReached {
 		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
 		return false, nil
 	}
@@ -404,10 +407,8 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error
 	var wg sync.WaitGroup
 	for _, p := range photos {
 		// Check global limit.
-		l.mu.Lock()
-		limitReached := l.maxImages > 0 && len(l.index) >= l.maxImages
-		l.mu.Unlock()
-		if limitReached {
+		//nolint:gosec // maxImages comes from config and is safe to cast
+		if l.maxImages > 0 && atomic.LoadInt32(globalIndex) > int32(l.maxImages) {
 			l.logger.Warn("global image limit reached, skipping unsplash photo", "limit", l.maxImages)
 			break
 		}
