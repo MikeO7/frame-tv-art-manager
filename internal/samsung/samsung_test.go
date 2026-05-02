@@ -30,7 +30,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 
 		// Step 1: Send ms.channel.connect.
 		resp := wsResponse{
-			Event: "ms.channel.connect",
+			Event: EventChannelConnect,
 			Data:  json.RawMessage(`{"token":"test-token-123"}`),
 		}
 		b, _ := json.Marshal(resp)
@@ -39,7 +39,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 		// Step 2: For art-app, send ms.channel.ready.
 		if strings.Contains(r.URL.Path, "com.samsung.art-app") {
 			respReady := wsResponse{
-				Event: "ms.channel.ready",
+				Event: EventChannelReady,
 				Data:  json.RawMessage(`{}`),
 			}
 			bReady, _ := json.Marshal(respReady)

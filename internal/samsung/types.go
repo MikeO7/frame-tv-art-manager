@@ -3,6 +3,15 @@ package samsung
 
 import "encoding/json"
 
+const (
+	EventD2DServiceMessage      = "d2d_service_message"
+	EventD2DServiceMessageEvent = "d2d.service.message.event"
+	EventChannelConnect         = "ms.channel.connect"
+	EventChannelReady           = "ms.channel.ready"
+)
+
+const stringFalse = "false"
+
 // DeviceInfo holds metadata about a connected Samsung TV, retrieved via
 // the REST API at https://<ip>:8002/api/v2/.
 type DeviceInfo struct {

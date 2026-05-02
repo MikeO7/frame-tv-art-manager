@@ -31,7 +31,7 @@ func TurnOffTV(ctx context.Context, host string, port int, clientName, tokenFile
 		keyParams: map[string]any{
 			"Cmd":          "Press",
 			"DataOfCmd":    "KEY_POWER",
-			"Option":       "false",
+			"Option":       stringFalse,
 			"TypeOfRemote": "SendRemoteKey",
 		},
 	}
@@ -58,7 +58,7 @@ func TurnOffTV(ctx context.Context, host string, port int, clientName, tokenFile
 		keyParams: map[string]any{
 			"Cmd":          "Release",
 			"DataOfCmd":    "KEY_POWER",
-			"Option":       "false",
+			"Option":       stringFalse,
 			"TypeOfRemote": "SendRemoteKey",
 		},
 	}
