@@ -11,8 +11,9 @@ import (
 
 // ArticClient handles communication with the Art Institute of Chicago API.
 type ArticClient struct {
-	client *http.Client
-	logger *slog.Logger
+	client  *http.Client
+	logger  *slog.Logger
+	BaseURL string
 }
 
 // NewArticClient creates a new Art Institute of Chicago API client.
@@ -21,7 +22,8 @@ func NewArticClient(logger *slog.Logger) *ArticClient {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger: logger,
+		logger:  logger,
+		BaseURL: "https://api.artic.edu",
 	}
 }
 
@@ -35,7 +37,7 @@ type ArticArtwork struct {
 // Search Masterpieces from the Artic library.
 func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error) {
 	// Search for artworks with an image_id (meaning they have a digitizable image)
-	url := fmt.Sprintf("https://api.artic.edu/api/v1/artworks/search?q=%s&fields=id,title,image_id&limit=10", query)
+	url := fmt.Sprintf("%s/api/v1/artworks/search?q=%s&fields=id,title,image_id&limit=10", c.BaseURL, query)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -75,7 +77,7 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 
 // FetchPhoto retrieves a single masterpiece by its ID.
 func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error) {
-	url := fmt.Sprintf("https://api.artic.edu/api/v1/artworks/%s?fields=id,title,image_id", id)
+	url := fmt.Sprintf("%s/api/v1/artworks/%s?fields=id,title,image_id", c.BaseURL, id)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", err

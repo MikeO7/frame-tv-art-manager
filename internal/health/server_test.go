@@ -10,7 +10,7 @@ import (
 
 func TestHealthEndpoint(t *testing.T) {
 	status := NewStatus()
-	status.RecordSync(true)
+	status.RecordSync(true, nil)
 	status.SetTVStatus("192.168.1.1", TVStatus{
 		IP:         "192.168.1.1",
 		LastSeen:   time.Now().Format(time.RFC3339),
@@ -47,7 +47,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestStatusEndpoint(t *testing.T) {
 	status := NewStatus()
-	status.RecordSync(false)
+	status.RecordSync(false, nil)
 
 	srv := NewServer(0, status, silentLogger())
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)

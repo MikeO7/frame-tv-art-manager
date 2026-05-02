@@ -11,9 +11,10 @@ import (
 
 // PexelsClient handles communication with the Pexels API.
 type PexelsClient struct {
-	apiKey string
-	client *http.Client
-	logger *slog.Logger
+	apiKey  string
+	client  *http.Client
+	logger  *slog.Logger
+	BaseURL string
 }
 
 // PexelsPhoto represents the metadata returned by the Pexels API.
@@ -27,26 +28,26 @@ type PexelsPhoto struct {
 	} `json:"src"`
 }
 
-// NewPexelsClient creates a new client for the Pexels API.
 func NewPexelsClient(apiKey string, logger *slog.Logger) *PexelsClient {
 	return &PexelsClient{
 		apiKey: apiKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger: logger,
+		logger:  logger,
+		BaseURL: "https://api.pexels.com",
 	}
 }
 
 // Search retrieves photos from Pexels based on a search query.
 func (c *PexelsClient) Search(ctx context.Context, query string) ([]string, error) {
-	url := fmt.Sprintf("https://api.pexels.com/v1/search?query=%s&per_page=10", query)
+	url := fmt.Sprintf("%s/v1/search?query=%s&per_page=10", c.BaseURL, query)
 	return c.fetchPhotoList(ctx, url)
 }
 
 // Curated retrieves the latest curated photos from Pexels.
 func (c *PexelsClient) Curated(ctx context.Context) ([]string, error) {
-	url := "https://api.pexels.com/v1/curated?per_page=10"
+	url := fmt.Sprintf("%s/v1/curated?per_page=10", c.BaseURL)
 	return c.fetchPhotoList(ctx, url)
 }
 
@@ -56,7 +57,7 @@ func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string)
 	page := 1
 
 	for {
-		url := fmt.Sprintf("https://api.pexels.com/v1/collections/%s?per_page=80&page=%d", collectionID, page)
+		url := fmt.Sprintf("%s/v1/collections/%s?per_page=80&page=%d", c.BaseURL, collectionID, page)
 		c.logger.Debug("fetching pexels collection page", "id", collectionID, "page", page)
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -110,7 +111,7 @@ func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string)
 
 // FetchPhoto retrieves a single photo by its ID.
 func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
-	url := fmt.Sprintf("https://api.pexels.com/v1/photos/%s", photoID)
+	url := fmt.Sprintf("%s/v1/photos/%s", c.BaseURL, photoID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", err
