@@ -1,9 +1,12 @@
 package sync
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 func TestLoadMatteConfig_NoFile(t *testing.T) {
@@ -151,5 +154,65 @@ func TestFileTypeFromExt(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("FileTypeFromExt(%q) = %q, want %q", tc.file, got, tc.want)
 		}
+	}
+}
+func TestDiffSets(t *testing.T) {
+	a := map[string]struct{}{"1": {}, "2": {}, "3": {}}
+	b := map[string]struct{}{"2": {}, "4": {}}
+
+	got := diffSets(a, b)
+	if _, ok := got["1"]; !ok {
+		t.Error("expected 1 in diff")
+	}
+	if _, ok := got["3"]; !ok {
+		t.Error("expected 3 in diff")
+	}
+	if len(got) != 2 {
+		t.Errorf("expected 2 items, got %d", len(got))
+	}
+}
+
+func TestSetToSlice(t *testing.T) {
+	s := map[string]struct{}{"a": {}, "b": {}}
+	got := setToSlice(s)
+	if len(got) != 2 {
+		t.Errorf("expected length 2, got %d", len(got))
+	}
+}
+
+func TestMapValues(t *testing.T) {
+	m := map[string]string{"k1": "v1", "k2": "v2"}
+	got := mapValues(m)
+	if len(got) != 2 {
+		t.Errorf("expected length 2, got %d", len(got))
+	}
+}
+
+func TestBoolCount(t *testing.T) {
+	if boolCount(true, 5) != 5 {
+		t.Error("expected 5 when true")
+	}
+	if boolCount(false, 5) != 0 {
+		t.Error("expected 0 when false")
+	}
+}
+
+func TestDetermineBrightness(t *testing.T) {
+	manual := 5
+	cfg := &config.Config{
+		ManualBrightness: &manual,
+		SolarEnabled:     false,
+	}
+	e := &Engine{cfg: cfg, logger: slog.Default()}
+
+	got := e.determineBrightness(slog.Default())
+	if got == nil || *got != 5 {
+		t.Errorf("expected 5, got %v", got)
+	}
+
+	cfg.ManualBrightness = nil
+	got = e.determineBrightness(slog.Default())
+	if got != nil {
+		t.Errorf("expected nil, got %v", got)
 	}
 }

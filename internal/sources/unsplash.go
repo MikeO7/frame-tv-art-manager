@@ -16,6 +16,7 @@ type UnsplashClient struct {
 	secretKey string
 	client    *http.Client
 	logger    *slog.Logger
+	BaseURL   string
 }
 
 // UnsplashPhoto represents the metadata returned by the Unsplash API.
@@ -42,7 +43,8 @@ func NewUnsplashClient(appID, accessKey, secretKey string, logger *slog.Logger) 
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger: logger,
+		logger:  logger,
+		BaseURL: "https://api.unsplash.com",
 	}
 }
 
@@ -52,7 +54,7 @@ func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 	page := 1
 
 	for {
-		url := fmt.Sprintf("https://api.unsplash.com/collections/%s/photos?per_page=30&page=%d", collectionID, page)
+		url := fmt.Sprintf("%s/collections/%s/photos?per_page=30&page=%d", c.BaseURL, collectionID, page)
 		c.logger.Debug("fetching unsplash collection page", "id", collectionID, "page", page)
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -99,7 +101,7 @@ func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 
 // FetchPhoto retrieves metadata for a single Unsplash photo.
 func (c *UnsplashClient) FetchPhoto(ctx context.Context, photoID string) (*UnsplashPhoto, error) {
-	url := fmt.Sprintf("https://api.unsplash.com/photos/%s", photoID)
+	url := fmt.Sprintf("%s/photos/%s", c.BaseURL, photoID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err

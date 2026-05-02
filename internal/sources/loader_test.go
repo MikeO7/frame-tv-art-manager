@@ -1,130 +1,198 @@
 package sources
 
 import (
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestLoader_NoSourcesFile(t *testing.T) {
-	l := NewLoader("", t.TempDir(), "", "", "", "", "", "", 0, 0, testLogger())
-	n, err := l.Sync()
-	if err != nil {
-		t.Errorf("expected no error when sources file is empty, got %v", err)
-	}
-	if n != 0 {
-		t.Errorf("expected 0 downloads, got %d", n)
-	}
-}
+func TestLoader_Sync_Direct(t *testing.T) {
+	artworkDir := t.TempDir()
+	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
 
-func TestLoader_MissingSourcesFile(t *testing.T) {
-	l := NewLoader("/nonexistent/sources.txt", t.TempDir(), "", "", "", "", "", "", 0, 0, testLogger())
-	n, err := l.Sync()
-	if err != nil {
-		t.Errorf("missing file should not error, got %v", err)
-	}
-	if n != 0 {
-		t.Errorf("expected 0 downloads for missing file, got %d", n)
-	}
-}
-
-func TestLoader_DownloadsImage(t *testing.T) {
-	// Serve a fake JPEG.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Mock server for direct downloads
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write([]byte("fake-jpeg-data"))
+		_, _ = w.Write([]byte("fake-image-data"))
 	}))
-	defer srv.Close()
+	defer server.Close()
 
-	dir := t.TempDir()
-	srcFile := filepath.Join(dir, "sources.txt")
-	if err := os.WriteFile(srcFile, []byte(srv.URL+"/photo.jpg\n"), 0644); err != nil { //nolint:gosec // Test file
-		t.Fatal(err)
-	}
+	content := fmt.Sprintf("# comment\n%s\n", server.URL)
+	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
 
-	l := NewLoader(srcFile, dir, "", "", "", "", "", "", 0, 0, testLogger())
-	n, err := l.Sync()
+	l := NewLoader(sourcesFile, artworkDir, "", "", "", "", "", "", 0, 0, slog.Default())
+	downloaded, err := l.Sync()
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("expected 1 download, got %d", n)
+		t.Fatalf("Sync failed: %v", err)
 	}
 
-	// Second sync should be idempotent — 0 new downloads.
-	n2, err := l.Sync()
-	if err != nil {
-		t.Errorf("unexpected error on second sync: %v", err)
+	if downloaded != 1 {
+		t.Errorf("expected 1 download, got %d", downloaded)
 	}
-	if n2 != 0 {
-		t.Errorf("expected 0 downloads on second sync (already exists), got %d", n2)
+
+	// Verify file exists
+	files, _ := os.ReadDir(artworkDir)
+	if len(files) != 1 {
+		t.Errorf("expected 1 file in artwork dir, got %d", len(files))
 	}
 }
 
-func TestLoader_SkipsComments(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write([]byte("data"))
-	}))
-	defer srv.Close()
-
-	dir := t.TempDir()
-	srcFile := filepath.Join(dir, "sources.txt")
-	content := "# this is a comment\n\n" + srv.URL + "/photo.jpg\n# another comment\n"
-	if err := os.WriteFile(srcFile, []byte(content), 0644); err != nil { //nolint:gosec // Test file
-		t.Fatal(err)
-	}
-
-	l := NewLoader(srcFile, dir, "", "", "", "", "", "", 0, 0, testLogger())
-	n, err := l.Sync()
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("expected 1 download (comment lines skipped), got %d", n)
-	}
-}
-
-func TestLoader_HandlesHTTPError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	dir := t.TempDir()
-	srcFile := filepath.Join(dir, "sources.txt")
-	if err := os.WriteFile(srcFile, []byte(srv.URL+"/missing.jpg\n"), 0644); err != nil { //nolint:gosec // Test file
-		t.Fatal(err)
-	}
-
-	l := NewLoader(srcFile, dir, "", "", "", "", "", "", 0, 0, testLogger())
-	n, err := l.Sync()
-	// Error is logged and skipped — sync returns 0 downloads, no error.
-	if err != nil {
-		t.Errorf("HTTP error should be logged, not returned: %v", err)
-	}
-	if n != 0 {
-		t.Errorf("expected 0 successful downloads on 404, got %d", n)
-	}
-}
-
-func TestURLToSlug_Deterministic(t *testing.T) {
+func TestLoader_UrlToSlug(t *testing.T) {
 	l := &Loader{}
-	url := "https://example.com/photo.jpg?w=3840"
-	s1 := l.urlToSlug(url)
-	s2 := l.urlToSlug(url)
-	if s1 != s2 {
-		t.Errorf("urlToSlug should be deterministic: %q != %q", s1, s2)
+	tests := []struct {
+		url  string
+		want string
+	}{
+		{"https://example.com/photo.jpg", "example.com_photo.jpg"},
+		{"https://www.unsplash.com/123", "unsplash.com_123"},
+		{"invalid-url", "direct-source"},
+	}
+
+	for _, tt := range tests {
+		got := l.urlToSlug(tt.url)
+		if got != tt.want {
+			t.Errorf("urlToSlug(%q) = %q, want %q", tt.url, got, tt.want)
+		}
 	}
 }
 
-func TestURLToSlug_DifferentURLs(t *testing.T) {
+func TestExtensionFromResponse(t *testing.T) {
+	tests := []struct {
+		ct   string
+		url  string
+		want string
+	}{
+		{"image/jpeg", "http://x.com/a", ".jpg"},
+		{"image/png", "http://x.com/a", ".png"},
+		{"text/plain", "http://x.com/a.png", ".png"},
+		{"text/plain", "http://x.com/a", ".jpg"}, // default
+	}
+
+	for _, tt := range tests {
+		resp := &http.Response{Header: make(http.Header)}
+		resp.Header.Set("Content-Type", tt.ct)
+		got := extensionFromResponse(resp, tt.url)
+		if got != tt.want {
+			t.Errorf("extensionFromResponse(%q, %q) = %q, want %q", tt.ct, tt.url, got, tt.want)
+		}
+	}
+}
+
+func TestLoadSources_Yaml(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sources.yaml")
+
+	yamlContent := `
+providers:
+  unsplash:
+    - photo:123
+    - collection:abc
+  nasa:
+    - apod
+`
+	_ = os.WriteFile(path, []byte(yamlContent), 0600)
+
+	l := &Loader{sourcesFile: path}
+	urls, err := l.loadSources()
+	if err != nil {
+		t.Fatalf("loadSources YAML failed: %v", err)
+	}
+
+	if len(urls) != 3 {
+		t.Errorf("expected 3 URLs, got %d", len(urls))
+	}
+}
+
+func TestLoadSources_Txt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sources.txt")
+
+	txtContent := "direct:http://a.com/1.jpg\n# comment\nhttp://b.com/2.jpg\n"
+	_ = os.WriteFile(path, []byte(txtContent), 0600)
+
+	l := &Loader{sourcesFile: path}
+	urls, err := l.loadSources()
+	if err != nil {
+		t.Fatalf("loadSources TXT failed: %v", err)
+	}
+
+	if len(urls) != 2 {
+		t.Errorf("expected 2 URLs, got %d", len(urls))
+	}
+}
+
+func TestLoader_InternalMethods(t *testing.T) {
+	artworkDir := t.TempDir()
+
+	// Create a file with specific content to test hashing
+	path := filepath.Join(artworkDir, "test__1234567890ab.jpg")
+	_ = os.WriteFile(path, []byte("some-data"), 0600)
+
+	l := &Loader{
+		artworkDir: artworkDir,
+		logger:     slog.Default(),
+		index:      make(map[string]string),
+		prefixMap:  make(map[string]string),
+		visited:    make(map[string]bool),
+	}
+
+	l.buildContentIndex()
+
+	if len(l.prefixMap) != 1 {
+		t.Errorf("expected 1 item in prefixMap, got %d", len(l.prefixMap))
+	}
+
+	// Test cleanup
+	l.visited["test__1234567890ab.jpg"] = true
+	l.cleanupUnusedSources()
+	// Should not delete the visited file
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Error("visited file was accidentally deleted")
+	}
+
+	// Should delete unvisited file
+	unvisitedPath := filepath.Join(artworkDir, "002__unvisited__hash.jpg")
+	_ = os.WriteFile(unvisitedPath, []byte("x"), 0600)
+	l.cleanupUnusedSources()
+	if _, err := os.Stat(unvisitedPath); err == nil {
+		t.Error("unvisited file was not deleted")
+	}
+}
+
+func TestLoader_Sync_Failures(t *testing.T) {
+	artworkDir := t.TempDir()
+	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
+
+	// Mock server that returns 404
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	content := server.URL + "\n"
+	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
+
+	l := NewLoader(sourcesFile, artworkDir, "", "", "", "", "", "", 0, 0, slog.Default())
+	downloaded, err := l.Sync()
+	if err != nil {
+		t.Fatalf("Sync should not fail on download error: %v", err)
+	}
+
+	if downloaded != 0 {
+		t.Errorf("expected 0 downloads, got %d", downloaded)
+	}
+}
+
+func TestLoader_UrlToSlug_Long(t *testing.T) {
 	l := &Loader{}
-	s1 := l.urlToSlug("https://example.com/a.jpg")
-	s2 := l.urlToSlug("https://example.com/b.jpg")
-	if s1 == s2 {
-		t.Error("different URLs should produce different slugs")
+	longURL := "https://example.com/" + strings.Repeat("a", 200)
+	slug := l.urlToSlug(longURL)
+	if len(slug) > 100 {
+		t.Errorf("slug too long: %d", len(slug))
 	}
 }

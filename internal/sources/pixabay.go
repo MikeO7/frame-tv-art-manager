@@ -12,9 +12,10 @@ import (
 
 // PixabayClient handles communication with the Pixabay API.
 type PixabayClient struct {
-	apiKey string
-	client *http.Client
-	logger *slog.Logger
+	apiKey  string
+	client  *http.Client
+	logger  *slog.Logger
+	BaseURL string
 }
 
 // PixabayPhoto represents the metadata returned by the Pixabay API.
@@ -26,30 +27,30 @@ type PixabayPhoto struct {
 	ImageURL      string `json:"imageURL"` // Original high-res (requires approved access)
 }
 
-// NewPixabayClient creates a new client for the Pixabay API.
 func NewPixabayClient(apiKey string, logger *slog.Logger) *PixabayClient {
 	return &PixabayClient{
 		apiKey: apiKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger: logger,
+		logger:  logger,
+		BaseURL: "https://pixabay.com/api/",
 	}
 }
 
 // Search retrieves photos from Pixabay based on a search query with pagination.
 func (c *PixabayClient) Search(ctx context.Context, query string) ([]string, error) {
-	return c.fetchAllPages(ctx, fmt.Sprintf("https://pixabay.com/api/?key=%s&q=%s&image_type=photo", c.apiKey, url.QueryEscape(query)))
+	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&q=%s&image_type=photo", c.BaseURL, c.apiKey, url.QueryEscape(query)))
 }
 
 // EditorsChoice retrieves all editor's choice photos from Pixabay with pagination.
 func (c *PixabayClient) EditorsChoice(ctx context.Context) ([]string, error) {
-	return c.fetchAllPages(ctx, fmt.Sprintf("https://pixabay.com/api/?key=%s&editors_choice=true&image_type=photo", c.apiKey))
+	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&editors_choice=true&image_type=photo", c.BaseURL, c.apiKey))
 }
 
 // FetchPhoto retrieves a single photo by its ID.
 func (c *PixabayClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
-	u := fmt.Sprintf("https://pixabay.com/api/?key=%s&id=%s", c.apiKey, photoID)
+	u := fmt.Sprintf("%s?key=%s&id=%s", c.BaseURL, c.apiKey, photoID)
 	urls, err := c.fetchPhotoList(ctx, u)
 	if err != nil {
 		return "", err
@@ -62,7 +63,7 @@ func (c *PixabayClient) FetchPhoto(ctx context.Context, photoID string) (string,
 
 // User retrieves all photos from a specific Pixabay user with pagination.
 func (c *PixabayClient) User(ctx context.Context, userID string) ([]string, error) {
-	return c.fetchAllPages(ctx, fmt.Sprintf("https://pixabay.com/api/?key=%s&user_id=%s&image_type=photo", c.apiKey, userID))
+	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&user_id=%s&image_type=photo", c.BaseURL, c.apiKey, userID))
 }
 
 func (c *PixabayClient) fetchAllPages(ctx context.Context, baseURL string) ([]string, error) {
