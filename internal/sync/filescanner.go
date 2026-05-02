@@ -8,6 +8,9 @@ import (
 )
 
 // supportedExtensions lists the image formats the Samsung Frame TV accepts.
+const extPNG = "png"
+const extJPG = "jpg"
+
 var supportedExtensions = map[string]bool{
 	".jpg":  true,
 	".jpeg": true,
@@ -47,8 +50,8 @@ func FileTypeFromExt(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
 	case ".png":
-		return "png" //nolint:goconst
+		return extPNG
 	default:
-		return "jpg" //nolint:goconst // .jpg and .jpeg both → "jpg"
+		return extJPG // .jpg and .jpeg both → "jpg"
 	}
 }

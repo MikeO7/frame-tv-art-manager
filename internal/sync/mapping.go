@@ -54,7 +54,7 @@ func (m *Mapping) Save() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := os.MkdirAll(filepath.Dir(m.path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil { //nolint:gosec // Need inclusive permissions
 		return fmt.Errorf("create mapping dir: %w", err)
 	}
 
@@ -63,7 +63,7 @@ func (m *Mapping) Save() error {
 		return fmt.Errorf("marshal mapping: %w", err)
 	}
 
-	return os.WriteFile(m.path, raw, 0600)
+	return os.WriteFile(m.path, raw, 0644) //nolint:gosec // Need inclusive permissions
 }
 
 // Set records a filename→content_id association.

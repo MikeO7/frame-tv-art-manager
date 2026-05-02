@@ -12,6 +12,9 @@ import (
 // ArtAPI provides typed methods for Samsung Frame TV art channel operations.
 // All communication happens over the WebSocket connection to the
 // "com.samsung.art-app" endpoint.
+const keyRequest = "request"
+const keyRequestID = "request_id"
+
 type ArtAPI struct {
 	conn    *Connection
 	timeout time.Duration
@@ -37,9 +40,9 @@ func (a *ArtAPI) Connection() *Connection {
 func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtContent, error) {
 	id := NewRequestID()
 	req := map[string]any{
-		"request":    "get_content_list",
+		keyRequest:    "get_content_list",
 		"id":         id,
-		"request_id": id,
+		keyRequestID: id,
 	}
 	if category != "" {
 		req["category_id"] = category
@@ -90,10 +93,10 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 	id := NewRequestID()
 
 	artReq := map[string]any{
-		"request":    "send_image",
+		keyRequest:    "send_image",
 		"file_type":  req.FileType,
 		"id":         id,
-		"request_id": id,
+		keyRequestID: id,
 		"conn_info": map[string]any{
 			"d2d_mode":      "socket",
 			"connection_id": time.Now().UnixNano() % (4 * 1024 * 1024 * 1024),
@@ -198,9 +201,9 @@ func (a *ArtAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
 	}
 
 	req := map[string]any{
-		"request":         "delete_image_list",
+		keyRequest:         "delete_image_list",
 		"id":              id,
-		"request_id":      id,
+		keyRequestID:      id,
 		"content_id_list": contentIDList,
 	}
 
@@ -222,9 +225,9 @@ func (a *ArtAPI) SelectImage(ctx context.Context, contentID string, show bool) e
 	id := NewRequestID()
 
 	req := map[string]any{
-		"request":    "select_image",
+		keyRequest:    "select_image",
 		"id":         id,
-		"request_id": id,
+		keyRequestID: id,
 		"content_id": contentID,
 		"show":       show,
 	}
@@ -247,9 +250,9 @@ func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 	id := NewRequestID()
 
 	req := map[string]any{
-		"request":    "get_artmode_status",
+		keyRequest:    "get_artmode_status",
 		"id":         id,
-		"request_id": id,
+		keyRequestID: id,
 	}
 
 	payload, err := ArtAppRequest(req)
@@ -275,9 +278,9 @@ func (a *ArtAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, erro
 	id := NewRequestID()
 
 	req := map[string]any{
-		"request":    "get_slideshow_status",
+		keyRequest:    "get_slideshow_status",
 		"id":         id,
-		"request_id": id,
+		keyRequestID: id,
 	}
 
 	payload, err := ArtAppRequest(req)
@@ -311,9 +314,9 @@ func (a *ArtAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) erro
 	id := NewRequestID()
 
 	req := map[string]any{
-		"request":     "set_slideshow_status",
+		keyRequest:     "set_slideshow_status",
 		"id":          id,
-		"request_id":  id,
+		keyRequestID:  id,
 		"value":       s.Value,
 		"category_id": s.CategoryID,
 		"type":        s.Type,
@@ -338,9 +341,9 @@ func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
 	id := NewRequestID()
 
 	req := map[string]any{
-		"request":    "set_brightness",
+		keyRequest:    "set_brightness",
 		"id":         id,
-		"request_id": id,
+		keyRequestID: id,
 		"value":      value,
 	}
 
@@ -362,9 +365,9 @@ func (a *ArtAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
 	id := NewRequestID()
 
 	req := map[string]any{
-		"request":    "get_categories",
+		keyRequest:    "get_categories",
 		"id":         id,
-		"request_id": id,
+		keyRequestID: id,
 	}
 
 	payload, err := ArtAppRequest(req)

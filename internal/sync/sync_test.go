@@ -10,10 +10,12 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
+const shadowboxWarm = "shadowbox_warm"
+
 func TestLoadMatteConfig_NoFile(t *testing.T) {
 	mc := LoadMatteConfig(t.TempDir())
-	got := mc.GetMatte("photo.jpg", "shadowbox_warm")
-	if got != "shadowbox_warm" {
+	got := mc.GetMatte("photo.jpg", shadowboxWarm)
+	if got != shadowboxWarm {
 		t.Errorf("expected global matte fallback, got %q", got)
 	}
 }
@@ -37,9 +39,9 @@ func TestLoadMatteConfig_WithOverrides(t *testing.T) {
 		global   string
 		expected string
 	}{
-		{"per-file override wins", "sunset.jpg", "shadowbox_warm", "shadowbox_polar"},
-		{"second override", "portrait.jpg", "shadowbox_warm", "modern_apricot"},
-		{"_default used when no file match", "mountain.jpg", "shadowbox_warm", "none"},
+		{"per-file override wins", "sunset.jpg", shadowboxWarm, "shadowbox_polar"},
+		{"second override", "portrait.jpg", shadowboxWarm, "modern_apricot"},
+		{"_default used when no file match", "mountain.jpg", shadowboxWarm, "none"},
 	}
 
 	for _, tc := range tests {
@@ -60,8 +62,8 @@ func TestLoadMatteConfig_InvalidJSON(t *testing.T) {
 
 	// Should not panic — falls through to global.
 	mc := LoadMatteConfig(dir)
-	got := mc.GetMatte("photo.jpg", "shadowbox_warm")
-	if got != "shadowbox_warm" {
+	got := mc.GetMatte("photo.jpg", shadowboxWarm)
+	if got != shadowboxWarm {
 		t.Errorf("invalid JSON should fall back to global matte, got %q", got)
 	}
 }
@@ -106,7 +108,7 @@ func TestMappingRoundtrip(t *testing.T) {
 func TestScanArtworkDir(t *testing.T) {
 	dir := t.TempDir()
 
-	for _, f := range []string{"a.jpg", "b.JPEG", "c.png", "d.txt", "e.gif"} {
+	for _, f := range []string{testAJPG, "b.JPEG", "c.png", "d.txt", "e.gif"} {
 		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0644); err != nil { //nolint:gosec // Test file
 			t.Fatal(err)
 		}
@@ -118,7 +120,7 @@ func TestScanArtworkDir(t *testing.T) {
 	}
 
 	// Only .jpg, .jpeg (case-insensitive), .png should be included.
-	if _, ok := files["a.jpg"]; !ok {
+	if _, ok := files[testAJPG]; !ok {
 		t.Error("expected a.jpg")
 	}
 	if _, ok := files["b.JPEG"]; !ok {
@@ -144,9 +146,9 @@ func TestScanArtworkDir_Missing(t *testing.T) {
 
 func TestFileTypeFromExt(t *testing.T) {
 	tests := []struct{ file, want string }{
-		{"photo.jpg", "jpg"},
-		{"photo.JPEG", "jpg"},
-		{"photo.png", "png"},
+		{"photo.jpg", extJPG},
+		{"photo.JPEG", extJPG},
+		{"photo.png", extPNG},
 		{"photo.PNG", "png"},
 		{"photo", "jpg"},
 	}

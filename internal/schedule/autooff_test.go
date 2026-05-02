@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const time2200 = "22:00"
+
 func TestIsWithinAutoOffWindow(t *testing.T) {
 	t.Parallel()
 
@@ -29,7 +31,7 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		},
 		{
 			name:    "within window",
-			offTime: "22:00",
+			offTime: time2200,
 			grace:   2,
 			tz:      utc,
 			now:     time.Date(2024, 1, 1, 22, 30, 0, 0, time.UTC),
@@ -37,7 +39,7 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		},
 		{
 			name:    "at exact off time",
-			offTime: "22:00",
+			offTime: time2200,
 			grace:   2,
 			tz:      utc,
 			now:     time.Date(2024, 1, 1, 22, 0, 0, 0, time.UTC),
@@ -45,7 +47,7 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		},
 		{
 			name:    "at exact grace end",
-			offTime: "22:00",
+			offTime: time2200,
 			grace:   2,
 			tz:      utc,
 			now:     time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
@@ -53,7 +55,7 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		},
 		{
 			name:    "before window",
-			offTime: "22:00",
+			offTime: time2200,
 			grace:   2,
 			tz:      utc,
 			now:     time.Date(2024, 1, 1, 21, 59, 0, 0, time.UTC),
@@ -61,7 +63,7 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		},
 		{
 			name:    "after grace period",
-			offTime: "22:00",
+			offTime: time2200,
 			grace:   2,
 			tz:      utc,
 			now:     time.Date(2024, 1, 2, 0, 30, 0, 0, time.UTC),
@@ -85,7 +87,7 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		},
 		{
 			name:    "fractional grace hours",
-			offTime: "22:00",
+			offTime: time2200,
 			grace:   1.5,
 			tz:      utc,
 			now:     time.Date(2024, 1, 1, 23, 20, 0, 0, time.UTC),
@@ -93,7 +95,7 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 		},
 		{
 			name:    "invalid timezone returns false",
-			offTime: "22:00",
+			offTime: time2200,
 			grace:   2,
 			tz:      "Invalid/Zone",
 			now:     time.Date(2024, 1, 1, 22, 30, 0, 0, time.UTC),

@@ -13,9 +13,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"sync"
 
 	"golang.org/x/image/draw"
 )
@@ -556,25 +554,17 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	// 1. Calculate Perceptual Contrast in parallel
+	// 1. Calculate Perceptual Contrast
 	var sumSq, sum float64
-	var mu sync.Mutex
-	parallelProcessRows(height, func(startY, endY int) {
-		var localSum, localSumSq float64
-		for y := startY; y < endY; y++ {
-			offset := y * src.Stride
-			for x := 0; x < width; x++ {
-				i := offset + x*4
-				lum := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
-				localSum += lum
-				localSumSq += lum * lum
-			}
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
+			lum := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
+			sum += lum
+			sumSq += lum * lum
 		}
-		mu.Lock()
-		sum += localSum
-		sumSq += localSumSq
-		mu.Unlock()
-	})
+	}
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 
@@ -590,35 +580,33 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 		contrastGamma = 1.15
 	}
 
-	parallelProcessRows(height, func(startY, endY int) {
-		for y := startY; y < endY; y++ {
-			offset := y * src.Stride
-			for x := 0; x < width; x++ {
-				i := offset + x*4
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
 
-				// Physics-Based Linear Processing
-				rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
-				gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
-				bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
+			// Physics-Based Linear Processing
+			rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
+			gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
+			bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
 
-				// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
-				rLin = math.Pow(rLin, contrastGamma)
-				gLin = math.Pow(gLin, contrastGamma)
-				bLin = math.Pow(bLin, contrastGamma)
+			// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
+			rLin = math.Pow(rLin, contrastGamma)
+			gLin = math.Pow(gLin, contrastGamma)
+			bLin = math.Pow(bLin, contrastGamma)
 
-				// 3. Pigment Gamut Compression
-				avg := (rLin + gLin + bLin) / 3
-				rLin = rLin*0.97 + avg*0.03
-				gLin = gLin*0.97 + avg*0.03
-				bLin = bLin*0.97 + avg*0.03
+			// 3. Pigment Gamut Compression
+			avg := (rLin + gLin + bLin) / 3
+			rLin = rLin*0.97 + avg*0.03
+			gLin = gLin*0.97 + avg*0.03
+			bLin = bLin*0.97 + avg*0.03
 
-				// Re-process to sRGB
-				src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
-				src.Pix[i+1] = uint8(math.Min(255, math.Max(0, math.Pow(gLin, 1.0/2.2)*255.0)))
-				src.Pix[i+2] = uint8(math.Min(255, math.Max(0, math.Pow(bLin, 1.0/2.2)*255.0)))
-			}
+			// Re-process to sRGB
+			src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
+			src.Pix[i+1] = uint8(math.Min(255, math.Max(0, math.Pow(gLin, 1.0/2.2)*255.0)))
+			src.Pix[i+2] = uint8(math.Min(255, math.Max(0, math.Pow(bLin, 1.0/2.2)*255.0)))
 		}
-	})
+	}
 	return src
 }
 
@@ -627,46 +615,43 @@ func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	parallelProcessRows(height, func(startY, endY int) {
-		// Use a local random source for this worker to avoid contention.
-		rng := rand.New(rand.NewSource(int64(startY))) //nolint:gosec
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
+			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
 
-		for y := startY; y < endY; y++ {
-			offset := y * src.Stride
-			for x := 0; x < width; x++ {
-				i := offset + x*4
-				r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
-
-				// 1. Research-Backed Peak Brightness Clamping (Berns 2001)
-				const maxBright = 235.0
-				if r > maxBright {
-					r = maxBright
-				}
-				if g > maxBright {
-					g = maxBright
-				}
-				if b > maxBright {
-					b = maxBright
-				}
-
-				// 2. Pigment Saturation Limiter (Earth tones)
-				avg := (r + g + b) / 3
-				r = r*0.92 + avg*0.08
-				g = g*0.92 + avg*0.08
-				b = b*0.92 + avg*0.08
-
-				// 3. Micro-Paper Grain (Simulate physical substrate fibers)
-				noise := (rng.Float64() - 0.5) * 5.0
-				r += noise
-				g += noise
-				b += noise
-
-				src.Pix[i] = uint8(math.Max(0, math.Min(255, r)))
-				src.Pix[i+1] = uint8(math.Max(0, math.Min(255, g)))
-				src.Pix[i+2] = uint8(math.Max(0, math.Min(255, b)))
+			// 1. Research-Backed Peak Brightness Clamping (Berns 2001)
+			// CAP at 235 instead of 215 to restore whites while maintaining surface reflection headroom.
+			const maxBright = 235.0
+			if r > maxBright {
+				r = maxBright
 			}
+			if g > maxBright {
+				g = maxBright
+			}
+			if b > maxBright {
+				b = maxBright
+			}
+
+			// 2. Pigment Saturation Limiter (Earth tones)
+			avg := (r + g + b) / 3
+			r = r*0.92 + avg*0.08
+			g = g*0.92 + avg*0.08
+			b = b*0.92 + avg*0.08
+
+			// 3. Micro-Paper Grain (Simulate physical substrate fibers)
+			//nolint:gosec
+			noise := (rand.Float64() - 0.5) * 5.0
+			r += noise
+			g += noise
+			b += noise
+
+			src.Pix[i] = uint8(math.Max(0, math.Min(255, r)))
+			src.Pix[i+1] = uint8(math.Max(0, math.Min(255, g)))
+			src.Pix[i+2] = uint8(math.Max(0, math.Min(255, b)))
 		}
-	})
+	}
 	return src
 }
 
@@ -682,57 +667,42 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
+	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 
-	parallelProcessRows(height, func(startY, endY int) {
-		// Respect the original bounds (1 to height-1)
-		if startY == 0 {
-			startY = 1
-		}
-		if endY == height {
-			endY = height - 1
-		}
-		if startY >= endY {
-			return
-		}
+	for y := 1; y < height-1; y++ {
+		offset := y * src.Stride
+		for x := 1; x < width-1; x++ {
+			i := offset + x*4
 
-		// Use a local random source for this worker
-		rng := rand.New(rand.NewSource(int64(startY))) //nolint:gosec
+			// 1. Bipolar Virtual Impasto
+			impasto := calculateBipolarImpasto(src, i)
 
-		for y := startY; y < endY; y++ {
-			offset := y * src.Stride
-			for x := 1; x < width-1; x++ {
-				i := offset + x*4
+			// 2. 3D Interlocking Weave
+			weave, varnishPool := calculateWeave(x, y, rng)
 
-				// 1. Bipolar Virtual Impasto
-				impasto := calculateBipolarImpasto(src, i)
+			// 3. Procedural Craquelure
+			if rng.Float64() > 0.9997 {
+				weave -= 0.5
+			}
 
-				// 2. 3D Interlocking Weave
-				weave, varnishPool := calculateWeave(x, y, rng)
+			// Merge topography
+			weave += impasto
 
-				// 3. Procedural Craquelure
-				if rng.Float64() > 0.9997 {
-					weave -= 0.5
-				}
+			// 4. Blending & Archive Varnish
+			for c := 0; c < 3; c++ {
+				a := float64(src.Pix[i+c]) / 255.0
 
-				// Merge topography
-				weave += impasto
+				if c == 0 {
+					a *= 1.01
+				} // Subtle Red
+				if c == 2 {
+					a *= (varnishPool * 0.99)
+				} // Blue absorption
 
-				// 4. Blending & Archive Varnish
-				for c := 0; c < 3; c++ {
-					a := float64(src.Pix[i+c]) / 255.0
-
-					if c == 0 {
-						a *= 1.01
-					} // Subtle Red
-					if c == 2 {
-						a *= (varnishPool * 0.99)
-					} // Blue absorption
-
-					src.Pix[i+c] = applySoftLight(a, weave, opacity)
-				}
+				src.Pix[i+c] = applySoftLight(a, weave, opacity)
 			}
 		}
-	})
+	}
 	return src
 }
 
@@ -802,27 +772,27 @@ func Dither(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	parallelProcessRows(height, func(startY, endY int) {
-		rng := rand.New(rand.NewSource(int64(startY))) //nolint:gosec
+	for y := 0; y < height; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			i := offset + x*4
+			// Add a tiny random jitter (+/- 0.5 bits equivalent)
+			// We use a small range to avoid visible noise while still breaking up patterns.
+			// Using the top-level rand.Intn is thread-safe for parallel execution.
+			//nolint:gosec // Weak random is perfectly fine for visual dithering
+			jitter := rand.Intn(3) - 1 // -1, 0, or 1
 
-		for y := startY; y < endY; y++ {
-			offset := y * src.Stride
-			for x := 0; x < width; x++ {
-				i := offset + x*4
-				jitter := rng.Intn(3) - 1 // -1, 0, or 1
-
-				for c := 0; c < 3; c++ {
-					val := int(src.Pix[i+c]) + jitter
-					if val < 0 {
-						val = 0
-					} else if val > 255 {
-						val = 255
-					}
-					src.Pix[i+c] = uint8(val)
+			for c := 0; c < 3; c++ {
+				val := int(src.Pix[i+c]) + jitter
+				if val < 0 {
+					val = 0
+				} else if val > 255 {
+					val = 255
 				}
+				src.Pix[i+c] = uint8(val)
 			}
 		}
-	})
+	}
 	return src
 }
 
@@ -832,43 +802,30 @@ func Sharpen(src *image.RGBA) *image.RGBA {
 	dst := image.NewRGBA(bounds)
 	width, height := bounds.Dx(), bounds.Dy()
 
-	parallelProcessRows(height, func(startY, endY int) {
-		// Respect the original bounds (1 to height-1)
-		if startY == 0 {
-			startY = 1
-		}
-		if endY == height {
-			endY = height - 1
-		}
-		if startY >= endY {
-			return
-		}
-
-		for y := startY; y < endY; y++ {
-			for x := 1; x < width-1; x++ {
-				for c := 0; c < 4; c++ { // Red, Green, Blue, Alpha
-					if c == 3 { // Preserve alpha
-						dst.Pix[y*dst.Stride+x*4+c] = src.Pix[y*src.Stride+x*4+c]
-						continue
-					}
-
-					center := int(src.Pix[y*src.Stride+x*4+c])
-					top := int(src.Pix[(y-1)*src.Stride+x*4+c])
-					bottom := int(src.Pix[(y+1)*src.Stride+x*4+c])
-					left := int(src.Pix[y*src.Stride+(x-1)*4+c])
-					right := int(src.Pix[y*src.Stride+(x+1)*4+c])
-
-					val := (center * 5) - top - bottom - left - right
-					if val < 0 {
-						val = 0
-					} else if val > 255 {
-						val = 255
-					}
-					dst.Pix[y*dst.Stride+x*4+c] = uint8(val)
+	for y := 1; y < height-1; y++ {
+		for x := 1; x < width-1; x++ {
+			for c := 0; c < 4; c++ { // Red, Green, Blue, Alpha
+				if c == 3 { // Preserve alpha
+					dst.Pix[y*dst.Stride+x*4+c] = src.Pix[y*src.Stride+x*4+c]
+					continue
 				}
+
+				center := int(src.Pix[y*src.Stride+x*4+c])
+				top := int(src.Pix[(y-1)*src.Stride+x*4+c])
+				bottom := int(src.Pix[(y+1)*src.Stride+x*4+c])
+				left := int(src.Pix[y*src.Stride+(x-1)*4+c])
+				right := int(src.Pix[y*src.Stride+(x+1)*4+c])
+
+				val := (center * 5) - top - bottom - left - right
+				if val < 0 {
+					val = 0
+				} else if val > 255 {
+					val = 255
+				}
+				dst.Pix[y*dst.Stride+x*4+c] = uint8(val)
 			}
 		}
-	})
+	}
 
 	// Copy borders
 	for x := 0; x < width; x++ {
@@ -906,37 +863,4 @@ func fitDimensions(w, h, maxW, maxH int) (int, int) {
 	// For Frame TV, we actually want to fill the native 4K resolution
 	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
 	return int(float64(w) * scale), int(float64(h) * scale)
-}
-
-// parallelProcessRows splits the image into vertical chunks and processes them in parallel.
-func parallelProcessRows(height int, fn func(startY, endY int)) {
-	numCPUs := runtime.NumCPU()
-	if numCPUs < 1 {
-		numCPUs = 1
-	}
-
-	// For very small images, don't bother with overhead.
-	if height < numCPUs*10 {
-		fn(0, height)
-		return
-	}
-
-	var wg sync.WaitGroup
-	rowsPerWorker := height / numCPUs
-
-	for i := 0; i < numCPUs; i++ {
-		startY := i * rowsPerWorker
-		endY := (i + 1) * rowsPerWorker
-		if i == numCPUs-1 {
-			endY = height
-		}
-
-		wg.Add(1)
-		go func(s, e int) {
-			defer wg.Done()
-			fn(s, e)
-		}(startY, endY)
-	}
-
-	wg.Wait()
 }
