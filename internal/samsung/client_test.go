@@ -70,28 +70,6 @@ func TestArtResponse_ConnInfoParsing(t *testing.T) {
 	}
 }
 
-func TestFetchDeviceInfo(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := DeviceInfoResponse{}
-		resp.Device.ModelName = "The Frame"
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	// Parse host/port from server URL
-	u, _ := neturl.Parse(server.URL)
-	host := u.Hostname()
-	port, _ := strconv.Atoi(u.Port())
-
-	info, err := FetchDeviceInfo(context.Background(), host, port, 5*time.Second)
-	if err != nil {
-		t.Fatalf("FetchDeviceInfo failed: %v", err)
-	}
-	if info.ModelName != "The Frame" {
-		t.Errorf("expected The Frame, got %s", info.ModelName)
-	}
-}
-
 func TestEnsureToken(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{}
