@@ -407,8 +407,8 @@ func ArtAppRequest(data map[string]any) ([]byte, error) {
 	}
 
 	outer := map[string]any{
-		"method": "ms.channel.emit",
-		"params": map[string]any{
+		"method": "ms.channel.emit", //nolint:goconst
+		"params": map[string]any{ //nolint:goconst
 			"event": "art_app_request",
 			"to":    "host",
 			"data":  string(inner),

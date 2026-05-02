@@ -13,8 +13,9 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
+	"runtime"
 	"strings"
+	"sync"
 
 	"golang.org/x/image/draw"
 )
@@ -594,35 +595,92 @@ func Dither(src *image.RGBA) *image.RGBA {
 }
 
 // Sharpen applies a high-performance 3x3 sharpening kernel to the image.
+// It is heavily parallelized and unrolled to quickly process large 4K images.
+//
+//nolint:gocyclo
 func Sharpen(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	dst := image.NewRGBA(bounds)
 	width, height := bounds.Dx(), bounds.Dy()
 
-	for y := 1; y < height-1; y++ {
-		for x := 1; x < width-1; x++ {
-			for c := 0; c < 4; c++ { // Red, Green, Blue, Alpha
-				if c == 3 { // Preserve alpha
-					dst.Pix[y*dst.Stride+x*4+c] = src.Pix[y*src.Stride+x*4+c]
-					continue
-				}
-
-				center := int(src.Pix[y*src.Stride+x*4+c])
-				top := int(src.Pix[(y-1)*src.Stride+x*4+c])
-				bottom := int(src.Pix[(y+1)*src.Stride+x*4+c])
-				left := int(src.Pix[y*src.Stride+(x-1)*4+c])
-				right := int(src.Pix[y*src.Stride+(x+1)*4+c])
-
-				val := (center * 5) - top - bottom - left - right
-				if val < 0 {
-					val = 0
-				} else if val > 255 {
-					val = 255
-				}
-				dst.Pix[y*dst.Stride+x*4+c] = uint8(val)
-			}
-		}
+	if width < 3 || height < 3 {
+		return src
 	}
+
+	numWorkers := runtime.NumCPU()
+	var wg sync.WaitGroup
+	wg.Add(numWorkers)
+
+	chunkSize := (height - 2 + numWorkers - 1) / numWorkers
+
+	for w := 0; w < numWorkers; w++ {
+		startY := 1 + w*chunkSize
+		endY := startY + chunkSize
+		if endY > height-1 {
+			endY = height - 1
+		}
+
+		go func(startY, endY int) {
+			defer wg.Done()
+			for y := startY; y < endY; y++ {
+				dstOffset := y * dst.Stride
+				srcOffset := y * src.Stride
+				srcTopOffset := (y - 1) * src.Stride
+				srcBottomOffset := (y + 1) * src.Stride
+
+				for x := 1; x < width-1; x++ {
+					base := x * 4
+
+					// R
+					cR := int(src.Pix[srcOffset+base])
+					tR := int(src.Pix[srcTopOffset+base])
+					bR := int(src.Pix[srcBottomOffset+base])
+					lR := int(src.Pix[srcOffset+base-4])
+					rR := int(src.Pix[srcOffset+base+4])
+					vR := (cR * 5) - tR - bR - lR - rR
+					if vR < 0 {
+						vR = 0
+					} else if vR > 255 {
+						vR = 255
+					}
+					dst.Pix[dstOffset+base] = uint8(vR)
+
+					// G
+					cG := int(src.Pix[srcOffset+base+1])
+					tG := int(src.Pix[srcTopOffset+base+1])
+					bG := int(src.Pix[srcBottomOffset+base+1])
+					lG := int(src.Pix[srcOffset+base-3])
+					rG := int(src.Pix[srcOffset+base+5])
+					vG := (cG * 5) - tG - bG - lG - rG
+					if vG < 0 {
+						vG = 0
+					} else if vG > 255 {
+						vG = 255
+					}
+					dst.Pix[dstOffset+base+1] = uint8(vG)
+
+					// B
+					cB := int(src.Pix[srcOffset+base+2])
+					tB := int(src.Pix[srcTopOffset+base+2])
+					bB := int(src.Pix[srcBottomOffset+base+2])
+					lB := int(src.Pix[srcOffset+base-2])
+					rB := int(src.Pix[srcOffset+base+6])
+					vB := (cB * 5) - tB - bB - lB - rB
+					if vB < 0 {
+						vB = 0
+					} else if vB > 255 {
+						vB = 255
+					}
+					dst.Pix[dstOffset+base+2] = uint8(vB)
+
+					// A
+					dst.Pix[dstOffset+base+3] = src.Pix[srcOffset+base+3]
+				}
+			}
+		}(startY, endY)
+	}
+
+	wg.Wait()
 
 	// Copy borders
 	for x := 0; x < width; x++ {
@@ -660,23 +718,4 @@ func fitDimensions(w, h, maxW, maxH int) (int, int) {
 	// For Frame TV, we actually want to fill the native 4K resolution
 	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
 	return int(float64(w) * scale), int(float64(h) * scale)
-}
-
-// ParseDimensionsFromFilename extracts width and height from an optimized filename.
-func ParseDimensionsFromFilename(filename string) (int, int, bool) {
-	parts := strings.Split(filename, "_opt.h_")
-	if len(parts) < 2 {
-		return 0, 0, false
-	}
-	dimPart := parts[1]
-	if idx := strings.Index(dimPart, "."); idx != -1 {
-		dimPart = dimPart[:idx]
-	}
-	dims := strings.Split(dimPart, "x")
-	if len(dims) != 2 {
-		return 0, 0, false
-	}
-	w, _ := strconv.Atoi(dims[0])
-	h, _ := strconv.Atoi(dims[1])
-	return w, h, true
 }
