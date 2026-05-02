@@ -24,11 +24,11 @@ func setupMockArtServer(requestName string, artRespData map[string]any) *httptes
 		defer func() { _ = conn.Close() }()
 
 		// Handshake
-		resp := wsResponse{Event: "ms.channel.connect", Data: json.RawMessage(`{"token":"test-token"}`)}
+		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
 		b, _ := json.Marshal(resp)
 		_ = conn.WriteMessage(websocket.TextMessage, b)
 
-		respReady := wsResponse{Event: "ms.channel.ready", Data: json.RawMessage(`{}`)}
+		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
 		bReady, _ := json.Marshal(respReady)
 		_ = conn.WriteMessage(websocket.TextMessage, bReady)
 
@@ -56,7 +56,7 @@ func setupMockArtServer(requestName string, artRespData map[string]any) *httptes
 		artRespBytes, _ := json.Marshal(artResp)
 
 		respMsg := wsResponse{
-			Event: "d2d_service_message",
+			Event: EventD2DServiceMessage,
 			Data:  json.RawMessage(artRespBytes),
 		}
 		respBytes, _ := json.Marshal(respMsg)
@@ -124,10 +124,10 @@ func TestArtAPI_SendImage(t *testing.T) {
 		}
 		defer func() { _ = conn.Close() }()
 		// Handshake
-		resp := wsResponse{Event: "ms.channel.connect", Data: json.RawMessage(`{"token":"test-token"}`)}
+		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
 		b, _ := json.Marshal(resp)
 		_ = conn.WriteMessage(websocket.TextMessage, b)
-		respReady := wsResponse{Event: "ms.channel.ready", Data: json.RawMessage(`{}`)}
+		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
 		bReady, _ := json.Marshal(respReady)
 		_ = conn.WriteMessage(websocket.TextMessage, bReady)
 
@@ -148,7 +148,7 @@ func TestArtAPI_SendImage(t *testing.T) {
 		connInfo := `{"id":"` + id + `","ip":"127.0.0.1","port":12345}`
 		artResp := map[string]any{"request": "send_image", "id": id, "conn_info": connInfo}
 		artRespBytes, _ := json.Marshal(artResp)
-		respMsg := wsResponse{Event: "d2d_service_message", Data: json.RawMessage(artRespBytes)}
+		respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
 		respBytes, _ := json.Marshal(respMsg)
 		_ = conn.WriteMessage(websocket.TextMessage, respBytes)
 		time.Sleep(50 * time.Millisecond)

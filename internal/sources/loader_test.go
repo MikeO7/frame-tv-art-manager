@@ -61,16 +61,18 @@ func TestLoader_UrlToSlug(t *testing.T) {
 	}
 }
 
+const testURL = "http://x.com/a"
+
 func TestExtensionFromResponse(t *testing.T) {
 	tests := []struct {
 		ct   string
 		url  string
 		want string
 	}{
-		{"image/jpeg", "http://x.com/a", ".jpg"},
-		{"image/png", "http://x.com/a", ".png"},
+		{"image/jpeg", testURL, ".jpg"},
+		{"image/png", testURL, ".png"},
 		{"text/plain", "http://x.com/a.png", ".png"},
-		{"text/plain", "http://x.com/a", ".jpg"}, // default
+		{"text/plain", testURL, ".jpg"}, // default
 	}
 
 	for _, tt := range tests {
