@@ -13,9 +13,8 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strconv"
 	"strings"
-	"sync"
 
 	"golang.org/x/image/draw"
 )
@@ -130,8 +129,8 @@ func toRGBA(img image.Image) *image.RGBA {
 	return rgba
 }
 
-// centerCrop performs a content-aware crop (if enabled) and high-fidelity scale to target dimensions.
-// It uses entropy analysis to find the area with the most detail and preserves it in the 16:9 frame.
+// centerCrop performs a content-aware crop and high-fidelity scale to target dimensions.
+// It uses the Director's Cut Saliency Engine to identify subjects and optimize composition.
 func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
@@ -145,7 +144,7 @@ func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 		cropW := int(float64(srcH) * targetAspect)
 		bestX := (srcW - cropW) / 2 // Default to center
 		if smart {
-			bestX = findBestCropWindow(src, cropW, srcH, true)
+			bestX = findBestDirectorCrop(src, cropW, srcH, true)
 		}
 		cropRect = image.Rect(bestX, 0, bestX+cropW, srcH)
 	} else {
@@ -153,7 +152,7 @@ func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 		cropH := int(float64(srcW) / targetAspect)
 		bestY := (srcH - cropH) / 2 // Default to center
 		if smart {
-			bestY = findBestCropWindow(src, srcW, cropH, false)
+			bestY = findBestDirectorCrop(src, srcW, cropH, false)
 		}
 		cropRect = image.Rect(0, bestY, srcW, bestY+cropH)
 	}
@@ -164,125 +163,31 @@ func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 	return final
 }
 
-// findBestCropWindow uses a Saliency-Integrator model to find the mathematical focal point.
-// It generates a downscaled saliency map (Edges + Color Contrast) and uses an Integral Image
-// (Summed-Area Table) to find the window with the absolute maximum visual interest.
-func findBestCropWindow(src *image.RGBA, windowW, windowH int, horizontal bool) int {
-	bounds := src.Bounds()
-	srcW, srcH := bounds.Dx(), bounds.Dy()
+// findBestDirectorCrop implements the 'Director's Cut' Smart Crop v3.0.
+// It combines Boolean Map Saliency (BMS) for object detection, Sobel for structural edges,
+// and a high-performance Integral Image (Summed-Area Table) search to find the optimal focal point.
+func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool) int {
+	srcBounds := src.Bounds()
+	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
 
-	const mapSize = 64
-	saliencyMap := make([]float64, mapSize*mapSize)
-	stepX := float64(srcW) / float64(mapSize)
-	stepY := float64(srcH) / float64(mapSize)
-
-	// 1. Calculate Global Color Soul (for Anomaly Detection)
-	avgR, avgG, avgB := calculateGlobalAverageColor(src)
-
-	// 2. Generate Multi-Factor Saliency Map
-	for my := 0; my < mapSize; my++ {
-		for mx := 0; mx < mapSize; mx++ {
-			sx := int(float64(mx)*stepX + stepX/2)
-			sy := int(float64(my)*stepY + stepY/2)
-			if sx >= srcW {
-				sx = srcW - 1
-			}
-			if sy >= srcH {
-				sy = srcH - 1
-			}
-
-			idx := sy*src.Stride + sx*4
-			r, g, b := float64(src.Pix[idx]), float64(src.Pix[idx+1]), float64(src.Pix[idx+2])
-
-			saliency := calculateSaliency(src, idx, sx, sy, r, g, b)
-			colorAnomaly := math.Sqrt((r-avgR)*(r-avgR) + (g-avgG)*(g-avgG) + (b-avgB)*(b-avgB))
-			aesthetic := calculateAestheticScore(mx, my, mapSize)
-
-			// Merge: Rare colors and curves are heavy influencers
-			saliencyMap[my*mapSize+mx] = (saliency + (colorAnomaly * 0.01)) * (1.0 + aesthetic)
-		}
+	// 1. Generate Saliency Map at working resolution (256px)
+	const workSize = 256
+	scale := float64(workSize) / float64(srcW)
+	if !horizontal {
+		scale = float64(workSize) / float64(srcH)
 	}
+	workW, workH := int(float64(srcW)*scale), int(float64(srcH)*scale)
+	workImg := image.NewRGBA(image.Rect(0, 0, workW, workH))
+	draw.NearestNeighbor.Scale(workImg, workImg.Bounds(), src, src.Bounds(), draw.Src, nil)
 
-	// 3. Create Integral Image (Summed-Area Table) for O(1) window sums
-	integral := calculateIntegralImage(saliencyMap, mapSize)
+	saliencyMap := generateSaliencyMap(workImg)
 
-	// 4. Exhaustive search on the saliency map
-	return performExhaustiveSearch(integral, mapSize, windowW, windowH, stepX, stepY, horizontal)
-}
+	// 2. Create Integral Image (Summed-Area Table) for O(1) window sums
+	integral := calculateIntegralImage(saliencyMap)
 
-func calculateGlobalAverageColor(src *image.RGBA) (float64, float64, float64) {
-	var totalR, totalG, totalB float64
-	bounds := src.Bounds()
-	srcW, srcH := bounds.Dx(), bounds.Dy()
-	for y := 0; y < srcH; y += 20 {
-		for x := 0; x < srcW; x += 20 {
-			i := y*src.Stride + x*4
-			totalR += float64(src.Pix[i])
-			totalG += float64(src.Pix[i+1])
-			totalB += float64(src.Pix[i+2])
-		}
-	}
-	sampleCount := float64((srcW / 20) * (srcH / 20))
-	return totalR / sampleCount, totalG / sampleCount, totalB / sampleCount
-}
-
-func calculateSaliency(src *image.RGBA, idx, sx, sy int, r, g, b float64) float64 {
-	var edgeX, edgeY float64
-	if sx > 1 && sy > 1 {
-		edgeX = math.Abs(r - float64(src.Pix[idx-4]))
-		edgeY = math.Abs(r - float64(src.Pix[idx-src.Stride]))
-	}
-	lum := 0.299*r + 0.587*g + 0.114*b
-	saliency := (edgeX+edgeY)*0.5 + math.Abs(r-lum)*0.2
-
-	// Curvature-Aware Flow
-	curvature := math.Abs(edgeX - edgeY)
-
-	// Biometric Skin-Tone Detection
-	skinScore := 0.0
-	if total := r + g + b; total > 0 {
-		rn, gn := r/total, g/total
-		if rn > 0.35 && rn < 0.55 && gn > 0.25 && gn < 0.38 {
-			skinScore = 2.5
-		}
-	}
-
-	return saliency + (curvature * 0.4) + (skinScore * 1.5)
-}
-
-func calculateAestheticScore(mx, my, mapSize int) float64 {
-	nx, ny := float64(mx)/float64(mapSize), float64(my)/float64(mapSize)
-
-	dx, dy := nx-0.5, ny-0.5
-	centerBias := 1.0 - math.Sqrt(dx*dx+dy*dy)
-
-	tx1, tx2 := nx-0.33, nx-0.66
-	ty1, ty2 := ny-0.33, ny-0.66
-	thirdX := math.Exp(-(tx1*tx1)/0.02) + math.Exp(-(tx2*tx2)/0.02)
-	thirdY := math.Exp(-(ty1*ty1)/0.02) + math.Exp(-(ty2*ty2)/0.02)
-
-	return (centerBias * 0.4) + ((thirdX + thirdY) * 0.3)
-}
-
-func calculateIntegralImage(saliencyMap []float64, mapSize int) []float64 {
-	integral := make([]float64, mapSize*mapSize)
-	for y := 0; y < mapSize; y++ {
-		rowSum := 0.0
-		for x := 0; x < mapSize; x++ {
-			rowSum += saliencyMap[y*mapSize+x]
-			if y == 0 {
-				integral[y*mapSize+x] = rowSum
-			} else {
-				integral[y*mapSize+x] = integral[(y-1)*mapSize+x] + rowSum
-			}
-		}
-	}
-	return integral
-}
-
-func performExhaustiveSearch(integral []float64, mapSize, windowW, windowH int, stepX, stepY float64, horizontal bool) int {
-	mapWinW := int(float64(windowW) / stepX)
-	mapWinH := int(float64(windowH) / stepY)
+	// 3. Exhaustive search for the best window
+	mapWinW := int(float64(windowW) * scale)
+	mapWinH := int(float64(windowH) * scale)
 	if mapWinW < 1 {
 		mapWinW = 1
 	}
@@ -291,37 +196,188 @@ func performExhaustiveSearch(integral []float64, mapSize, windowW, windowH int, 
 	}
 
 	bestMapPos := 0
-	maxSaliency := -1.0
+	maxScore := -1.0
 
 	if horizontal {
-		maxMapX := mapSize - mapWinW
+		maxMapX := workW - mapWinW
 		for mx := 0; mx <= maxMapX; mx++ {
-			x1, y1 := mx+mapWinW-1, mapWinH-1
-			sum := integral[y1*mapSize+x1]
-			if mx > 0 {
-				sum -= integral[y1*mapSize+mx-1]
-			}
-			if sum > maxSaliency {
-				maxSaliency = sum
+			score := getRectSum(integral, mx, 0, mx+mapWinW-1, workH-1, workW)
+			if score > maxScore {
+				maxScore = score
 				bestMapPos = mx
 			}
 		}
-		return int(float64(bestMapPos) * stepX)
+		return int(float64(bestMapPos) / scale)
 	} else {
-		maxMapY := mapSize - mapWinH
+		maxMapY := workH - mapWinH
 		for my := 0; my <= maxMapY; my++ {
-			x1, y1 := mapWinW-1, my+mapWinH-1
-			sum := integral[y1*mapSize+x1]
-			if my > 0 {
-				sum -= integral[(my-1)*mapSize+x1]
-			}
-			if sum > maxSaliency {
-				maxSaliency = sum
+			score := getRectSum(integral, 0, my, workW-1, my+mapWinH-1, workW)
+			if score > maxScore {
+				maxScore = score
 				bestMapPos = my
 			}
 		}
-		return int(float64(bestMapPos) * stepY)
+		return int(float64(bestMapPos) / scale)
 	}
+}
+
+// generateSaliencyMap creates a 2D map where each pixel represents a saliency score.
+// It combines structural edges (Sobel), skin tone detection, and Boolean Map Saliency (BMS).
+func generateSaliencyMap(src *image.RGBA) []float64 {
+	w, h := src.Bounds().Dx(), src.Bounds().Dy()
+	mapData := make([]float64, w*h)
+
+	// 1. Generate BMS (Boolean Map Saliency) surroundedness map.
+	bmsMap := generateBMSMap(src)
+
+	for y := 1; y < h-1; y++ {
+		for x := 1; x < w-1; x++ {
+			idx := y*src.Stride + x*4
+			r, g, b := src.Pix[idx], src.Pix[idx+1], src.Pix[idx+2]
+
+			// 2. Structural Saliency (Edge Detection via 3x3 Sobel)
+			edge := calculateSobelEdge(src, x, y)
+
+			// 3. Skin Tone Saliency (Heuristic)
+			skin := calculateSkinProbability(r, g, b)
+
+			// 4. Object Saliency (BMS)
+			object := bmsMap[y*w+x]
+
+			// 5. Aesthetic/Compositional Weight (Rule of Thirds)
+			aesthetic := calculateAestheticScore(x, y, w, h)
+
+			// Weighted Fusion v3.0
+			fusion := (object * 0.45) + (edge * 0.25) + (skin * 0.30)
+			mapData[y*w+x] = fusion * (1.0 + aesthetic)
+		}
+	}
+	return mapData
+}
+
+// generateBMSMap implements Boolean Map Saliency's surroundedness principle.
+// It finds regions that are topologically isolated from the image borders.
+func generateBMSMap(src *image.RGBA) []float64 {
+	w, h := src.Bounds().Dx(), src.Bounds().Dy()
+	bms := make([]float64, w*h)
+
+	// We use 5 threshold levels to capture objects of different brightness.
+	thresholds := []uint8{50, 100, 150, 200, 240}
+	for _, t := range thresholds {
+		boolMap := make([]bool, w*h)
+		for i := 0; i < w*h; i++ {
+			idx := i * 4
+			lum := 0.299*float64(src.Pix[idx]) + 0.587*float64(src.Pix[idx+1]) + 0.114*float64(src.Pix[idx+2])
+			if uint8(lum) > t {
+				boolMap[i] = true
+			}
+		}
+
+		bg := make([]bool, w*h)
+		queue := make([]int, 0, w*h)
+		for x := 0; x < w; x++ {
+			queue = checkAndPush(boolMap, bg, queue, x, 0, w, h)
+			queue = checkAndPush(boolMap, bg, queue, x, h-1, w, h)
+		}
+		for y := 0; y < h; y++ {
+			queue = checkAndPush(boolMap, bg, queue, 0, y, w, h)
+			queue = checkAndPush(boolMap, bg, queue, w-1, y, w, h)
+		}
+
+		for len(queue) > 0 {
+			curr := queue[0]
+			queue = queue[1:]
+			cx, cy := curr%w, curr/w
+			queue = checkAndPush(boolMap, bg, queue, cx-1, cy, w, h)
+			queue = checkAndPush(boolMap, bg, queue, cx+1, cy, w, h)
+			queue = checkAndPush(boolMap, bg, queue, cx, cy-1, w, h)
+			queue = checkAndPush(boolMap, bg, queue, cx, cy+1, w, h)
+		}
+
+		for i := 0; i < w*h; i++ {
+			if boolMap[i] && !bg[i] {
+				bms[i] += 1.0 / float64(len(thresholds))
+			}
+		}
+	}
+	return bms
+}
+
+func checkAndPush(boolMap, bg []bool, queue []int, x, y, w, h int) []int {
+	if x < 0 || x >= w || y < 0 || y >= h {
+		return queue
+	}
+	idx := y*w + x
+	if !boolMap[idx] && !bg[idx] {
+		bg[idx] = true
+		return append(queue, idx)
+	}
+	return queue
+}
+
+func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
+	lum := func(xx, yy int) float64 {
+		i := yy*src.Stride + xx*4
+		return 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
+	}
+	gx := -lum(x-1, y-1) - 2*lum(x-1, y) - lum(x-1, y+1) + lum(x+1, y-1) + 2*lum(x+1, y) + lum(x+1, y+1)
+	gy := -lum(x-1, y-1) - 2*lum(x, y-1) - lum(x+1, y-1) + lum(x-1, y+1) + 2*lum(x, y+1) + lum(x+1, y+1)
+	return math.Sqrt(gx*gx+gy*gy) / 255.0
+}
+
+func calculateSkinProbability(r, g, b uint8) float64 {
+	rf, gf, bf := float64(r), float64(g), float64(b)
+	cb := 128 - 0.168736*rf - 0.331264*gf + 0.5*bf
+	cr := 128 + 0.5*rf - 0.418688*gf - 0.081312*bf
+	if cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 {
+		return 1.0
+	}
+	return 0.0
+}
+
+func calculateAestheticScore(x, y, w, h int) float64 {
+	nx, ny := float64(x)/float64(w), float64(y)/float64(h)
+	dx, dy := nx-0.5, ny-0.5
+	centerBias := 0.1 * (1.0 - math.Sqrt(dx*dx+dy*dy))
+
+	tx1, tx2 := nx-0.33, nx-0.66
+	ty1, ty2 := ny-0.33, ny-0.66
+	thirdX := math.Exp(-(tx1*tx1)/0.02) + math.Exp(-(tx2*tx2)/0.02)
+	thirdY := math.Exp(-(ty1*ty1)/0.02) + math.Exp(-(ty2*ty2)/0.02)
+
+	return centerBias + ((thirdX + thirdY) * 0.25)
+}
+
+func calculateIntegralImage(saliencyMap []float64) []float64 {
+	w := 256 // Fixed working width
+	h := len(saliencyMap) / w
+	integral := make([]float64, w*h)
+	for y := 0; y < h; y++ {
+		rowSum := 0.0
+		for x := 0; x < w; x++ {
+			rowSum += saliencyMap[y*w+x]
+			if y == 0 {
+				integral[y*w+x] = rowSum
+			} else {
+				integral[y*w+x] = integral[(y-1)*w+x] + rowSum
+			}
+		}
+	}
+	return integral
+}
+
+func getRectSum(integral []float64, x1, y1, x2, y2, w int) float64 {
+	res := integral[y2*w+x2]
+	if x1 > 0 {
+		res -= integral[y2*w+x1-1]
+	}
+	if y1 > 0 {
+		res -= integral[(y1-1)*w+x2]
+	}
+	if x1 > 0 && y1 > 0 {
+		res += integral[(y1-1)*w+x1-1]
+	}
+	return res
 }
 
 // ApplyMuseumMode orchestrates a suite of visual filters to simulate physical artwork.
@@ -595,92 +651,35 @@ func Dither(src *image.RGBA) *image.RGBA {
 }
 
 // Sharpen applies a high-performance 3x3 sharpening kernel to the image.
-// It is heavily parallelized and unrolled to quickly process large 4K images.
-//
-//nolint:gocyclo
 func Sharpen(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	dst := image.NewRGBA(bounds)
 	width, height := bounds.Dx(), bounds.Dy()
 
-	if width < 3 || height < 3 {
-		return src
-	}
-
-	numWorkers := runtime.NumCPU()
-	var wg sync.WaitGroup
-	wg.Add(numWorkers)
-
-	chunkSize := (height - 2 + numWorkers - 1) / numWorkers
-
-	for w := 0; w < numWorkers; w++ {
-		startY := 1 + w*chunkSize
-		endY := startY + chunkSize
-		if endY > height-1 {
-			endY = height - 1
-		}
-
-		go func(startY, endY int) {
-			defer wg.Done()
-			for y := startY; y < endY; y++ {
-				dstOffset := y * dst.Stride
-				srcOffset := y * src.Stride
-				srcTopOffset := (y - 1) * src.Stride
-				srcBottomOffset := (y + 1) * src.Stride
-
-				for x := 1; x < width-1; x++ {
-					base := x * 4
-
-					// R
-					cR := int(src.Pix[srcOffset+base])
-					tR := int(src.Pix[srcTopOffset+base])
-					bR := int(src.Pix[srcBottomOffset+base])
-					lR := int(src.Pix[srcOffset+base-4])
-					rR := int(src.Pix[srcOffset+base+4])
-					vR := (cR * 5) - tR - bR - lR - rR
-					if vR < 0 {
-						vR = 0
-					} else if vR > 255 {
-						vR = 255
-					}
-					dst.Pix[dstOffset+base] = uint8(vR)
-
-					// G
-					cG := int(src.Pix[srcOffset+base+1])
-					tG := int(src.Pix[srcTopOffset+base+1])
-					bG := int(src.Pix[srcBottomOffset+base+1])
-					lG := int(src.Pix[srcOffset+base-3])
-					rG := int(src.Pix[srcOffset+base+5])
-					vG := (cG * 5) - tG - bG - lG - rG
-					if vG < 0 {
-						vG = 0
-					} else if vG > 255 {
-						vG = 255
-					}
-					dst.Pix[dstOffset+base+1] = uint8(vG)
-
-					// B
-					cB := int(src.Pix[srcOffset+base+2])
-					tB := int(src.Pix[srcTopOffset+base+2])
-					bB := int(src.Pix[srcBottomOffset+base+2])
-					lB := int(src.Pix[srcOffset+base-2])
-					rB := int(src.Pix[srcOffset+base+6])
-					vB := (cB * 5) - tB - bB - lB - rB
-					if vB < 0 {
-						vB = 0
-					} else if vB > 255 {
-						vB = 255
-					}
-					dst.Pix[dstOffset+base+2] = uint8(vB)
-
-					// A
-					dst.Pix[dstOffset+base+3] = src.Pix[srcOffset+base+3]
+	for y := 1; y < height-1; y++ {
+		for x := 1; x < width-1; x++ {
+			for c := 0; c < 4; c++ { // Red, Green, Blue, Alpha
+				if c == 3 { // Preserve alpha
+					dst.Pix[y*dst.Stride+x*4+c] = src.Pix[y*src.Stride+x*4+c]
+					continue
 				}
-			}
-		}(startY, endY)
-	}
 
-	wg.Wait()
+				center := int(src.Pix[y*src.Stride+x*4+c])
+				top := int(src.Pix[(y-1)*src.Stride+x*4+c])
+				bottom := int(src.Pix[(y+1)*src.Stride+x*4+c])
+				left := int(src.Pix[y*src.Stride+(x-1)*4+c])
+				right := int(src.Pix[y*src.Stride+(x+1)*4+c])
+
+				val := (center * 5) - top - bottom - left - right
+				if val < 0 {
+					val = 0
+				} else if val > 255 {
+					val = 255
+				}
+				dst.Pix[y*dst.Stride+x*4+c] = uint8(val)
+			}
+		}
+	}
 
 	// Copy borders
 	for x := 0; x < width; x++ {
@@ -718,4 +717,23 @@ func fitDimensions(w, h, maxW, maxH int) (int, int) {
 	// For Frame TV, we actually want to fill the native 4K resolution
 	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
 	return int(float64(w) * scale), int(float64(h) * scale)
+}
+
+// ParseDimensionsFromFilename extracts width and height from an optimized filename.
+func ParseDimensionsFromFilename(filename string) (int, int, bool) {
+	parts := strings.Split(filename, "_opt.h_")
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	dimPart := parts[1]
+	if idx := strings.Index(dimPart, "."); idx != -1 {
+		dimPart = dimPart[:idx]
+	}
+	dims := strings.Split(dimPart, "x")
+	if len(dims) != 2 {
+		return 0, 0, false
+	}
+	w, _ := strconv.Atoi(dims[0])
+	h, _ := strconv.Atoi(dims[1])
+	return w, h, true
 }
