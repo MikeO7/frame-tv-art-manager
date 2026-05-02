@@ -173,12 +173,20 @@ func (l *Loader) Sync() (int, error) {
 	return int(downloaded), nil
 }
 
-func (l *Loader) checkExisting(filename string) (string, bool) {
+func (l *Loader) checkExisting(identity string) (string, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	identity := strings.TrimSuffix(filename, filepath.Ext(filename))
-	existing, ok := l.prefixMap[identity]
+
+	existing, ok := l.prefixMap[stripIndexPrefix(identity)]
 	return existing, ok
+}
+
+// stripIndexPrefix removes the non-deterministic numeric prefix (e.g. "001__") for stable idempotency.
+func stripIndexPrefix(identity string) string {
+	if len(identity) > 5 && identity[3:5] == "__" {
+		return identity[5:]
+	}
+	return identity
 }
 
 func (l *Loader) executeDownload(url, filename string) (bool, error) {
@@ -861,7 +869,8 @@ func (l *Loader) buildContentIndex() {
 		cleanIdentity := res.cleanIdentity
 
 		l.mu.Lock()
-		l.prefixMap[cleanIdentity] = filename
+		mapIdentity := stripIndexPrefix(cleanIdentity)
+		l.prefixMap[mapIdentity] = filename
 		l.mu.Unlock()
 
 		// If the filename didn't contain the hash, rename it now (sequentially to be safe)
@@ -873,7 +882,7 @@ func (l *Loader) buildContentIndex() {
 				filename = newName
 				path = newPath
 				l.mu.Lock()
-				l.prefixMap[cleanIdentity] = filename
+				l.prefixMap[mapIdentity] = filename
 				l.mu.Unlock()
 			}
 			l.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:12])
