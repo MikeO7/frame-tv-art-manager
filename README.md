@@ -78,6 +78,7 @@ When `SMART_CROP_ENABLED` is active, the engine transitions from simple centerin
 |---|---|---|
 | `TV_IPS` | *(required)* | Your TV's IP address (comma-separate for multiple TVs) |
 | `ARTWORK_DIR` | `/data/artwork` | Where your images live |
+| `MAX_ARTWORK_IMAGES` | `100` | Maximum number of images to sync (increase if your collection is larger) |
 | `IMAGE_MUSEUM_MODE` | `false` | Enable the "real art" filters |
 | `IMAGE_MUSEUM_INTENSITY`| `1` | How heavy the canvas texture should be (1-10) |
 | `SMART_CROP_ENABLED` | `false` | Enable the "Director's Cut" aesthetic composition |
@@ -89,7 +90,7 @@ When `SMART_CROP_ENABLED` is active, the engine transitions from simple centerin
 
 You can mix and match local files with professional sources in a `sources.yaml` file:
 
-*   **Unsplash**: Pull specific collections or search keywords.
+*   **Unsplash**: Pull specific collections or search keywords. *(Note: Unsplash API responses are heavily cached and may take up to an hour to reflect recent additions. Additionally, premium "Unsplash+" images cannot be synced via the free developer API).*
 *   **NASA**: Today's Astronomy Picture of the Day (APOD) or space searches.
 *   **Art Institute of Chicago**: Search for specific artists like "Monet" or "Van Gogh".
 *   **Pexels / Pixabay**: High-res photography searches.
