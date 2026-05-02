@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -113,6 +114,11 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 			e.health.RecordSync(finalErr == nil, finalErr)
 			e.health.SetStage("idle")
 		}
+
+		// Force Go to release unused memory back to the OS during the idle period.
+		// Image processing allocates large buffers that cause docker memory stats to stay high.
+		runtime.GC()
+		debug.FreeOSMemory()
 	}()
 
 	e.cycleNum++
