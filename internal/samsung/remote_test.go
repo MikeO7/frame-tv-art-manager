@@ -22,7 +22,7 @@ func TestRemote_EnsureToken(t *testing.T) {
 
 		handshakeResp := map[string]any{
 			keyEvent: EventChannelConnect,
-			"data": map[string]any{
+			keyData: map[string]any{
 				"token": "remote-token",
 			},
 		}

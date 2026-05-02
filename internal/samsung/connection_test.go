@@ -84,7 +84,7 @@ func TestConnection_SendAndWait(t *testing.T) {
 
 		// 2. Send Handshake Ready (required for com.samsung.art-app)
 		readyResp := map[string]any{
-			"event": "ms.channel.ready",
+			keyEvent: "ms.channel.ready",
 		}
 		_ = conn.WriteJSON(readyResp)
 		time.Sleep(100 * time.Millisecond)
@@ -107,8 +107,8 @@ func TestConnection_SendAndWait(t *testing.T) {
 		id, _ := inner["id"].(string)
 
 		resp := map[string]any{
-			"event": "d2d_service_message",
-			"data": map[string]any{
+			keyEvent: "d2d_service_message",
+			keyData: map[string]any{
 				"id":      id,
 				"payload": `{"result":"ok"}`,
 			},
