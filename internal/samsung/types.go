@@ -10,7 +10,10 @@ const (
 	EventChannelReady           = "ms.channel.ready"
 )
 
-const stringFalse = "false"
+const (
+	stringTrue  = "true"
+	stringFalse = "false"
+)
 
 // DeviceInfo holds metadata about a connected Samsung TV, retrieved via
 // the REST API at https://<ip>:8002/api/v2/.
@@ -23,7 +26,7 @@ type DeviceInfo struct {
 
 // IsFrameTV returns true if the device reports Frame TV support.
 func (d *DeviceInfo) IsFrameTV() bool {
-	return d.FrameTVSupport == "true"
+	return d.FrameTVSupport == stringTrue
 }
 
 // IsOn returns true if the device is powered on.

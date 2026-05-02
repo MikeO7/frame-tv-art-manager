@@ -37,7 +37,7 @@ func TestClient_TokenFilePath(t *testing.T) {
 }
 
 func TestDeviceInfo_IsFrameTV(t *testing.T) {
-	d := &DeviceInfo{FrameTVSupport: "true"}
+	d := &DeviceInfo{FrameTVSupport: stringTrue}
 	if !d.IsFrameTV() {
 		t.Error("expected true")
 	}

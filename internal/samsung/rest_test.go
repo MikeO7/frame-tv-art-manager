@@ -17,7 +17,7 @@ func TestFetchDeviceInfo(t *testing.T) {
 		expected := DeviceInfo{
 			ModelName:       "QN55LS03AAFXZA",
 			FirmwareVersion: "1234",
-			FrameTVSupport:  "true",
+			FrameTVSupport:  stringTrue,
 			PowerState:      "on",
 		}
 
