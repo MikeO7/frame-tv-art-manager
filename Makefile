@@ -1,11 +1,25 @@
-.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy
+.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check
 .NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
 
 all: check build
 
 test:
 	@echo "🔍 Running tests..."
-	go test -v -count=1 ./...
+	go test -v -count=1 -coverprofile=coverage.out ./...
+
+coverage: test
+	@echo "📊 Generating coverage report..."
+	go tool cover -html=coverage.out
+
+coverage-check: test
+	@echo "📈 Checking coverage threshold (45%)..."
+	@TOTAL_COVERAGE=$$(go tool cover -func=coverage.out | grep total | awk '{print substr($$3, 1, length($$3)-1)}'); \
+	echo "Total coverage: $$TOTAL_COVERAGE%"; \
+	if [ $$(echo "$$TOTAL_COVERAGE < 45" | bc) -eq 1 ]; then \
+		echo "❌ Coverage is below 45%"; \
+		exit 1; \
+	fi
+	@echo "✅ Coverage check passed!"
 
 lint:
 	@echo "✨ Running linter..."
@@ -47,10 +61,10 @@ docker:
 	@echo "🐳 Building Docker image (local)..."
 	docker build -t frame-tv-art-manager:local .
 
-# The 'check' target now runs test, lint, vuln, and actionlint in parallel 
+# The 'check' target now runs test, lint, vuln, actionlint, and coverage-check in parallel 
 # when you run 'make -j check'.
 check: tidy fmt
-	@$(MAKE) -j4 test lint vuln actionlint
+	@$(MAKE) -j4 lint vuln actionlint coverage-check
 	@echo "✅ All local checks passed!"
 
 tools:

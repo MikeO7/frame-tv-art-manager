@@ -12,9 +12,11 @@ import (
 
 // NASAClient handles communication with NASA APIs.
 type NASAClient struct {
-	apiKey string
-	client *http.Client
-	logger *slog.Logger
+	apiKey    string
+	client    *http.Client
+	logger    *slog.Logger
+	BaseURL   string
+	SearchURL string
 }
 
 // NewNASAClient creates a new NASA API client.
@@ -27,7 +29,9 @@ func NewNASAClient(apiKey string, logger *slog.Logger) *NASAClient {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger: logger,
+		logger:    logger,
+		BaseURL:   "https://api.nasa.gov",
+		SearchURL: "https://images-api.nasa.gov",
 	}
 }
 
@@ -41,7 +45,7 @@ type APODResponse struct {
 
 // FetchAPOD retrieves today's Astronomy Picture of the Day.
 func (c *NASAClient) FetchAPOD(ctx context.Context) (*APODResponse, error) {
-	url := fmt.Sprintf("https://api.nasa.gov/planetary/apod?api_key=%s", c.apiKey)
+	url := fmt.Sprintf("%s/planetary/apod?api_key=%s", c.BaseURL, c.apiKey)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -71,7 +75,7 @@ func (c *NASAClient) FetchAPOD(ctx context.Context) (*APODResponse, error) {
 
 // SearchNASAImageLibrary searches for high-resolution images in the NASA library.
 func (c *NASAClient) SearchNASAImageLibrary(ctx context.Context, query string) ([]string, error) {
-	url := fmt.Sprintf("https://images-api.nasa.gov/search?q=%s&media_type=image", query)
+	url := fmt.Sprintf("%s/search?q=%s&media_type=image", c.SearchURL, query)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err

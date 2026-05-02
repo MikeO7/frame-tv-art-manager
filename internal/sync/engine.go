@@ -40,6 +40,8 @@ type Engine struct {
 	health    *health.Status
 	srcLoader *sources.Loader
 	cycleNum  int
+	mappings  map[string]*Mapping
+	mapMu     sync.Mutex
 }
 
 // NewEngine creates a sync engine with the given configuration.
@@ -62,6 +64,7 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 			cfg.MaxDownloadSizeMB,
 			logger,
 		),
+		mappings: make(map[string]*Mapping),
 	}
 }
 
@@ -98,41 +101,46 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 // RunOnce performs a single sync cycle for all configured TVs.
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
+	var cycleWarnings []string
 	defer func() {
 		if e.health != nil {
-			e.health.RecordSync(err == nil && len(syncErrors) == 0)
+			var finalErr error
+			if err != nil {
+				finalErr = err
+			} else if len(syncErrors) > 0 {
+				finalErr = errors.Join(syncErrors...)
+			}
+			e.health.RecordSync(finalErr == nil, finalErr)
+			e.health.SetStage("idle")
 		}
 	}()
 
 	e.cycleNum++
+	cycleLog := e.logger.With("cycle", e.cycleNum)
+
+	e.mapMu.Lock()
+	e.mappings = make(map[string]*Mapping)
+	e.mapMu.Unlock()
+
 	startTime := time.Now()
-	e.logger.Info("starting sync cycle",
-		"cycle", e.cycleNum,
+	cycleLog.Info("starting sync cycle",
 		"tvs", len(e.cfg.TVIPs),
 	)
 
-	// Step 0: Download images from URL sources.
-	srcDownloaded, srcErr := e.srcLoader.Sync()
-	if srcErr != nil {
-		e.logger.Warn("source download error", "error", srcErr)
-	}
+	var srcDownloaded int
+	srcDownloaded, cycleWarnings = e.downloadSources(cycleLog)
 
-	// Step 1: Scan local artwork directory.
-	localFiles, err := ScanArtworkDir(e.cfg.ArtworkDir)
+	var localFiles map[string]struct{}
+	var optimized int
+	localFiles, optimized, err = e.scanAndOptimize(cycleLog)
 	if err != nil {
-		return fmt.Errorf("scan artwork: %w", err)
+		return err
 	}
-
-	// Step 2: Optimize and Validate local artwork.
-	optimized := e.optimizeLocalArtwork(localFiles)
-
-	e.logger.Info("local artwork ready",
-		"total", len(localFiles),
-		"from_sources", srcDownloaded,
-		"optimized", optimized,
-	)
 
 	// Step 3: Sync each TV in parallel.
+	if e.health != nil {
+		e.health.SetStage("syncing TVs")
+	}
 	tvSummaries := make([]tvSyncSummary, 0, len(e.cfg.TVIPs))
 	var summariesMu sync.Mutex
 	var wg sync.WaitGroup
@@ -161,7 +169,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 				return
 			}
 
-			summary, err := e.syncTV(ctx, tvIP, localFiles)
+			summary, err := e.syncTV(ctx, tvIP, localFiles, cycleLog)
 
 			summariesMu.Lock()
 			defer summariesMu.Unlock()
@@ -200,7 +208,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	wg.Wait()
 
 	// Print summary.
-	e.printSummary(startTime, len(localFiles), srcDownloaded, optimized, tvSummaries)
+	e.printSummary(startTime, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
 
 	if len(syncErrors) > 0 {
 		return errors.Join(syncErrors...)
@@ -231,8 +239,8 @@ type tvSyncSummary struct {
 // syncTV performs the full sync for a single TV.
 //
 //nolint:gocyclo // Core sync loop requires complex flow control
-func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}) (tvSyncSummary, error) {
-	log := e.logger.With("tv", ip)
+func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}, cycleLog *slog.Logger) (tvSyncSummary, error) {
+	log := cycleLog.With("tv", ip)
 	summary := tvSyncSummary{IP: ip}
 
 	// Connect to TV.
@@ -271,8 +279,8 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		}
 	}(ctx)
 
-	// Load filename→content_id mapping.
-	mapping, err := LoadMapping(e.cfg.TokenDir, ip)
+	// Load filename→content_id mapping from cache or disk.
+	mapping, err := e.getMapping(ip)
 	if err != nil {
 		summary.Status = statusError
 		return summary, fmt.Errorf("load mapping: %w", err)
@@ -539,7 +547,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	}
 
 	// Apply brightness.
-	brightnessVal := e.determineBrightness()
+	brightnessVal := e.determineBrightness(log)
 	if brightnessVal != nil && !e.cfg.DryRun {
 		if err := client.SetBrightness(ctx, *brightnessVal); err != nil {
 			log.Warn("failed to set brightness", "error", err)
@@ -571,7 +579,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 }
 
 // determineBrightness calculates the brightness to apply.
-func (e *Engine) determineBrightness() *int {
+func (e *Engine) determineBrightness(log *slog.Logger) *int {
 	if e.cfg.SolarEnabled {
 		b, err := brightness.Calculate(
 			e.cfg.Latitude, e.cfg.Longitude,
@@ -579,16 +587,16 @@ func (e *Engine) determineBrightness() *int {
 			e.cfg.BrightnessMin, e.cfg.BrightnessMax,
 		)
 		if err != nil {
-			e.logger.Warn("solar brightness calculation failed", "error", err)
+			log.Warn("solar brightness calculation failed", "error", err)
 		}
 		if b != nil {
-			e.logger.Info("solar brightness", "value", *b)
+			log.Info("solar brightness", "value", *b)
 			return b
 		}
 	}
 
 	if e.cfg.ManualBrightness != nil {
-		e.logger.Info("manual brightness", "value", *e.cfg.ManualBrightness)
+		log.Info("manual brightness", "value", *e.cfg.ManualBrightness)
 		return e.cfg.ManualBrightness
 	}
 
@@ -596,7 +604,7 @@ func (e *Engine) determineBrightness() *int {
 }
 
 // printSummary outputs a formatted sync cycle summary.
-func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, optimized int, tvs []tvSyncSummary) {
+func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, optimized int, tvs []tvSyncSummary, warnings []string) {
 	elapsed := time.Since(startTime).Round(time.Millisecond)
 	nextSync := time.Now().Add(time.Duration(e.cfg.SyncIntervalMin) * time.Minute)
 
@@ -640,7 +648,15 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		case "backoff":
 			sb.WriteString(padLine("    Status:     ⏸ Backing off (unreachable)"))
 		default:
-			sb.WriteString(padLine("    Status:     " + tv.Status))
+			sb.WriteString(padLine("    Status:     ✘ " + tv.Status))
+			if tv.ErrorMessage != "" {
+				// Truncate error if too long for the box
+				errMsg := tv.ErrorMessage
+				if len(errMsg) > 35 {
+					errMsg = errMsg[:32] + "..."
+				}
+				sb.WriteString(padLine("    Error:      " + errMsg))
+			}
 		}
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
@@ -655,6 +671,19 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	}
 	sb.WriteString(padLine(localSummary))
 
+	// Warnings Section if any
+	if len(warnings) > 0 {
+		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
+		sb.WriteString(padLine("  ⚠ Warnings during this cycle:"))
+		for _, w := range warnings {
+			if len(w) > 44 {
+				w = w[:41] + "..."
+			}
+			sb.WriteString(padLine("  - " + w))
+		}
+	}
+
+	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	sb.WriteString(padLine("  Took:   " + elapsed.String()))
 	sb.WriteString(padLine("  Next:   " + nextSync.Format("15:04:05")))
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
@@ -697,7 +726,7 @@ func boolCount(cond bool, count int) int {
 	return 0
 }
 
-func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
+func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}, cycleLog *slog.Logger) int {
 	var optimizedCount int64
 
 	optCfg := optimize.Config{
@@ -741,11 +770,7 @@ func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 		go func() {
 			defer wg.Done()
 			for j := range jobs {
-				// We need to protect the map with a mutex because handleSingleOptimization modifies it
-				mu.Lock()
-				wasModified, ok := e.handleSingleOptimization(j.filename, localFiles, optCfg)
-				mu.Unlock()
-
+				wasModified, ok := e.handleSingleOptimization(j.filename, localFiles, optCfg, &mu, cycleLog)
 				if ok && wasModified {
 					atomic.AddInt64(&optimizedCount, 1)
 				}
@@ -757,14 +782,14 @@ func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}) int {
 	return int(optimizedCount)
 }
 
-func (e *Engine) handleSingleOptimization(filename string, localFiles map[string]struct{}, optCfg optimize.Config) (bool, bool) {
+func (e *Engine) handleSingleOptimization(filename string, localFiles map[string]struct{}, optCfg optimize.Config, mu *sync.Mutex, log *slog.Logger) (bool, bool) {
 	path := filepath.Join(e.cfg.ArtworkDir, filename)
 
 	// 1. Skip check based on filename metadata (Avoid heavy computing).
 	if optCfg.Enabled && strings.Contains(filename, "_opt.h_") {
 		w, h, ok := parseDimensions(filename)
 		if ok && w <= optCfg.MaxWidth && h <= optCfg.MaxHeight {
-			e.logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
+			log.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
 			return false, true
 		}
 	}
@@ -772,26 +797,30 @@ func (e *Engine) handleSingleOptimization(filename string, localFiles map[string
 	// 2. Perform optimization/validation if needed.
 	if !optCfg.Enabled {
 		if err := optimize.ValidateImage(path); err != nil {
-			e.logger.Warn("skipping corrupt image", "file", filename, "error", err)
+			log.Warn("skipping corrupt image", "file", filename, "error", err)
+			mu.Lock()
 			delete(localFiles, filename)
+			mu.Unlock()
 			return false, false
 		}
 		return false, true
 	}
 
-	newW, newH, modified, err := optimize.OptimizeFile(path, optCfg, e.logger)
+	newW, newH, modified, err := optimize.OptimizeFile(path, optCfg, log)
 	if err != nil {
-		e.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
+		log.Warn("skipping bad or unsupported image", "file", filename, "error", err)
+		mu.Lock()
 		delete(localFiles, filename)
+		mu.Unlock()
 		return false, false
 	}
 
 	// 3. Handle renaming if modified or if filename metadata is missing/stale.
-	e.ensureCorrectFilename(filename, newW, newH, modified, localFiles)
+	e.ensureCorrectFilename(filename, newW, newH, modified, localFiles, mu)
 	return modified, true
 }
 
-func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified bool, localFiles map[string]struct{}) {
+func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified bool, localFiles map[string]struct{}, mu *sync.Mutex) {
 	currentW, currentH, _ := parseDimensions(filename)
 	isOpt := strings.Contains(filename, "_opt.h_")
 
@@ -822,16 +851,17 @@ func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified
 		if err := os.Rename(path, newPath); err == nil {
 			e.logger.Info("updated optimized filename", "old", filename, "new", newFilename)
 			e.updateMappings(filename, newFilename)
+			mu.Lock()
 			delete(localFiles, filename)
 			localFiles[newFilename] = struct{}{}
+			mu.Unlock()
 		}
 	}
 }
 
-// updateMappings migrates a content ID from an old filename to a new one across all TVs.
 func (e *Engine) updateMappings(oldName, newName string) {
 	for _, ip := range e.cfg.TVIPs {
-		m, err := LoadMapping(e.cfg.ArtworkDir, ip)
+		m, err := e.getMapping(ip)
 		if err != nil {
 			continue
 		}
@@ -862,4 +892,56 @@ func parseDimensions(filename string) (int, int, bool) {
 		}
 	}
 	return 0, 0, false
+}
+
+// getMapping returns a cached or newly loaded mapping for a TV.
+func (e *Engine) getMapping(ip string) (*Mapping, error) {
+	e.mapMu.Lock()
+	defer e.mapMu.Unlock()
+
+	if m, ok := e.mappings[ip]; ok {
+		return m, nil
+	}
+
+	m, err := LoadMapping(e.cfg.TokenDir, ip)
+	if err != nil {
+		return nil, err
+	}
+
+	e.mappings[ip] = m
+	return m, nil
+}
+
+func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {
+	if e.health != nil {
+		e.health.SetStage("downloading sources")
+	}
+	srcDownloaded, srcErr := e.srcLoader.Sync()
+	var cycleWarnings []string
+	if srcErr != nil {
+		cycleLog.Warn("source download error", "error", srcErr)
+		cycleWarnings = append(cycleWarnings, fmt.Sprintf("Source download issue: %v", srcErr))
+	}
+	return srcDownloaded, cycleWarnings
+}
+
+func (e *Engine) scanAndOptimize(cycleLog *slog.Logger) (map[string]struct{}, int, error) {
+	if e.health != nil {
+		e.health.SetStage("scanning local artwork")
+	}
+	localFiles, err := ScanArtworkDir(e.cfg.ArtworkDir)
+	if err != nil {
+		return nil, 0, fmt.Errorf("scan artwork: %w", err)
+	}
+
+	if e.health != nil {
+		e.health.SetStage("optimizing artwork")
+	}
+	optimized := e.optimizeLocalArtwork(localFiles, cycleLog)
+
+	cycleLog.Info("local artwork ready",
+		"total", len(localFiles),
+		"optimized", optimized,
+	)
+	return localFiles, optimized, nil
 }
