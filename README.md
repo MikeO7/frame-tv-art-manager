@@ -61,6 +61,17 @@ The engine has been transformed from a simple image resizer into a professional-
 *   **Luminance Headroom (Berns 2001)**: Peak brightness is relaxed to **235**, providing punchy whites while maintaining enough "surface headroom" for the TV panel to act as a natural reflective canvas.
 *   **Inner Depth Matte Bevel**: Simulates the 1px physical cut of a cardboard matte with light-aware highlights and shadows.
 
+### 🎬 The "Director's Cut" Smart Crop (Aesthetic Composition)
+
+When `SMART_CROP_ENABLED` is active, the engine transitions from simple centering to a **Multi-Factor Aesthetic Saliency Map**. This is a 2024-standard composition engine that analyzes every image through five distinct intelligence layers:
+
+*   **Saliency-Integrator Search**: Uses an **Integral Image (Summed-Area Table)** to perform a global, $O(1)$ exhaustive search. It scans every possible 16:9 window to find the absolute mathematical focal point of the artwork.
+*   **Global Color Anomaly Detection**: Calculates the "color soul" of the entire painting and prioritizes **Rare Pigments** (e.g., a splash of red in a forest). These anomalies are biologically prioritized by the human eye.
+*   **Curvature-Aware Gaze Prediction**: Implements a second-order gradient approximation to detect **Curves and Angles** (smiles, eyes, architectural flourishes), ensuring the composition follows the painting's natural flow.
+*   **Focus-Aware Sharpness**: Weighs **High-Frequency Energy** (the sharpest part of the painting) more heavily, ensuring the intended subject—not a blurred background—remains the star of the show.
+*   **Biometric Subject Prioritization**: Includes a non-neural **Skin-Tone Cluster Model** to automatically identify human-like signatures, ensuring that portraits are framed with professional care.
+*   **Aesthetic Weighting**: Final composition is refined using **Rule-of-Thirds Peaks** and **Gaussian Center-Bias**, resulting in a frame that feels curated and intentional.
+
 ## Configuration Reference
 
 | Variable | Default | Description |
@@ -69,6 +80,7 @@ The engine has been transformed from a simple image resizer into a professional-
 | `ARTWORK_DIR` | `/data/artwork` | Where your images live |
 | `IMAGE_MUSEUM_MODE` | `false` | Enable the "real art" filters |
 | `IMAGE_MUSEUM_INTENSITY`| `1` | How heavy the canvas texture should be (1-10) |
+| `SMART_CROP_ENABLED` | `false` | Enable the "Director's Cut" aesthetic composition |
 | `SLIDESHOW_ENABLED` | `false` | Let the manager handle the rotation |
 | `AUTO_OFF_TIME` | *(unset)* | Time to turn the TV off (e.g., `22:00`) |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Wipe anything on the TV not in your local folder |

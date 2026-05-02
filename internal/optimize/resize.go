@@ -163,65 +163,164 @@ func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 	return final
 }
 
-// findBestCropWindow uses entropy (pixel variance) to find the most visually significant window.
+// findBestCropWindow uses a Saliency-Integrator model to find the mathematical focal point.
+// It generates a downscaled saliency map (Edges + Color Contrast) and uses an Integral Image
+// (Summed-Area Table) to find the window with the absolute maximum visual interest.
 func findBestCropWindow(src *image.RGBA, windowW, windowH int, horizontal bool) int {
-	maxOffset := 0
-	if horizontal {
-		maxOffset = src.Bounds().Dx() - windowW
-	} else {
-		maxOffset = src.Bounds().Dy() - windowH
-	}
-	if maxOffset <= 0 {
-		return 0
-	}
+	bounds := src.Bounds()
+	srcW, srcH := bounds.Dx(), bounds.Dy()
 
-	bestOffset := maxOffset / 2
-	maxEntropy := -1.0
+	const mapSize = 64
+	saliencyMap := make([]float64, mapSize*mapSize)
+	stepX := float64(srcW) / float64(mapSize)
+	stepY := float64(srcH) / float64(mapSize)
 
-	// Check 10 samples across the possible range to find the area with the highest detail.
-	for i := 0; i <= 10; i++ {
-		offset := (maxOffset * i) / 10
-		var rect image.Rectangle
-		if horizontal {
-			rect = image.Rect(offset, 0, offset+windowW, windowH)
-		} else {
-			rect = image.Rect(0, offset, windowW, offset+windowH)
+	// 1. Calculate Global Color Soul (for Anomaly Detection)
+	avgR, avgG, avgB := calculateGlobalAverageColor(src)
+
+	// 2. Generate Multi-Factor Saliency Map
+	for my := 0; my < mapSize; my++ {
+		for mx := 0; mx < mapSize; mx++ {
+			sx := int(float64(mx)*stepX + stepX/2)
+			sy := int(float64(my)*stepY + stepY/2)
+			if sx >= srcW {
+				sx = srcW - 1
+			}
+			if sy >= srcH {
+				sy = srcH - 1
+			}
+
+			idx := sy*src.Stride + sx*4
+			r, g, b := float64(src.Pix[idx]), float64(src.Pix[idx+1]), float64(src.Pix[idx+2])
+
+			saliency := calculateSaliency(src, idx, sx, sy, r, g, b)
+			colorAnomaly := math.Sqrt((r-avgR)*(r-avgR) + (g-avgG)*(g-avgG) + (b-avgB)*(b-avgB))
+			aesthetic := calculateAestheticScore(mx, my, mapSize)
+
+			// Merge: Rare colors and curves are heavy influencers
+			saliencyMap[my*mapSize+mx] = (saliency + (colorAnomaly * 0.01)) * (1.0 + aesthetic)
 		}
-
-		entropy := calculateEntropy(src, rect)
-		if entropy > maxEntropy {
-			maxEntropy = entropy
-			bestOffset = offset
-		}
 	}
-	return bestOffset
+
+	// 3. Create Integral Image (Summed-Area Table) for O(1) window sums
+	integral := calculateIntegralImage(saliencyMap, mapSize)
+
+	// 4. Exhaustive search on the saliency map
+	return performExhaustiveSearch(integral, mapSize, windowW, windowH, stepX, stepY, horizontal)
 }
 
-// calculateEntropy measures local pixel variance to find areas of high detail/contrast.
-func calculateEntropy(src *image.RGBA, rect image.Rectangle) float64 {
-	var totalVariance float64
-	// Sample a 15x15 grid for reliable entropy detection.
-	for i := 0; i < 15; i++ {
-		for j := 0; j < 15; j++ {
-			x := rect.Min.X + (rect.Dx()*i)/15
-			y := rect.Min.Y + (rect.Dy()*j)/15
-
-			// Stay within bounds
-			if x >= src.Bounds().Dx() {
-				x = src.Bounds().Dx() - 1
-			}
-			if y >= src.Bounds().Dy() {
-				y = src.Bounds().Dy() - 1
-			}
-
-			idx := y*src.Stride + x*4
-			r, g, b := int(src.Pix[idx]), int(src.Pix[idx+1]), int(src.Pix[idx+2])
-
-			// Contrast heuristic: measure local differences between channels
-			totalVariance += math.Abs(float64(r-g)) + math.Abs(float64(g-b)) + math.Abs(float64(b-r))
+func calculateGlobalAverageColor(src *image.RGBA) (float64, float64, float64) {
+	var totalR, totalG, totalB float64
+	bounds := src.Bounds()
+	srcW, srcH := bounds.Dx(), bounds.Dy()
+	for y := 0; y < srcH; y += 20 {
+		for x := 0; x < srcW; x += 20 {
+			i := y*src.Stride + x*4
+			totalR += float64(src.Pix[i])
+			totalG += float64(src.Pix[i+1])
+			totalB += float64(src.Pix[i+2])
 		}
 	}
-	return totalVariance
+	sampleCount := float64((srcW / 20) * (srcH / 20))
+	return totalR / sampleCount, totalG / sampleCount, totalB / sampleCount
+}
+
+func calculateSaliency(src *image.RGBA, idx, sx, sy int, r, g, b float64) float64 {
+	var edgeX, edgeY float64
+	if sx > 1 && sy > 1 {
+		edgeX = math.Abs(r - float64(src.Pix[idx-4]))
+		edgeY = math.Abs(r - float64(src.Pix[idx-src.Stride]))
+	}
+	lum := 0.299*r + 0.587*g + 0.114*b
+	saliency := (edgeX+edgeY)*0.5 + math.Abs(r-lum)*0.2
+
+	// Curvature-Aware Flow
+	curvature := math.Abs(edgeX - edgeY)
+
+	// Biometric Skin-Tone Detection
+	skinScore := 0.0
+	if total := r + g + b; total > 0 {
+		rn, gn := r/total, g/total
+		if rn > 0.35 && rn < 0.55 && gn > 0.25 && gn < 0.38 {
+			skinScore = 2.5
+		}
+	}
+
+	return saliency + (curvature * 0.4) + (skinScore * 1.5)
+}
+
+func calculateAestheticScore(mx, my, mapSize int) float64 {
+	nx, ny := float64(mx)/float64(mapSize), float64(my)/float64(mapSize)
+
+	dx, dy := nx-0.5, ny-0.5
+	centerBias := 1.0 - math.Sqrt(dx*dx+dy*dy)
+
+	tx1, tx2 := nx-0.33, nx-0.66
+	ty1, ty2 := ny-0.33, ny-0.66
+	thirdX := math.Exp(-(tx1*tx1)/0.02) + math.Exp(-(tx2*tx2)/0.02)
+	thirdY := math.Exp(-(ty1*ty1)/0.02) + math.Exp(-(ty2*ty2)/0.02)
+
+	return (centerBias * 0.4) + ((thirdX + thirdY) * 0.3)
+}
+
+func calculateIntegralImage(saliencyMap []float64, mapSize int) []float64 {
+	integral := make([]float64, mapSize*mapSize)
+	for y := 0; y < mapSize; y++ {
+		rowSum := 0.0
+		for x := 0; x < mapSize; x++ {
+			rowSum += saliencyMap[y*mapSize+x]
+			if y == 0 {
+				integral[y*mapSize+x] = rowSum
+			} else {
+				integral[y*mapSize+x] = integral[(y-1)*mapSize+x] + rowSum
+			}
+		}
+	}
+	return integral
+}
+
+func performExhaustiveSearch(integral []float64, mapSize, windowW, windowH int, stepX, stepY float64, horizontal bool) int {
+	mapWinW := int(float64(windowW) / stepX)
+	mapWinH := int(float64(windowH) / stepY)
+	if mapWinW < 1 {
+		mapWinW = 1
+	}
+	if mapWinH < 1 {
+		mapWinH = 1
+	}
+
+	bestMapPos := 0
+	maxSaliency := -1.0
+
+	if horizontal {
+		maxMapX := mapSize - mapWinW
+		for mx := 0; mx <= maxMapX; mx++ {
+			x1, y1 := mx+mapWinW-1, mapWinH-1
+			sum := integral[y1*mapSize+x1]
+			if mx > 0 {
+				sum -= integral[y1*mapSize+mx-1]
+			}
+			if sum > maxSaliency {
+				maxSaliency = sum
+				bestMapPos = mx
+			}
+		}
+		return int(float64(bestMapPos) * stepX)
+	} else {
+		maxMapY := mapSize - mapWinH
+		for my := 0; my <= maxMapY; my++ {
+			x1, y1 := mapWinW-1, my+mapWinH-1
+			sum := integral[y1*mapSize+x1]
+			if my > 0 {
+				sum -= integral[(my-1)*mapSize+x1]
+			}
+			if sum > maxSaliency {
+				maxSaliency = sum
+				bestMapPos = my
+			}
+		}
+		return int(float64(bestMapPos) * stepY)
+	}
 }
 
 // ApplyMuseumMode orchestrates a suite of visual filters to simulate physical artwork.
