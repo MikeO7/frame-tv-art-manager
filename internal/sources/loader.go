@@ -427,6 +427,14 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error
 			idx := atomic.AddInt32(globalIndex, 1) - 1
 			identity := fmt.Sprintf("%03d__unsplash__%s", idx, slug)
 
+			// Fast path: skip download tracking and downloading if we already have it.
+			if existing, ok := l.checkExisting(identity); ok {
+				l.mu.Lock()
+				l.visited[existing] = true
+				l.mu.Unlock()
+				return
+			}
+
 			// Track download as required by TOS.
 			l.unsplash.TrackDownload(ctx, ph.Links.DownloadLocation)
 
