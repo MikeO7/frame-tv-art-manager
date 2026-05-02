@@ -301,7 +301,7 @@ func TestArtAPI_WaitForImageAdded(t *testing.T) {
 
 		// Send event after a short delay
 		time.Sleep(100 * time.Millisecond)
-		artResp := map[string]any{"event": "image_added", testContentID: "new-id"}
+		artResp := map[string]any{keyEvent: "image_added", testContentID: "new-id"}
 		artRespBytes, _ := json.Marshal(artResp)
 		respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
 		respBytes, _ := json.Marshal(respMsg)

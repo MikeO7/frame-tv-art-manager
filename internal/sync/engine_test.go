@@ -110,8 +110,9 @@ func TestEngine_RunOnce_Full(t *testing.T) {
 	// Create a dummy image
 	_ = os.WriteFile(filepath.Join(artworkDir, "test.jpg"), createSmallJPEG(), 0600)
 
+	const testIP = "192.168.1.10"
 	cfg := &config.Config{
-		TVIPs:           []string{"192.168.1.10"},
+		TVIPs:           []string{testIP},
 		ArtworkDir:      artworkDir,
 		TokenDir:        tokenDir,
 		SyncIntervalMin: 1,

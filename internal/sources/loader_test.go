@@ -71,8 +71,8 @@ func TestExtensionFromResponse(t *testing.T) {
 		want string
 	}{
 		{"image/jpeg", testURL, ".jpg"},
-		{"image/png", testURL, ".png"},
-		{"text/plain", "http://x.com/a.png", ".png"},
+		{"image/png", testURL, extPNG},
+		{"text/plain", "http://x.com/a.png", extPNG},
 		{"text/plain", testURL, ".jpg"}, // default
 	}
 
