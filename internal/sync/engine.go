@@ -35,17 +35,39 @@ const (
 // It implements the full sync lifecycle: sources → optimize → scan →
 // connect → diff → upload → delete → select → brightness → auto-off.
 type Engine struct {
-	cfg       *config.Config
-	logger    *slog.Logger
-	backoff   *resilience.Backoff
-	health    *health.Status
-	srcLoader *sources.Loader
-	cycleNum  int
+	cfg               *config.Config
+	logger            *slog.Logger
+	backoff           *resilience.Backoff
+	health            *health.Status
+	srcLoader         *sources.Loader
+	cycleNum          int
 	mappings          map[string]*Mapping
 	mapMu             sync.Mutex
 	lastLocalFiles    map[string]struct{}
 	lastDirModTime    time.Time
 	lastMetadataSaves map[string]time.Time
+	newClient         func(ip string, cfg *config.Config, logger *slog.Logger) TVClient
+}
+
+// TVClient defines the interface for interacting with a Samsung TV.
+type TVClient interface {
+	Connect(ctx context.Context) error
+	Close() error
+	DeviceInfo() *samsung.DeviceInfo
+	IsInArtMode(ctx context.Context) bool
+	SaveMetadata(ctx context.Context) error
+	GetUploadedImages(ctx context.Context) ([]samsung.ArtContent, error)
+	Upload(ctx context.Context, filePath, fileType string) (string, error)
+	DeleteImages(ctx context.Context, ids []string) error
+	SelectImage(ctx context.Context, id string) error
+	SlideshowStatus(ctx context.Context) (*samsung.SlideshowStatus, error)
+	SetSlideshow(ctx context.Context, s samsung.SlideshowStatus) error
+	SetBrightness(ctx context.Context, val int) error
+	TurnOff(ctx context.Context) error
+}
+
+func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
+	return samsung.NewClient(ip, cfg, logger)
 }
 
 // NewEngine creates a sync engine with the given configuration.
@@ -70,6 +92,7 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 		),
 		mappings:          make(map[string]*Mapping),
 		lastMetadataSaves: make(map[string]time.Time),
+		newClient:         defaultNewClient,
 	}
 }
 
@@ -250,7 +273,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	summary := tvSyncSummary{IP: ip}
 
 	// Connect to TV.
-	client := samsung.NewClient(ip, e.cfg, e.logger)
+	client := e.newClient(ip, e.cfg, e.logger)
 	if err := client.Connect(ctx); err != nil {
 		if errors.Is(err, samsung.ErrGateFailed) {
 			log.Info("skipping — REST gate says TV is busy")

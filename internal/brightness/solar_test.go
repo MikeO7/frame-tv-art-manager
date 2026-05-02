@@ -106,3 +106,11 @@ func TestCalculate_NilCoords(t *testing.T) {
 		t.Errorf("expected nil result for nil coordinates, got %d", *result)
 	}
 }
+func TestCalculate_InvalidTimezone(t *testing.T) {
+	lat := 40.0
+	lon := -70.0
+	_, err := Calculate(&lat, &lon, "Invalid/Zone", 2, 10)
+	if err == nil {
+		t.Error("expected error for invalid timezone")
+	}
+}

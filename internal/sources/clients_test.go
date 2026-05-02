@@ -70,6 +70,50 @@ func TestNASAClient_Search(t *testing.T) {
 	}
 }
 
+func TestArticClient_Search(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result := struct {
+			Data []ArticArtwork `json:"data"`
+		}{
+			Data: []ArticArtwork{{ID: 456, ImageID: "a1"}},
+		}
+		_ = json.NewEncoder(w).Encode(result)
+	}))
+	defer server.Close()
+
+	c := NewArticClient(slog.Default())
+	c.BaseURL = server.URL
+	urls, err := c.Search(context.Background(), "monet")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(urls) != 1 {
+		t.Errorf("expected 1 URL, got %d", len(urls))
+	}
+}
+
+func TestPixabayClient_Search(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result := struct {
+			Hits []PixabayPhoto `json:"hits"`
+		}{
+			Hits: []PixabayPhoto{{ID: 101, LargeImageURL: testImageURL}},
+		}
+		_ = json.NewEncoder(w).Encode(result)
+	}))
+	defer server.Close()
+
+	c := NewPixabayClient("key", slog.Default())
+	c.BaseURL = server.URL
+	urls, err := c.Search(context.Background(), "nature")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(urls) != 1 {
+		t.Errorf("expected 1 URL, got %d", len(urls))
+	}
+}
+
 func TestArticClient_FetchPhoto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		result := struct {
@@ -156,12 +200,61 @@ func TestPexelsClient_Search(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
+
 	if len(urls) != 1 || urls[0] != testImageURL {
 		t.Errorf("expected 1 URL, got %v", urls)
 	}
 }
 
-func TestPixabayClient_Search(t *testing.T) {
+func TestPexelsClient_Curated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result := struct {
+			Photos []PexelsPhoto `json:"photos"`
+		}{
+			Photos: []PexelsPhoto{{ID: 1}},
+		}
+		result.Photos[0].Src.Original = testImageURL
+		_ = json.NewEncoder(w).Encode(result)
+	}))
+	defer server.Close()
+
+	c := NewPexelsClient("key", slog.Default())
+	c.BaseURL = server.URL
+
+	urls, err := c.Curated(context.Background())
+	if err != nil {
+		t.Fatalf("Curated failed: %v", err)
+	}
+	if len(urls) != 1 {
+		t.Errorf("expected 1 URL, got %d", len(urls))
+	}
+}
+
+func TestPexelsClient_FetchCollection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result := struct {
+			Media []PexelsPhoto `json:"media"`
+		}{
+			Media: []PexelsPhoto{{ID: 1}},
+		}
+		result.Media[0].Src.Original = testImageURL
+		_ = json.NewEncoder(w).Encode(result)
+	}))
+	defer server.Close()
+
+	c := NewPexelsClient("key", slog.Default())
+	c.BaseURL = server.URL
+
+	urls, err := c.FetchCollection(context.Background(), "abc")
+	if err != nil {
+		t.Fatalf("FetchCollection failed: %v", err)
+	}
+	if len(urls) != 1 {
+		t.Errorf("expected 1 URL, got %d", len(urls))
+	}
+}
+
+func TestPixabayClient_EditorsChoice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		result := struct {
 			Hits []PixabayPhoto `json:"hits"`
@@ -175,12 +268,35 @@ func TestPixabayClient_Search(t *testing.T) {
 	c := NewPixabayClient("key", slog.Default())
 	c.BaseURL = server.URL
 
-	urls, err := c.Search(context.Background(), "nature")
+	urls, err := c.EditorsChoice(context.Background())
 	if err != nil {
-		t.Fatalf("Search failed: %v", err)
+		t.Fatalf("EditorsChoice failed: %v", err)
 	}
-	if len(urls) != 1 || urls[0] != testImageURL {
-		t.Errorf("expected 1 URL, got %v", urls)
+	if len(urls) != 1 {
+		t.Errorf("expected 1 URL, got %d", len(urls))
+	}
+}
+
+func TestPixabayClient_User(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result := struct {
+			Hits []PixabayPhoto `json:"hits"`
+		}{
+			Hits: []PixabayPhoto{{ID: 1, LargeImageURL: testImageURL}},
+		}
+		_ = json.NewEncoder(w).Encode(result)
+	}))
+	defer server.Close()
+
+	c := NewPixabayClient("key", slog.Default())
+	c.BaseURL = server.URL
+
+	urls, err := c.User(context.Background(), "user123")
+	if err != nil {
+		t.Fatalf("User failed: %v", err)
+	}
+	if len(urls) != 1 {
+		t.Errorf("expected 1 URL, got %d", len(urls))
 	}
 }
 
