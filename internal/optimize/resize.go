@@ -808,35 +808,88 @@ func Dither(src *image.RGBA) *image.RGBA {
 }
 
 // Sharpen applies a high-performance 3x3 sharpening kernel to the image.
+//nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func Sharpen(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	dst := image.NewRGBA(bounds)
 	width, height := bounds.Dx(), bounds.Dy()
 
-	for y := 1; y < height-1; y++ {
-		for x := 1; x < width-1; x++ {
-			for c := 0; c < 4; c++ { // Red, Green, Blue, Alpha
-				if c == 3 { // Preserve alpha
-					dst.Pix[y*dst.Stride+x*4+c] = src.Pix[y*src.Stride+x*4+c]
-					continue
-				}
-
-				center := int(src.Pix[y*src.Stride+x*4+c])
-				top := int(src.Pix[(y-1)*src.Stride+x*4+c])
-				bottom := int(src.Pix[(y+1)*src.Stride+x*4+c])
-				left := int(src.Pix[y*src.Stride+(x-1)*4+c])
-				right := int(src.Pix[y*src.Stride+(x+1)*4+c])
-
-				val := (center * 5) - top - bottom - left - right
-				if val < 0 {
-					val = 0
-				} else if val > 255 {
-					val = 255
-				}
-				dst.Pix[y*dst.Stride+x*4+c] = uint8(val)
-			}
-		}
+	if width < 3 || height < 3 {
+		draw.Draw(dst, bounds, src, bounds.Min, draw.Src)
+		return dst
 	}
+
+	var wg sync.WaitGroup
+	workers := 8 // Target 8 routines to map well to multi-core CPUs
+	chunk := (height - 2) / workers
+	if chunk == 0 {
+		chunk = 1
+	}
+
+	for i := 0; i < workers; i++ {
+		startY := 1 + i*chunk
+		endY := startY + chunk
+		if i == workers-1 {
+			endY = height - 1
+		}
+		if startY >= height-1 {
+			break
+		}
+
+		wg.Add(1)
+		go func(sy, ey int) {
+			defer wg.Done()
+			for y := sy; y < ey; y++ {
+				srcOffset := y * src.Stride
+				dstOffset := y * dst.Stride
+				srcTopOffset := (y - 1) * src.Stride
+				srcBottomOffset := (y + 1) * src.Stride
+
+				for x := 1; x < width-1; x++ {
+					iDst := dstOffset + x*4
+					iSrc := srcOffset + x*4
+					iTop := srcTopOffset + x*4
+					iBottom := srcBottomOffset + x*4
+					iLeft := iSrc - 4
+					iRight := iSrc + 4
+
+					// R
+					valR := (int(src.Pix[iSrc]) * 5) - int(src.Pix[iTop]) - int(src.Pix[iBottom]) - int(src.Pix[iLeft]) - int(src.Pix[iRight])
+					if valR < 0 {
+						valR = 0
+					} else if valR > 255 {
+						valR = 255
+					}
+					//nolint:gosec // Int to uint8 bounded
+					dst.Pix[iDst] = uint8(valR)
+
+					// G
+					valG := (int(src.Pix[iSrc+1]) * 5) - int(src.Pix[iTop+1]) - int(src.Pix[iBottom+1]) - int(src.Pix[iLeft+1]) - int(src.Pix[iRight+1])
+					if valG < 0 {
+						valG = 0
+					} else if valG > 255 {
+						valG = 255
+					}
+					//nolint:gosec // Int to uint8 bounded
+					dst.Pix[iDst+1] = uint8(valG)
+
+					// B
+					valB := (int(src.Pix[iSrc+2]) * 5) - int(src.Pix[iTop+2]) - int(src.Pix[iBottom+2]) - int(src.Pix[iLeft+2]) - int(src.Pix[iRight+2])
+					if valB < 0 {
+						valB = 0
+					} else if valB > 255 {
+						valB = 255
+					}
+					//nolint:gosec // Int to uint8 bounded
+					dst.Pix[iDst+2] = uint8(valB)
+
+					// A
+					dst.Pix[iDst+3] = src.Pix[iSrc+3]
+				}
+			}
+		}(startY, endY)
+	}
+	wg.Wait()
 
 	// Copy borders
 	for x := 0; x < width; x++ {
