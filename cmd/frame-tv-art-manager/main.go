@@ -98,23 +98,27 @@ func setupLogger(logLevel string) *slog.Logger {
 }
 
 func validateDirectories(cfg *config.Config, logger *slog.Logger) {
-	dirs := map[string]string{
-		"artwork": cfg.ArtworkDir,
-		"tokens":  cfg.TokenDir,
+	dirs := []struct {
+		name string
+		path string
+		perm os.FileMode
+	}{
+		{"artwork", cfg.ArtworkDir, 0755},
+		{"tokens", cfg.TokenDir, 0700},
 	}
-	for name, path := range dirs {
-		if err := os.MkdirAll(path, 0755); err != nil { //nolint:gosec // Required for shared volumes
-			logger.Error("Failed to create/access directory", "name", name, "path", path, "error", err)
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir.path, dir.perm); err != nil { //nolint:gosec // Required for shared volumes
+			logger.Error("Failed to create/access directory", "name", dir.name, "path", dir.path, "error", err)
 			os.Exit(1)
 		}
 		if cfg.PUID != 0 || cfg.PGID != 0 {
-			if err := os.Chown(path, cfg.PUID, cfg.PGID); err != nil {
-				logger.Warn("Failed to set directory ownership", "path", path, "puid", cfg.PUID, "pgid", cfg.PGID, "error", err)
+			if err := os.Chown(dir.path, cfg.PUID, cfg.PGID); err != nil {
+				logger.Warn("Failed to set directory ownership", "path", dir.path, "puid", cfg.PUID, "pgid", cfg.PGID, "error", err)
 			}
 		}
-		testFile := fmt.Sprintf("%s/.write_test", path)
+		testFile := fmt.Sprintf("%s/.write_test", dir.path)
 		if err := os.WriteFile(testFile, []byte("ok"), 0600); err != nil { //nolint:gosec // Test file
-			logger.Error("Directory is not writable", "name", name, "path", path, "error", err)
+			logger.Error("Directory is not writable", "name", dir.name, "path", dir.path, "error", err)
 			os.Exit(1)
 		}
 		_ = os.Remove(testFile)
