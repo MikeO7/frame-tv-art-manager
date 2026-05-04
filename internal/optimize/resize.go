@@ -779,31 +779,79 @@ func applySoftLight(a, b, opacity float64) uint8 {
 }
 
 // Dither applies a subtle random jitter to pixel values to break up banding in gradients.
+//nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func Dither(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			// Add a tiny random jitter (+/- 0.5 bits equivalent)
-			// We use a small range to avoid visible noise while still breaking up patterns.
-			// Using the top-level rand.Intn is thread-safe for parallel execution.
-			//nolint:gosec // Weak random is perfectly fine for visual dithering
-			jitter := rand.Intn(3) - 1 // -1, 0, or 1
+	var wg sync.WaitGroup
+	workers := 8
+	chunk := (height + workers - 1) / workers
 
-			for c := 0; c < 3; c++ {
-				val := int(src.Pix[i+c]) + jitter
-				if val < 0 {
-					val = 0
-				} else if val > 255 {
-					val = 255
-				}
-				src.Pix[i+c] = uint8(val)
-			}
+	for i := 0; i < workers; i++ {
+		startY := i * chunk
+		endY := startY + chunk
+		if endY > height {
+			endY = height
 		}
+		if startY >= height {
+			break
+		}
+
+		wg.Add(1)
+		go func(sy, ey int) {
+			defer wg.Done()
+
+			// Fast thread-local PRNG (Xorshift32)
+			state := uint32(sy + 1) //nolint:gosec // Seed based on row
+
+			for y := sy; y < ey; y++ {
+				offset := y * src.Stride
+				for x := 0; x < width; x++ {
+					i := offset + x*4
+
+					// xorshift32
+					state ^= state << 13
+					state ^= state >> 17
+					state ^= state << 5
+
+					// Generate -1, 0, or 1
+					jitter := int((state % 3)) - 1
+
+					// R
+					valR := int(src.Pix[i]) + jitter
+					if valR < 0 {
+						valR = 0
+					} else if valR > 255 {
+						valR = 255
+					}
+					//nolint:gosec // Int to uint8 bounded
+					src.Pix[i] = uint8(valR)
+
+					// G
+					valG := int(src.Pix[i+1]) + jitter
+					if valG < 0 {
+						valG = 0
+					} else if valG > 255 {
+						valG = 255
+					}
+					//nolint:gosec // Int to uint8 bounded
+					src.Pix[i+1] = uint8(valG)
+
+					// B
+					valB := int(src.Pix[i+2]) + jitter
+					if valB < 0 {
+						valB = 0
+					} else if valB > 255 {
+						valB = 255
+					}
+					//nolint:gosec // Int to uint8 bounded
+					src.Pix[i+2] = uint8(valB)
+				}
+			}
+		}(startY, endY)
 	}
+	wg.Wait()
 	return src
 }
 
