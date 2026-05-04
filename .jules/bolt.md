@@ -7,3 +7,7 @@
 ## 2026-05-03 - Unrolling image filters
 **Learning:** For heavy, independent per-pixel math across large images (like 4K images on a Frame TV), unrolling the inner pixel loop over RGBA and calculating offsets explicitly speeds things up even more.
 **Action:** Unroll loops over colors and compute 1D offsets directly. Use `sync.WaitGroup` to chunk the image vertically to use all CPUs.
+
+## 2026-05-04 - Eliminate PRNG bottleneck in tight pixel loops
+**Learning:** Performing heavy, independent per-pixel operations sequentially across 4K images (like dithering with `rand.Intn` for 8.2 million pixels) is a massive performance bottleneck. The global PRNG synchronization overhead kills speed, taking ~235ms per image.
+**Action:** Always parallelize heavy per-pixel mathematical operations using `sync.WaitGroup` to divide the workload vertically. Replace heavy math like global `rand.Intn` with lightweight, thread-local equivalents (like a simple Xorshift32 algorithm) and unroll inner RGBA loops to avoid bounds-checking overhead. This reduced Dither execution time from ~235ms to ~21ms.
