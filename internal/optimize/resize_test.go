@@ -160,3 +160,11 @@ func TestFindBestDirectorCrop(t *testing.T) {
 		t.Errorf("expected best offset to be on the right (>150), got %d", bestOffset)
 	}
 }
+
+func BenchmarkDither(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		Dither(img)
+	}
+}
