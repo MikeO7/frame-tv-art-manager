@@ -62,6 +62,8 @@ func TestUnsplashClient_TrackDownload(t *testing.T) {
 	defer server.Close()
 
 	c := NewUnsplashClient("app", "key", "secret", slog.Default())
+	// Set BaseURL to the test server to pass validation
+	c.BaseURL = server.URL
 	c.TrackDownload(context.Background(), server.URL+"/track")
 
 	if !tracked {
