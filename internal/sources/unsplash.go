@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -130,6 +131,18 @@ func (c *UnsplashClient) FetchPhoto(ctx context.Context, photoID string) (*Unspl
 // TrackDownload triggers the Unsplash "download" endpoint for a photo.
 // This is required by the Unsplash API Terms of Service.
 func (c *UnsplashClient) TrackDownload(ctx context.Context, downloadLocation string) {
+	// Prevent SSRF and API key leakage by validating the domain.
+	parsedURL, err := url.Parse(downloadLocation)
+	if err != nil {
+		c.logger.Warn("invalid unsplash download location URL format", "url", downloadLocation)
+		return
+	}
+	baseURL, err := url.Parse(c.BaseURL)
+	if err != nil || parsedURL.Host != baseURL.Host {
+		c.logger.Warn("invalid unsplash download location host", "url", downloadLocation)
+		return
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadLocation, nil)
 	if err != nil {
 		return
