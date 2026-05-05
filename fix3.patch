@@ -1,0 +1,11 @@
+--- internal/optimize/resize.go
++++ internal/optimize/resize.go
+@@ -714,6 +714,8 @@
+					default:
+						src.Pix[i+2] = uint8(b)
+					}
++				}
++			}
+		}(startY, endY)
+	}
+	wg.Wait()
