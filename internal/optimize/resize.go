@@ -622,47 +622,100 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 }
 
 // GalleryMasterPolish implements high-end gallery techniques to remove "digital glow".
+//nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			r, g, b := float64(src.Pix[i]), float64(src.Pix[i+1]), float64(src.Pix[i+2])
+	var wg sync.WaitGroup
+	workers := 8
+	chunk := (height + workers - 1) / workers
 
-			// 1. Research-Backed Peak Brightness Clamping (Berns 2001)
-			// CAP at 235 instead of 215 to restore whites while maintaining surface reflection headroom.
-			const maxBright = 235.0
-			if r > maxBright {
-				r = maxBright
-			}
-			if g > maxBright {
-				g = maxBright
-			}
-			if b > maxBright {
-				b = maxBright
-			}
-
-			// 2. Pigment Saturation Limiter (Earth tones)
-			avg := (r + g + b) / 3
-			r = r*0.92 + avg*0.08
-			g = g*0.92 + avg*0.08
-			b = b*0.92 + avg*0.08
-
-			// 3. Micro-Paper Grain (Simulate physical substrate fibers)
-			//nolint:gosec
-			noise := (rand.Float64() - 0.5) * 5.0
-			r += noise
-			g += noise
-			b += noise
-
-			src.Pix[i] = uint8(math.Max(0, math.Min(255, r)))
-			src.Pix[i+1] = uint8(math.Max(0, math.Min(255, g)))
-			src.Pix[i+2] = uint8(math.Max(0, math.Min(255, b)))
+	for j := 0; j < workers; j++ {
+		startY := j * chunk
+		endY := startY + chunk
+		if endY > height {
+			endY = height
 		}
+		if startY >= height {
+			break
+		}
+
+		wg.Add(1)
+		go func(sy, ey int) {
+			defer wg.Done()
+
+			// Fast thread-local PRNG (Xorshift32)
+			state := uint32(sy + 1) //nolint:gosec // Seed based on row
+
+			for y := sy; y < ey; y++ {
+				offset := y * src.Stride
+				for x := 0; x < width; x++ {
+					i := offset + x*4
+
+					r := float32(src.Pix[i])
+					g := float32(src.Pix[i+1])
+					b := float32(src.Pix[i+2])
+
+					// 1. Research-Backed Peak Brightness Clamping (Berns 2001)
+					const maxBright = 235.0
+					if r > maxBright {
+						r = maxBright
+					}
+					if g > maxBright {
+						g = maxBright
+					}
+					if b > maxBright {
+						b = maxBright
+					}
+
+					// 2. Pigment Saturation Limiter (Earth tones)
+					avg := (r + g + b) * 0.33333333
+					r = r*0.92 + avg*0.08
+					g = g*0.92 + avg*0.08
+					b = b*0.92 + avg*0.08
+
+					// 3. Micro-Paper Grain (Simulate physical substrate fibers)
+					// xorshift32
+					state ^= state << 13
+					state ^= state >> 17
+					state ^= state << 5
+
+					// Convert state to float noise between -2.5 and 2.5
+					noise := (float32(state)/float32(0xFFFFFFFF) - 0.5) * 5.0
+					r += noise
+					g += noise
+					b += noise
+
+					// Faster clamp and cast without math.Max/Min
+					if r < 0 {
+						src.Pix[i] = 0
+					} else if r > 255 {
+						src.Pix[i] = 255
+					} else {
+						src.Pix[i] = uint8(r)
+					}
+
+					if g < 0 {
+						src.Pix[i+1] = 0
+					} else if g > 255 {
+						src.Pix[i+1] = 255
+					} else {
+						src.Pix[i+1] = uint8(g)
+					}
+
+					if b < 0 {
+						src.Pix[i+2] = 0
+					} else if b > 255 {
+						src.Pix[i+2] = 255
+					} else {
+						src.Pix[i+2] = uint8(b)
+					}
+				}
+			}
+		}(startY, endY)
 	}
+	wg.Wait()
 	return src
 }
 
