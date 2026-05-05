@@ -713,8 +713,6 @@ func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 					default:
 						src.Pix[i+2] = uint8(b)
 					}
-				}
-			}
 		}(startY, endY)
 	}
 	wg.Wait()
