@@ -25,7 +25,7 @@ I built this manager specifically to handle those Tizen 8.0+ quirks while keepin
 
 ## Quick Start (Docker)
 
-The fastest way to get running is with `docker-compose.yml`:
+1. Create a `docker-compose.yml`:
 
 ```yaml
 services:
@@ -33,18 +33,14 @@ services:
     image: ghcr.io/mikeo7/frame-tv-art-manager:latest
     restart: unless-stopped
     environment:
-      TV_IPS: "192.168.1.100" # Your TV's local IP
-      # Optional: add your location for solar brightness
-      LOCATION_LATITUDE: "39.7392"
-      LOCATION_LONGITUDE: "-104.9903"
-      LOCATION_TIMEZONE: "America/Denver"
+      TV_IPS: "192.168.1.100" # Your TV IP
     volumes:
       - ./data:/data
 ```
 
-1. Run `docker compose up -d`.
-2. Drop some `.jpg` files into `./data/artwork/`.
-3. The first time it connects, your TV will ask to "Allow" the connection. Grab your remote and hit **Allow**.
+2. Run `docker compose up -d`.
+3. Drop `.jpg` files into `./data/artwork/`.
+4. Hit **Allow** on your TV when the connection prompt appears.
 
 ---
 
