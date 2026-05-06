@@ -411,7 +411,7 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error
 	for _, p := range photos {
 		// Check global limit.
 		//nolint:gosec // maxImages comes from config and is safe to cast
-		if l.maxImages > 0 && atomic.LoadInt32(globalIndex) > int32(l.maxImages) {
+		if l.maxImages > 0 && int(atomic.LoadInt32(globalIndex)) > l.maxImages {
 			l.logger.Warn("global image limit reached, skipping unsplash photo", "limit", l.maxImages)
 			break
 		}
