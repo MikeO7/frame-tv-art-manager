@@ -14,3 +14,6 @@
 ## 2024-05-23 - Optimizing GalleryMasterPolish
 **Learning:** `rand.Float64()` causes significant lock contention when used globally inside highly concurrent per-pixel loop operations. Using standard lib floating point math along with type casting (`float64`, `math.Max`, `math.Min`) adds to the bottleneck.
 **Action:** Replace `rand.Float64()` with a fast thread-local Xorshift32 PRNG and cast to `float32`. Manually inline clamps instead of using `math.Min` and `math.Max`. Finally, parallelize the image processing using `sync.WaitGroup` to chunk the image vertically.
+## 2026-05-06 - Parallelizing Canvas Textures Safely
+**Learning:** When parallelizing image filters that read adjacent pixels (like calculating impasto or blur offsets), concurrent writes to `src.Pix` by different rows cause data races. Additionally, importing both the standard library `image/draw` and `golang.org/x/image/draw` without aliasing causes redeclaration compilation errors.
+**Action:** When parallelizing heavy math like `ApplyCanvasTexture`, always draw the source image to a new destination buffer `dst` via standard library `image/draw` (aliased as `std_draw`) to avoid races and compiler collisions, and write all computed results strictly to `dst`.
