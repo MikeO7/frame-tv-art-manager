@@ -6,11 +6,12 @@ package optimize
 import (
 	"fmt"
 	"image"
+	std_draw "image/draw"
 	"image/jpeg"
 	_ "image/png"
 	"log/slog"
 	"math"
-	"math/rand"
+
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,7 +136,7 @@ func toRGBA(img image.Image) *image.RGBA {
 	}
 	bounds := img.Bounds()
 	rgba := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
-	draw.Draw(rgba, rgba.Bounds(), img, bounds.Min, draw.Src)
+	std_draw.Draw(rgba, rgba.Bounds(), img, bounds.Min, std_draw.Src)
 	return rgba
 }
 
@@ -733,43 +734,86 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 
-	for y := 1; y < height-1; y++ {
-		offset := y * src.Stride
-		for x := 1; x < width-1; x++ {
-			i := offset + x*4
+	// To prevent data races, calculateBipolarImpasto reads top and left pixels,
+	// meaning concurrent writes to `src.Pix` by different rows will cause a race.
+	// We will create a destination image and copy edge pixels.
+	dst := image.NewRGBA(bounds)
+	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
 
-			// 1. Bipolar Virtual Impasto
-			impasto := calculateBipolarImpasto(src, i)
+	var wg sync.WaitGroup
+	workers := 8
+	chunk := (height - 2 + workers - 1) / workers
 
-			// 2. 3D Interlocking Weave
-			weave, varnishPool := calculateWeave(x, y, rng)
-
-			// 3. Procedural Craquelure
-			if rng.Float64() > 0.9997 {
-				weave -= 0.5
-			}
-
-			// Merge topography
-			weave += impasto
-
-			// 4. Blending & Archive Varnish
-			for c := 0; c < 3; c++ {
-				a := float64(src.Pix[i+c]) / 255.0
-
-				if c == 0 {
-					a *= 1.01
-				} // Subtle Red
-				if c == 2 {
-					a *= (varnishPool * 0.99)
-				} // Blue absorption
-
-				src.Pix[i+c] = applySoftLight(a, weave, opacity)
-			}
+	for j := 0; j < workers; j++ {
+		startY := 1 + j*chunk
+		endY := startY + chunk
+		if endY > height-1 {
+			endY = height - 1
 		}
+		if startY >= height-1 {
+			break
+		}
+
+		wg.Add(1)
+		go func(sy, ey int) {
+			defer wg.Done()
+
+			// Fast thread-local PRNG (Xorshift32)
+			state := uint32(sy + 42) //nolint:gosec // Seed based on row
+
+			for y := sy; y < ey; y++ {
+				offset := y * src.Stride
+				for x := 1; x < width-1; x++ {
+					i := offset + x*4
+
+					// 1. Bipolar Virtual Impasto
+					impasto := calculateBipolarImpasto(src, i)
+
+					// 2. 3D Interlocking Weave
+					weave, varnishPool := calculateWeave(x, y)
+
+					// Add organic slub noise (fiber irregularities)
+					state ^= state << 13
+					state ^= state >> 17
+					state ^= state << 5
+					if float32(state)/float32(0xFFFFFFFF) > 0.98 {
+						weave -= 0.05
+					}
+
+					// 3. Procedural Craquelure
+					state ^= state << 13
+					state ^= state >> 17
+					state ^= state << 5
+					if float32(state)/float32(0xFFFFFFFF) > 0.9997 {
+						weave -= 0.5
+					}
+
+					// Merge topography
+					weave += impasto
+
+					// 4. Blending & Archive Varnish
+					// To prevent race conditions with calculateBipolarImpasto reading adjacent pixels,
+					// calculate new values into temporary variables before modifying the source pixel.
+					aR := float64(src.Pix[i]) / 255.0 * 1.01 // Subtle Red
+					r := applySoftLight(aR, weave, opacity)
+
+					aG := float64(src.Pix[i+1]) / 255.0
+					g := applySoftLight(aG, weave, opacity)
+
+					aB := float64(src.Pix[i+2]) / 255.0 * (varnishPool * 0.99) // Blue absorption
+					b := applySoftLight(aB, weave, opacity)
+
+					dst.Pix[i] = r
+					dst.Pix[i+1] = g
+					dst.Pix[i+2] = b
+				}
+			}
+		}(startY, endY)
 	}
-	return src
+
+	wg.Wait()
+	return dst
 }
 
 func calculateBipolarImpasto(src *image.RGBA, i int) float64 {
@@ -787,7 +831,7 @@ func calculateBipolarImpasto(src *image.RGBA, i int) float64 {
 	return (dx + dy) * 0.15
 }
 
-func calculateWeave(x, y int, rng *rand.Rand) (float64, float64) {
+func calculateWeave(x, y int) (float64, float64) {
 	idX, idY := x/10, y/10
 	cellX, cellY := x%10, y%10
 	isWarp := (idX+idY)%2 == 0
@@ -797,20 +841,26 @@ func calculateWeave(x, y int, rng *rand.Rand) (float64, float64) {
 
 	if isWarp {
 		nx := (float64(cellX) - 4.5) / 5.0
-		diffuse := math.Max(0, nx*lightDirX)
+		diffuse := nx * lightDirX
+		if diffuse < 0 {
+			diffuse = 0
+		}
 		weave = 0.4 + (diffuse * 0.3)
 	} else {
 		ny := (float64(cellY) - 4.5) / 5.0
-		diffuse := math.Max(0, ny*lightDirY)
+		diffuse := ny * lightDirY
+		if diffuse < 0 {
+			diffuse = 0
+		}
 		weave = 0.4 + (diffuse * 0.3)
-		if math.Abs(ny) < 0.2 {
+
+		absNy := ny
+		if absNy < 0 {
+			absNy = -absNy
+		}
+		if absNy < 0.2 {
 			weave += 0.15
 		}
-	}
-
-	// Add organic slub noise (fiber irregularities)
-	if rng.Float64() > 0.98 {
-		weave -= 0.05
 	}
 
 	isValley := cellX == 0 || cellX == 9 || cellY == 0 || cellY == 9
@@ -918,7 +968,7 @@ func Sharpen(src *image.RGBA) *image.RGBA {
 	width, height := bounds.Dx(), bounds.Dy()
 
 	if width < 3 || height < 3 {
-		draw.Draw(dst, bounds, src, bounds.Min, draw.Src)
+		std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
 		return dst
 	}
 

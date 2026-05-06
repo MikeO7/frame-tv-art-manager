@@ -1,0 +1,12 @@
+--- internal/optimize/resize.go
++++ internal/optimize/resize.go
+@@ -760,7 +760,7 @@
+		go func(sy, ey int) {
+			defer wg.Done()
+
+			// Fast thread-local PRNG (Xorshift32)
+-			state := uint32(sy + 42) // Seed based on row
++			state := uint32(sy + 42) //nolint:gosec // Seed based on row
+
+			for y := sy; y < ey; y++ {
+				offset := y * src.Stride
