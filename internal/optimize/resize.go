@@ -8,7 +8,7 @@ import (
 	"image"
 	std_draw "image/draw"
 	"image/jpeg"
-	_ "image/png"
+	_ "image/png" // Needed for decoding PNG images
 	"log/slog"
 	"math"
 
@@ -47,6 +47,7 @@ func DefaultConfig() Config {
 
 // OptimizeFile checks if an image needs resizing and optimizes it
 // in-place. Returns the new width, height, and whether the file was modified.
+//nolint:revive // the package structure makes the OptimizeFile name acceptable and backward compatible
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool, error) {
 	if !cfg.Enabled {
 		return 0, 0, false, nil
@@ -330,8 +331,8 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 
 			// 5. Perceptual Lab Saliency (Color Contrast in Lab Space)
 			// Lab space is uniform and captures true human color perception.
-			_, a_lab, b_lab := rgbToLab(r, g, b)
-			colorWeight := math.Sqrt(a_lab*a_lab+b_lab*b_lab) / 128.0
+			_, aLab, bLab := rgbToLab(r, g, b)
+			colorWeight := math.Sqrt(aLab*aLab+bLab*bLab) / 128.0
 
 			// 6. Aesthetic/Compositional Weight (Rule of Thirds + Balance)
 			aesthetic := calculateAestheticScore(x, y, w, h)
@@ -367,9 +368,9 @@ func rgbToLab(r, g, b uint8) (float64, float64, float64) {
 
 	l := 116.0*f(y) - 16.0
 	a := 500.0 * (f(x) - f(y))
-	b_lab := 200.0 * (f(y) - f(z))
+	bLab := 200.0 * (f(y) - f(z))
 
-	return l, a, b_lab
+	return l, a, bLab
 }
 
 // generateBMSMap implements Boolean Map Saliency's surroundedness principle.
@@ -592,33 +593,75 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 		contrastGamma = 1.15
 	}
 
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
+	var wg sync.WaitGroup
+	workers := 8
+	chunk := (height + workers - 1) / workers
 
-			// Physics-Based Linear Processing
-			rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
-			gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
-			bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
-
-			// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
-			rLin = math.Pow(rLin, contrastGamma)
-			gLin = math.Pow(gLin, contrastGamma)
-			bLin = math.Pow(bLin, contrastGamma)
-
-			// 3. Pigment Gamut Compression
-			avg := (rLin + gLin + bLin) / 3
-			rLin = rLin*0.97 + avg*0.03
-			gLin = gLin*0.97 + avg*0.03
-			bLin = bLin*0.97 + avg*0.03
-
-			// Re-process to sRGB
-			src.Pix[i] = uint8(math.Min(255, math.Max(0, math.Pow(rLin, 1.0/2.2)*255.0)))
-			src.Pix[i+1] = uint8(math.Min(255, math.Max(0, math.Pow(gLin, 1.0/2.2)*255.0)))
-			src.Pix[i+2] = uint8(math.Min(255, math.Max(0, math.Pow(bLin, 1.0/2.2)*255.0)))
+	for j := 0; j < workers; j++ {
+		startY := j * chunk
+		endY := startY + chunk
+		if endY > height {
+			endY = height
 		}
+		if startY >= height {
+			break
+		}
+
+		wg.Add(1)
+		go func(sy, ey int) {
+			defer wg.Done()
+			for y := sy; y < ey; y++ {
+				offset := y * src.Stride
+				for x := 0; x < width; x++ {
+					i := offset + x*4
+
+					// Physics-Based Linear Processing
+					rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
+					gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
+					bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
+
+					// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
+					rLin = math.Pow(rLin, contrastGamma)
+					gLin = math.Pow(gLin, contrastGamma)
+					bLin = math.Pow(bLin, contrastGamma)
+
+					// 3. Pigment Gamut Compression
+					avg := (rLin + gLin + bLin) * 0.333333333
+					rLin = rLin*0.97 + avg*0.03
+					gLin = gLin*0.97 + avg*0.03
+					bLin = bLin*0.97 + avg*0.03
+
+					// Re-process to sRGB
+					valR := math.Pow(rLin, 1.0/2.2) * 255.0
+					if valR < 0 {
+						valR = 0
+					} else if valR > 255 {
+						valR = 255
+					}
+
+					valG := math.Pow(gLin, 1.0/2.2) * 255.0
+					if valG < 0 {
+						valG = 0
+					} else if valG > 255 {
+						valG = 255
+					}
+
+					valB := math.Pow(bLin, 1.0/2.2) * 255.0
+					if valB < 0 {
+						valB = 0
+					} else if valB > 255 {
+						valB = 255
+					}
+
+					src.Pix[i] = uint8(valR)
+					src.Pix[i+1] = uint8(valG)
+					src.Pix[i+2] = uint8(valB)
+				}
+			}
+		}(startY, endY)
 	}
+	wg.Wait()
+
 	return src
 }
 
