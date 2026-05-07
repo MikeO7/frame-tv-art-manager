@@ -563,6 +563,7 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 
 // UnifyCollection ensures that diverse images share a consistent "visual DNA".
 // Uses a Black-Point Preserving Power Curve to maintain depth.
+//nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func UnifyCollection(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
