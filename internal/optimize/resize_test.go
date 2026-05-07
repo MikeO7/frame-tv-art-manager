@@ -18,7 +18,7 @@ func TestOptimizeFile(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 200, 200))
 	for y := 0; y < 200; y++ {
 		for x := 0; x < 200; x++ {
-			img.Set(x, y, color.RGBA{uint8(x), uint8(y), 100, 255})
+			img.Set(x, y, color.RGBA{uint8(x), uint8(y), 100, 255}) //nolint:gosec // Just a test image
 		}
 	}
 	f, err := os.Create(filepath.Clean(path))
