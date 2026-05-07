@@ -17,3 +17,10 @@
 ## 2026-05-06 - Parallelizing Canvas Textures Safely
 **Learning:** When parallelizing image filters that read adjacent pixels (like calculating impasto or blur offsets), concurrent writes to `src.Pix` by different rows cause data races. Additionally, importing both the standard library `image/draw` and `golang.org/x/image/draw` without aliasing causes redeclaration compilation errors.
 **Action:** When parallelizing heavy math like `ApplyCanvasTexture`, always draw the source image to a new destination buffer `dst` via standard library `image/draw` (aliased as `std_draw`) to avoid races and compiler collisions, and write all computed results strictly to `dst`.
+## 2024-10-27 - Division vs Multiplication in Tight Loops
+**Learning:** In tight, highly concurrent per-pixel loops, floating-point division (e.g., `x / 3.0`) is noticeably slower than multiplication by a reciprocal (e.g., `x * 0.333333333`).
+**Action:** Always replace constant floating-point division with multiplication by the reciprocal to minimize CPU cycles per pixel.
+
+## 2024-10-27 - Clean Workspace Hygiene
+**Learning:** Leaving temporary patch files, `.orig` backups, and `.rej` files in the repository clutters the commit history and can pollute pull requests, failing code reviews.
+**Action:** Ensure temporary files are deleted before initiating a commit or completing a review process.
