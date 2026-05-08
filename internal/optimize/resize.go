@@ -594,6 +594,11 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 		contrastGamma = 1.15
 	}
 
+	var lutLin [256]float64
+	for i := 0; i < 256; i++ {
+		lutLin[i] = math.Pow(float64(i)/255.0, 2.2*contrastGamma)
+	}
+
 	var wg sync.WaitGroup
 	workers := 8
 	chunk := (height + workers - 1) / workers
@@ -617,14 +622,9 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 					i := offset + x*4
 
 					// Physics-Based Linear Processing
-					rLin := math.Pow(float64(src.Pix[i])/255.0, 2.2)
-					gLin := math.Pow(float64(src.Pix[i+1])/255.0, 2.2)
-					bLin := math.Pow(float64(src.Pix[i+2])/255.0, 2.2)
-
-					// 2. Apply Power-Curve Contrast (Preserves 0.0 and 1.0)
-					rLin = math.Pow(rLin, contrastGamma)
-					gLin = math.Pow(gLin, contrastGamma)
-					bLin = math.Pow(bLin, contrastGamma)
+					rLin := lutLin[src.Pix[i]]
+					gLin := lutLin[src.Pix[i+1]]
+					bLin := lutLin[src.Pix[i+2]]
 
 					// 3. Pigment Gamut Compression
 					avg := (rLin + gLin + bLin) * 0.333333333
@@ -633,21 +633,21 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 					bLin = bLin*0.97 + avg*0.03
 
 					// Re-process to sRGB
-					valR := math.Pow(rLin, 1.0/2.2) * 255.0
+					valR := math.Pow(rLin, 0.454545454545) * 255.0
 					if valR < 0 {
 						valR = 0
 					} else if valR > 255 {
 						valR = 255
 					}
 
-					valG := math.Pow(gLin, 1.0/2.2) * 255.0
+					valG := math.Pow(gLin, 0.454545454545) * 255.0
 					if valG < 0 {
 						valG = 0
 					} else if valG > 255 {
 						valG = 255
 					}
 
-					valB := math.Pow(bLin, 1.0/2.2) * 255.0
+					valB := math.Pow(bLin, 0.454545454545) * 255.0
 					if valB < 0 {
 						valB = 0
 					} else if valB > 255 {
