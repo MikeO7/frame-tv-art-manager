@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -75,7 +76,7 @@ func (c *NASAClient) FetchAPOD(ctx context.Context) (*APODResponse, error) {
 
 // SearchNASAImageLibrary searches for high-resolution images in the NASA library.
 func (c *NASAClient) SearchNASAImageLibrary(ctx context.Context, query string) ([]string, error) {
-	url := fmt.Sprintf("%s/search?q=%s&media_type=image", c.SearchURL, query)
+	url := fmt.Sprintf("%s/search?q=%s&media_type=image", c.SearchURL, url.QueryEscape(query))
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
