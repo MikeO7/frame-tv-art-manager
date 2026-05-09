@@ -20,3 +20,11 @@ func BenchmarkApplyCanvasTexture(b *testing.B) {
 		ApplyCanvasTexture(img, 5)
 	}
 }
+
+func BenchmarkUnifyCollection(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		UnifyCollection(img)
+	}
+}

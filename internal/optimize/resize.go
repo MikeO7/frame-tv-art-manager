@@ -599,6 +599,19 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 		lutLin[i] = math.Pow(float64(i)/255.0, 2.2*contrastGamma)
 	}
 
+	// Precompute Inverse Gamma LUT to replace math.Pow in the inner loop
+	const lutInvSize = 16384
+	var lutInv [lutInvSize]uint8
+	for i := 0; i < lutInvSize; i++ {
+		val := math.Pow(float64(i)/float64(lutInvSize-1), 0.454545454545) * 255.0
+		if val < 0 {
+			val = 0
+		} else if val > 255 {
+			val = 255
+		}
+		lutInv[i] = uint8(val)
+	}
+
 	var wg sync.WaitGroup
 	workers := 8
 	chunk := (height + workers - 1) / workers
@@ -632,31 +645,30 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 					gLin = gLin*0.97 + avg*0.03
 					bLin = bLin*0.97 + avg*0.03
 
-					// Re-process to sRGB
-					valR := math.Pow(rLin, 0.454545454545) * 255.0
-					if valR < 0 {
-						valR = 0
-					} else if valR > 255 {
-						valR = 255
+					// Re-process to sRGB using precomputed LUT
+					idxR := int(rLin * float64(lutInvSize-1))
+					if idxR < 0 {
+						idxR = 0
+					} else if idxR >= lutInvSize {
+						idxR = lutInvSize - 1
 					}
+					src.Pix[i] = lutInv[idxR]
 
-					valG := math.Pow(gLin, 0.454545454545) * 255.0
-					if valG < 0 {
-						valG = 0
-					} else if valG > 255 {
-						valG = 255
+					idxG := int(gLin * float64(lutInvSize-1))
+					if idxG < 0 {
+						idxG = 0
+					} else if idxG >= lutInvSize {
+						idxG = lutInvSize - 1
 					}
+					src.Pix[i+1] = lutInv[idxG]
 
-					valB := math.Pow(bLin, 0.454545454545) * 255.0
-					if valB < 0 {
-						valB = 0
-					} else if valB > 255 {
-						valB = 255
+					idxB := int(bLin * float64(lutInvSize-1))
+					if idxB < 0 {
+						idxB = 0
+					} else if idxB >= lutInvSize {
+						idxB = lutInvSize - 1
 					}
-
-					src.Pix[i] = uint8(valR)
-					src.Pix[i+1] = uint8(valG)
-					src.Pix[i+2] = uint8(valB)
+					src.Pix[i+2] = lutInv[idxB]
 				}
 			}
 		}(startY, endY)
