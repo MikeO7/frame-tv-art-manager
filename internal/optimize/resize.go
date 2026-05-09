@@ -541,19 +541,22 @@ func getRectSum(integral []float64, x1, y1, x2, y2, w int) float64 {
 
 // ApplyMuseumMode orchestrates a suite of visual filters to simulate physical artwork.
 func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
-	// Clamp intensity to 1-10 (used only for texture).
+	// Clamp intensity to 0-10 (used only for texture).
 	if intensity > 10 {
 		intensity = 10
 	}
-	if intensity < 1 {
-		intensity = 1
+	if intensity < 0 {
+		intensity = 0
 	}
 
 	// 1. Unify the collection (Luminance and Color DNA)
 	img := UnifyCollection(src)
 
 	// 2. Apply Physical Texture (Weave, Impasto, Craquelure, Varnish)
-	img = ApplyCanvasTexture(img, intensity)
+	// If intensity is 0, skip the physical texture to only keep color unification.
+	if intensity > 0 {
+		img = ApplyCanvasTexture(img, intensity)
+	}
 
 	// 3. Final Museum Polish (Peak Clamping)
 	img = GalleryMasterPolish(img)
