@@ -37,21 +37,24 @@ const (
 // Loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
 type Loader struct {
-	sourcesFile string
-	artworkDir  string
-	logger      *slog.Logger
-	client      *http.Client
-	unsplash    *UnsplashClient
-	nasa        *NASAClient
-	artic       *ArticClient
-	pexels      *PexelsClient
-	pixabay     *PixabayClient
-	maxImages   int
-	maxSizeMB   int
-	index       map[string]string // hash -> filename (content deduplication)
-	prefixMap   map[string]string // prefix -> filename (idempotency check)
-	visited     map[string]bool   // filename -> true (cleanup tracking)
-	mu          sync.Mutex        // Protects index, prefixMap, and visited
+	sourcesFile        string
+	artworkDir         string
+	logger             *slog.Logger
+	client             *http.Client
+	unsplash           *UnsplashClient
+	nasa               *NASAClient
+	artic              *ArticClient
+	pexels             *PexelsClient
+	pixabay            *PixabayClient
+	maxImages          int
+	maxSizeMB          int
+	index              map[string]string // hash -> filename (content deduplication)
+	prefixMap          map[string]string // prefix -> filename (idempotency check)
+	visited            map[string]bool   // filename -> true (cleanup tracking)
+	lastDirModTime     time.Time
+	lastSourcesModTime time.Time
+	cachedUrls         []string
+	mu                 sync.Mutex // Protects index, prefixMap, and visited
 }
 
 // NewLoader creates a new sources loader.
@@ -735,11 +738,27 @@ func (l *Loader) handlePixabayLine(line string, globalIndex *int32) (int, error)
 
 // loadSources reads the sources file (TXT or YAML) and returns a list of source strings.
 func (l *Loader) loadSources() ([]string, error) {
+	info, statErr := os.Stat(l.sourcesFile)
+	if statErr == nil {
+		if info.ModTime().Equal(l.lastSourcesModTime) && l.cachedUrls != nil {
+			return l.cachedUrls, nil
+		}
+		l.lastSourcesModTime = info.ModTime()
+	}
+
+	var urls []string
+	var err error
 	ext := strings.ToLower(filepath.Ext(l.sourcesFile))
 	if ext == ".yaml" || ext == ".yml" {
-		return l.loadYamlSources()
+		urls, err = l.loadYamlSources()
+	} else {
+		urls, err = l.loadTxtSources()
 	}
-	return l.loadTxtSources()
+
+	if err == nil {
+		l.cachedUrls = urls
+	}
+	return urls, err
 }
 
 func (l *Loader) loadTxtSources() ([]string, error) {
@@ -824,7 +843,17 @@ type indexResult struct {
 
 // buildContentIndex hashes all existing files in the artwork directory
 // to enable deduplication and fast syncs.
+//
+//nolint:gocyclo // Safe to have slightly higher complexity here for concurrent processing
 func (l *Loader) buildContentIndex() {
+	info, statErr := os.Stat(l.artworkDir)
+	if statErr == nil {
+		if info.ModTime().Equal(l.lastDirModTime) && l.index != nil {
+			return
+		}
+		l.lastDirModTime = info.ModTime()
+	}
+
 	l.index = make(map[string]string)
 	l.prefixMap = make(map[string]string)
 
