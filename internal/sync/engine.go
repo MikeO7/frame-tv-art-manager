@@ -174,6 +174,9 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var summariesMu sync.Mutex
 	var wg sync.WaitGroup
 
+	// Load per-image matte config once per cycle to save I/O
+	matteConfig := LoadMatteConfig(e.cfg.ArtworkDir)
+
 	for _, ip := range e.cfg.TVIPs {
 		// Respect shutdown context.
 		select {
@@ -198,7 +201,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 				return
 			}
 
-			summary, err := e.syncTV(ctx, tvIP, localFiles, cycleLog)
+			summary, err := e.syncTV(ctx, tvIP, localFiles, matteConfig, cycleLog)
 
 			summariesMu.Lock()
 			defer summariesMu.Unlock()
@@ -268,7 +271,7 @@ type tvSyncSummary struct {
 // syncTV performs the full sync for a single TV.
 //
 //nolint:gocyclo // Core sync loop requires complex flow control
-func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}, cycleLog *slog.Logger) (tvSyncSummary, error) {
+func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}, matteConfig *MatteConfig, cycleLog *slog.Logger) (tvSyncSummary, error) {
 	log := cycleLog.With("tv", ip)
 	summary := tvSyncSummary{IP: ip}
 
@@ -325,9 +328,6 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		summary.Status = statusError
 		return summary, fmt.Errorf("load mapping: %w", err)
 	}
-
-	// Load per-image matte config.
-	matteConfig := LoadMatteConfig(e.cfg.ArtworkDir)
 
 	// Get list of images currently on the TV.
 	tvContent, err := client.GetUploadedImages(ctx)

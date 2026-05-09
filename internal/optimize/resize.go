@@ -47,6 +47,7 @@ func DefaultConfig() Config {
 
 // OptimizeFile checks if an image needs resizing and optimizes it
 // in-place. Returns the new width, height, and whether the file was modified.
+//
 //nolint:revive // the package structure makes the OptimizeFile name acceptable and backward compatible
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool, error) {
 	if !cfg.Enabled {
@@ -566,6 +567,7 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 
 // UnifyCollection ensures that diverse images share a consistent "visual DNA".
 // Uses a Black-Point Preserving Power Curve to maintain depth.
+//
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func UnifyCollection(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
@@ -670,6 +672,7 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 }
 
 // GalleryMasterPolish implements high-end gallery techniques to remove "digital glow".
+//
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
@@ -931,6 +934,7 @@ func applySoftLight(a, b, opacity float64) uint8 {
 }
 
 // Dither applies a subtle random jitter to pixel values to break up banding in gradients.
+//
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func Dither(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
@@ -1008,6 +1012,7 @@ func Dither(src *image.RGBA) *image.RGBA {
 }
 
 // Sharpen applies a high-performance 3x3 sharpening kernel to the image.
+//
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
 func Sharpen(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
