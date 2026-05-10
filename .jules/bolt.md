@@ -27,3 +27,7 @@
 ## 2026-05-08 - Lookup Tables (LUTs) for Non-linear Math in Tight Loops
 **Learning:** Performing expensive mathematical operations like `math.Pow` inside a tight, highly concurrent per-pixel loop across an 8.2 million pixel 4K image causes significant CPU overhead. Recomputing `math.Pow(x/255.0, 2.2)` for identical 8-bit color values is redundant.
 **Action:** Use precomputed Lookup Tables (LUTs) for mathematical transformations mapping from a bounded set of inputs (e.g., 0-255 uint8 color values) to precalculated float64 outputs. This replaces expensive CPU math operations with near-instant array lookups, massively accelerating functions like `UnifyCollection`.
+
+## 2024-10-27 - Precompute LUT globally
+**Learning:** Precomputing a LUT of 16384 entries every time `UnifyCollection` is called adds a slight overhead (~0.5ms) for very small thumbnails.
+**Action:** Use `sync.Once` to calculate the LUT once globally to make the function maximally efficient for images of all sizes.

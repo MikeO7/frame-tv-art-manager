@@ -31,6 +31,11 @@ type Config struct {
 	MuseumModeIntensity int
 }
 
+var (
+	lutSrgb     [16384]uint8
+	lutSrgbOnce sync.Once
+)
+
 // DefaultConfig returns sensible defaults for Frame TV display.
 func DefaultConfig() Config {
 	return Config{
@@ -604,6 +609,20 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 		lutLin[i] = math.Pow(float64(i)/255.0, 2.2*contrastGamma)
 	}
 
+	lutSrgbOnce.Do(func() {
+		for i := 0; i < 16384; i++ {
+			val := math.Pow(float64(i)/16383.0, 0.454545454545) * 255.0
+			switch {
+			case val < 0:
+				lutSrgb[i] = 0
+			case val > 255:
+				lutSrgb[i] = 255
+			default:
+				lutSrgb[i] = uint8(val)
+			}
+		}
+	})
+
 	var wg sync.WaitGroup
 	workers := 8
 	chunk := (height + workers - 1) / workers
@@ -638,30 +657,30 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 					bLin = bLin*0.97 + avg*0.03
 
 					// Re-process to sRGB
-					valR := math.Pow(rLin, 0.454545454545) * 255.0
-					if valR < 0 {
-						valR = 0
-					} else if valR > 255 {
-						valR = 255
+					idxR := int(rLin * 16383.0)
+					if idxR < 0 {
+						idxR = 0
+					} else if idxR > 16383 {
+						idxR = 16383
 					}
 
-					valG := math.Pow(gLin, 0.454545454545) * 255.0
-					if valG < 0 {
-						valG = 0
-					} else if valG > 255 {
-						valG = 255
+					idxG := int(gLin * 16383.0)
+					if idxG < 0 {
+						idxG = 0
+					} else if idxG > 16383 {
+						idxG = 16383
 					}
 
-					valB := math.Pow(bLin, 0.454545454545) * 255.0
-					if valB < 0 {
-						valB = 0
-					} else if valB > 255 {
-						valB = 255
+					idxB := int(bLin * 16383.0)
+					if idxB < 0 {
+						idxB = 0
+					} else if idxB > 16383 {
+						idxB = 16383
 					}
 
-					src.Pix[i] = uint8(valR)
-					src.Pix[i+1] = uint8(valG)
-					src.Pix[i+2] = uint8(valB)
+					src.Pix[i] = lutSrgb[idxR]
+					src.Pix[i+1] = lutSrgb[idxG]
+					src.Pix[i+2] = lutSrgb[idxB]
 				}
 			}
 		}(startY, endY)
