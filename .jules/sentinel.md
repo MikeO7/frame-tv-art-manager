@@ -17,3 +17,8 @@
 **Vulnerability:** The Unsplash client's `TrackDownload` method accepted an arbitrary URL (`downloadLocation`) from the API response and appended the application's `Authorization` header to the outbound request without validation. This could lead to API key leakage if the API is spoofed or manipulated to return a malicious domain.
 **Learning:** Always validate that dynamically supplied URLs from external APIs point to trusted domains before appending authentication headers or executing requests to prevent Server-Side Request Forgery (SSRF) and credential leakage.
 **Prevention:** Validate the URL prefix (e.g., `strings.HasPrefix(downloadLocation, c.BaseURL)`) before issuing requests with sensitive headers.
+
+## 2025-05-10 - [High] Prevent Query Parameter Injection and SSRF in API Clients
+**Vulnerability:** External API clients (NASA, Pexels, Art Institute of Chicago) were constructing search URLs by directly interpolating unescaped user-supplied query strings using `fmt.Sprintf` without URL encoding. This could allow an attacker to inject arbitrary query parameters or manipulate the URL structure, leading to Query Parameter Injection and potential Server-Side Request Forgery (SSRF).
+**Learning:** Always validate and sanitize user-supplied input before using it to construct external API URLs. Direct string interpolation of search queries into URLs bypasses URL encoding, allowing attackers to inject structural characters like `&` and `=` to modify the API request.
+**Prevention:** When constructing external API URLs with user-supplied search queries in Go, always use `url.QueryEscape(query)` from the `net/url` package within `fmt.Sprintf` to safely encode the input and prevent Query Parameter Injection.
