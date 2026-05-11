@@ -17,3 +17,11 @@
 **Vulnerability:** The Unsplash client's `TrackDownload` method accepted an arbitrary URL (`downloadLocation`) from the API response and appended the application's `Authorization` header to the outbound request without validation. This could lead to API key leakage if the API is spoofed or manipulated to return a malicious domain.
 **Learning:** Always validate that dynamically supplied URLs from external APIs point to trusted domains before appending authentication headers or executing requests to prevent Server-Side Request Forgery (SSRF) and credential leakage.
 **Prevention:** Validate the URL prefix (e.g., `strings.HasPrefix(downloadLocation, c.BaseURL)`) before issuing requests with sensitive headers.
+## 2026-05-11 - [High] Use Secure File Permissions
+**Vulnerability:** Files and directories were being created with overly permissive file permissions ( for files,  for directories), potentially exposing sensitive data or state to other users on the system.
+**Learning:** The principle of least privilege dictates that files should only be readable and writable by the owner unless strictly necessary to be shared.
+**Prevention:** Always use restrictive permissions ( for files via  and  for directories via  or ) for application state, metadata, and cached data, not just explicitly sensitive tokens.
+## 2025-05-15 - [High] Use Secure File Permissions
+**Vulnerability:** Files and directories were being created with overly permissive file permissions (`0644` for files, `0755` for directories), potentially exposing sensitive data or state to other users on the system.
+**Learning:** The principle of least privilege dictates that files should only be readable and writable by the owner unless strictly necessary to be shared.
+**Prevention:** Always use restrictive permissions (`0600` for files via `os.WriteFile` and `0700` for directories via `os.MkdirAll` or `os.Chmod`) for application state, metadata, and cached data, not just explicitly sensitive tokens.
