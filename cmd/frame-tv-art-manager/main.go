@@ -103,7 +103,7 @@ func validateDirectories(cfg *config.Config, logger *slog.Logger) {
 		path string
 		perm os.FileMode
 	}{
-		{"artwork", cfg.ArtworkDir, 0755},
+		{"artwork", cfg.ArtworkDir, 0700},
 		{"tokens", cfg.TokenDir, 0700},
 	}
 	for _, dir := range dirs {

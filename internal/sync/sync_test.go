@@ -27,7 +27,7 @@ func TestLoadMatteConfig_WithOverrides(t *testing.T) {
 		"portrait.jpg": "modern_apricot",
 		"_default": "none"
 	}`
-	if err := os.WriteFile(filepath.Join(dir, "mattes.json"), []byte(content), 0644); err != nil { //nolint:gosec // Test file
+	if err := os.WriteFile(filepath.Join(dir, "mattes.json"), []byte(content), 0600); err != nil { //nolint:gosec // Test file
 		t.Fatal(err)
 	}
 
@@ -56,7 +56,7 @@ func TestLoadMatteConfig_WithOverrides(t *testing.T) {
 
 func TestLoadMatteConfig_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "mattes.json"), []byte("not json"), 0644); err != nil { //nolint:gosec // Test file
+	if err := os.WriteFile(filepath.Join(dir, "mattes.json"), []byte("not json"), 0600); err != nil { //nolint:gosec // Test file
 		t.Fatal(err)
 	}
 
@@ -109,7 +109,7 @@ func TestScanArtworkDir(t *testing.T) {
 	dir := t.TempDir()
 
 	for _, f := range []string{testAJPG, "b.JPEG", "c.png", "d.txt", "e.gif"} {
-		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0644); err != nil { //nolint:gosec // Test file
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0600); err != nil { //nolint:gosec // Test file
 			t.Fatal(err)
 		}
 	}
