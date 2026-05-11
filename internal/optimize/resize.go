@@ -580,14 +580,45 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 
 	// 1. Calculate Perceptual Contrast
 	var sumSq, sum float64
-	for y := 0; y < height; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
-			i := offset + x*4
-			lum := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
-			sum += lum
-			sumSq += lum * lum
+
+	var wgLum sync.WaitGroup
+	workersLum := 8
+	chunkLum := (height + workersLum - 1) / workersLum
+	sums := make([]float64, workersLum)
+	sumSqs := make([]float64, workersLum)
+
+	for i := 0; i < workersLum; i++ {
+		startY := i * chunkLum
+		endY := startY + chunkLum
+		if endY > height {
+			endY = height
 		}
+		if startY >= height {
+			break
+		}
+
+		wgLum.Add(1)
+		go func(workerIdx, sy, ey int) {
+			defer wgLum.Done()
+			var localSum, localSumSq float64
+			for y := sy; y < ey; y++ {
+				offset := y * src.Stride
+				for x := 0; x < width; x++ {
+					i := offset + x*4
+					lum := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
+					localSum += lum
+					localSumSq += lum * lum
+				}
+			}
+			sums[workerIdx] = localSum
+			sumSqs[workerIdx] = localSumSq
+		}(i, startY, endY)
+	}
+	wgLum.Wait()
+
+	for i := 0; i < workersLum; i++ {
+		sum += sums[i]
+		sumSq += sumSqs[i]
 	}
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
@@ -608,6 +639,11 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 	for i := 0; i < 256; i++ {
 		lutLin[i] = math.Pow(float64(i)/255.0, 2.2*contrastGamma)
 	}
+
+	// Precompute the combination of pigment gamut compression + sRGB mapping
+	// mapping from rLin/gLin/bLin directly to final sRGB to avoid math per pixel
+	// Since pigment compression mixes RGB channels, we can't fully precompute without a 3D LUT,
+	// but we can optimize the math.
 
 	lutSrgbOnce.Do(func() {
 		for i := 0; i < 16384; i++ {
@@ -657,25 +693,28 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 					bLin = bLin*0.97 + avg*0.03
 
 					// Re-process to sRGB
-					idxR := int(rLin * 16383.0)
-					if idxR < 0 {
-						idxR = 0
-					} else if idxR > 16383 {
+					fR := rLin * 16383.0
+					idxR := 0
+					if fR >= 16383.0 {
 						idxR = 16383
+					} else if fR > 0 {
+						idxR = int(fR)
 					}
 
-					idxG := int(gLin * 16383.0)
-					if idxG < 0 {
-						idxG = 0
-					} else if idxG > 16383 {
+					fG := gLin * 16383.0
+					idxG := 0
+					if fG >= 16383.0 {
 						idxG = 16383
+					} else if fG > 0 {
+						idxG = int(fG)
 					}
 
-					idxB := int(bLin * 16383.0)
-					if idxB < 0 {
-						idxB = 0
-					} else if idxB > 16383 {
+					fB := bLin * 16383.0
+					idxB := 0
+					if fB >= 16383.0 {
 						idxB = 16383
+					} else if fB > 0 {
+						idxB = int(fB)
 					}
 
 					src.Pix[i] = lutSrgb[idxR]
