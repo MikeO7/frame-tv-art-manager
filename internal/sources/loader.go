@@ -264,7 +264,7 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 	l.mu.Lock()
 	l.visited[finalName] = true
 	l.mu.Unlock()
-	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0644) //nolint:gosec
+	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0600) //nolint:gosec
 
 	l.logger.Info("downloaded source image", "file", finalName, "size_bytes", written)
 	return true, nil
