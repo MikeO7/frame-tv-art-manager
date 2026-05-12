@@ -812,48 +812,7 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 			for y := sy; y < ey; y++ {
 				offset := y * src.Stride
 				for x := 1; x < width-1; x++ {
-					i := offset + x*4
-
-					// 1. Bipolar Virtual Impasto
-					impasto := calculateBipolarImpasto(src, i)
-
-					// 2. 3D Interlocking Weave
-					weave, varnishPool := calculateWeave(x, y)
-
-					// Add organic slub noise (fiber irregularities)
-					state ^= state << 13
-					state ^= state >> 17
-					state ^= state << 5
-					if float32(state)/float32(0xFFFFFFFF) > 0.98 {
-						weave -= 0.05
-					}
-
-					// 3. Procedural Craquelure
-					state ^= state << 13
-					state ^= state >> 17
-					state ^= state << 5
-					if float32(state)/float32(0xFFFFFFFF) > 0.9997 {
-						weave -= 0.5
-					}
-
-					// Merge topography
-					weave += impasto
-
-					// 4. Blending & Archive Varnish
-					// To prevent race conditions with calculateBipolarImpasto reading adjacent pixels,
-					// calculate new values into temporary variables before modifying the source pixel.
-					aR := float64(src.Pix[i]) / 255.0 * 1.01 // Subtle Red
-					r := applySoftLight(aR, weave, opacity)
-
-					aG := float64(src.Pix[i+1]) / 255.0
-					g := applySoftLight(aG, weave, opacity)
-
-					aB := float64(src.Pix[i+2]) / 255.0 * (varnishPool * 0.99) // Blue absorption
-					b := applySoftLight(aB, weave, opacity)
-
-					dst.Pix[i] = r
-					dst.Pix[i+1] = g
-					dst.Pix[i+2] = b
+					processCanvasPixel(src, dst, offset+x*4, x, y, &state, opacity)
 				}
 			}
 		}(startY, endY)
@@ -861,6 +820,49 @@ func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 
 	wg.Wait()
 	return dst
+}
+
+func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
+	// 1. Bipolar Virtual Impasto
+	impasto := calculateBipolarImpasto(src, i)
+
+	// 2. 3D Interlocking Weave
+	weave, varnishPool := calculateWeave(x, y)
+
+	// Add organic slub noise (fiber irregularities)
+	*state ^= *state << 13
+	*state ^= *state >> 17
+	*state ^= *state << 5
+	if float32(*state)/float32(0xFFFFFFFF) > 0.98 {
+		weave -= 0.05
+	}
+
+	// 3. Procedural Craquelure
+	*state ^= *state << 13
+	*state ^= *state >> 17
+	*state ^= *state << 5
+	if float32(*state)/float32(0xFFFFFFFF) > 0.9997 {
+		weave -= 0.5
+	}
+
+	// Merge topography
+	weave += impasto
+
+	// 4. Blending & Archive Varnish
+	// To prevent race conditions with calculateBipolarImpasto reading adjacent pixels,
+	// calculate new values into temporary variables before modifying the source pixel.
+	aR := float64(src.Pix[i]) / 255.0 * 1.01 // Subtle Red
+	r := applySoftLight(aR, weave, opacity)
+
+	aG := float64(src.Pix[i+1]) / 255.0
+	g := applySoftLight(aG, weave, opacity)
+
+	aB := float64(src.Pix[i+2]) / 255.0 * (varnishPool * 0.99) // Blue absorption
+	b := applySoftLight(aB, weave, opacity)
+
+	dst.Pix[i] = r
+	dst.Pix[i+1] = g
+	dst.Pix[i+2] = b
 }
 
 func calculateBipolarImpasto(src *image.RGBA, i int) float64 {
