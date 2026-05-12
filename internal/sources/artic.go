@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -39,8 +40,8 @@ type ArticArtwork struct {
 // Search Masterpieces from the Artic library.
 func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error) {
 	// Search for artworks with an image_id (meaning they have a digitizable image)
-	url := fmt.Sprintf("%s/api/v1/artworks/search?q=%s&fields=id,title,image_id&limit=10", c.BaseURL, query)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	searchURL := fmt.Sprintf("%s/api/v1/artworks/search?q=%s&fields=id,title,image_id&limit=10", c.BaseURL, url.QueryEscape(query))
+	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 	if err != nil {
 		return nil, err
 	}

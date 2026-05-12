@@ -25,3 +25,7 @@
 **Vulnerability:** Files and directories were being created with overly permissive file permissions (`0644` for files, `0755` for directories), potentially exposing sensitive data or state to other users on the system.
 **Learning:** The principle of least privilege dictates that files should only be readable and writable by the owner unless strictly necessary to be shared.
 **Prevention:** Always use restrictive permissions (`0600` for files via `os.WriteFile` and `0700` for directories via `os.MkdirAll` or `os.Chmod`) for application state, metadata, and cached data, not just explicitly sensitive tokens.
+## 2025-05-15 - [High] Prevent SSRF and Query Parameter Injection in External APIs
+**Vulnerability:** External APIs (NASA, Pexels, Artic) constructed search URLs directly using `fmt.Sprintf` with unescaped user-provided search queries (e.g., `url := fmt.Sprintf(".../search?q=%s", query)`). This allows an attacker to inject arbitrary query parameters (e.g., `&limit=10000` or API key overrides).
+**Learning:** Even internal or backend-to-external API communications are vulnerable to parameter injection if user input is not properly encoded.
+**Prevention:** Always use `url.QueryEscape(query)` from the `net/url` package when dynamically appending search queries or parameters to an external API URL.
