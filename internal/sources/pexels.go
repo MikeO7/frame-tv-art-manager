@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -41,8 +42,8 @@ func NewPexelsClient(apiKey string, logger *slog.Logger) *PexelsClient {
 
 // Search retrieves photos from Pexels based on a search query.
 func (c *PexelsClient) Search(ctx context.Context, query string) ([]string, error) {
-	url := fmt.Sprintf("%s/v1/search?query=%s&per_page=10", c.BaseURL, query)
-	return c.fetchPhotoList(ctx, url)
+	searchURL := fmt.Sprintf("%s/v1/search?query=%s&per_page=10", c.BaseURL, url.QueryEscape(query))
+	return c.fetchPhotoList(ctx, searchURL)
 }
 
 // Curated retrieves the latest curated photos from Pexels.
