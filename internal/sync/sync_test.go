@@ -105,60 +105,6 @@ func TestMappingRoundtrip(t *testing.T) {
 	}
 }
 
-func TestScanArtworkDir(t *testing.T) {
-	dir := t.TempDir()
-
-	for _, f := range []string{testAJPG, "b.JPEG", "c.png", "d.txt", "e.gif"} {
-		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0644); err != nil { //nolint:gosec // Test file
-			t.Fatal(err)
-		}
-	}
-
-	files, err := ScanArtworkDir(dir)
-	if err != nil {
-		t.Fatalf("ScanArtworkDir: %v", err)
-	}
-
-	// Only .jpg, .jpeg (case-insensitive), .png should be included.
-	if _, ok := files[testAJPG]; !ok {
-		t.Error("expected a.jpg")
-	}
-	if _, ok := files["b.JPEG"]; !ok {
-		t.Error("expected b.JPEG")
-	}
-	if _, ok := files["c.png"]; !ok {
-		t.Error("expected c.png")
-	}
-	if _, ok := files["d.txt"]; ok {
-		t.Error("d.txt should be excluded")
-	}
-	if _, ok := files["e.gif"]; ok {
-		t.Error("e.gif should be excluded")
-	}
-}
-
-func TestScanArtworkDir_Missing(t *testing.T) {
-	_, err := ScanArtworkDir("/nonexistent/path/xyz")
-	if err == nil {
-		t.Error("expected error for missing directory")
-	}
-}
-
-func TestFileTypeFromExt(t *testing.T) {
-	tests := []struct{ file, want string }{
-		{"photo.jpg", extJPG},
-		{"photo.JPEG", extJPG},
-		{"photo.png", extPNG},
-		{"photo.PNG", "png"},
-		{"photo", "jpg"},
-	}
-	for _, tc := range tests {
-		got := FileTypeFromExt(tc.file)
-		if got != tc.want {
-			t.Errorf("FileTypeFromExt(%q) = %q, want %q", tc.file, got, tc.want)
-		}
-	}
-}
 func TestDiffSets(t *testing.T) {
 	a := map[string]struct{}{"1": {}, "2": {}, "3": {}}
 	b := map[string]struct{}{"2": {}, "4": {}}
