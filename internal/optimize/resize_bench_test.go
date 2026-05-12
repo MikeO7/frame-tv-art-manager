@@ -20,3 +20,10 @@ func BenchmarkApplyCanvasTexture(b *testing.B) {
 		ApplyCanvasTexture(img, 5)
 	}
 }
+
+func BenchmarkRgbToLab(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rgbToLab(100, 150, 200)
+	}
+}
