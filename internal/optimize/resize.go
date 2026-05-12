@@ -32,8 +32,10 @@ type Config struct {
 }
 
 var (
-	lutSrgb     [16384]uint8
-	lutSrgbOnce sync.Once
+	lutSrgb         [16384]uint8
+	lutSrgbOnce     sync.Once
+	lutRgbToLab     [256]float64
+	lutRgbToLabOnce sync.Once
 )
 
 // DefaultConfig returns sensible defaults for Frame TV display.
@@ -353,11 +355,19 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 }
 
 // rgbToLab performs a fast, simplified conversion from RGB to CIE Lab space.
+//
+//nolint:unparam // result 0 (L) is returned for completeness of the CIE Lab conversion, even if not currently used.
 func rgbToLab(r, g, b uint8) (float64, float64, float64) {
+	lutRgbToLabOnce.Do(func() {
+		for i := 0; i < 256; i++ {
+			lutRgbToLab[i] = math.Pow(float64(i)/255.0, 2.2)
+		}
+	})
+
 	// 1. Linearize RGB
-	rf := math.Pow(float64(r)/255.0, 2.2)
-	gf := math.Pow(float64(g)/255.0, 2.2)
-	bf := math.Pow(float64(b)/255.0, 2.2)
+	rf := lutRgbToLab[r]
+	gf := lutRgbToLab[g]
+	bf := lutRgbToLab[b]
 
 	// 2. RGB to XYZ
 	x := rf*0.4124 + gf*0.3576 + bf*0.1805
@@ -367,7 +377,7 @@ func rgbToLab(r, g, b uint8) (float64, float64, float64) {
 	// 3. XYZ to Lab (Simplified D65)
 	f := func(t float64) float64 {
 		if t > 0.008856 {
-			return math.Pow(t, 1.0/3.0)
+			return math.Cbrt(t)
 		}
 		return (7.787*t + 16.0/116.0)
 	}
