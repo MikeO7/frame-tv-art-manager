@@ -80,8 +80,8 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 
 // FetchPhoto retrieves a single masterpiece by its ID.
 func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error) {
-	url := fmt.Sprintf("%s/api/v1/artworks/%s?fields=id,title,image_id", c.BaseURL, id)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	apiURL := fmt.Sprintf("%s/api/v1/artworks/%s?fields=id,title,image_id", c.BaseURL, url.PathEscape(id))
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return "", err
 	}

@@ -55,10 +55,10 @@ func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 	page := 1
 
 	for {
-		url := fmt.Sprintf("%s/collections/%s/photos?per_page=30&page=%d", c.BaseURL, collectionID, page)
+		apiURL := fmt.Sprintf("%s/collections/%s/photos?per_page=30&page=%d", c.BaseURL, url.PathEscape(collectionID), page)
 		c.logger.Debug("fetching unsplash collection page", "id", collectionID, "page", page)
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -102,8 +102,8 @@ func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 
 // FetchPhoto retrieves metadata for a single Unsplash photo.
 func (c *UnsplashClient) FetchPhoto(ctx context.Context, photoID string) (*UnsplashPhoto, error) {
-	url := fmt.Sprintf("%s/photos/%s", c.BaseURL, photoID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	apiURL := fmt.Sprintf("%s/photos/%s", c.BaseURL, url.PathEscape(photoID))
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
