@@ -29,3 +29,7 @@
 **Vulnerability:** External APIs (NASA, Pexels, Artic) constructed search URLs directly using `fmt.Sprintf` with unescaped user-provided search queries (e.g., `url := fmt.Sprintf(".../search?q=%s", query)`). This allows an attacker to inject arbitrary query parameters (e.g., `&limit=10000` or API key overrides).
 **Learning:** Even internal or backend-to-external API communications are vulnerable to parameter injection if user input is not properly encoded.
 **Prevention:** Always use `url.QueryEscape(query)` from the `net/url` package when dynamically appending search queries or parameters to an external API URL.
+## 2025-05-15 - [High] Prevent SSRF and Query Parameter Injection in External APIs
+**Vulnerability:** External APIs constructed URLs using `fmt.Sprintf` with unescaped user-provided parameters (e.g., `url := fmt.Sprintf(".../photos/%s", photoID)`). This allows an attacker to manipulate the URL structure (Path Traversal) or inject query parameters.
+**Learning:** Variables embedded in URL paths must be escaped to prevent them from modifying the URL structure.
+**Prevention:** Always use `url.PathEscape` from the `net/url` package when dynamically appending parameters to URL paths, and `url.QueryEscape` when appending to query strings.

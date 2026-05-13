@@ -50,7 +50,7 @@ func (c *PixabayClient) EditorsChoice(ctx context.Context) ([]string, error) {
 
 // FetchPhoto retrieves a single photo by its ID.
 func (c *PixabayClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
-	u := fmt.Sprintf("%s?key=%s&id=%s", c.BaseURL, c.apiKey, photoID)
+	u := fmt.Sprintf("%s?key=%s&id=%s", c.BaseURL, c.apiKey, url.QueryEscape(photoID))
 	urls, err := c.fetchPhotoList(ctx, u)
 	if err != nil {
 		return "", err
@@ -63,7 +63,7 @@ func (c *PixabayClient) FetchPhoto(ctx context.Context, photoID string) (string,
 
 // User retrieves all photos from a specific Pixabay user with pagination.
 func (c *PixabayClient) User(ctx context.Context, userID string) ([]string, error) {
-	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&user_id=%s&image_type=photo", c.BaseURL, c.apiKey, userID))
+	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&user_id=%s&image_type=photo", c.BaseURL, c.apiKey, url.QueryEscape(userID)))
 }
 
 func (c *PixabayClient) fetchAllPages(ctx context.Context, baseURL string) ([]string, error) {
