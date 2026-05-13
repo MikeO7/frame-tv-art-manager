@@ -998,7 +998,14 @@ func applySoftLight(a, b, opacity float64) uint8 {
 		res = a + (2.0*b-1.0)*(math.Sqrt(a)-a)
 	}
 	final := a*(1.0-opacity) + res*opacity
-	return uint8(math.Min(255, math.Max(0, final*255.0)))
+	v := final * 255.0
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return uint8(v)
 }
 
 // Dither applies a subtle random jitter to pixel values to break up banding in gradients.
