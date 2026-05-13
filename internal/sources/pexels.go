@@ -48,8 +48,8 @@ func (c *PexelsClient) Search(ctx context.Context, query string) ([]string, erro
 
 // Curated retrieves the latest curated photos from Pexels.
 func (c *PexelsClient) Curated(ctx context.Context) ([]string, error) {
-	url := fmt.Sprintf("%s/v1/curated?per_page=10", c.BaseURL)
-	return c.fetchPhotoList(ctx, url)
+	apiURL := fmt.Sprintf("%s/v1/curated?per_page=10", c.BaseURL)
+	return c.fetchPhotoList(ctx, apiURL)
 }
 
 // FetchCollection retrieves all photos from a specific Pexels collection using pagination.
@@ -58,10 +58,10 @@ func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string)
 	page := 1
 
 	for {
-		url := fmt.Sprintf("%s/v1/collections/%s?per_page=80&page=%d", c.BaseURL, collectionID, page)
+		apiURL := fmt.Sprintf("%s/v1/collections/%s?per_page=80&page=%d", c.BaseURL, url.PathEscape(collectionID), page)
 		c.logger.Debug("fetching pexels collection page", "id", collectionID, "page", page)
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -112,8 +112,8 @@ func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string)
 
 // FetchPhoto retrieves a single photo by its ID.
 func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
-	url := fmt.Sprintf("%s/v1/photos/%s", c.BaseURL, photoID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	apiURL := fmt.Sprintf("%s/v1/photos/%s", c.BaseURL, url.PathEscape(photoID))
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -138,8 +138,8 @@ func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, 
 	return photo.Src.Original, nil
 }
 
-func (c *PexelsClient) fetchPhotoList(ctx context.Context, url string) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+func (c *PexelsClient) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
