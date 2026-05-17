@@ -195,6 +195,7 @@ func stripIndexPrefix(identity string) string {
 	return identity
 }
 
+//nolint:gocyclo
 func (l *Loader) executeDownload(url, filename string) (bool, error) {
 	destPath := filepath.Join(l.artworkDir, filename)
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
