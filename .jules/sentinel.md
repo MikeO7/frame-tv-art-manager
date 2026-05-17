@@ -33,3 +33,7 @@
 **Vulnerability:** External APIs constructed URLs using `fmt.Sprintf` with unescaped user-provided parameters (e.g., `url := fmt.Sprintf(".../photos/%s", photoID)`). This allows an attacker to manipulate the URL structure (Path Traversal) or inject query parameters.
 **Learning:** Variables embedded in URL paths must be escaped to prevent them from modifying the URL structure.
 **Prevention:** Always use `url.PathEscape` from the `net/url` package when dynamically appending parameters to URL paths, and `url.QueryEscape` when appending to query strings.
+## 2026-05-17 - [Medium] Prevent DoS / Resource Exhaustion in File Downloads
+**Vulnerability:** External file downloads via `io.Copy` were not capped by a size limit, potentially allowing a malicious server to stream an infinitely large response (ignoring `Content-Length`) and exhaust disk space or memory.
+**Learning:** Checking the `Content-Length` header is insufficient because a malicious server can simply omit it or lie about the actual size of the stream.
+**Prevention:** Always use `io.LimitReader` to enforce a hard maximum on the bytes read during external file downloads, preventing ZIP-bomb or infinite stream attacks.

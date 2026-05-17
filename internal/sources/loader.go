@@ -244,11 +244,25 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
 
-	written, err := io.Copy(out, resp.Body)
+	// Apply an io.LimitReader to prevent DoS attacks from maliciously large responses
+	// that ignore the Content-Length header.
+	var reader io.Reader = resp.Body
+	if l.maxSizeMB > 0 {
+		limitBytes := int64(l.maxSizeMB) * 1024 * 1024
+		// Add 1 byte to the limit to detect if the body exceeds the limit
+		reader = io.LimitReader(resp.Body, limitBytes+1)
+	}
+
+	written, err := io.Copy(out, reader)
 	_ = out.Close()
 	if err != nil {
 		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("download body: %w", err)
+	}
+
+	if l.maxSizeMB > 0 && written > int64(l.maxSizeMB)*1024*1024 {
+		_ = os.Remove(tmpPath)
+		return false, fmt.Errorf("file exceeded limit of %d MB during download", l.maxSizeMB)
 	}
 
 	if err := os.Rename(tmpPath, destPath); err != nil {
