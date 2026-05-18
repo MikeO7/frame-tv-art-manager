@@ -244,7 +244,14 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
 
-	written, err := io.Copy(out, resp.Body)
+	// Prevent DoS / resource exhaustion by enforcing a maximum read size, using MaxBytesReader
+	maxBytes := int64(100 * 1024 * 1024) // 100 MB default hard limit
+	if l.maxSizeMB > 0 {
+		maxBytes = int64(l.maxSizeMB) * 1024 * 1024
+	}
+	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+
+	written, err := io.Copy(out, reader)
 	_ = out.Close()
 	if err != nil {
 		_ = os.Remove(tmpPath)
