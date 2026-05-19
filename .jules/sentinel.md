@@ -37,3 +37,8 @@
 **Vulnerability:** External APIs constructed URLs using `fmt.Sprintf` with unescaped user-provided parameters (e.g., `url := fmt.Sprintf(".../photos/%s", photoID)`). This allows an attacker to manipulate the URL structure (Path Traversal) or inject query parameters.
 **Learning:** Variables embedded in URL paths must be escaped to prevent them from modifying the URL structure.
 **Prevention:** Always use `url.PathEscape` from the `net/url` package when dynamically appending parameters to URL paths, and `url.QueryEscape` when appending to query strings.
+
+## $(date +%Y-%m-%d) - Prevent Denial of Service in Image Downloader
+**Vulnerability:** The application was downloading external image sources using `io.Copy(out, resp.Body)` without any byte limit, making it vulnerable to resource exhaustion or "ZIP bomb" style attacks if a malicious server returned a massive payload.
+**Learning:** `io.LimitReader` is not sufficient for securing HTTP responses because it silently truncates the stream by returning `EOF` when the limit is reached, which `io.Copy` interprets as a successful, complete download. This leads to silent corruption.
+**Prevention:** Always use `http.MaxBytesReader(nil, resp.Body, maxBytes)` for HTTP downloads. It actively returns an error (`"http: request body too large"`) when the limit is breached, allowing the application to detect the attack and properly clean up temporary files.
