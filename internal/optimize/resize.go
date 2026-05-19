@@ -36,6 +36,9 @@ var (
 	lutSrgbOnce     sync.Once
 	lutRgbToLab     [256]float64
 	lutRgbToLabOnce sync.Once
+	lutWeave        [400]float64
+	lutVarnishPool  [400]float64
+	lutWeaveOnce    sync.Once
 )
 
 // DefaultConfig returns sensible defaults for Frame TV display.
@@ -951,45 +954,59 @@ func calculateBipolarImpasto(src *image.RGBA, i int) float64 {
 	return (dx + dy) * 0.15
 }
 
+// calculateWeave computes the interlocking warp-and-weft canvas weave.
+// ⚡ Bolt: Uses a precomputed 20x20 LUT, eliminating math in the tight per-pixel loop.
 func calculateWeave(x, y int) (float64, float64) {
-	idX, idY := x/10, y/10
-	cellX, cellY := x%10, y%10
-	isWarp := (idX+idY)%2 == 0
+	lutWeaveOnce.Do(func() {
+		for wy := 0; wy < 20; wy++ {
+			for wx := 0; wx < 20; wx++ {
+				idX, idY := wx/10, wy/10
+				cellX, cellY := wx%10, wy%10
+				isWarp := (idX+idY)%2 == 0
 
-	var weave float64
-	lightDirX, lightDirY := -0.707, -0.707
+				var weave float64
+				lightDirX, lightDirY := -0.707, -0.707
 
-	if isWarp {
-		nx := (float64(cellX) - 4.5) / 5.0
-		diffuse := nx * lightDirX
-		if diffuse < 0 {
-			diffuse = 0
-		}
-		weave = 0.4 + (diffuse * 0.3)
-	} else {
-		ny := (float64(cellY) - 4.5) / 5.0
-		diffuse := ny * lightDirY
-		if diffuse < 0 {
-			diffuse = 0
-		}
-		weave = 0.4 + (diffuse * 0.3)
+				if isWarp {
+					nx := (float64(cellX) - 4.5) / 5.0
+					diffuse := nx * lightDirX
+					if diffuse < 0 {
+						diffuse = 0
+					}
+					weave = 0.4 + (diffuse * 0.3)
+				} else {
+					ny := (float64(cellY) - 4.5) / 5.0
+					diffuse := ny * lightDirY
+					if diffuse < 0 {
+						diffuse = 0
+					}
+					weave = 0.4 + (diffuse * 0.3)
 
-		absNy := ny
-		if absNy < 0 {
-			absNy = -absNy
-		}
-		if absNy < 0.2 {
-			weave += 0.15
-		}
-	}
+					absNy := ny
+					if absNy < 0 {
+						absNy = -absNy
+					}
+					if absNy < 0.2 {
+						weave += 0.15
+					}
+				}
 
-	isValley := cellX == 0 || cellX == 9 || cellY == 0 || cellY == 9
-	varnishPool := 1.0
-	if isValley {
-		weave *= 0.8
-		varnishPool = 0.96
-	}
-	return weave, varnishPool
+				isValley := cellX == 0 || cellX == 9 || cellY == 0 || cellY == 9
+				varnishPool := 1.0
+				if isValley {
+					weave *= 0.8
+					varnishPool = 0.96
+				}
+
+				idx := wy*20 + wx
+				lutWeave[idx] = weave
+				lutVarnishPool[idx] = varnishPool
+			}
+		}
+	})
+
+	idx := (y%20)*20 + (x%20)
+	return lutWeave[idx], lutVarnishPool[idx]
 }
 
 func applySoftLight(a, b, opacity float64) uint8 {
