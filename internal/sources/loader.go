@@ -163,7 +163,7 @@ func (l *Loader) Sync() (int, error) {
 				l.logger.Warn("source sync failed", "line", lne, "error", err)
 			}
 			if count > 0 {
-				atomic.AddInt32(&downloaded, int32(count))
+				atomic.AddInt32(&downloaded, int32(count)) //nolint:gosec // count is small
 			}
 		}(line)
 	}
@@ -217,9 +217,12 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 
 	// Check file size.
 	if l.maxSizeMB > 0 {
-		if size := resp.ContentLength; size > int64(l.maxSizeMB)*1024*1024 {
+		maxBytes := int64(l.maxSizeMB) * 1024 * 1024
+		if size := resp.ContentLength; size > maxBytes {
 			return false, fmt.Errorf("file too large: %d bytes (limit %d MB)", size, l.maxSizeMB)
 		}
+		// Wrap body to prevent DOS from oversized files.
+		resp.Body = http.MaxBytesReader(nil, resp.Body, maxBytes)
 	}
 
 	// Determine extension and potential new path.
