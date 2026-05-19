@@ -1,3 +1,7 @@
+## 2026-05-19 - [High] Prevent Denial of Service (DoS) via Oversized Files
+**Vulnerability:** External image downloads were reading `http.Response.Body` directly into `io.Copy`. This makes the application vulnerable to resource exhaustion (e.g., ZIP bombs or endlessly streaming malicious servers) where the declared `ContentLength` might be spoofed or missing.
+**Learning:** Checking `ContentLength` is insufficient to prevent DoS attacks when streaming from untrusted external sources, as it can be bypassed.
+**Prevention:** Always wrap `http.Response.Body` using `http.MaxBytesReader` before passing it to `io.Copy`. Avoid `io.LimitReader` as it silently truncates the data by returning EOF instead of an error.
 ## 2025-02-26 - [Medium] Fix Potential Slowloris DOS Attack
 **Vulnerability:** Go `http.Server` configured without `ReadHeaderTimeout`, leading to potential Slowloris Denail of Service (DoS) attacks.
 **Learning:** Default Go HTTP server configurations do not enforce timeouts, which is a common security pitfall.
