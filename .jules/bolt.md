@@ -4,3 +4,6 @@
 ## 2026-05-13 - Inline Clamping for Pixel Math
 **Learning:** `math.Min` and `math.Max` in Go are implemented for IEEE 754 floats and handle edge cases like `NaN` and `Inf`. In a tight per-pixel loop like `applySoftLight` inside `ApplyCanvasTexture` handling 1080p images, the function call overhead and complex float handling become a significant bottleneck.
 **Action:** Replace `math.Min` and `math.Max` bounded return values with inline conditional checks (`if v < 0 { return 0 }` etc.) when you know the input range is well-bounded. This reduced execution time by approximately 35%.
+## 2026-05-19 - [Performance Optimization] Precomputing calculateWeave in ApplyCanvasTexture
+**Learning:** `calculateWeave(x, y)` has a math-heavy 20x20 repeating pattern. Precomputing this in a global LUT eliminates duplicate computation.
+**Action:** Changed `calculateWeave` to use a global LUT populated via `sync.Once`.
