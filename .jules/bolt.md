@@ -7,3 +7,6 @@
 ## 2026-05-19 - [Performance Optimization] Precomputing calculateWeave in ApplyCanvasTexture
 **Learning:** `calculateWeave(x, y)` has a math-heavy 20x20 repeating pattern. Precomputing this in a global LUT eliminates duplicate computation.
 **Action:** Changed `calculateWeave` to use a global LUT populated via `sync.Once`.
+## 2026-05-20 - Impasto Calculation Optimization
+**Learning:** In tight per-pixel loops calculating normal mapping differences (`calculateBipolarImpasto`), performing multiple `float64` conversions and division operations across channels is computationally expensive.
+**Action:** Re-order equations to perform subtraction/addition using bit-shifted integer operations (`x << 1`), and replace final divisions with a single precomputed multiplication constant.
