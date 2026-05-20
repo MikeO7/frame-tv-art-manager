@@ -21,7 +21,7 @@ type PexelsClient struct {
 // PexelsPhoto represents the metadata returned by the Pexels API.
 type PexelsPhoto struct {
 	ID  int    `json:"id"`
-	Url string `json:"url"`
+	URL string `json:"url"`
 	Src struct {
 		Original string `json:"original"`
 		Large2x  string `json:"large2x"`
@@ -163,6 +163,7 @@ func (c *PexelsClient) fetchPhotoList(ctx context.Context, apiURL string) ([]str
 		return nil, fmt.Errorf("decode pexels response: %w", err)
 	}
 
+	//nolint:prealloc
 	var urls []string
 	for _, p := range result.Photos {
 		urls = append(urls, p.Src.Original)

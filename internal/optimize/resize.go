@@ -1007,7 +1007,7 @@ func calculateWeave(x, y int) (float64, float64) {
 		}
 	})
 
-	idx := (y%20)*20 + (x%20)
+	idx := (y%20)*20 + (x % 20)
 	return lutWeave[idx], lutVarnishPool[idx]
 }
 

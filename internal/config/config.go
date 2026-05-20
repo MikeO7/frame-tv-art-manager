@@ -128,15 +128,15 @@ type Config struct {
 	// UnsplashSecretKey is the Secret Key for Unsplash.
 	UnsplashSecretKey string
 
-	// NasaApiKey is the API key for NASA APOD downloads.
+	// 	// NasaAPIKey is the API key for NASA APOD downloads.
 	// Defaults to DEMO_KEY if empty.
-	NasaApiKey string
+	NasaAPIKey string
 
-	// PexelsApiKey is the API key for Pexels image downloads.
-	PexelsApiKey string
+	// 	// PexelsAPIKey is the API key for Pexels image downloads.
+	PexelsAPIKey string
 
-	// PixabayApiKey is the API key for Pixabay image downloads.
-	PixabayApiKey string
+	// 	// PixabayAPIKey is the API key for Pixabay image downloads.
+	PixabayAPIKey string
 
 	// --- Image Optimization ---
 
@@ -223,9 +223,9 @@ func Load() (*Config, error) {
 		UnsplashAppID:       envStr("UNSPLASH_APP_ID", ""),
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
 		UnsplashSecretKey:   envStr("UNSPLASH_SECRET_KEY", ""),
-		NasaApiKey:          envStr("NASA_API_KEY", "DEMO_KEY"),
-		PexelsApiKey:        envStr("PEXELS_API_KEY", ""),
-		PixabayApiKey:       envStr("PIXABAY_API_KEY", ""),
+		NasaAPIKey:          envStr("NASA_API_KEY", "DEMO_KEY"),
+		PexelsAPIKey:        envStr("PEXELS_API_KEY", ""),
+		PixabayAPIKey:       envStr("PIXABAY_API_KEY", ""),
 		OptimizeEnabled:     envBoolWithDefault("IMAGE_OPTIMIZE_ENABLED", true),
 		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", false),
 		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
