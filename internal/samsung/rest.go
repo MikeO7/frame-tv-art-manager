@@ -35,7 +35,11 @@ func FetchDeviceInfo(ctx context.Context, host string, port int, timeout time.Du
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	// Prevent DoS / resource exhaustion by enforcing a 1MB maximum read size
+	maxBytes := int64(1 * 1024 * 1024)
+	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
