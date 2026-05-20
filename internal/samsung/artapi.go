@@ -15,29 +15,29 @@ import (
 const keyRequest = "request"
 const keyRequestID = "request_id"
 
-type ArtAPI struct {
-	conn    *Connection
+type artAPI struct {
+	conn    *connection
 	timeout time.Duration
 	logger  *slog.Logger
 }
 
-// NewArtAPI wraps an existing art-endpoint Connection with typed API methods.
-func NewArtAPI(conn *Connection, timeout time.Duration, logger *slog.Logger) *ArtAPI {
-	return &ArtAPI{
+// newArtAPI wraps an existing art-endpoint Connection with typed API methods.
+func newArtAPI(conn *connection, timeout time.Duration, logger *slog.Logger) *artAPI {
+	return &artAPI{
 		conn:    conn,
 		timeout: timeout,
 		logger:  logger,
 	}
 }
 
-// Connection returns the underlying WebSocket connection.
-func (a *ArtAPI) Connection() *Connection {
+// connection returns the underlying WebSocket connection.
+func (a *artAPI) connection() *connection {
 	return a.conn
 }
 
 // GetContentList retrieves the list of artwork on the TV, optionally
 // filtered by category. Use "MY-C0002" for user-uploaded photos.
-func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtContent, error) {
+func (a *artAPI) GetContentList(ctx context.Context, category string) ([]ArtContent, error) {
 	id := newRequestID()
 	req := map[string]any{
 		keyRequest:   "get_content_list",
@@ -89,7 +89,7 @@ func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtCont
 // SendImage sends an image upload request to the TV. The TV responds with
 // D2D connection info that must be used to transfer the actual file bytes
 // via UploadImageD2D.
-func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*connInfo, error) {
+func (a *artAPI) SendImage(ctx context.Context, req SendImageRequest) (*connInfo, error) {
 	id := newRequestID()
 
 	artReq := map[string]any{
@@ -140,7 +140,7 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*connInfo
 
 // WaitForImageAdded blocks until the TV confirms the image was added,
 // returning the assigned content_id.
-func (a *ArtAPI) WaitForImageAdded(ctx context.Context, timeout time.Duration) (string, error) {
+func (a *artAPI) WaitForImageAdded(ctx context.Context, timeout time.Duration) (string, error) {
 	// The TV sends an "image_added" event (not correlated to a request_id).
 	raw, err := a.conn.SendAndWaitEvent(ctx, nil, "image_added", timeout)
 	if err != nil {
@@ -159,7 +159,7 @@ func (a *ArtAPI) WaitForImageAdded(ctx context.Context, timeout time.Duration) (
 
 // RegisterImageAddedListener registers a listener for the "image_added" event
 // before sending the upload, so we don't miss the response.
-func (a *ArtAPI) RegisterImageAddedListener() (waitFn func(ctx context.Context, timeout time.Duration) (string, error)) {
+func (a *artAPI) RegisterImageAddedListener() (waitFn func(ctx context.Context, timeout time.Duration) (string, error)) {
 	ch := make(chan json.RawMessage, 1)
 
 	a.conn.pendingMu.Lock()
@@ -192,7 +192,7 @@ func (a *ArtAPI) RegisterImageAddedListener() (waitFn func(ctx context.Context, 
 }
 
 // DeleteImages removes artwork from the TV by their content IDs.
-func (a *ArtAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
+func (a *artAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
 	id := newRequestID()
 
 	contentIDList := make([]map[string]string, len(contentIDs))
@@ -221,7 +221,7 @@ func (a *ArtAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
 }
 
 // SelectImage sets the currently displayed artwork on the TV.
-func (a *ArtAPI) SelectImage(ctx context.Context, contentID string, show bool) error {
+func (a *artAPI) SelectImage(ctx context.Context, contentID string, show bool) error {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -246,7 +246,7 @@ func (a *ArtAPI) SelectImage(ctx context.Context, contentID string, show bool) e
 }
 
 // GetArtModeStatus returns "on" if the TV is in art mode, "off" otherwise.
-func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
+func (a *artAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -274,7 +274,7 @@ func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 }
 
 // GetSlideshowStatus retrieves the current slideshow configuration.
-func (a *ArtAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
+func (a *artAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -310,7 +310,7 @@ func (a *ArtAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, erro
 }
 
 // SetSlideshowStatus updates the slideshow configuration on the TV.
-func (a *ArtAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) error {
+func (a *artAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) error {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -337,7 +337,7 @@ func (a *ArtAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) erro
 
 // SetBrightness sets the art mode brightness (typically 0–10 or 0–50
 // depending on TV model).
-func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
+func (a *artAPI) SetBrightness(ctx context.Context, value int) error {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -362,7 +362,7 @@ func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
 
 // GetCategories retrieves the list of all artwork categories available on the TV.
 // Example: [{"category_id":"MY-C0002","category_name":"My Photos"}]
-func (a *ArtAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
+func (a *artAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
 	id := newRequestID()
 
 	req := map[string]any{

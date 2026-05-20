@@ -27,8 +27,8 @@ type Client struct {
 	cfg    *config.Config
 	logger *slog.Logger
 
-	artConn *Connection
-	artAPI  *ArtAPI
+	artConn *connection
+	artAPI  *artAPI
 	info    *DeviceInfo
 }
 
@@ -92,7 +92,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 
 	// Step 4: Open WSS connection to art endpoint.
-	c.artConn = NewConnection(
+	c.artConn = newConnection(
 		c.IP, 8002, "com.samsung.art-app",
 		c.cfg.ClientName, tokenFile,
 		c.cfg.ConnectionTimeout, c.logger,
@@ -102,7 +102,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("connect to art endpoint: %w", err)
 	}
 
-	c.artAPI = NewArtAPI(c.artConn, c.cfg.APITimeout, c.logger)
+	c.artAPI = newArtAPI(c.artConn, c.cfg.APITimeout, c.logger)
 
 	// Step 4: Fetch device info.
 	info, err := c.fetchDeviceInfo(ctx, 8002)
@@ -224,11 +224,6 @@ func (c *Client) SetBrightness(ctx context.Context, val int) error {
 // a separate remote control WebSocket connection.
 func (c *Client) TurnOff(ctx context.Context) error {
 	return c.turnOffTV(ctx)
-}
-
-// ArtAPI returns the internal ArtAPI instance.
-func (c *Client) ArtAPI() *ArtAPI {
-	return c.artAPI
 }
 
 // DeviceInfo returns the cached device info, or nil if not fetched.
@@ -354,9 +349,9 @@ func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 }
 
 func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
-	conn := NewConnection(c.IP, port, "samsung.remote.control", c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger)
+	conn := newConnection(c.IP, port, "samsung.remote.control", c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger)
 
-	// NewConnection.Open() handles the handshake and automatically saves
+	// newConnection.Open() handles the handshake and automatically saves
 	// the token to tokenFile if it's received in the ms.channel.connect event.
 	if err := conn.Open(ctx); err != nil {
 		return fmt.Errorf("remote handshake failed: %w", err)
@@ -405,7 +400,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 }
 
 func (c *Client) turnOffTV(ctx context.Context) error {
-	conn := NewConnection(c.IP, 8002, "samsung.remote.control", c.cfg.ClientName, c.tokenFilePath(), c.cfg.ConnectionTimeout, c.logger)
+	conn := newConnection(c.IP, 8002, "samsung.remote.control", c.cfg.ClientName, c.tokenFilePath(), c.cfg.ConnectionTimeout, c.logger)
 
 	if err := conn.Open(ctx); err != nil {
 		return fmt.Errorf("open remote control connection: %w", err)

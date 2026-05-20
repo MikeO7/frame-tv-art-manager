@@ -10,16 +10,16 @@ import (
 	"time"
 )
 
-// PexelsClient handles communication with the Pexels API.
-type PexelsClient struct {
+// pexelsClient handles communication with the Pexels API.
+type pexelsClient struct {
 	apiKey  string
 	client  *http.Client
 	logger  *slog.Logger
 	BaseURL string
 }
 
-// PexelsPhoto represents the metadata returned by the Pexels API.
-type PexelsPhoto struct {
+// pexelsPhoto represents the metadata returned by the Pexels API.
+type pexelsPhoto struct {
 	ID  int    `json:"id"`
 	URL string `json:"url"`
 	Src struct {
@@ -29,8 +29,9 @@ type PexelsPhoto struct {
 	} `json:"src"`
 }
 
-func NewPexelsClient(apiKey string, logger *slog.Logger) *PexelsClient {
-	return &PexelsClient{
+// newPexelsClient creates a new Pexels API client.
+func newPexelsClient(apiKey string, logger *slog.Logger) *pexelsClient {
+	return &pexelsClient{
 		apiKey: apiKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -41,19 +42,19 @@ func NewPexelsClient(apiKey string, logger *slog.Logger) *PexelsClient {
 }
 
 // Search retrieves photos from Pexels based on a search query.
-func (c *PexelsClient) Search(ctx context.Context, query string) ([]string, error) {
+func (c *pexelsClient) Search(ctx context.Context, query string) ([]string, error) {
 	searchURL := fmt.Sprintf("%s/v1/search?query=%s&per_page=10", c.BaseURL, url.QueryEscape(query))
 	return c.fetchPhotoList(ctx, searchURL)
 }
 
 // Curated retrieves the latest curated photos from Pexels.
-func (c *PexelsClient) Curated(ctx context.Context) ([]string, error) {
+func (c *pexelsClient) Curated(ctx context.Context) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/v1/curated?per_page=10", c.BaseURL)
 	return c.fetchPhotoList(ctx, apiURL)
 }
 
 // FetchCollection retrieves all photos from a specific Pexels collection using pagination.
-func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string) ([]string, error) {
+func (c *pexelsClient) FetchCollection(ctx context.Context, collectionID string) ([]string, error) {
 	var allUrls []string
 	page := 1
 
@@ -78,7 +79,7 @@ func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string)
 		}
 
 		var result struct {
-			Media []PexelsPhoto `json:"media"`
+			Media []pexelsPhoto `json:"media"`
 			Page  int           `json:"page"`
 		}
 		maxBytes := int64(10 * 1024 * 1024) // 10MB limit
@@ -113,7 +114,7 @@ func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string)
 }
 
 // FetchPhoto retrieves a single photo by its ID.
-func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
+func (c *pexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
 	apiURL := fmt.Sprintf("%s/v1/photos/%s", c.BaseURL, url.PathEscape(photoID))
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -132,7 +133,7 @@ func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, 
 		return "", fmt.Errorf("pexels api error: %d", resp.StatusCode)
 	}
 
-	var photo PexelsPhoto
+	var photo pexelsPhoto
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
 	if err := json.NewDecoder(reader).Decode(&photo); err != nil {
@@ -142,7 +143,7 @@ func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, 
 	return photo.Src.Original, nil
 }
 
-func (c *PexelsClient) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
+func (c *pexelsClient) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, err
@@ -161,7 +162,7 @@ func (c *PexelsClient) fetchPhotoList(ctx context.Context, apiURL string) ([]str
 	}
 
 	var result struct {
-		Photos []PexelsPhoto `json:"photos"`
+		Photos []pexelsPhoto `json:"photos"`
 	}
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)

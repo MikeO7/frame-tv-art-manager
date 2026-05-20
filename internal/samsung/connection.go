@@ -18,15 +18,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Connection manages a single WSS connection to a Samsung Frame TV endpoint.
+// connection manages a single WSS connection to a Samsung Frame TV endpoint.
 //
 // The TV uses two WebSocket endpoints:
 //   - "com.samsung.art-app"       — for art management (upload, list, select, etc.)
 //   - "samsung.remote.control"    — for remote key commands (power off)
 //
-// Each endpoint requires its own Connection instance, but they share the
+// Each endpoint requires its own connection instance, but they share the
 // same token file for authentication.
-type Connection struct {
+type connection struct {
 	host      string
 	port      int
 	endpoint  string
@@ -46,10 +46,10 @@ type Connection struct {
 	pending   map[string]chan json.RawMessage
 }
 
-// NewConnection creates a new WebSocket connection manager. It does not
+// newConnection creates a new WebSocket connection manager. It does not
 // connect automatically — call Open() to establish the connection.
-func NewConnection(host string, port int, endpoint, name, tokenFile string, timeout time.Duration, logger *slog.Logger) *Connection {
-	return &Connection{
+func newConnection(host string, port int, endpoint, name, tokenFile string, timeout time.Duration, logger *slog.Logger) *connection {
+	return &connection{
 		host:      host,
 		port:      port,
 		endpoint:  endpoint,
@@ -73,7 +73,7 @@ func NewConnection(host string, port int, endpoint, name, tokenFile string, time
 // For the remote control endpoint, only step 1-2 is needed.
 //
 //nolint:gocyclo // Connection handshake sequence is inherently complex
-func (c *Connection) Open(ctx context.Context) error {
+func (c *connection) Open(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -172,7 +172,7 @@ func (c *Connection) Open(ctx context.Context) error {
 }
 
 // Close shuts down the WebSocket connection and waits for the recv loop to exit.
-func (c *Connection) Close() error {
+func (c *connection) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -205,7 +205,7 @@ func (c *Connection) Close() error {
 }
 
 // IsAlive returns true if the connection is open and not closed.
-func (c *Connection) IsAlive() bool {
+func (c *connection) IsAlive() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.conn != nil && !c.closed.Load()
@@ -213,7 +213,7 @@ func (c *Connection) IsAlive() bool {
 
 // SendAndWait sends a JSON payload and waits for a response matching the
 // given request ID. Returns the raw d2d event data JSON.
-func (c *Connection) SendAndWait(ctx context.Context, payload []byte, requestID string, timeout time.Duration) (json.RawMessage, error) {
+func (c *connection) SendAndWait(ctx context.Context, payload []byte, requestID string, timeout time.Duration) (json.RawMessage, error) {
 	ch := make(chan json.RawMessage, 1)
 
 	c.pendingMu.Lock()
@@ -245,12 +245,12 @@ func (c *Connection) SendAndWait(ctx context.Context, payload []byte, requestID 
 
 // SendAndWaitEvent sends a payload and waits for a response matching
 // a specific event name (e.g. "image_added") instead of a request ID.
-func (c *Connection) SendAndWaitEvent(ctx context.Context, payload []byte, eventName string, timeout time.Duration) (json.RawMessage, error) {
+func (c *connection) SendAndWaitEvent(ctx context.Context, payload []byte, eventName string, timeout time.Duration) (json.RawMessage, error) {
 	return c.SendAndWait(ctx, payload, eventName, timeout)
 }
 
 // Send writes a JSON text message to the WebSocket.
-func (c *Connection) Send(payload []byte) error {
+func (c *connection) Send(payload []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -269,7 +269,7 @@ func (c *Connection) Send(payload []byte) error {
 
 // recvLoop reads messages from the WebSocket and routes them to pending
 // request channels based on request_id or event name.
-func (c *Connection) recvLoop() {
+func (c *connection) recvLoop() {
 	defer close(c.recvDone)
 
 	c.mu.Lock()
@@ -305,7 +305,7 @@ func (c *Connection) recvLoop() {
 	}
 }
 
-func (c *Connection) routeD2DEvent(dataRaw json.RawMessage) {
+func (c *connection) routeD2DEvent(dataRaw json.RawMessage) {
 	// Some TVs (like the 2024 model) send 'data' as a JSON-encoded string.
 	// Others send it as a raw JSON object. We try to handle both.
 	var dataToParse []byte = dataRaw
@@ -346,7 +346,7 @@ func (c *Connection) routeD2DEvent(dataRaw json.RawMessage) {
 }
 
 // formatURL builds the WebSocket URL for the specified endpoint.
-func (c *Connection) formatURL(token string) string {
+func (c *connection) formatURL(token string) string {
 	b64Name := base64.StdEncoding.EncodeToString([]byte(c.name))
 	u := url.URL{
 		Scheme: "wss",
@@ -364,7 +364,7 @@ func (c *Connection) formatURL(token string) string {
 
 // readToken reads the saved auth token from the token file.
 // Returns empty string if the file doesn't exist yet.
-func (c *Connection) readToken() string {
+func (c *connection) readToken() string {
 	data, err := os.ReadFile(c.tokenFile)
 	if err != nil {
 		return ""
@@ -374,7 +374,7 @@ func (c *Connection) readToken() string {
 
 // extractAndSaveToken pulls the token from a ms.channel.connect response
 // and writes it to the token file.
-func (c *Connection) extractAndSaveToken(data json.RawMessage) {
+func (c *connection) extractAndSaveToken(data json.RawMessage) {
 	var d struct {
 		Token string `json:"token"`
 	}

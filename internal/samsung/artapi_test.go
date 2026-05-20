@@ -70,12 +70,12 @@ func setupMockArtServer(requestName string, artRespData map[string]any) *httptes
 	}))
 }
 
-func startTestConnection(t *testing.T, server *httptest.Server) *Connection {
+func startTestConnection(t *testing.T, server *httptest.Server) *connection {
 	u, _ := url.Parse(server.URL)
 	host := u.Hostname()
 	port, _ := strconv.Atoi(u.Port())
 
-	conn := NewConnection(host, port, "com.samsung.art-app", "TestClient", t.TempDir()+"/token.txt", 1*time.Second, slog.Default())
+	conn := newConnection(host, port, "com.samsung.art-app", "TestClient", t.TempDir()+"/token.txt", 1*time.Second, slog.Default())
 	if err := conn.Open(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestArtAPI_GetContentList(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	list, err := api.GetContentList(context.Background(), "")
 	if err != nil {
 		t.Fatalf("GetContentList failed: %v", err)
@@ -109,7 +109,7 @@ func TestArtAPI_GetContentList_Filtered(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	list, err := api.GetContentList(context.Background(), "MY-C0002")
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestArtAPI_SendImage(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	info, err := api.SendImage(context.Background(), SendImageRequest{FileType: extJPG, FileSize: 100, Matte: "none"})
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestArtAPI_DeleteImages(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	err := api.DeleteImages(context.Background(), []string{"id1", "id2"})
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +194,7 @@ func TestArtAPI_SelectImage(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	if err := api.SelectImage(context.Background(), "id1", false); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestArtAPI_SetBrightness(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	if err := api.SetBrightness(context.Background(), 5); err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestArtAPI_GetArtModeStatus(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	status, err := api.GetArtModeStatus(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -245,7 +245,7 @@ func TestArtAPI_GetSlideshowStatus(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	ss, err := api.GetSlideshowStatus(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestArtAPI_SetSlideshowStatus(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	err := api.SetSlideshowStatus(context.Background(), SlideshowStatus{Value: "15", Type: "shuffle", CategoryID: testCat1})
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestArtAPI_GetCategories(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	raw, err := api.GetCategories(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +317,7 @@ func TestArtAPI_WaitForImageAdded(t *testing.T) {
 	conn := startTestConnection(t, server)
 	defer func() { _ = conn.Close() }()
 
-	api := NewArtAPI(conn, 1*time.Second, slog.Default())
+	api := newArtAPI(conn, 1*time.Second, slog.Default())
 	id, err := api.WaitForImageAdded(context.Background(), 1*time.Second)
 	if err != nil {
 		t.Fatal(err)

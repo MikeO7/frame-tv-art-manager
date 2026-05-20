@@ -16,12 +16,12 @@ func TestUnsplashClient_FetchPhoto(t *testing.T) {
 		if r.URL.Path != "/photos/123" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		photo := UnsplashPhoto{ID: "123", Width: 100, Height: 100}
+		photo := unsplashPhoto{ID: "123", Width: 100, Height: 100}
 		_ = json.NewEncoder(w).Encode(photo)
 	}))
 	defer server.Close()
 
-	c := NewUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashClient("app", "key", "secret", slog.Default())
 	c.BaseURL = server.URL
 
 	photo, err := c.FetchPhoto(context.Background(), "123")
@@ -38,12 +38,12 @@ func TestUnsplashClient_FetchCollectionPhotos(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
-		photos := []UnsplashPhoto{{ID: "1"}, {ID: "2"}}
+		photos := []unsplashPhoto{{ID: "1"}, {ID: "2"}}
 		_ = json.NewEncoder(w).Encode(photos)
 	}))
 	defer server.Close()
 
-	c := NewUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashClient("app", "key", "secret", slog.Default())
 	c.BaseURL = server.URL
 
 	photos, err := c.FetchCollectionPhotos(context.Background(), "col-abc")
@@ -67,7 +67,7 @@ func TestUnsplashClient_TrackDownload(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashClient("app", "key", "secret", slog.Default())
 	// Set BaseURL to the test server to pass validation
 	c.BaseURL = server.URL
 	c.TrackDownload(context.Background(), server.URL+"/track")
@@ -84,20 +84,20 @@ func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
 		pages++
 		if pages == 1 {
 			// Return a full page
-			photos := make([]UnsplashPhoto, 30)
+			photos := make([]unsplashPhoto, 30)
 			for i := 0; i < 30; i++ {
-				photos[i] = UnsplashPhoto{ID: "p1"}
+				photos[i] = unsplashPhoto{ID: "p1"}
 			}
 			_ = json.NewEncoder(w).Encode(photos)
 		} else {
 			// Return a partial page to end
-			photos := []UnsplashPhoto{{ID: "p2"}}
+			photos := []unsplashPhoto{{ID: "p2"}}
 			_ = json.NewEncoder(w).Encode(photos)
 		}
 	}))
 	defer server.Close()
 
-	c := NewUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashClient("app", "key", "secret", slog.Default())
 	c.BaseURL = server.URL
 
 	photos, err := c.FetchCollectionPhotos(context.Background(), "col-abc")
