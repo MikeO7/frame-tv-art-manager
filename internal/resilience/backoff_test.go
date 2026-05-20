@@ -48,7 +48,7 @@ func TestBackoff(t *testing.T) {
 	}
 }
 
-func TestBackoff_Exponential(t *testing.T) {
+func TestBackoff_Exponential(_ *testing.T) {
 	b := NewBackoff(slog.Default())
 	b.maxDelay = 10 * time.Millisecond
 	ip := "1.1.1.1"

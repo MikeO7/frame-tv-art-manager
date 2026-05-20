@@ -66,27 +66,27 @@ type mockTVClient struct {
 	artMode   bool
 }
 
-func (m *mockTVClient) Connect(ctx context.Context) error { m.connected = true; return nil }
-func (m *mockTVClient) Close() error                      { m.connected = false; return nil }
+func (m *mockTVClient) Connect(_ context.Context) error { m.connected = true; return nil }
+func (m *mockTVClient) Close() error                    { m.connected = false; return nil }
 func (m *mockTVClient) DeviceInfo() *samsung.DeviceInfo {
 	return &samsung.DeviceInfo{ModelName: "Mock TV", PowerState: "on"}
 }
-func (m *mockTVClient) IsInArtMode(ctx context.Context) bool   { return m.artMode }
-func (m *mockTVClient) SaveMetadata(ctx context.Context) error { return nil }
-func (m *mockTVClient) GetUploadedImages(ctx context.Context) ([]samsung.ArtContent, error) {
+func (m *mockTVClient) IsInArtMode(_ context.Context) bool   { return m.artMode }
+func (m *mockTVClient) SaveMetadata(_ context.Context) error { return nil }
+func (m *mockTVClient) GetUploadedImages(_ context.Context) ([]samsung.ArtContent, error) {
 	return []samsung.ArtContent{{ContentID: "id1"}}, nil
 }
-func (m *mockTVClient) Upload(ctx context.Context, filePath, fileType string) (string, error) {
+func (m *mockTVClient) Upload(_ context.Context, _, _ string) (string, error) {
 	return "new-id", nil
 }
-func (m *mockTVClient) DeleteImages(ctx context.Context, ids []string) error { return nil }
-func (m *mockTVClient) SelectImage(ctx context.Context, id string) error     { return nil }
-func (m *mockTVClient) SlideshowStatus(ctx context.Context) (*samsung.SlideshowStatus, error) {
+func (m *mockTVClient) DeleteImages(_ context.Context, _ []string) error { return nil }
+func (m *mockTVClient) SelectImage(_ context.Context, _ string) error    { return nil }
+func (m *mockTVClient) SlideshowStatus(_ context.Context) (*samsung.SlideshowStatus, error) {
 	return &samsung.SlideshowStatus{Value: "3", Type: "slideshow"}, nil
 }
-func (m *mockTVClient) SetSlideshow(ctx context.Context, s samsung.SlideshowStatus) error { return nil }
-func (m *mockTVClient) SetBrightness(ctx context.Context, val int) error                  { return nil }
-func (m *mockTVClient) TurnOff(ctx context.Context) error                                 { return nil }
+func (m *mockTVClient) SetSlideshow(_ context.Context, _ samsung.SlideshowStatus) error { return nil }
+func (m *mockTVClient) SetBrightness(_ context.Context, _ int) error                    { return nil }
+func (m *mockTVClient) TurnOff(_ context.Context) error                                 { return nil }
 
 func createSmallJPEG() []byte {
 	return []byte{
@@ -122,7 +122,7 @@ func TestEngine_RunOnce_Full(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
 		return &mockTVClient{artMode: true}
 	}
 
@@ -145,7 +145,7 @@ func TestEngine_RunOnce_DryRun(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
 		return &mockTVClient{artMode: true}
 	}
 
@@ -163,7 +163,7 @@ func TestEngine_RunOnce_NotArtMode(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
 		return &mockTVClient{artMode: false}
 	}
 
@@ -182,7 +182,7 @@ func TestEngine_RunOnce_UnknownRemoval(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
 		return &mockTVClient{artMode: true}
 	}
 
@@ -200,7 +200,7 @@ func TestEngine_RunLoop(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
 		return &mockTVClient{artMode: true}
 	}
 
@@ -363,7 +363,7 @@ func TestEngine_SyncTV_Success(t *testing.T) {
 		TokenDir:   tmpDir,
 	}
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
 		return &mockTVClient{connected: true, artMode: true}
 	}
 

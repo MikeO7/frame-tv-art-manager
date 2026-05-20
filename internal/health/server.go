@@ -128,6 +128,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 // handleHealth returns a simple 200 OK with basic status.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	_ = r
 	s.status.mu.RLock()
 	defer s.status.mu.RUnlock()
 
@@ -147,6 +148,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleStatus returns detailed per-TV status information.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	_ = r
 	s.status.mu.RLock()
 	defer s.status.mu.RUnlock()
 

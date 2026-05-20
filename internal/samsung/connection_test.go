@@ -64,8 +64,10 @@ func TestConnection_OpenFailure(t *testing.T) {
 
 func TestConnection_SendAndWait(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		upgrader := websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: func(_ *http.Request) bool { return true },
 		}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {

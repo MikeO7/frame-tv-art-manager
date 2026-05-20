@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	//nolint:revive
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
