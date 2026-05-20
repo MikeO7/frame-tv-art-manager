@@ -941,17 +941,19 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 
 func calculateBipolarImpasto(src *image.RGBA, i int) float64 {
 	// Detect ridge direction (Normal Mapping)
-	center := 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
-	left := 0.299*float64(src.Pix[i-4]) + 0.587*float64(src.Pix[i-3]) + 0.114*float64(src.Pix[i-2])
-	top := 0.299*float64(src.Pix[i-src.Stride]) + 0.587*float64(src.Pix[i-src.Stride+1]) + 0.114*float64(src.Pix[i-src.Stride+2])
+	// Factor out constants and 255.0 division to avoid multiple float64 multiplications per channel
+	// 0.299 * (0.15 / 255.0) = 0.00017588235294117646
+	// 0.587 * (0.15 / 255.0) = 0.00034529411764705883
+	// 0.114 * (0.15 / 255.0) = 0.00006705882352941177
 
 	// Create a bipolar offset (-0.15 to 0.15) based on edge direction
 	// This creates highlights on one side of a stroke and shadows on the other
-	dx := (center - left) / 255.0
-	dy := (center - top) / 255.0
-
 	// Virtual Light from Top-Left (-1, -1)
-	return (dx + dy) * 0.15
+	dR := float64(int(src.Pix[i])<<1 - int(src.Pix[i-4]) - int(src.Pix[i-src.Stride]))
+	dG := float64(int(src.Pix[i+1])<<1 - int(src.Pix[i-3]) - int(src.Pix[i-src.Stride+1]))
+	dB := float64(int(src.Pix[i+2])<<1 - int(src.Pix[i-2]) - int(src.Pix[i-src.Stride+2]))
+
+	return dR*0.00017588235294117646 + dG*0.00034529411764705883 + dB*0.00006705882352941177
 }
 
 // calculateWeave computes the interlocking warp-and-weft canvas weave.
