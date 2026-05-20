@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"encoding/json"
 	"github.com/MikeO7/frame-tv-art-manager/internal/brightness"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
@@ -1025,4 +1026,253 @@ func (e *Engine) scanAndOptimize(cycleLog *slog.Logger) (map[string]struct{}, in
 		"optimized", optimized,
 	)
 	return localFiles, optimized, nil
+}
+
+// supportedExtensions lists the image formats the Samsung Frame TV accepts.
+const extPNG = "png"
+const extJPG = "jpg"
+
+var supportedExtensions = map[string]bool{
+	".jpg":  true,
+	".jpeg": true,
+	".png":  true,
+}
+
+// ScanArtworkDir reads a directory and returns the set of image filenames
+// (not full paths) that have supported extensions (.jpg, .jpeg, .png).
+// Only regular files are included — subdirectories are not traversed.
+func ScanArtworkDir(dir string) (map[string]struct{}, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("artwork directory does not exist: %s", dir)
+		}
+		return nil, fmt.Errorf("read artwork dir %s: %w", dir, err)
+	}
+
+	files := make(map[string]struct{})
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if supportedExtensions[ext] {
+			files[entry.Name()] = struct{}{}
+		}
+	}
+
+	return files, nil
+}
+
+// FileTypeFromExt returns the Samsung-compatible file type string
+// ("jpg" or "png") for a given filename.
+func FileTypeFromExt(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".png":
+		return extPNG
+	default:
+		return extJPG // .jpg and .jpeg both → "jpg"
+	}
+}
+
+// Mapping persists the filename→content_id relationship for a single TV.
+// The JSON file tracks which local filenames correspond to which content
+// IDs on the TV, enabling accurate diffing on subsequent sync cycles.
+//
+// File format: { "sunset.jpg": "MY_F0001_abc123", ... }
+type Mapping struct {
+	mu   sync.RWMutex
+	path string
+	data map[string]string // filename → content_id
+}
+
+// LoadMapping reads a mapping file from disk. If the file does not exist,
+// returns an empty mapping that will be created on first Save().
+func LoadMapping(dir, tvIP string) (*Mapping, error) {
+	safeIP := strings.ReplaceAll(tvIP, ".", "_")
+	path := filepath.Clean(filepath.Join(dir, fmt.Sprintf("tv_%s_mapping.json", safeIP)))
+
+	m := &Mapping{
+		path: path,
+		data: make(map[string]string),
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return m, nil // new mapping, will be created on Save
+		}
+		return nil, fmt.Errorf("read mapping %s: %w", path, err)
+	}
+
+	if err := json.Unmarshal(raw, &m.data); err != nil {
+		return nil, fmt.Errorf("parse mapping %s: %w", path, err)
+	}
+
+	return m, nil
+}
+
+// Save writes the mapping to disk as formatted JSON.
+func (m *Mapping) Save() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if err := os.MkdirAll(filepath.Dir(m.path), 0700); err != nil { //nolint:gosec // Need inclusive permissions
+		return fmt.Errorf("create mapping dir: %w", err)
+	}
+
+	raw, err := json.MarshalIndent(m.data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal mapping: %w", err)
+	}
+
+	return os.WriteFile(m.path, raw, 0600) //nolint:gosec // Need inclusive permissions
+}
+
+// Set records a filename→content_id association.
+func (m *Mapping) Set(filename, contentID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.data[filename] = contentID
+}
+
+// Delete removes a filename from the mapping.
+func (m *Mapping) Delete(filename string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.data, filename)
+}
+
+// DeleteBatch removes multiple filenames from the mapping under a single lock.
+func (m *Mapping) DeleteBatch(filenames []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, filename := range filenames {
+		delete(m.data, filename)
+	}
+}
+
+// Rename updates a filename in the mapping while preserving its content_id.
+// Returns true if the old filename was found and migrated.
+func (m *Mapping) Rename(oldName, newName string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id, ok := m.data[oldName]; ok {
+		delete(m.data, oldName)
+		m.data[newName] = id
+		return true
+	}
+	return false
+}
+
+// GetContentID returns the content_id for a filename, and whether it exists.
+func (m *Mapping) GetContentID(filename string) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	id, ok := m.data[filename]
+	return id, ok
+}
+
+// GetFilename returns the filename for a content_id, and whether it exists.
+func (m *Mapping) GetFilename(contentID string) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for f, id := range m.data {
+		if id == contentID {
+			return f, true
+		}
+	}
+	return "", false
+}
+
+// AllContentIDs returns a copy of the full filename→content_id map.
+func (m *Mapping) AllContentIDs() map[string]string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[string]string, len(m.data))
+	for k, v := range m.data {
+		out[k] = v
+	}
+	return out
+}
+
+// TrackedFilenames returns the set of filenames that have known content IDs.
+func (m *Mapping) TrackedFilenames() map[string]struct{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[string]struct{}, len(m.data))
+	for k := range m.data {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+// MatteConfig holds per-image matte overrides loaded from a mattes.json
+// file in the artwork directory.
+//
+// File format:
+//
+//	{
+//	  "sunset.jpg": "shadowbox_polar",
+//	  "portrait.jpg": "modern_apricot",
+//	  "_default": "none"
+//	}
+//
+// If a file has no entry, the _default is used. If no _default is set,
+// the global MATTE_STYLE from config is used.
+type MatteConfig struct {
+	overrides    map[string]string
+	defaultMatte string
+}
+
+// LoadMatteConfig reads a mattes.json file from the artwork directory.
+// Returns a no-op config if the file doesn't exist.
+func LoadMatteConfig(artworkDir string) *MatteConfig {
+	mc := &MatteConfig{
+		overrides: make(map[string]string),
+	}
+
+	path := filepath.Join(artworkDir, "mattes.json")
+	raw, err := os.ReadFile(filepath.Clean(path)) //nolint:gosec // Path is controlled
+	if err != nil {
+		return mc // file doesn't exist, use global matte
+	}
+
+	var data map[string]string
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return mc
+	}
+
+	for k, v := range data {
+		if k == "_default" {
+			mc.defaultMatte = v
+		} else {
+			mc.overrides[k] = v
+		}
+	}
+
+	return mc
+}
+
+// GetMatte returns the matte style for a specific filename.
+// Priority: per-file override > mattes.json _default > globalMatte.
+func (mc *MatteConfig) GetMatte(filename, globalMatte string) string {
+	if matte, ok := mc.overrides[filename]; ok {
+		return matte
+	}
+	if mc.defaultMatte != "" {
+		return mc.defaultMatte
+	}
+	return globalMatte
+}
+
+// String returns a summary of the matte configuration for logging.
+func (mc *MatteConfig) String() string {
+	if len(mc.overrides) == 0 && mc.defaultMatte == "" {
+		return "global (no per-file overrides)"
+	}
+	return fmt.Sprintf("%d per-file overrides, default=%q",
+		len(mc.overrides), mc.defaultMatte)
 }
