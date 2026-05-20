@@ -112,15 +112,15 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool,
 	}
 
 	// 3. Sharpening pass.
-	rgba = Sharpen(rgba)
+	rgba = sharpen(rgba)
 
 	// 4. Apply Museum Mode aesthetic if enabled.
 	if cfg.MuseumModeEnabled {
-		rgba = ApplyMuseumMode(rgba, cfg.MuseumModeIntensity)
+		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
 	}
 
 	// 5. Final Dithering pass (always last to prevent banding).
-	rgba = Dither(rgba)
+	rgba = dither(rgba)
 
 	// 6. Save back to disk.
 	//nolint:gosec // Path is internally controlled
@@ -558,8 +558,8 @@ func getRectSum(integral []float64, x1, y1, x2, y2, w int) float64 {
 	return res
 }
 
-// ApplyMuseumMode orchestrates a suite of visual filters to simulate physical artwork.
-func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
+// applyMuseumMode orchestrates a suite of visual filters to simulate physical artwork.
+func applyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	// Clamp intensity to 0-10 (used only for texture).
 	if intensity > 10 {
 		intensity = 10
@@ -569,25 +569,25 @@ func ApplyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	}
 
 	// 1. Unify the collection (Luminance and Color DNA)
-	img := UnifyCollection(src)
+	img := unifyCollection(src)
 
 	// 2. Apply Physical Texture (Weave, Impasto, Craquelure, Varnish)
 	// If intensity is 0, skip the physical texture to only keep color unification.
 	if intensity > 0 {
-		img = ApplyCanvasTexture(img, intensity)
+		img = applyCanvasTexture(img, intensity)
 	}
 
 	// 3. Final Museum Polish (Peak Clamping)
-	img = GalleryMasterPolish(img)
+	img = galleryMasterPolish(img)
 
 	return img
 }
 
-// UnifyCollection ensures that diverse images share a consistent "visual DNA".
+// unifyCollection ensures that diverse images share a consistent "visual DNA".
 // Uses a Black-Point Preserving Power Curve to maintain depth.
 //
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
-func UnifyCollection(src *image.RGBA) *image.RGBA {
+func unifyCollection(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
@@ -742,10 +742,10 @@ func UnifyCollection(src *image.RGBA) *image.RGBA {
 	return src
 }
 
-// GalleryMasterPolish implements high-end gallery techniques to remove "digital glow".
+// galleryMasterPolish implements high-end gallery techniques to remove "digital glow".
 //
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
-func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
+func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
@@ -843,10 +843,10 @@ func GalleryMasterPolish(src *image.RGBA) *image.RGBA {
 	return src
 }
 
-// ApplyCanvasTexture simulates a physical interlocking warp-and-weft weave.
+// applyCanvasTexture simulates a physical interlocking warp-and-weft weave.
 // Uses a 3D Normal-Mapping simulation for light-aware depth and anisotropic grain.
 // UPDATED: Now includes Virtual Impasto (stroke height) and Craquelure (age splitting).
-func ApplyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
+func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	// 1. Updated Opacity Curve (1.32 multiplier for more distinct jumps)
 	opacity := 0.04 * math.Pow(1.32, float64(intensity-1))
 	if opacity > 0.60 {
@@ -1029,10 +1029,10 @@ func applySoftLight(a, b, opacity float64) uint8 {
 	return uint8(v)
 }
 
-// Dither applies a subtle random jitter to pixel values to break up banding in gradients.
+// dither applies a subtle random jitter to pixel values to break up banding in gradients.
 //
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
-func Dither(src *image.RGBA) *image.RGBA {
+func dither(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
@@ -1107,10 +1107,10 @@ func Dither(src *image.RGBA) *image.RGBA {
 	return src
 }
 
-// Sharpen applies a high-performance 3x3 sharpening kernel to the image.
+// sharpen applies a high-performance 3x3 sharpening kernel to the image.
 //
 //nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
-func Sharpen(src *image.RGBA) *image.RGBA {
+func sharpen(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	dst := image.NewRGBA(bounds)
 	width, height := bounds.Dx(), bounds.Dy()

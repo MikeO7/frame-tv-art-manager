@@ -15,12 +15,12 @@ import (
 // graceHours is how many hours after offTime to keep the window open.
 // tz is an IANA timezone string (e.g. "America/Denver").
 func IsWithinAutoOffWindow(autoOffTime string, graceHours float64, tz string) bool {
-	return IsWithinAutoOffWindowAt(autoOffTime, graceHours, tz, time.Now())
+	return isWithinAutoOffWindowAt(autoOffTime, graceHours, tz, time.Now())
 }
 
-// IsWithinAutoOffWindowAt is the testable version of IsWithinAutoOffWindow
+// isWithinAutoOffWindowAt is the testable version of IsWithinAutoOffWindow
 // that accepts an explicit "now" time.
-func IsWithinAutoOffWindowAt(autoOffTime string, graceHours float64, tz string, now time.Time) bool {
+func isWithinAutoOffWindowAt(autoOffTime string, graceHours float64, tz string, now time.Time) bool {
 	if autoOffTime == "" {
 		return false
 	}

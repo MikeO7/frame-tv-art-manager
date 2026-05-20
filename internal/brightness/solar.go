@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-// SunElevation calculates the sun's elevation angle in degrees for a given
+// sunElevation calculates the sun's elevation angle in degrees for a given
 // geographic position and time. Uses a simplified solar position algorithm
 // based on the solar declination and hour angle.
 //
 // Returns negative values when the sun is below the horizon.
-func SunElevation(lat, lon float64, t time.Time) float64 {
+func sunElevation(lat, lon float64, t time.Time) float64 {
 	// Convert to UTC for calculation.
 	t = t.UTC()
 
@@ -96,7 +96,7 @@ func SunElevation(lat, lon float64, t time.Time) float64 {
 	return elevation
 }
 
-// BrightnessFromElevation maps a sun elevation angle (degrees) to a
+// brightnessFromElevation maps a sun elevation angle (degrees) to a
 // brightness value between min and max using the Kasten-Young atmospheric
 // attenuation model.
 //
@@ -104,7 +104,7 @@ func SunElevation(lat, lon float64, t time.Time) float64 {
 // At zenith (90°), returns close to max.
 //
 //nolint:revive
-func BrightnessFromElevation(elevation float64, min, max int) int {
+func brightnessFromElevation(elevation float64, min, max int) int {
 	if elevation <= 0 {
 		return min
 	}
@@ -140,7 +140,7 @@ func Calculate(lat, lon *float64, tz string, min, max int) (*int, error) {
 	}
 
 	now := time.Now().In(loc)
-	elevation := SunElevation(*lat, *lon, now)
-	b := BrightnessFromElevation(elevation, min, max)
+	elevation := sunElevation(*lat, *lon, now)
+	b := brightnessFromElevation(elevation, min, max)
 	return &b, nil
 }
