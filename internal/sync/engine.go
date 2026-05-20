@@ -25,7 +25,6 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/sanitize"
 	"github.com/MikeO7/frame-tv-art-manager/internal/schedule"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
-	gosync "sync"
 )
 
 const (
@@ -1084,7 +1083,7 @@ func FileTypeFromExt(filename string) string {
 //
 // File format: { "sunset.jpg": "MY_F0001_abc123", ... }
 type Mapping struct {
-	mu   gosync.RWMutex
+	mu   sync.RWMutex
 	path string
 	data map[string]string // filename → content_id
 }
