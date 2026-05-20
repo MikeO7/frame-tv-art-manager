@@ -119,7 +119,9 @@ func (c *PixabayClient) fetchPhotoList(ctx context.Context, apiURL string) ([]st
 	var result struct {
 		Hits []PixabayPhoto `json:"hits"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
+	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode pixabay response: %w", err)
 	}
 
