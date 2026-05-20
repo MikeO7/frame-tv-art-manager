@@ -11,6 +11,8 @@ import (
 
 func TestUnsplashClient_FetchPhoto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		if r.URL.Path != "/photos/123" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -34,6 +36,8 @@ func TestUnsplashClient_FetchPhoto(t *testing.T) {
 
 func TestUnsplashClient_FetchCollectionPhotos(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		photos := []UnsplashPhoto{{ID: "1"}, {ID: "2"}}
 		_ = json.NewEncoder(w).Encode(photos)
 	}))
@@ -55,6 +59,8 @@ func TestUnsplashClient_FetchCollectionPhotos(t *testing.T) {
 func TestUnsplashClient_TrackDownload(t *testing.T) {
 	tracked := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		if r.URL.Path == "/track" {
 			tracked = true
 		}
@@ -73,6 +79,8 @@ func TestUnsplashClient_TrackDownload(t *testing.T) {
 func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
 	pages := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		pages++
 		if pages == 1 {
 			// Return a full page

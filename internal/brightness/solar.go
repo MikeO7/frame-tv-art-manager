@@ -102,6 +102,8 @@ func SunElevation(lat, lon float64, t time.Time) float64 {
 //
 // When elevation is at or below 0° (sunset/night), returns min.
 // At zenith (90°), returns close to max.
+//
+//nolint:revive
 func BrightnessFromElevation(elevation float64, min, max int) int {
 	if elevation <= 0 {
 		return min
@@ -125,6 +127,8 @@ func BrightnessFromElevation(elevation float64, min, max int) int {
 // or nil if solar brightness is not applicable.
 //
 // Parameters lat and lon may be nil if solar is disabled.
+//
+//nolint:revive
 func Calculate(lat, lon *float64, tz string, min, max int) (*int, error) {
 	if lat == nil || lon == nil {
 		return nil, nil

@@ -14,6 +14,8 @@ const testImageURL = "http://x.com/orig.jpg"
 
 func TestNASAClient_FetchAPOD(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		resp := APODResponse{
 			Title: "Test APOD",
 			URL:   "http://x.com/a.jpg",
@@ -39,6 +41,8 @@ func TestNASAClient_FetchAPOD(t *testing.T) {
 
 func TestNASAClient_Search(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		if strings.Contains(r.URL.Path, "/search") {
 			result := struct {
 				Collection struct {
@@ -72,6 +76,8 @@ func TestNASAClient_Search(t *testing.T) {
 
 func TestArticClient_Search(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Data []ArticArtwork `json:"data"`
 		}{
@@ -94,6 +100,8 @@ func TestArticClient_Search(t *testing.T) {
 
 func TestPixabayClient_Search(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Hits []PixabayPhoto `json:"hits"`
 		}{
@@ -116,6 +124,8 @@ func TestPixabayClient_Search(t *testing.T) {
 
 func TestArticClient_FetchPhoto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Data ArticArtwork `json:"data"`
 		}{
@@ -140,6 +150,8 @@ func TestArticClient_FetchPhoto(t *testing.T) {
 
 func TestPexelsClient_FetchPhoto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		photo := PexelsPhoto{ID: 123}
 		photo.Src.Original = testImageURL
 		_ = json.NewEncoder(w).Encode(photo)
@@ -160,6 +172,8 @@ func TestPexelsClient_FetchPhoto(t *testing.T) {
 
 func TestPixabayClient_FetchPhoto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Hits []PixabayPhoto `json:"hits"`
 		}{
@@ -183,6 +197,8 @@ func TestPixabayClient_FetchPhoto(t *testing.T) {
 
 func TestPexelsClient_Search(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Photos []PexelsPhoto `json:"photos"`
 		}{
@@ -208,6 +224,8 @@ func TestPexelsClient_Search(t *testing.T) {
 
 func TestPexelsClient_Curated(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Photos []PexelsPhoto `json:"photos"`
 		}{
@@ -232,6 +250,8 @@ func TestPexelsClient_Curated(t *testing.T) {
 
 func TestPexelsClient_FetchCollection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Media []PexelsPhoto `json:"media"`
 		}{
@@ -256,6 +276,8 @@ func TestPexelsClient_FetchCollection(t *testing.T) {
 
 func TestPixabayClient_EditorsChoice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Hits []PixabayPhoto `json:"hits"`
 		}{
@@ -279,6 +301,8 @@ func TestPixabayClient_EditorsChoice(t *testing.T) {
 
 func TestPixabayClient_User(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		result := struct {
 			Hits []PixabayPhoto `json:"hits"`
 		}{

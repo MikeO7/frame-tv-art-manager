@@ -2,11 +2,16 @@ package samsung
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -46,7 +51,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	// Step 1: Wake-on-LAN.
 	if c.cfg.TVMAC != "" {
 		c.logger.Info("sending Wake-on-LAN", "mac", c.cfg.TVMAC)
-		if err := SendWOL(c.cfg.TVMAC); err != nil {
+		if err := c.sendWOL(c.cfg.TVMAC); err != nil {
 			c.logger.Warn("WoL failed", "error", err)
 		} else {
 			// Brief pause to let the TV wake up.
@@ -57,7 +62,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	// Step 2: Silent REST Gate.
 	if c.cfg.EnableRESTGate {
 		c.logger.Debug("checking REST gate")
-		inArtMode, err := CheckArtModeGate(ctx, c.IP, c.cfg.GateTimeout)
+		inArtMode, err := c.checkArtModeGate(ctx)
 		if err != nil {
 			c.logger.Warn("REST gate error", "error", err)
 		}
@@ -78,7 +83,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		if err := os.MkdirAll(filepath.Dir(tokenFile), 0700); err != nil { //nolint:gosec // Required token directory permissions
 			return fmt.Errorf("create token dir: %w", err)
 		}
-		if err := EnsureToken(ctx, c.IP, 8002, c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger); err != nil {
+		if err := c.ensureToken(ctx, tokenFile, 8002); err != nil {
 			c.logger.Warn("remote handshake failed (TV might be off or busy)", "error", err)
 		} else {
 			// Brief pause to let the TV stabilize after authorization.
@@ -100,7 +105,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.artAPI = NewArtAPI(c.artConn, c.cfg.APITimeout, c.logger)
 
 	// Step 4: Fetch device info.
-	info, err := FetchDeviceInfo(ctx, c.IP, 8002, c.cfg.APITimeout)
+	info, err := c.fetchDeviceInfo(ctx, 8002)
 	if err != nil {
 		c.logger.Warn("could not fetch device info", "error", err)
 		// Non-fatal — we can still sync without device info.
@@ -218,11 +223,7 @@ func (c *Client) SetBrightness(ctx context.Context, val int) error {
 // TurnOff powers off the TV by holding KEY_POWER for 3 seconds via
 // a separate remote control WebSocket connection.
 func (c *Client) TurnOff(ctx context.Context) error {
-	return TurnOffTV(
-		ctx, c.IP, 8002,
-		c.cfg.ClientName, c.tokenFilePath(),
-		c.cfg.ConnectionTimeout, c.logger,
-	)
+	return c.turnOffTV(ctx)
 }
 
 // ArtAPI returns the internal ArtAPI instance.
@@ -281,5 +282,182 @@ func (c *Client) SaveMetadata(ctx context.Context) error {
 	}
 
 	c.logger.Info("metadata saved", "path", path)
+	return nil
+}
+
+var macSeparators = regexp.MustCompile(`[^a-fA-F0-9]`)
+
+func (c *Client) sendWOL(macAddr string) error {
+	if macAddr == "" {
+		return nil
+	}
+
+	// Strip separators and validate length.
+	clean := macSeparators.ReplaceAllString(macAddr, "")
+	clean = strings.ToLower(clean)
+	if len(clean) != 12 {
+		return fmt.Errorf("invalid MAC address %q: expected 12 hex chars, got %d", macAddr, len(clean))
+	}
+
+	// Parse hex bytes.
+	mac := make([]byte, 6)
+	for i := 0; i < 6; i++ {
+		_, err := fmt.Sscanf(clean[i*2:i*2+2], "%02x", &mac[i])
+		if err != nil {
+			return fmt.Errorf("invalid MAC address %q: %w", macAddr, err)
+		}
+	}
+
+	// Build magic packet: 6 bytes of 0xFF followed by MAC repeated 16 times.
+	packet := make([]byte, 6+16*6)
+	for i := 0; i < 6; i++ {
+		packet[i] = 0xFF
+	}
+	for i := 0; i < 16; i++ {
+		copy(packet[6+i*6:], mac)
+	}
+
+	// Send to broadcast address.
+	conn, err := net.Dial("udp", "255.255.255.255:9")
+	if err != nil {
+		return fmt.Errorf("dial broadcast: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	_, err = conn.Write(packet)
+	if err != nil {
+		return fmt.Errorf("send magic packet: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
+	url := fmt.Sprintf("http://%s:8001/ms/art", c.IP)
+
+	client := &http.Client{Timeout: c.cfg.GateTimeout}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, nil // not a fatal error, just can't check
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		// Timeout or connection refused — TV is off or busy.
+		return false, nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Only 200 OK means the TV is definitively in Art Mode.
+	return resp.StatusCode == http.StatusOK, nil
+}
+
+func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
+	conn := NewConnection(c.IP, port, "samsung.remote.control", c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger)
+
+	// NewConnection.Open() handles the handshake and automatically saves
+	// the token to tokenFile if it's received in the ms.channel.connect event.
+	if err := conn.Open(ctx); err != nil {
+		return fmt.Errorf("remote handshake failed: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	return nil
+}
+
+func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, error) {
+	url := fmt.Sprintf("https://%s:%d/api/v2/", c.IP, port)
+
+	client := &http.Client{
+		Timeout: c.cfg.APITimeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Required: Samsung TVs use self-signed certs for local REST; verification would prevent connection.
+		},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s: %w", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Prevent DoS / resource exhaustion by enforcing a 1MB maximum read size
+	maxBytes := int64(1 * 1024 * 1024)
+	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	var envelope DeviceInfoResponse
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("parse device info: %w", err)
+	}
+
+	return &envelope.Device, nil
+}
+
+func (c *Client) turnOffTV(ctx context.Context) error {
+	conn := NewConnection(c.IP, 8002, "samsung.remote.control", c.cfg.ClientName, c.tokenFilePath(), c.cfg.ConnectionTimeout, c.logger)
+
+	if err := conn.Open(ctx); err != nil {
+		return fmt.Errorf("open remote control connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Send KEY_POWER press.
+	press := map[string]any{
+		keyMethod: "ms.remote.control",
+		keyParams: map[string]any{
+			"Cmd":          "Press",
+			"DataOfCmd":    "KEY_POWER",
+			"Option":       stringFalse,
+			"TypeOfRemote": "SendRemoteKey",
+		},
+	}
+
+	pressPayload, err := json.Marshal(press)
+	if err != nil {
+		return fmt.Errorf("marshal press command: %w", err)
+	}
+
+	if err := conn.Send(pressPayload); err != nil {
+		return fmt.Errorf("send press: %w", err)
+	}
+
+	// Hold for 3 seconds.
+	select {
+	case <-time.After(3 * time.Second):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// Send KEY_POWER release.
+	release := map[string]any{
+		keyMethod: "ms.remote.control",
+		keyParams: map[string]any{
+			"Cmd":          "Release",
+			"DataOfCmd":    "KEY_POWER",
+			"Option":       stringFalse,
+			"TypeOfRemote": "SendRemoteKey",
+		},
+	}
+
+	releasePayload, err := json.Marshal(release)
+	if err != nil {
+		return fmt.Errorf("marshal release command: %w", err)
+	}
+
+	if err := conn.Send(releasePayload); err != nil {
+		return fmt.Errorf("send release: %w", err)
+	}
+
 	return nil
 }

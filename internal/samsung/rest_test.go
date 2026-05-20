@@ -3,6 +3,7 @@ package samsung
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 func TestFetchDeviceInfo(t *testing.T) {
@@ -22,6 +25,8 @@ func TestFetchDeviceInfo(t *testing.T) {
 		}
 
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
 			if r.URL.Path != "/api/v2/" {
 				t.Errorf("expected path /api/v2/, got %s", r.URL.Path)
 			}
@@ -34,7 +39,8 @@ func TestFetchDeviceInfo(t *testing.T) {
 		host, portStr, _ := net.SplitHostPort(u.Host)
 		port, _ := strconv.Atoi(portStr)
 
-		info, err := FetchDeviceInfo(context.Background(), host, port, 2*time.Second)
+		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		info, err := c.fetchDeviceInfo(context.Background(), port)
 		if err != nil {
 			t.Fatalf("FetchDeviceInfo failed: %v", err)
 		}
@@ -52,6 +58,9 @@ func TestFetchDeviceInfo(t *testing.T) {
 
 	t.Run("InvalidJSON", func(t *testing.T) {
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
+			_ = r
 			_, _ = w.Write([]byte(`{invalid json`))
 		}))
 		defer server.Close()
@@ -60,7 +69,8 @@ func TestFetchDeviceInfo(t *testing.T) {
 		host, portStr, _ := net.SplitHostPort(u.Host)
 		port, _ := strconv.Atoi(portStr)
 
-		_, err := FetchDeviceInfo(context.Background(), host, port, 2*time.Second)
+		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		_, err := c.fetchDeviceInfo(context.Background(), port)
 		if err == nil {
 			t.Fatal("expected error due to invalid JSON, got nil")
 		}
@@ -68,6 +78,9 @@ func TestFetchDeviceInfo(t *testing.T) {
 
 	t.Run("Timeout", func(t *testing.T) {
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
+			_ = r
 			time.Sleep(100 * time.Millisecond)
 			_, _ = w.Write([]byte(`{}`))
 		}))
@@ -78,7 +91,8 @@ func TestFetchDeviceInfo(t *testing.T) {
 		port, _ := strconv.Atoi(portStr)
 
 		// Set a very short timeout.
-		_, err := FetchDeviceInfo(context.Background(), host, port, 10*time.Millisecond)
+		c := NewClient(host, &config.Config{APITimeout: 10 * time.Millisecond}, slog.Default())
+		_, err := c.fetchDeviceInfo(context.Background(), port)
 		if err == nil {
 			t.Fatal("expected timeout error, got nil")
 		}
@@ -86,6 +100,9 @@ func TestFetchDeviceInfo(t *testing.T) {
 
 	t.Run("ContextCancelled", func(t *testing.T) {
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
+			_ = r
 			time.Sleep(100 * time.Millisecond)
 		}))
 		defer server.Close()
@@ -97,7 +114,8 @@ func TestFetchDeviceInfo(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
-		_, err := FetchDeviceInfo(ctx, host, port, 2*time.Second)
+		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		_, err := c.fetchDeviceInfo(ctx, port)
 		if err == nil {
 			t.Fatal("expected error due to cancelled context, got nil")
 		}

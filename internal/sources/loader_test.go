@@ -18,6 +18,8 @@ func TestLoader_Sync_Direct(t *testing.T) {
 
 	// Mock server for direct downloads
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		w.Header().Set("Content-Type", "image/jpeg")
 		_, _ = w.Write([]byte("fake-image-data"))
 	}))
@@ -173,6 +175,8 @@ func TestLoader_Sync_Failures(t *testing.T) {
 
 	// Mock server that returns 404
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -265,6 +269,8 @@ sources:
 
 	// Mock server for downloads
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "/photos") {
 			_, _ = w.Write([]byte(`{"id": "u1", "links": {"download_location": "http://example.com/download"}}`))
@@ -309,6 +315,8 @@ func TestLoader_handleArticLine_Search(t *testing.T) {
 	l := NewLoader("", artworkDir, "", "", "", "", "", "", 0, 0, slog.Default())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
 		if strings.Contains(r.URL.Path, "/search") {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
