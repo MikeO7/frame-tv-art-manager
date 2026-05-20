@@ -75,7 +75,11 @@ func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 		}
 
 		var pagePhotos []UnsplashPhoto
-		if err := json.NewDecoder(resp.Body).Decode(&pagePhotos); err != nil {
+		// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
+		maxBytes := int64(5 * 1024 * 1024)
+		reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+
+		if err := json.NewDecoder(reader).Decode(&pagePhotos); err != nil {
 			return nil, fmt.Errorf("decode unsplash response: %w", err)
 		}
 
@@ -121,7 +125,11 @@ func (c *UnsplashClient) FetchPhoto(ctx context.Context, photoID string) (*Unspl
 	}
 
 	var photo UnsplashPhoto
-	if err := json.NewDecoder(resp.Body).Decode(&photo); err != nil {
+	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
+	maxBytes := int64(5 * 1024 * 1024)
+	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+
+	if err := json.NewDecoder(reader).Decode(&photo); err != nil {
 		return nil, fmt.Errorf("decode unsplash response: %w", err)
 	}
 
