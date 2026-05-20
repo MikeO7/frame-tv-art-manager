@@ -63,10 +63,8 @@ func (c *NASAClient) FetchAPOD(ctx context.Context) (*APODResponse, error) {
 	}
 
 	var apod APODResponse
-	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-	maxBytes := int64(5 * 1024 * 1024)
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 	if err := json.NewDecoder(reader).Decode(&apod); err != nil {
 		return nil, fmt.Errorf("decode nasa apod response: %w", err)
 	}
@@ -108,10 +106,8 @@ func (c *NASAClient) SearchNASAImageLibrary(ctx context.Context, query string) (
 		} `json:"collection"`
 	}
 
-	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-	maxBytes := int64(5 * 1024 * 1024)
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode nasa search response: %w", err)
 	}
@@ -153,10 +149,8 @@ func (c *NASAClient) fetchNASAAssetManifest(ctx context.Context, href string) (s
 	defer func() { _ = resp.Body.Close() }()
 
 	var manifest []string
-	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-	maxBytes := int64(5 * 1024 * 1024)
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 	if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
 		return "", err
 	}

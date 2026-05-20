@@ -62,10 +62,8 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 		Data []ArticArtwork `json:"data"`
 	}
 
-	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-	maxBytes := int64(5 * 1024 * 1024)
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode artic search response: %w", err)
 	}
@@ -106,10 +104,8 @@ func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error)
 		Data ArticArtwork `json:"data"`
 	}
 
-	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-	maxBytes := int64(5 * 1024 * 1024)
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return "", fmt.Errorf("decode artic response: %w", err)
 	}

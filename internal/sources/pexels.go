@@ -81,10 +81,8 @@ func (c *PexelsClient) FetchCollection(ctx context.Context, collectionID string)
 			Media []PexelsPhoto `json:"media"`
 			Page  int           `json:"page"`
 		}
-		// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-		maxBytes := int64(5 * 1024 * 1024)
+		maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 		reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 		if err := json.NewDecoder(reader).Decode(&result); err != nil {
 			return nil, fmt.Errorf("decode pexels response: %w", err)
 		}
@@ -135,10 +133,8 @@ func (c *PexelsClient) FetchPhoto(ctx context.Context, photoID string) (string, 
 	}
 
 	var photo PexelsPhoto
-	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-	maxBytes := int64(5 * 1024 * 1024)
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 	if err := json.NewDecoder(reader).Decode(&photo); err != nil {
 		return "", fmt.Errorf("decode pexels response: %w", err)
 	}
@@ -167,10 +163,8 @@ func (c *PexelsClient) fetchPhotoList(ctx context.Context, apiURL string) ([]str
 	var result struct {
 		Photos []PexelsPhoto `json:"photos"`
 	}
-	// Prevent DoS / resource exhaustion by enforcing a 5MB maximum read size
-	maxBytes := int64(5 * 1024 * 1024)
+	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode pexels response: %w", err)
 	}
