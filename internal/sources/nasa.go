@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// NASAClient handles communication with NASA APIs.
-type NASAClient struct {
+// nasaClient handles communication with NASA APIs.
+type nasaClient struct {
 	apiKey    string
 	client    *http.Client
 	logger    *slog.Logger
@@ -20,12 +20,12 @@ type NASAClient struct {
 	SearchURL string
 }
 
-// NewNASAClient creates a new NASA API client.
-func NewNASAClient(apiKey string, logger *slog.Logger) *NASAClient {
+// newNASAClient creates a new NASA API client.
+func newNASAClient(apiKey string, logger *slog.Logger) *nasaClient {
 	if apiKey == "" {
 		apiKey = "DEMO_KEY"
 	}
-	return &NASAClient{
+	return &nasaClient{
 		apiKey: apiKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -36,8 +36,8 @@ func NewNASAClient(apiKey string, logger *slog.Logger) *NASAClient {
 	}
 }
 
-// APODResponse represents the response from NASA's APOD API.
-type APODResponse struct {
+// apodResponse represents the response from NASA's APOD API.
+type apodResponse struct {
 	Title string `json:"title"`
 	URL   string `json:"url"`
 	HDURL string `json:"hdurl"`
@@ -45,7 +45,7 @@ type APODResponse struct {
 }
 
 // FetchAPOD retrieves today's Astronomy Picture of the Day.
-func (c *NASAClient) FetchAPOD(ctx context.Context) (*APODResponse, error) {
+func (c *nasaClient) FetchAPOD(ctx context.Context) (*apodResponse, error) {
 	url := fmt.Sprintf("%s/planetary/apod?api_key=%s", c.BaseURL, c.apiKey)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -62,7 +62,7 @@ func (c *NASAClient) FetchAPOD(ctx context.Context) (*APODResponse, error) {
 		return nil, fmt.Errorf("nasa apod api error: %d", resp.StatusCode)
 	}
 
-	var apod APODResponse
+	var apod apodResponse
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
 	if err := json.NewDecoder(reader).Decode(&apod); err != nil {
@@ -77,7 +77,7 @@ func (c *NASAClient) FetchAPOD(ctx context.Context) (*APODResponse, error) {
 }
 
 // SearchNASAImageLibrary searches for high-resolution images in the NASA library.
-func (c *NASAClient) SearchNASAImageLibrary(ctx context.Context, query string) ([]string, error) {
+func (c *nasaClient) SearchNASAImageLibrary(ctx context.Context, query string) ([]string, error) {
 	searchURL := fmt.Sprintf("%s/search?q=%s&media_type=image", c.SearchURL, url.QueryEscape(query))
 	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 	if err != nil {
@@ -136,7 +136,7 @@ func (c *NASAClient) SearchNASAImageLibrary(ctx context.Context, query string) (
 }
 
 // fetchNASAAssetManifest resolves the actual high-res image link from a NASA manifest.
-func (c *NASAClient) fetchNASAAssetManifest(ctx context.Context, href string) (string, error) {
+func (c *nasaClient) fetchNASAAssetManifest(ctx context.Context, href string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", href, nil)
 	if err != nil {
 		return "", err

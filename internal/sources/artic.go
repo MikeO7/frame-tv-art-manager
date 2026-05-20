@@ -10,17 +10,17 @@ import (
 	"time"
 )
 
-// ArticClient handles communication with the Art Institute of Chicago API.
-type ArticClient struct {
+// articClient handles communication with the Art Institute of Chicago API.
+type articClient struct {
 	client      *http.Client
 	logger      *slog.Logger
 	BaseURL     string
 	IIIFBaseURL string
 }
 
-// NewArticClient creates a new Art Institute of Chicago API client.
-func NewArticClient(logger *slog.Logger) *ArticClient {
-	return &ArticClient{
+// newArticClient creates a new Art Institute of Chicago API client.
+func newArticClient(logger *slog.Logger) *articClient {
+	return &articClient{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -30,15 +30,15 @@ func NewArticClient(logger *slog.Logger) *ArticClient {
 	}
 }
 
-// ArticArtwork represents a masterpiece returned by the Artic API.
-type ArticArtwork struct {
+// articArtwork represents a masterpiece returned by the Artic API.
+type articArtwork struct {
 	ID      int    `json:"id"`
 	Title   string `json:"title"`
 	ImageID string `json:"image_id"`
 }
 
 // Search Masterpieces from the Artic library.
-func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error) {
+func (c *articClient) Search(ctx context.Context, query string) ([]string, error) {
 	// Search for artworks with an image_id (meaning they have a digitizable image)
 	searchURL := fmt.Sprintf("%s/api/v1/artworks/search?q=%s&fields=id,title,image_id&limit=10", c.BaseURL, url.QueryEscape(query))
 	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
@@ -59,7 +59,7 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 	}
 
 	var result struct {
-		Data []ArticArtwork `json:"data"`
+		Data []articArtwork `json:"data"`
 	}
 
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
@@ -81,7 +81,7 @@ func (c *ArticClient) Search(ctx context.Context, query string) ([]string, error
 }
 
 // FetchPhoto retrieves a single masterpiece by its ID.
-func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error) {
+func (c *articClient) FetchPhoto(ctx context.Context, id string) (string, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/artworks/%s?fields=id,title,image_id", c.BaseURL, url.PathEscape(id))
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -101,7 +101,7 @@ func (c *ArticClient) FetchPhoto(ctx context.Context, id string) (string, error)
 	}
 
 	var result struct {
-		Data ArticArtwork `json:"data"`
+		Data articArtwork `json:"data"`
 	}
 
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit

@@ -16,7 +16,7 @@ func TestNASAClient_FetchAPOD(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
-		resp := APODResponse{
+		resp := apodResponse{
 			Title: "Test APOD",
 			URL:   "http://x.com/a.jpg",
 			HDURL: "http://x.com/hd.jpg",
@@ -26,7 +26,7 @@ func TestNASAClient_FetchAPOD(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewNASAClient("key", slog.Default())
+	c := newNASAClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	apod, err := c.FetchAPOD(context.Background())
@@ -62,7 +62,7 @@ func TestNASAClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewNASAClient("key", slog.Default())
+	c := newNASAClient("key", slog.Default())
 	c.SearchURL = server.URL
 
 	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")
@@ -79,15 +79,15 @@ func TestArticClient_Search(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Data []ArticArtwork `json:"data"`
+			Data []articArtwork `json:"data"`
 		}{
-			Data: []ArticArtwork{{ID: 456, ImageID: "a1"}},
+			Data: []articArtwork{{ID: 456, ImageID: "a1"}},
 		}
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewArticClient(slog.Default())
+	c := newArticClient(slog.Default())
 	c.BaseURL = server.URL
 	urls, err := c.Search(context.Background(), "monet")
 	if err != nil {
@@ -103,15 +103,15 @@ func TestPixabayClient_Search(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Hits []PixabayPhoto `json:"hits"`
+			Hits []pixabayPhoto `json:"hits"`
 		}{
-			Hits: []PixabayPhoto{{ID: 101, LargeImageURL: testImageURL}},
+			Hits: []pixabayPhoto{{ID: 101, LargeImageURL: testImageURL}},
 		}
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewPixabayClient("key", slog.Default())
+	c := newPixabayClient("key", slog.Default())
 	c.BaseURL = server.URL
 	urls, err := c.Search(context.Background(), "nature")
 	if err != nil {
@@ -127,15 +127,15 @@ func TestArticClient_FetchPhoto(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Data ArticArtwork `json:"data"`
+			Data articArtwork `json:"data"`
 		}{
-			Data: ArticArtwork{ID: 1, Title: "Art", ImageID: "img123"},
+			Data: articArtwork{ID: 1, Title: "Art", ImageID: "img123"},
 		}
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewArticClient(slog.Default())
+	c := newArticClient(slog.Default())
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "1")
@@ -152,13 +152,13 @@ func TestPexelsClient_FetchPhoto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
-		photo := PexelsPhoto{ID: 123}
+		photo := pexelsPhoto{ID: 123}
 		photo.Src.Original = testImageURL
 		_ = json.NewEncoder(w).Encode(photo)
 	}))
 	defer server.Close()
 
-	c := NewPexelsClient("key", slog.Default())
+	c := newPexelsClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "123")
@@ -175,15 +175,15 @@ func TestPixabayClient_FetchPhoto(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Hits []PixabayPhoto `json:"hits"`
+			Hits []pixabayPhoto `json:"hits"`
 		}{
-			Hits: []PixabayPhoto{{ID: 1, ImageURL: testImageURL}},
+			Hits: []pixabayPhoto{{ID: 1, ImageURL: testImageURL}},
 		}
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewPixabayClient("key", slog.Default())
+	c := newPixabayClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "1")
@@ -200,16 +200,16 @@ func TestPexelsClient_Search(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Photos []PexelsPhoto `json:"photos"`
+			Photos []pexelsPhoto `json:"photos"`
 		}{
-			Photos: []PexelsPhoto{{ID: 1}},
+			Photos: []pexelsPhoto{{ID: 1}},
 		}
 		result.Photos[0].Src.Original = testImageURL
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewPexelsClient("key", slog.Default())
+	c := newPexelsClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.Search(context.Background(), "nature")
@@ -227,16 +227,16 @@ func TestPexelsClient_Curated(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Photos []PexelsPhoto `json:"photos"`
+			Photos []pexelsPhoto `json:"photos"`
 		}{
-			Photos: []PexelsPhoto{{ID: 1}},
+			Photos: []pexelsPhoto{{ID: 1}},
 		}
 		result.Photos[0].Src.Original = testImageURL
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewPexelsClient("key", slog.Default())
+	c := newPexelsClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.Curated(context.Background())
@@ -253,16 +253,16 @@ func TestPexelsClient_FetchCollection(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Media []PexelsPhoto `json:"media"`
+			Media []pexelsPhoto `json:"media"`
 		}{
-			Media: []PexelsPhoto{{ID: 1}},
+			Media: []pexelsPhoto{{ID: 1}},
 		}
 		result.Media[0].Src.Original = testImageURL
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewPexelsClient("key", slog.Default())
+	c := newPexelsClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.FetchCollection(context.Background(), "abc")
@@ -279,15 +279,15 @@ func TestPixabayClient_EditorsChoice(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Hits []PixabayPhoto `json:"hits"`
+			Hits []pixabayPhoto `json:"hits"`
 		}{
-			Hits: []PixabayPhoto{{ID: 1, LargeImageURL: testImageURL}},
+			Hits: []pixabayPhoto{{ID: 1, LargeImageURL: testImageURL}},
 		}
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewPixabayClient("key", slog.Default())
+	c := newPixabayClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.EditorsChoice(context.Background())
@@ -304,15 +304,15 @@ func TestPixabayClient_User(t *testing.T) {
 		_ = w
 		_ = r
 		result := struct {
-			Hits []PixabayPhoto `json:"hits"`
+			Hits []pixabayPhoto `json:"hits"`
 		}{
-			Hits: []PixabayPhoto{{ID: 1, LargeImageURL: testImageURL}},
+			Hits: []pixabayPhoto{{ID: 1, LargeImageURL: testImageURL}},
 		}
 		_ = json.NewEncoder(w).Encode(result)
 	}))
 	defer server.Close()
 
-	c := NewPixabayClient("key", slog.Default())
+	c := newPixabayClient("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.User(context.Background(), "user123")

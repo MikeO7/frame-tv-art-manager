@@ -44,11 +44,11 @@ type Loader struct {
 	artworkDir         string
 	logger             *slog.Logger
 	client             *http.Client
-	unsplash           *UnsplashClient
-	nasa               *NASAClient
-	artic              *ArticClient
-	pexels             *PexelsClient
-	pixabay            *PixabayClient
+	unsplash           *unsplashClient
+	nasa               *nasaClient
+	artic              *articClient
+	pexels             *pexelsClient
+	pixabay            *pixabayClient
 	maxImages          int
 	maxSizeMB          int
 	index              map[string]string // hash -> filename (content deduplication)
@@ -72,11 +72,11 @@ func NewLoader(cfg *config.Config, logger *slog.Logger) *Loader {
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		unsplash:  NewUnsplashClient(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger),
-		nasa:      NewNASAClient(cfg.NasaAPIKey, logger),
-		artic:     NewArticClient(logger),
-		pexels:    NewPexelsClient(cfg.PexelsAPIKey, logger),
-		pixabay:   NewPixabayClient(cfg.PixabayAPIKey, logger),
+		unsplash:  newUnsplashClient(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger),
+		nasa:      newNASAClient(cfg.NasaAPIKey, logger),
+		artic:     newArticClient(logger),
+		pexels:    newPexelsClient(cfg.PexelsAPIKey, logger),
+		pixabay:   newPixabayClient(cfg.PixabayAPIKey, logger),
 		index:     make(map[string]string),
 		prefixMap: make(map[string]string),
 		visited:   make(map[string]bool),
@@ -404,7 +404,7 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error
 	}
 
 	ctx := context.Background()
-	var photos []UnsplashPhoto
+	var photos []unsplashPhoto
 
 	switch parts[1] {
 	case "collection":
@@ -418,7 +418,7 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error
 		if err != nil {
 			return 0, err
 		}
-		photos = []UnsplashPhoto{*p}
+		photos = []unsplashPhoto{*p}
 	default:
 		return 0, fmt.Errorf("unknown unsplash type: %s", parts[1])
 	}
@@ -434,7 +434,7 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error
 		}
 
 		wg.Add(1)
-		go func(ph UnsplashPhoto) {
+		go func(ph unsplashPhoto) {
 			defer wg.Done()
 			// Prefer RAW for maximum quality, with Frame TV friendly width.
 			url := ph.URLs.Raw + "&w=3840&q=95&fm=jpg"

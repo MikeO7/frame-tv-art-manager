@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// UnsplashClient handles communication with the Unsplash API.
-type UnsplashClient struct {
+// unsplashClient handles communication with the Unsplash API.
+type unsplashClient struct {
 	appID     string
 	accessKey string
 	secretKey string
@@ -20,8 +20,8 @@ type UnsplashClient struct {
 	BaseURL   string
 }
 
-// UnsplashPhoto represents the metadata returned by the Unsplash API.
-type UnsplashPhoto struct {
+// unsplashPhoto represents the metadata returned by the Unsplash API.
+type unsplashPhoto struct {
 	ID     string `json:"id"`
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
@@ -35,9 +35,9 @@ type UnsplashPhoto struct {
 	} `json:"urls"`
 }
 
-// NewUnsplashClient creates a new client for the Unsplash API.
-func NewUnsplashClient(appID, accessKey, secretKey string, logger *slog.Logger) *UnsplashClient {
-	return &UnsplashClient{
+// newUnsplashClient creates a new client for the Unsplash API.
+func newUnsplashClient(appID, accessKey, secretKey string, logger *slog.Logger) *unsplashClient {
+	return &unsplashClient{
 		appID:     appID,
 		accessKey: accessKey,
 		secretKey: secretKey,
@@ -50,8 +50,8 @@ func NewUnsplashClient(appID, accessKey, secretKey string, logger *slog.Logger) 
 }
 
 // FetchCollectionPhotos retrieves all photos from a specific Unsplash collection using pagination.
-func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID string) ([]UnsplashPhoto, error) {
-	var allPhotos []UnsplashPhoto
+func (c *unsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID string) ([]unsplashPhoto, error) {
+	var allPhotos []unsplashPhoto
 	page := 1
 
 	for {
@@ -74,7 +74,7 @@ func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 			return nil, fmt.Errorf("unsplash api error: %d", resp.StatusCode)
 		}
 
-		var pagePhotos []UnsplashPhoto
+		var pagePhotos []unsplashPhoto
 		maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 		reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
 		if err := json.NewDecoder(reader).Decode(&pagePhotos); err != nil {
@@ -103,7 +103,7 @@ func (c *UnsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 }
 
 // FetchPhoto retrieves metadata for a single Unsplash photo.
-func (c *UnsplashClient) FetchPhoto(ctx context.Context, photoID string) (*UnsplashPhoto, error) {
+func (c *unsplashClient) FetchPhoto(ctx context.Context, photoID string) (*unsplashPhoto, error) {
 	apiURL := fmt.Sprintf("%s/photos/%s", c.BaseURL, url.PathEscape(photoID))
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -122,7 +122,7 @@ func (c *UnsplashClient) FetchPhoto(ctx context.Context, photoID string) (*Unspl
 		return nil, fmt.Errorf("unsplash api error: %d", resp.StatusCode)
 	}
 
-	var photo UnsplashPhoto
+	var photo unsplashPhoto
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
 	if err := json.NewDecoder(reader).Decode(&photo); err != nil {
@@ -134,7 +134,7 @@ func (c *UnsplashClient) FetchPhoto(ctx context.Context, photoID string) (*Unspl
 
 // TrackDownload triggers the Unsplash "download" endpoint for a photo.
 // This is required by the Unsplash API Terms of Service.
-func (c *UnsplashClient) TrackDownload(ctx context.Context, downloadLocation string) {
+func (c *unsplashClient) TrackDownload(ctx context.Context, downloadLocation string) {
 	// Prevent SSRF and API key leakage by validating the domain.
 	parsedURL, err := url.Parse(downloadLocation)
 	if err != nil {

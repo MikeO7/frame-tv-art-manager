@@ -10,16 +10,16 @@ import (
 	"time"
 )
 
-// PixabayClient handles communication with the Pixabay API.
-type PixabayClient struct {
+// pixabayClient handles communication with the Pixabay API.
+type pixabayClient struct {
 	apiKey  string
 	client  *http.Client
 	logger  *slog.Logger
 	BaseURL string
 }
 
-// PixabayPhoto represents the metadata returned by the Pixabay API.
-type PixabayPhoto struct {
+// pixabayPhoto represents the metadata returned by the Pixabay API.
+type pixabayPhoto struct {
 	ID            int    `json:"id"`
 	PageURL       string `json:"pageURL"`
 	LargeImageURL string `json:"largeImageURL"`
@@ -27,8 +27,8 @@ type PixabayPhoto struct {
 	ImageURL      string `json:"imageURL"` // Original high-res (requires approved access)
 }
 
-func NewPixabayClient(apiKey string, logger *slog.Logger) *PixabayClient {
-	return &PixabayClient{
+func newPixabayClient(apiKey string, logger *slog.Logger) *pixabayClient {
+	return &pixabayClient{
 		apiKey: apiKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -39,17 +39,17 @@ func NewPixabayClient(apiKey string, logger *slog.Logger) *PixabayClient {
 }
 
 // Search retrieves photos from Pixabay based on a search query with pagination.
-func (c *PixabayClient) Search(ctx context.Context, query string) ([]string, error) {
+func (c *pixabayClient) Search(ctx context.Context, query string) ([]string, error) {
 	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&q=%s&image_type=photo", c.BaseURL, c.apiKey, url.QueryEscape(query)))
 }
 
 // EditorsChoice retrieves all editor's choice photos from Pixabay with pagination.
-func (c *PixabayClient) EditorsChoice(ctx context.Context) ([]string, error) {
+func (c *pixabayClient) EditorsChoice(ctx context.Context) ([]string, error) {
 	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&editors_choice=true&image_type=photo", c.BaseURL, c.apiKey))
 }
 
 // FetchPhoto retrieves a single photo by its ID.
-func (c *PixabayClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
+func (c *pixabayClient) FetchPhoto(ctx context.Context, photoID string) (string, error) {
 	u := fmt.Sprintf("%s?key=%s&id=%s", c.BaseURL, c.apiKey, url.QueryEscape(photoID))
 	urls, err := c.fetchPhotoList(ctx, u)
 	if err != nil {
@@ -62,11 +62,11 @@ func (c *PixabayClient) FetchPhoto(ctx context.Context, photoID string) (string,
 }
 
 // User retrieves all photos from a specific Pixabay user with pagination.
-func (c *PixabayClient) User(ctx context.Context, userID string) ([]string, error) {
+func (c *pixabayClient) User(ctx context.Context, userID string) ([]string, error) {
 	return c.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&user_id=%s&image_type=photo", c.BaseURL, c.apiKey, url.QueryEscape(userID)))
 }
 
-func (c *PixabayClient) fetchAllPages(ctx context.Context, baseURL string) ([]string, error) {
+func (c *pixabayClient) fetchAllPages(ctx context.Context, baseURL string) ([]string, error) {
 	var allUrls []string
 	page := 1
 
@@ -100,7 +100,7 @@ func (c *PixabayClient) fetchAllPages(ctx context.Context, baseURL string) ([]st
 	return allUrls, nil
 }
 
-func (c *PixabayClient) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
+func (c *pixabayClient) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func (c *PixabayClient) fetchPhotoList(ctx context.Context, apiURL string) ([]st
 	}
 
 	var result struct {
-		Hits []PixabayPhoto `json:"hits"`
+		Hits []pixabayPhoto `json:"hits"`
 	}
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
