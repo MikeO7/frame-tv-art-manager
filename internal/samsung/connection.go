@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
+	"crypto/rand"
 	"github.com/gorilla/websocket"
 )
 
@@ -424,5 +424,9 @@ func ArtAppRequest(data map[string]any) ([]byte, error) {
 
 // NewRequestID generates a new UUID string for art API request correlation.
 func NewRequestID() string {
-	return uuid.New().String()
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
