@@ -17,7 +17,7 @@ import (
 
 func TestArtAppRequest(t *testing.T) {
 	data := map[string]any{"hello": "world"}
-	b, err := ArtAppRequest(data)
+	b, err := artAppRequest(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +45,8 @@ func TestArtAppRequest(t *testing.T) {
 }
 
 func TestNewRequestID(t *testing.T) {
-	id1 := NewRequestID()
-	id2 := NewRequestID()
+	id1 := newRequestID()
+	id2 := newRequestID()
 	if id1 == id2 {
 		t.Error("expected unique IDs")
 	}

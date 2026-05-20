@@ -182,7 +182,7 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType string) (string,
 	}
 
 	// Step 2: Transfer the file over D2D socket.
-	if err := UploadImageD2D(ctx, *connInfo, filePath, fileType, c.cfg.ConnectionTimeout); err != nil {
+	if err := uploadImageD2D(ctx, *connInfo, filePath, fileType, c.cfg.ConnectionTimeout); err != nil {
 		return "", fmt.Errorf("d2d transfer: %w", err)
 	}
 
@@ -396,7 +396,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	var envelope DeviceInfoResponse
+	var envelope deviceInfoResponse
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("parse device info: %w", err)
 	}

@@ -41,9 +41,9 @@ type ArtContent struct {
 	CategoryID string `json:"category_id"`
 }
 
-// ConnInfo holds the D2D socket connection details returned by the TV
+// connInfo holds the D2D socket connection details returned by the TV
 // when accepting an image upload request.
-type ConnInfo struct {
+type connInfo struct {
 	IP      string      `json:"ip"`
 	Port    json.Number `json:"port"`
 	Key     string      `json:"key"`
@@ -70,13 +70,13 @@ type SendImageRequest struct {
 	Matte    string // matte style or "none"
 }
 
-// DeviceInfoResponse is the raw JSON envelope from GET /api/v2/.
-type DeviceInfoResponse struct {
+// deviceInfoResponse is the raw JSON envelope from GET /api/v2/.
+type deviceInfoResponse struct {
 	Device DeviceInfo `json:"device"`
 }
 
-// ArtResponse is the raw d2d.service.message.event data envelope.
-type ArtResponse struct {
+// artResponse is the raw d2d.service.message.event data envelope.
+type artResponse struct {
 	Event     string `json:"event"`
 	RequestID string `json:"request_id"`
 	ID        string `json:"id"`

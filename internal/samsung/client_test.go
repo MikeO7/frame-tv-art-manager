@@ -61,7 +61,7 @@ func TestDeviceInfo_IsOn(t *testing.T) {
 func TestArtResponse_ConnInfoParsing(t *testing.T) {
 	// Test the parsing logic we saw in ArtAPI.SendImage
 	rawJSON := `{"ip":"127.0.0.1","port":12345}`
-	var ci ConnInfo
+	var ci connInfo
 	if err := json.Unmarshal([]byte(rawJSON), &ci); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}

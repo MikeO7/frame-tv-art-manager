@@ -38,7 +38,7 @@ func (a *ArtAPI) Connection() *Connection {
 // GetContentList retrieves the list of artwork on the TV, optionally
 // filtered by category. Use "MY-C0002" for user-uploaded photos.
 func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtContent, error) {
-	id := NewRequestID()
+	id := newRequestID()
 	req := map[string]any{
 		keyRequest:   "get_content_list",
 		"id":         id,
@@ -48,7 +48,7 @@ func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtCont
 		req["category_id"] = category
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -58,7 +58,7 @@ func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtCont
 		return nil, fmt.Errorf("get_content_list: %w", err)
 	}
 
-	var resp ArtResponse
+	var resp artResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
@@ -89,8 +89,8 @@ func (a *ArtAPI) GetContentList(ctx context.Context, category string) ([]ArtCont
 // SendImage sends an image upload request to the TV. The TV responds with
 // D2D connection info that must be used to transfer the actual file bytes
 // via UploadImageD2D.
-func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo, error) {
-	id := NewRequestID()
+func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*connInfo, error) {
+	id := newRequestID()
 
 	artReq := map[string]any{
 		keyRequest:   "send_image",
@@ -108,7 +108,7 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 		"file_size":         req.FileSize,
 	}
 
-	payload, err := ArtAppRequest(artReq)
+	payload, err := artAppRequest(artReq)
 	if err != nil {
 		return nil, fmt.Errorf("build send_image request: %w", err)
 	}
@@ -119,7 +119,7 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 	}
 
 	a.logger.Debug("send_image raw response", "raw", string(raw))
-	var resp ArtResponse
+	var resp artResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("parse send_image response: %w", err)
 	}
@@ -129,13 +129,13 @@ func (a *ArtAPI) SendImage(ctx context.Context, req SendImageRequest) (*ConnInfo
 	}
 
 	a.logger.Debug("send_image conn_info string", "conn_info", resp.ConnInfo)
-	var connInfo ConnInfo
-	if err := json.Unmarshal([]byte(resp.ConnInfo), &connInfo); err != nil {
+	var ci connInfo
+	if err := json.Unmarshal([]byte(resp.ConnInfo), &ci); err != nil {
 		return nil, fmt.Errorf("parse conn_info: %w", err)
 	}
-	a.logger.Debug("send_image parsed conn_info", "ip", connInfo.IP, "port", connInfo.Port)
+	a.logger.Debug("send_image parsed conn_info", "ip", ci.IP, "port", ci.Port)
 
-	return &connInfo, nil
+	return &ci, nil
 }
 
 // WaitForImageAdded blocks until the TV confirms the image was added,
@@ -149,7 +149,7 @@ func (a *ArtAPI) WaitForImageAdded(ctx context.Context, timeout time.Duration) (
 		return "", fmt.Errorf("wait for image_added: %w", err)
 	}
 
-	var resp ArtResponse
+	var resp artResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return "", fmt.Errorf("parse image_added: %w", err)
 	}
@@ -178,7 +178,7 @@ func (a *ArtAPI) RegisterImageAddedListener() (waitFn func(ctx context.Context, 
 			if !ok {
 				return "", ErrNotConnected
 			}
-			var resp ArtResponse
+			var resp artResponse
 			if err := json.Unmarshal(data, &resp); err != nil {
 				return "", fmt.Errorf("parse image_added: %w", err)
 			}
@@ -193,7 +193,7 @@ func (a *ArtAPI) RegisterImageAddedListener() (waitFn func(ctx context.Context, 
 
 // DeleteImages removes artwork from the TV by their content IDs.
 func (a *ArtAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
-	id := NewRequestID()
+	id := newRequestID()
 
 	contentIDList := make([]map[string]string, len(contentIDs))
 	for i, cid := range contentIDs {
@@ -207,7 +207,7 @@ func (a *ArtAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
 		"content_id_list": contentIDList,
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return fmt.Errorf("build delete request: %w", err)
 	}
@@ -222,7 +222,7 @@ func (a *ArtAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
 
 // SelectImage sets the currently displayed artwork on the TV.
 func (a *ArtAPI) SelectImage(ctx context.Context, contentID string, show bool) error {
-	id := NewRequestID()
+	id := newRequestID()
 
 	req := map[string]any{
 		keyRequest:   "select_image",
@@ -232,7 +232,7 @@ func (a *ArtAPI) SelectImage(ctx context.Context, contentID string, show bool) e
 		"show":       show,
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return fmt.Errorf("build select_image request: %w", err)
 	}
@@ -247,7 +247,7 @@ func (a *ArtAPI) SelectImage(ctx context.Context, contentID string, show bool) e
 
 // GetArtModeStatus returns "on" if the TV is in art mode, "off" otherwise.
 func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
-	id := NewRequestID()
+	id := newRequestID()
 
 	req := map[string]any{
 		keyRequest:   "get_artmode_status",
@@ -255,7 +255,7 @@ func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 		keyRequestID: id,
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return "", fmt.Errorf("build get_artmode_status request: %w", err)
 	}
@@ -265,7 +265,7 @@ func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("get_artmode_status: %w", err)
 	}
 
-	var resp ArtResponse
+	var resp artResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return "", fmt.Errorf("parse artmode_status: %w", err)
 	}
@@ -275,7 +275,7 @@ func (a *ArtAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 
 // GetSlideshowStatus retrieves the current slideshow configuration.
 func (a *ArtAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
-	id := NewRequestID()
+	id := newRequestID()
 
 	req := map[string]any{
 		keyRequest:   "get_slideshow_status",
@@ -283,7 +283,7 @@ func (a *ArtAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, erro
 		keyRequestID: id,
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("build get_slideshow_status request: %w", err)
 	}
@@ -311,7 +311,7 @@ func (a *ArtAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, erro
 
 // SetSlideshowStatus updates the slideshow configuration on the TV.
 func (a *ArtAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) error {
-	id := NewRequestID()
+	id := newRequestID()
 
 	req := map[string]any{
 		keyRequest:    "set_slideshow_status",
@@ -322,7 +322,7 @@ func (a *ArtAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) erro
 		"type":        s.Type,
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return fmt.Errorf("build set_slideshow_status request: %w", err)
 	}
@@ -338,7 +338,7 @@ func (a *ArtAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) erro
 // SetBrightness sets the art mode brightness (typically 0–10 or 0–50
 // depending on TV model).
 func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
-	id := NewRequestID()
+	id := newRequestID()
 
 	req := map[string]any{
 		keyRequest:   "set_brightness",
@@ -347,7 +347,7 @@ func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
 		"value":      value,
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return fmt.Errorf("build set_brightness request: %w", err)
 	}
@@ -363,7 +363,7 @@ func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
 // GetCategories retrieves the list of all artwork categories available on the TV.
 // Example: [{"category_id":"MY-C0002","category_name":"My Photos"}]
 func (a *ArtAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
-	id := NewRequestID()
+	id := newRequestID()
 
 	req := map[string]any{
 		keyRequest:   "get_categories",
@@ -371,7 +371,7 @@ func (a *ArtAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
 		keyRequestID: id,
 	}
 
-	payload, err := ArtAppRequest(req)
+	payload, err := artAppRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("build get_categories request: %w", err)
 	}
