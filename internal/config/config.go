@@ -128,14 +128,14 @@ type Config struct {
 	// UnsplashSecretKey is the Secret Key for Unsplash.
 	UnsplashSecretKey string
 
-	// 	// NasaAPIKey is the API key for NASA APOD downloads.
+	// NasaAPIKey is the API key for NASA APOD downloads.
 	// Defaults to DEMO_KEY if empty.
 	NasaAPIKey string
 
-	// 	// PexelsAPIKey is the API key for Pexels image downloads.
+	// PexelsAPIKey is the API key for Pexels image downloads.
 	PexelsAPIKey string
 
-	// 	// PixabayAPIKey is the API key for Pixabay image downloads.
+	// PixabayAPIKey is the API key for Pixabay image downloads.
 	PixabayAPIKey string
 
 	// --- Image Optimization ---
