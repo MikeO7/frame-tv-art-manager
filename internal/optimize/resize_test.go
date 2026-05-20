@@ -84,7 +84,7 @@ func TestSharpen(t *testing.T) {
 	// Set a pixel to create contrast
 	img.Set(5, 5, color.RGBA{255, 255, 255, 255})
 
-	sharpened := Sharpen(img)
+	sharpened := sharpen(img)
 	if sharpened.Bounds() != img.Bounds() {
 		t.Error("sharpened image bounds mismatch")
 	}
@@ -96,7 +96,7 @@ func TestSharpen(t *testing.T) {
 
 func TestDither(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
-	dithered := Dither(img)
+	dithered := dither(img)
 	if dithered.Bounds() != img.Bounds() {
 		t.Error("dithered image bounds mismatch")
 	}
@@ -135,7 +135,7 @@ func BenchmarkSharpen(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Sharpen(img)
+		sharpen(img)
 	}
 }
 
@@ -165,6 +165,6 @@ func BenchmarkDither(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Dither(img)
+		dither(img)
 	}
 }

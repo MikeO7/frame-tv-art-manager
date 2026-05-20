@@ -62,7 +62,7 @@ func TestBrightnessFromElevation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := BrightnessFromElevation(tc.elevation, tc.min, tc.max)
+			got := brightnessFromElevation(tc.elevation, tc.min, tc.max)
 
 			// Allow ±1 for floating-point rounding in brightness mapping.
 			if got < tc.want-1 || got > tc.want+1 {
@@ -82,14 +82,14 @@ func TestSunElevation_KnownValues(t *testing.T) {
 	// June 21, 2024 ~19:00 UTC ≈ 13:00 MDT (near solar noon).
 	summerNoon := time.Date(2024, 6, 21, 19, 0, 0, 0, time.UTC)
 
-	elev := SunElevation(denverLat, denverLon, summerNoon)
+	elev := sunElevation(denverLat, denverLon, summerNoon)
 	if elev < 50 || elev > 80 {
 		t.Errorf("Denver summer noon elevation = %.1f°, expected 50-80°", elev)
 	}
 
 	// Same location at midnight — sun should be well below horizon.
 	midnight := time.Date(2024, 6, 22, 7, 0, 0, 0, time.UTC) // 01:00 MDT
-	elevNight := SunElevation(denverLat, denverLon, midnight)
+	elevNight := sunElevation(denverLat, denverLon, midnight)
 	if elevNight > 0 {
 		t.Errorf("Denver midnight elevation = %.1f°, expected negative", elevNight)
 	}

@@ -106,9 +106,9 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := IsWithinAutoOffWindowAt(tc.offTime, tc.grace, tc.tz, tc.now)
+			got := isWithinAutoOffWindowAt(tc.offTime, tc.grace, tc.tz, tc.now)
 			if got != tc.want {
-				t.Errorf("IsWithinAutoOffWindowAt(%q, %.1f, %q, %v) = %v, want %v",
+				t.Errorf("isWithinAutoOffWindowAt(%q, %.1f, %q, %v) = %v, want %v",
 					tc.offTime, tc.grace, tc.tz, tc.now, got, tc.want)
 			}
 		})
