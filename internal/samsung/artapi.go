@@ -361,6 +361,7 @@ func (a *ArtAPI) SetBrightness(ctx context.Context, value int) error {
 }
 
 // GetCategories retrieves the list of all artwork categories available on the TV.
+// Example: [{"category_id":"MY-C0002","category_name":"My Photos"}]
 func (a *ArtAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
 	id := NewRequestID()
 
