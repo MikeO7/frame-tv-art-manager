@@ -47,3 +47,8 @@
 **Vulnerability:** The REST API client (`FetchDeviceInfo`) was reading HTTP responses directly into memory using `io.ReadAll(resp.Body)` without enforcing any size limits. This allowed a malicious or compromised endpoint to exhaust application memory by returning a massive payload.
 **Learning:** Similar to `io.Copy`, reading directly into memory with functions like `io.ReadAll` or decoding with `json.NewDecoder` directly from an HTTP response exposes the application to resource exhaustion vulnerabilities.
 **Prevention:** Always wrap `http.Response.Body` with `http.MaxBytesReader(nil, resp.Body, maxBytes)` before passing it to `io.ReadAll`, `json.NewDecoder`, or similar parsers.
+
+## 2024-05-20 - Unbounded JSON Response Read DoS Prevention
+**Vulnerability:** Denial of Service (DoS) and memory exhaustion vectors caused by decoding JSON payloads from external HTTP API responses without memory bounds using `json.NewDecoder(resp.Body)`.
+**Learning:** The application architecture lacked centralized boundary limits when integrating with third-party APIs (NASA, Pixabay, Unsplash, Artic, Pexels). While timeouts existed, large or infinite payload injections from compromised or malfunctioning endpoints could exhaust local system memory before completion.
+**Prevention:** Always wrap `resp.Body` with `http.MaxBytesReader` configured with a generous but firm upper limit (e.g., 5MB) before passing the stream to `json.NewDecoder`. This terminates malicious/oversized reads defensively without interrupting legitimate traffic.
