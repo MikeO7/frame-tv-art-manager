@@ -399,13 +399,13 @@ type wsResponse struct {
 	Data  json.RawMessage `json:"data"`
 }
 
-// ArtAppRequest builds the outer WebSocket message for an art API request.
+// artAppRequest builds the outer WebSocket message for an art API request.
 const keyMethod = "method"
 const keyParams = "params"
 const keyEvent = "event"
 const keyData = "data"
 
-func ArtAppRequest(data map[string]any) ([]byte, error) {
+func artAppRequest(data map[string]any) ([]byte, error) {
 	inner, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
@@ -422,8 +422,8 @@ func ArtAppRequest(data map[string]any) ([]byte, error) {
 	return json.Marshal(outer)
 }
 
-// NewRequestID generates a new UUID string for art API request correlation.
-func NewRequestID() string {
+// newRequestID generates a new UUID string for art API request correlation.
+func newRequestID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	b[6] = (b[6] & 0x0f) | 0x40

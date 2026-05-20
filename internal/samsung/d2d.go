@@ -20,7 +20,7 @@ const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
 // used by Samsung Frame TVs for high-resolution image uploads.
 //
 // Protocol:
-//  1. Connect to connInfo.IP:connInfo.Port (TLS if connInfo.Secured)
+//  1. Connect to info.IP:info.Port (TLS if info.Secured)
 //  2. Send 4-byte big-endian header length
 //  3. Send JSON header with file metadata and security key
 //  4. Send raw image bytes in 64KB chunks
@@ -28,7 +28,7 @@ const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
 //
 // The caller must separately wait for the "image_added" event on the
 // WebSocket to confirm the upload succeeded and get the content_id.
-func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fileType string, timeout time.Duration) error {
+func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileType string, timeout time.Duration) error {
 	// Open the image file.
 	f, err := os.Open(filepath.Clean(filePath)) //nolint:gosec // Path is verified
 	if err != nil {
@@ -49,7 +49,7 @@ func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fil
 		"fileLength": fileSize,
 		"fileName":   "dummy",
 		"fileType":   fileType,
-		"secKey":     connInfo.Key,
+		"secKey":     info.Key,
 		"version":    "0.0.1",
 	}
 
@@ -59,11 +59,11 @@ func UploadImageD2D(ctx context.Context, connInfo ConnInfo, filePath string, fil
 	}
 
 	// Connect to the TV's D2D socket.
-	addr := fmt.Sprintf("%s:%s", connInfo.IP, connInfo.Port)
+	addr := fmt.Sprintf("%s:%s", info.IP, info.Port)
 	dialer := net.Dialer{Timeout: timeout}
 
 	var conn net.Conn
-	if connInfo.Secured {
+	if info.Secured {
 		tlsConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Samsung self-signed cert
 		conn, err = tls.DialWithDialer(&dialer, "tcp", addr, tlsConf)
 	} else {

@@ -30,7 +30,7 @@ func TestFetchDeviceInfo(t *testing.T) {
 			if r.URL.Path != "/api/v2/" {
 				t.Errorf("expected path /api/v2/, got %s", r.URL.Path)
 			}
-			resp := DeviceInfoResponse{Device: expected}
+			resp := deviceInfoResponse{Device: expected}
 			_ = json.NewEncoder(w).Encode(resp)
 		}))
 		defer server.Close()

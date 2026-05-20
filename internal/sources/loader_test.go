@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 func TestLoader_Sync_Direct(t *testing.T) {
@@ -28,7 +30,10 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	content := fmt.Sprintf("# comment\n%s\n", server.URL)
 	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
 
-	l := NewLoader(sourcesFile, artworkDir, "", "", "", "", "", "", 0, 0, slog.Default())
+	l := NewLoader(&config.Config{
+		SourcesFile: sourcesFile,
+		ArtworkDir:  artworkDir,
+	}, slog.Default())
 	downloaded, err := l.Sync()
 	if err != nil {
 		t.Fatalf("Sync failed: %v", err)
@@ -184,7 +189,10 @@ func TestLoader_Sync_Failures(t *testing.T) {
 	content := server.URL + "\n"
 	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
 
-	l := NewLoader(sourcesFile, artworkDir, "", "", "", "", "", "", 0, 0, slog.Default())
+	l := NewLoader(&config.Config{
+		SourcesFile: sourcesFile,
+		ArtworkDir:  artworkDir,
+	}, slog.Default())
 	downloaded, err := l.Sync()
 	if err != nil {
 		t.Fatalf("Sync should not fail on download error: %v", err)
@@ -239,7 +247,16 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	content := "unsplash:photo:123\nunsplash:collection:456\nnasa:apod\nnasa:search:mars\nartic:photo:456\npexels:curated\npexels:collection:789\npixabay:editors_choice\npixabay:search:nature\npixabay:user:mike\n"
 	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
 
-	l := NewLoader(sourcesFile, artworkDir, "app", "key", "secret", "nasa", "pexels", "pixabay", 0, 0, slog.Default())
+	l := NewLoader(&config.Config{
+		SourcesFile:       sourcesFile,
+		ArtworkDir:        artworkDir,
+		UnsplashAppID:     "app",
+		UnsplashAccessKey: "key",
+		UnsplashSecretKey: "secret",
+		NasaAPIKey:        "nasa",
+		PexelsAPIKey:      "pexels",
+		PixabayAPIKey:     "pixabay",
+	}, slog.Default())
 	// Override BaseURLs to point to our mock server
 	l.unsplash.BaseURL = server.URL
 	l.nasa.BaseURL = server.URL
@@ -265,7 +282,16 @@ sources:
 `
 	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
 
-	l := NewLoader(sourcesFile, artworkDir, "app", "key", "secret", "nasa", "pexels", "pixabay", 0, 0, slog.Default())
+	l := NewLoader(&config.Config{
+		SourcesFile:       sourcesFile,
+		ArtworkDir:        artworkDir,
+		UnsplashAppID:     "app",
+		UnsplashAccessKey: "key",
+		UnsplashSecretKey: "secret",
+		NasaAPIKey:        "nasa",
+		PexelsAPIKey:      "pexels",
+		PixabayAPIKey:     "pixabay",
+	}, slog.Default())
 
 	// Mock server for downloads
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +338,9 @@ func TestLoader_UtilityMethods(t *testing.T) {
 
 func TestLoader_handleArticLine_Search(t *testing.T) {
 	artworkDir := t.TempDir()
-	l := NewLoader("", artworkDir, "", "", "", "", "", "", 0, 0, slog.Default())
+	l := NewLoader(&config.Config{
+		ArtworkDir: artworkDir,
+	}, slog.Default())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w

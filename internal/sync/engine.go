@@ -74,23 +74,11 @@ func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVClie
 // NewEngine creates a sync engine with the given configuration.
 func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Status) *Engine {
 	return &Engine{
-		cfg:     cfg,
-		logger:  logger,
-		backoff: resilience.NewBackoff(logger),
-		health:  healthStatus,
-		srcLoader: sources.NewLoader(
-			cfg.SourcesFile,
-			cfg.ArtworkDir,
-			cfg.UnsplashAppID,
-			cfg.UnsplashAccessKey,
-			cfg.UnsplashSecretKey,
-			cfg.NasaAPIKey,
-			cfg.PexelsAPIKey,
-			cfg.PixabayAPIKey,
-			cfg.MaxArtworkImages,
-			cfg.MaxDownloadSizeMB,
-			logger,
-		),
+		cfg:               cfg,
+		logger:            logger,
+		backoff:           resilience.NewBackoff(logger),
+		health:            healthStatus,
+		srcLoader:         sources.NewLoader(cfg, logger),
 		mappings:          make(map[string]*Mapping),
 		lastMetadataSaves: make(map[string]time.Time),
 		newClient:         defaultNewClient,

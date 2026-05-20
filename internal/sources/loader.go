@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sanitize"
 	"gopkg.in/yaml.v3"
 )
@@ -38,6 +39,7 @@ const (
 // Loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
 type Loader struct {
+	cfg                *config.Config
 	sourcesFile        string
 	artworkDir         string
 	logger             *slog.Logger
@@ -58,22 +60,23 @@ type Loader struct {
 	mu                 sync.Mutex // Protects index, prefixMap, and visited
 }
 
-// NewLoader creates a new sources loader.
-func NewLoader(sourcesFile, artworkDir string, unsplashAppID, unsplashAccessKey, unsplashSecretKey, nasaKey, pexelsKey, pixabayKey string, maxImages, maxSizeMB int, logger *slog.Logger) *Loader {
+// NewLoader creates a new sources loader from application config.
+func NewLoader(cfg *config.Config, logger *slog.Logger) *Loader {
 	return &Loader{
-		sourcesFile: sourcesFile,
-		artworkDir:  artworkDir,
-		maxImages:   maxImages,
-		maxSizeMB:   maxSizeMB,
+		cfg:         cfg,
+		sourcesFile: cfg.SourcesFile,
+		artworkDir:  cfg.ArtworkDir,
+		maxImages:   cfg.MaxArtworkImages,
+		maxSizeMB:   cfg.MaxDownloadSizeMB,
 		logger:      logger,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		unsplash:  NewUnsplashClient(unsplashAppID, unsplashAccessKey, unsplashSecretKey, logger),
-		nasa:      NewNASAClient(nasaKey, logger),
+		unsplash:  NewUnsplashClient(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger),
+		nasa:      NewNASAClient(cfg.NasaAPIKey, logger),
 		artic:     NewArticClient(logger),
-		pexels:    NewPexelsClient(pexelsKey, logger),
-		pixabay:   NewPixabayClient(pixabayKey, logger),
+		pexels:    NewPexelsClient(cfg.PexelsAPIKey, logger),
+		pixabay:   NewPixabayClient(cfg.PixabayAPIKey, logger),
 		index:     make(map[string]string),
 		prefixMap: make(map[string]string),
 		visited:   make(map[string]bool),
