@@ -42,3 +42,8 @@
 **Vulnerability:** The application was downloading external image sources using `io.Copy(out, resp.Body)` without any byte limit, making it vulnerable to resource exhaustion or "ZIP bomb" style attacks if a malicious server returned a massive payload.
 **Learning:** `io.LimitReader` is not sufficient for securing HTTP responses because it silently truncates the stream by returning `EOF` when the limit is reached, which `io.Copy` interprets as a successful, complete download. This leads to silent corruption.
 **Prevention:** Always use `http.MaxBytesReader(nil, resp.Body, maxBytes)` for HTTP downloads. It actively returns an error (`"http: request body too large"`) when the limit is breached, allowing the application to detect the attack and properly clean up temporary files.
+
+## 2026-05-20 - [Medium] Prevent Denial of Service (DoS) in API Response Parsing
+**Vulnerability:** The REST API client (`FetchDeviceInfo`) was reading HTTP responses directly into memory using `io.ReadAll(resp.Body)` without enforcing any size limits. This allowed a malicious or compromised endpoint to exhaust application memory by returning a massive payload.
+**Learning:** Similar to `io.Copy`, reading directly into memory with functions like `io.ReadAll` or decoding with `json.NewDecoder` directly from an HTTP response exposes the application to resource exhaustion vulnerabilities.
+**Prevention:** Always wrap `http.Response.Body` with `http.MaxBytesReader(nil, resp.Body, maxBytes)` before passing it to `io.ReadAll`, `json.NewDecoder`, or similar parsers.
