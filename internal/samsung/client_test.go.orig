@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
-const testValue = "value"
 	"path/filepath"
 	"strconv"
 	"testing"

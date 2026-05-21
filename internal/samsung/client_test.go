@@ -472,8 +472,8 @@ func TestClientUpload(t *testing.T) {
 		// Fire image_added immediately
 		time.Sleep(100 * time.Millisecond)
 		addedResp := map[string]any{
-			"event":      "image_added",
-			"content_id": "new-upload-id",
+			"event":       "image_added",
+			testContentID: "new-upload-id",
 		}
 		addedRespBytes, _ := json.Marshal(addedResp)
 		respMsgAdded := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(addedRespBytes)}
