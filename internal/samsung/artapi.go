@@ -30,6 +30,13 @@ func newArtAPI(conn *connection, timeout time.Duration, logger *slog.Logger) *ar
 	}
 }
 
+func checkArtError(resp *artResponse) error {
+	if resp.ErrorCode != 0 {
+		return fmt.Errorf("%w: code %d", ErrArtAPIError, resp.ErrorCode)
+	}
+	return nil
+}
+
 // GetContentList retrieves the list of artwork on the TV, optionally
 // filtered by category. Use "MY-C0002" for user-uploaded photos.
 func (a *artAPI) GetContentList(ctx context.Context, category string) ([]ArtContent, error) {
@@ -56,6 +63,10 @@ func (a *artAPI) GetContentList(ctx context.Context, category string) ([]ArtCont
 	var resp artResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return nil, fmt.Errorf("get_content_list error: %w", err)
 	}
 
 	if resp.ContentList == "" {
@@ -119,6 +130,10 @@ func (a *artAPI) SendImage(ctx context.Context, req SendImageRequest) (*connInfo
 		return nil, fmt.Errorf("parse send_image response: %w", err)
 	}
 
+	if err := checkArtError(&resp); err != nil {
+		return nil, fmt.Errorf("send_image error: %w", err)
+	}
+
 	if resp.ConnInfo == "" {
 		return nil, fmt.Errorf("send_image: no conn_info in response")
 	}
@@ -149,6 +164,10 @@ func (a *artAPI) WaitForImageAdded(ctx context.Context, timeout time.Duration) (
 		return "", fmt.Errorf("parse image_added: %w", err)
 	}
 
+	if err := checkArtError(&resp); err != nil {
+		return "", fmt.Errorf("image_added error: %w", err)
+	}
+
 	return resp.ContentID, nil
 }
 
@@ -176,6 +195,9 @@ func (a *artAPI) RegisterImageAddedListener() (waitFn func(ctx context.Context, 
 			var resp artResponse
 			if err := json.Unmarshal(data, &resp); err != nil {
 				return "", fmt.Errorf("parse image_added: %w", err)
+			}
+			if err := checkArtError(&resp); err != nil {
+				return "", fmt.Errorf("image_added error: %w", err)
 			}
 			return resp.ContentID, nil
 		case <-time.After(timeout):
@@ -207,9 +229,18 @@ func (a *artAPI) DeleteImages(ctx context.Context, contentIDs []string) error {
 		return fmt.Errorf("build delete request: %w", err)
 	}
 
-	_, err = a.conn.SendAndWait(ctx, payload, id, a.timeout)
+	raw, err := a.conn.SendAndWait(ctx, payload, id, a.timeout)
 	if err != nil {
 		return fmt.Errorf("delete_image_list: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse delete_image_list response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("delete_image_list error: %w", err)
 	}
 
 	return nil
@@ -232,9 +263,18 @@ func (a *artAPI) SelectImage(ctx context.Context, contentID string, show bool) e
 		return fmt.Errorf("build select_image request: %w", err)
 	}
 
-	_, err = a.conn.SendAndWait(ctx, payload, id, a.timeout)
+	raw, err := a.conn.SendAndWait(ctx, payload, id, a.timeout)
 	if err != nil {
 		return fmt.Errorf("select_image: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse select_image response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("select_image error: %w", err)
 	}
 
 	return nil
@@ -265,6 +305,10 @@ func (a *artAPI) GetArtModeStatus(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("parse artmode_status: %w", err)
 	}
 
+	if err := checkArtError(&resp); err != nil {
+		return "", fmt.Errorf("artmode_status error: %w", err)
+	}
+
 	return resp.Value, nil
 }
 
@@ -286,6 +330,15 @@ func (a *artAPI) GetSlideshowStatus(ctx context.Context) (*SlideshowStatus, erro
 	raw, err := a.conn.SendAndWait(ctx, payload, id, a.timeout)
 	if err != nil {
 		return nil, fmt.Errorf("get_slideshow_status: %w", err)
+	}
+
+	var artResp artResponse
+	if err := json.Unmarshal(raw, &artResp); err != nil {
+		return nil, fmt.Errorf("parse get_slideshow_status response: %w", err)
+	}
+
+	if err := checkArtError(&artResp); err != nil {
+		return nil, fmt.Errorf("get_slideshow_status error: %w", err)
 	}
 
 	var resp struct {
@@ -322,9 +375,18 @@ func (a *artAPI) SetSlideshowStatus(ctx context.Context, s SlideshowStatus) erro
 		return fmt.Errorf("build set_slideshow_status request: %w", err)
 	}
 
-	_, err = a.conn.SendAndWait(ctx, payload, id, a.timeout)
+	raw, err := a.conn.SendAndWait(ctx, payload, id, a.timeout)
 	if err != nil {
 		return fmt.Errorf("set_slideshow_status: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse set_slideshow_status response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("set_slideshow_status error: %w", err)
 	}
 
 	return nil
@@ -347,9 +409,18 @@ func (a *artAPI) SetBrightness(ctx context.Context, value int) error {
 		return fmt.Errorf("build set_brightness request: %w", err)
 	}
 
-	_, err = a.conn.SendAndWait(ctx, payload, id, a.timeout)
+	raw, err := a.conn.SendAndWait(ctx, payload, id, a.timeout)
 	if err != nil {
 		return fmt.Errorf("set_brightness: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse set_brightness response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("set_brightness error: %w", err)
 	}
 
 	return nil
@@ -374,6 +445,15 @@ func (a *artAPI) GetCategories(ctx context.Context) (json.RawMessage, error) {
 	raw, err := a.conn.SendAndWait(ctx, payload, id, a.timeout)
 	if err != nil {
 		return nil, fmt.Errorf("get_categories: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse get_categories response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return nil, fmt.Errorf("get_categories error: %w", err)
 	}
 
 	return raw, nil

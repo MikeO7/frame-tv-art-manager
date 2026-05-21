@@ -24,4 +24,8 @@ var (
 
 	// ErrConnectionFailure is returned for unexpected handshake failures.
 	ErrConnectionFailure = errors.New("samsung: connection handshake failed")
+
+	// ErrArtAPIError is returned when the TV's art endpoint responds with an
+	// application-level error code (e.g. invalid category or bad payload).
+	ErrArtAPIError = errors.New("samsung: art api returned an error")
 )
