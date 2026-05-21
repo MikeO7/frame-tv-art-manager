@@ -316,13 +316,13 @@ func TestClientWrapperMethods(t *testing.T) {
 			case "set_art_select_image":
 				artResp = map[string]any{keyRequest: reqType, "id": id}
 			case "get_slideshow_status":
-				artResp = map[string]any{keyRequest: reqType, "id": id, "value": "10", testType: "slideshow"}
+				artResp = map[string]any{keyRequest: reqType, "id": id, testValue: "10", testType: "slideshow"}
 			case "set_slideshow_status":
 				artResp = map[string]any{keyRequest: reqType, "id": id}
 			case "set_brightness":
 				artResp = map[string]any{keyRequest: reqType, "id": id}
 			case "get_artmode_status":
-				artResp = map[string]any{keyRequest: reqType, "id": id, "value": "on"}
+				artResp = map[string]any{keyRequest: reqType, "id": id, testValue: "on"}
 			case "get_categories":
 				artResp = map[string]any{keyRequest: reqType, "id": id, "categories": `{"categories":[{"id":"MY-C0002"}]}`}
 			default:
