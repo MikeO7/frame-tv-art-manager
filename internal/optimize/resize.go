@@ -378,16 +378,32 @@ func rgbToLab(r, g, b uint8) (float64, float64, float64) {
 	z := rf*0.0193 + gf*0.1192 + bf*0.9505
 
 	// 3. XYZ to Lab (Simplified D65)
-	f := func(t float64) float64 {
-		if t > 0.008856 {
-			return math.Cbrt(t)
-		}
-		return (7.787*t + 16.0/116.0)
+	// ⚡ Bolt: Inline lambda function `f` and precompute constant 16.0/116.0 (0.13793103448275862)
+	// to eliminate function call overhead and division inside the tight processing loop.
+	fy := y
+	if fy > 0.008856 {
+		fy = math.Cbrt(fy)
+	} else {
+		fy = 7.787*fy + 0.13793103448275862
 	}
 
-	l := 116.0*f(y) - 16.0
-	a := 500.0 * (f(x) - f(y))
-	bLab := 200.0 * (f(y) - f(z))
+	fx := x
+	if fx > 0.008856 {
+		fx = math.Cbrt(fx)
+	} else {
+		fx = 7.787*fx + 0.13793103448275862
+	}
+
+	fz := z
+	if fz > 0.008856 {
+		fz = math.Cbrt(fz)
+	} else {
+		fz = 7.787*fz + 0.13793103448275862
+	}
+
+	l := 116.0*fy - 16.0
+	a := 500.0 * (fx - fy)
+	bLab := 200.0 * (fy - fz)
 
 	return l, a, bLab
 }
