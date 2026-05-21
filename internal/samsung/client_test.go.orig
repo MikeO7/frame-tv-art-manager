@@ -309,7 +309,7 @@ func TestClientWrapperMethods(t *testing.T) {
 
 			switch reqType {
 			case "get_content_list":
-				artResp = map[string]any{"request": reqType, "id": id, testContentList: `[{"content_id":"id1", "category_id": "MY-C0002"}]`}
+				artResp = map[string]any{"request": reqType, "id": id, "content_list": `[{"content_id":"id1", "category_id": "MY-C0002"}]`}
 			case "delete_image_list":
 				artResp = map[string]any{"request": reqType, "id": id}
 			case "set_art_select_image":
@@ -458,9 +458,9 @@ func TestClientUpload(t *testing.T) {
 
 		connInfoJSON := fmt.Sprintf(`{"ip":"%s", "port":%s}`, d2dHost, d2dPort)
 		artResp := map[string]any{
-			"request":    testSendImage,
-			"id":         id,
-			testConnInfo: connInfoJSON,
+			"request":   "send_image",
+			"id":        id,
+			"conn_info": connInfoJSON,
 		}
 
 		artRespBytes, _ := json.Marshal(artResp)

@@ -3,7 +3,6 @@ package samsung
 
 import "encoding/json"
 
-const (
 	EventD2DServiceMessage      = "d2d_service_message"
 	EventD2DServiceMessageEvent = "d2d.service.message.event"
 	EventChannelConnect         = "ms.channel.connect"

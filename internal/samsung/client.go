@@ -409,7 +409,7 @@ func (c *Client) turnOffTV(ctx context.Context, port int) error {
 
 	// Send KEY_POWER press.
 	press := map[string]any{
-		keyMethod: "ms.remote.control",
+		keyMethod: methodRemoteControl,
 		keyParams: map[string]any{
 			"Cmd":          "Press",
 			"DataOfCmd":    "KEY_POWER",
@@ -436,7 +436,7 @@ func (c *Client) turnOffTV(ctx context.Context, port int) error {
 
 	// Send KEY_POWER release.
 	release := map[string]any{
-		keyMethod: "ms.remote.control",
+		keyMethod: methodRemoteControl,
 		keyParams: map[string]any{
 			"Cmd":          "Release",
 			"DataOfCmd":    "KEY_POWER",
