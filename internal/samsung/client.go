@@ -339,7 +339,10 @@ func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		// Timeout or connection refused — TV is off or busy.
+		// Why: If we return an error here, the entire sync process aborts for all TVs.
+		// By returning (false, nil), we gracefully skip this specific TV for the current cycle
+		// as if it's merely "not ready", rather than throwing a hard fatal error.
+		// Timeout or connection refused typically just means the TV is off or busy.
 		return false, nil
 	}
 	defer func() { _ = resp.Body.Close() }()

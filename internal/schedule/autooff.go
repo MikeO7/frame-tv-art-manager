@@ -11,9 +11,19 @@ import (
 // IsWithinAutoOffWindow returns true if the current time falls within the
 // auto-off window: [offTime, offTime + graceHours). Handles midnight wrap.
 //
-// autoOffTime is a 24-hour string like "22:00". If empty, returns false.
-// graceHours is how many hours after offTime to keep the window open.
-// tz is an IANA timezone string (e.g. "America/Denver").
+// Parameters:
+//   - autoOffTime: A 24-hour time string indicating when the TV should start attempting to power off.
+//     If empty (""), the function immediately returns false, disabling the feature.
+//   - graceHours: The duration (in hours) the power-off window remains open after autoOffTime.
+//   - tz: An IANA timezone string determining the local context.
+//
+// Example Usage:
+//
+//	// Window opens at 10 PM and closes at 12 AM (midnight)
+//	IsWithinAutoOffWindow("22:00", 2.0, "America/New_York")
+//
+//	// Window opens at 11:30 PM and closes at 1:00 AM the next day (handles wrap)
+//	IsWithinAutoOffWindow("23:30", 1.5, "Europe/London")
 func IsWithinAutoOffWindow(autoOffTime string, graceHours float64, tz string) bool {
 	return isWithinAutoOffWindowAt(autoOffTime, graceHours, tz, time.Now())
 }
@@ -67,7 +77,16 @@ func isWithinAutoOffWindowAt(autoOffTime string, graceHours float64, tz string, 
 }
 
 // FormatGraceDisplay returns a human-readable string for the grace period,
-// using integer format when the value is a whole number.
+// using integer format when the value is a whole number to keep the UI clean,
+// and allowing one decimal place for fractional hours.
+//
+// Parameters:
+//   - hours: The float64 value representing the grace period duration in hours.
+//
+// Example Usage:
+//
+//	FormatGraceDisplay(2.0)  // Returns "2"
+//	FormatGraceDisplay(2.5)  // Returns "2.5"
 func FormatGraceDisplay(hours float64) string {
 	if hours == float64(int(hours)) {
 		return fmt.Sprintf("%d", int(hours))
