@@ -3,7 +3,6 @@
 package resilience
 
 import (
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -120,24 +119,4 @@ func (b *Backoff) RecordSuccess(ip string) {
 	}
 
 	delete(b.states, ip)
-}
-
-// Status returns a human-readable status string for a TV.
-func (b *Backoff) Status(ip string) string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	state, ok := b.states[ip]
-	if !ok {
-		return "healthy"
-	}
-
-	if time.Now().Before(state.backoffUntil) {
-		return fmt.Sprintf("backoff (%d failures, retry in %s)",
-			state.failures,
-			time.Until(state.backoffUntil).Round(time.Second),
-		)
-	}
-
-	return fmt.Sprintf("retrying (%d previous failures)", state.failures)
 }
