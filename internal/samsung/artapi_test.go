@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	testType        = "type"
 	testContentList = "content_list"
 	testSendImage   = "send_image"
 	testConnInfo    = "conn_info"
@@ -241,7 +242,7 @@ func TestArtAPI_GetArtModeStatus(t *testing.T) {
 func TestArtAPI_GetSlideshowStatus(t *testing.T) {
 	server := setupMockArtServer("get_slideshow_status", map[string]any{
 		testValue:     "3",
-		"type":        testSlideshow,
+		testType:      testSlideshow,
 		"category_id": testCat1,
 	})
 	defer server.Close()

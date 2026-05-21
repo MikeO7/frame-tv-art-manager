@@ -265,6 +265,7 @@ func TestTurnOff(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo
 func TestClientWrapperMethods(t *testing.T) {
 	// First, we create an artAPI mock just to satisfy the wrapper.
 	// Since artAPI is created by the Connect function, testing these without connecting
@@ -309,23 +310,23 @@ func TestClientWrapperMethods(t *testing.T) {
 
 			switch reqType {
 			case "get_content_list":
-				artResp = map[string]any{"request": reqType, "id": id, testContentList: `[{"content_id":"id1", "category_id": "MY-C0002"}]`}
+				artResp = map[string]any{keyRequest: reqType, "id": id, testContentList: `[{"content_id":"id1", "category_id": "MY-C0002"}]`}
 			case "delete_image_list":
-				artResp = map[string]any{"request": reqType, "id": id}
+				artResp = map[string]any{keyRequest: reqType, "id": id}
 			case "set_art_select_image":
-				artResp = map[string]any{"request": reqType, "id": id}
+				artResp = map[string]any{keyRequest: reqType, "id": id}
 			case "get_slideshow_status":
-				artResp = map[string]any{"request": reqType, "id": id, "value": "10", "type": "slideshow"}
+				artResp = map[string]any{keyRequest: reqType, "id": id, "value": "10", testType: "slideshow"}
 			case "set_slideshow_status":
-				artResp = map[string]any{"request": reqType, "id": id}
+				artResp = map[string]any{keyRequest: reqType, "id": id}
 			case "set_brightness":
-				artResp = map[string]any{"request": reqType, "id": id}
+				artResp = map[string]any{keyRequest: reqType, "id": id}
 			case "get_artmode_status":
-				artResp = map[string]any{"request": reqType, "id": id, "value": "on"}
+				artResp = map[string]any{keyRequest: reqType, "id": id, "value": "on"}
 			case "get_categories":
-				artResp = map[string]any{"request": reqType, "id": id, "categories": `{"categories":[{"id":"MY-C0002"}]}`}
+				artResp = map[string]any{keyRequest: reqType, "id": id, "categories": `{"categories":[{"id":"MY-C0002"}]}`}
 			default:
-				artResp = map[string]any{"request": reqType, "id": id}
+				artResp = map[string]any{keyRequest: reqType, "id": id}
 			}
 
 			artRespBytes, _ := json.Marshal(artResp)
@@ -458,7 +459,7 @@ func TestClientUpload(t *testing.T) {
 
 		connInfoJSON := fmt.Sprintf(`{"ip":"%s", "port":%s}`, d2dHost, d2dPort)
 		artResp := map[string]any{
-			"request":    testSendImage,
+			keyRequest:   testSendImage,
 			"id":         id,
 			testConnInfo: connInfoJSON,
 		}
