@@ -10,3 +10,6 @@
 ## 2026-05-20 - Impasto Calculation Optimization
 **Learning:** In tight per-pixel loops calculating normal mapping differences (`calculateBipolarImpasto`), performing multiple `float64` conversions and division operations across channels is computationally expensive.
 **Action:** Re-order equations to perform subtraction/addition using bit-shifted integer operations (`x << 1`), and replace final divisions with a single precomputed multiplication constant.
+## 2024-05-21 - Optimize RGB to CIE Lab Math Overhead
+**Learning:** In Go, calling an anonymous function inside a tight loop like image processing (millions of pixels) adds measurable call stack overhead. Also, floating-point divisions (`16.0 / 116.0`) in per-pixel math, even if constant, can prevent compiler loop unrolling or fast-math paths compared to precomputing the reciprocal/constant.
+**Action:** When performing complex pixel transformations (like converting RGB to CIE Lab), strictly avoid closures within the evaluation loop. Inline calculations and precalculate any static divisions into constants to reduce nanoseconds per operation, which scales heavily in 4K resolution processing.
