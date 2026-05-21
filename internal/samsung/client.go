@@ -223,7 +223,7 @@ func (c *Client) SetBrightness(ctx context.Context, val int) error {
 // TurnOff powers off the TV by holding KEY_POWER for 3 seconds via
 // a separate remote control WebSocket connection.
 func (c *Client) TurnOff(ctx context.Context) error {
-	return c.turnOffTV(ctx)
+	return c.turnOffTV(ctx, 8002)
 }
 
 // DeviceInfo returns the cached device info, or nil if not fetched.
@@ -399,8 +399,8 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	return &envelope.Device, nil
 }
 
-func (c *Client) turnOffTV(ctx context.Context) error {
-	conn := newConnection(c.IP, 8002, "samsung.remote.control", c.cfg.ClientName, c.tokenFilePath(), c.cfg.ConnectionTimeout, c.logger)
+func (c *Client) turnOffTV(ctx context.Context, port int) error {
+	conn := newConnection(c.IP, port, "samsung.remote.control", c.cfg.ClientName, c.tokenFilePath(), c.cfg.ConnectionTimeout, c.logger)
 
 	if err := conn.Open(ctx); err != nil {
 		return fmt.Errorf("open remote control connection: %w", err)

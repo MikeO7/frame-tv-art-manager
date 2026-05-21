@@ -3,6 +3,7 @@ package samsung
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -123,5 +124,432 @@ func TestEnsureToken(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Clean(tokenFile))
 	if string(data) != "new-token" {
 		t.Errorf("expected new-token, got %s", string(data))
+	}
+}
+
+type roundTripFunc func(req *http.Request) *http.Response
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req), nil
+}
+
+func TestCheckArtModeGate(t *testing.T) {
+	// We replace http.DefaultTransport to intercept requests to port 8001
+	originalTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	t.Run("IsArtMode", func(t *testing.T) {
+		http.DefaultTransport = roundTripFunc(func(req *http.Request) *http.Response {
+			if req.URL.Port() == "8001" && req.URL.Path == "/ms/art" {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       http.NoBody,
+				}
+			}
+			return &http.Response{StatusCode: http.StatusNotFound, Body: http.NoBody}
+		})
+
+		c := NewClient("192.168.1.10", &config.Config{GateTimeout: 1 * time.Second}, slog.Default())
+		isArt, err := c.checkArtModeGate(context.Background())
+		if err != nil {
+			t.Fatalf("expected nil err, got %v", err)
+		}
+		if !isArt {
+			t.Errorf("expected isArt to be true")
+		}
+	})
+
+	t.Run("NotArtMode", func(t *testing.T) {
+		http.DefaultTransport = roundTripFunc(func(_ *http.Request) *http.Response {
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       http.NoBody,
+			}
+		})
+
+		c := NewClient("192.168.1.10", &config.Config{GateTimeout: 1 * time.Second}, slog.Default())
+		isArt, err := c.checkArtModeGate(context.Background())
+		if err != nil {
+			t.Fatalf("expected nil err, got %v", err)
+		}
+		if isArt {
+			t.Errorf("expected isArt to be false")
+		}
+	})
+}
+
+type errorTransport struct{}
+
+func (e errorTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return nil, os.ErrDeadlineExceeded
+}
+
+func TestCheckArtModeGate_Timeout(t *testing.T) {
+	originalTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	http.DefaultTransport = errorTransport{}
+
+	c := NewClient("192.168.1.10", &config.Config{GateTimeout: 1 * time.Second}, slog.Default())
+	isArt, err := c.checkArtModeGate(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil err, got %v", err)
+	}
+	if isArt {
+		t.Errorf("expected isArt to be false")
+	}
+}
+
+func TestTurnOff(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		// Handshake
+		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
+		b, _ := json.Marshal(resp)
+		_ = conn.WriteMessage(websocket.TextMessage, b)
+
+		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
+		bReady, _ := json.Marshal(respReady)
+		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+
+		// Read KEY_POWER Press
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var pressReq map[string]any
+		_ = json.Unmarshal(msg, &pressReq)
+		if pressReq["method"] != "ms.remote.control" {
+			t.Errorf("expected method ms.remote.control, got %v", pressReq["method"])
+		}
+
+		// Read KEY_POWER Release
+		_, msg, err = conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var releaseReq map[string]any
+		_ = json.Unmarshal(msg, &releaseReq)
+		if releaseReq["method"] != "ms.remote.control" {
+			t.Errorf("expected method ms.remote.control, got %v", releaseReq["method"])
+		}
+	}))
+	defer server.Close()
+
+	u, _ := neturl.Parse(server.URL)
+	host := u.Hostname()
+	port, _ := strconv.Atoi(u.Port())
+
+	// Override port in turnOffTV is not natively supported since it hardcodes 8002.
+	// But `turnOffTV` connects using `c.IP`. The only way is to use IP loopback, and we can't change port 8002 without changing `turnOffTV` code. Wait! We can change the default transport for WebSockets? No, `turnOffTV` uses `newConnection` which dials `8002`.
+	// Since turnOffTV hardcodes 8002, we will use a small trick:
+	// If `c.IP` is `localhost`, `newConnection` will try to dial `localhost:8002`.
+	// We could temporarily modify `newConnection` dialer or just extract port to parameter,
+	// but let's intercept the `DialContext` for websockets or just change turnOffTV.
+	// Wait, we can just change `turnOffTV` to accept a port just like `ensureToken` does!
+	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second}, slog.Default())
+
+	// Fast context so we don't wait the full 3 seconds in testing
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := c.turnOffTV(ctx, port)
+	if err != nil {
+		t.Fatalf("expected turnOffTV to succeed, got: %v", err)
+	}
+}
+
+func TestClientWrapperMethods(t *testing.T) {
+	// First, we create an artAPI mock just to satisfy the wrapper.
+	// Since artAPI is created by the Connect function, testing these without connecting
+	// means we manually inject the internal fields for testing.
+
+	// Create a mock WS server for ArtAPI so we can test the wrappers.
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		// Send initial connects
+		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
+		b, _ := json.Marshal(resp)
+		_ = conn.WriteMessage(websocket.TextMessage, b)
+
+		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
+		bReady, _ := json.Marshal(respReady)
+		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var envelope struct {
+				Params struct {
+					Data string `json:"data"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(msg, &envelope)
+
+			var innerReq map[string]any
+			_ = json.Unmarshal([]byte(envelope.Params.Data), &innerReq)
+
+			id := innerReq["id"].(string)
+			reqType := innerReq["request"].(string)
+
+			var artResp map[string]any
+
+			switch reqType {
+			case "get_content_list":
+				artResp = map[string]any{"request": reqType, "id": id, "content_list": `[{"content_id":"id1", "category_id": "MY-C0002"}]`}
+			case "delete_image_list":
+				artResp = map[string]any{"request": reqType, "id": id}
+			case "set_art_select_image":
+				artResp = map[string]any{"request": reqType, "id": id}
+			case "get_slideshow_status":
+				artResp = map[string]any{"request": reqType, "id": id, "value": "10", "type": "slideshow"}
+			case "set_slideshow_status":
+				artResp = map[string]any{"request": reqType, "id": id}
+			case "set_brightness":
+				artResp = map[string]any{"request": reqType, "id": id}
+			case "get_artmode_status":
+				artResp = map[string]any{"request": reqType, "id": id, "value": "on"}
+			case "get_categories":
+				artResp = map[string]any{"request": reqType, "id": id, "categories": `{"categories":[{"id":"MY-C0002"}]}`}
+			default:
+				artResp = map[string]any{"request": reqType, "id": id}
+			}
+
+			artRespBytes, _ := json.Marshal(artResp)
+			respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
+			respBytes, _ := json.Marshal(respMsg)
+			_ = conn.WriteMessage(websocket.TextMessage, respBytes)
+			time.Sleep(50 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	u, _ := neturl.Parse(server.URL)
+	host := u.Hostname()
+	port, _ := strconv.Atoi(u.Port())
+
+	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}, slog.Default())
+
+	// Create art connection directly to test wrappers
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	if err := c.artConn.Open(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.artAPI = newArtAPI(c.artConn, 1*time.Second, slog.Default())
+
+	// Device info test
+	c.info = &DeviceInfo{PowerState: "on", ModelName: "TEST"}
+
+	if !c.IsInArtMode(context.Background()) {
+		t.Errorf("expected IsInArtMode to be true")
+	}
+
+	imgs, err := c.GetUploadedImages(context.Background())
+	if err != nil {
+		t.Errorf("GetUploadedImages err: %v", err)
+	}
+	if len(imgs) != 1 {
+		t.Errorf("expected 1 image")
+	}
+
+	err = c.DeleteImages(context.Background(), []string{"id1"})
+	if err != nil {
+		t.Errorf("DeleteImages err: %v", err)
+	}
+
+	err = c.SelectImage(context.Background(), "id1")
+	if err != nil {
+		t.Errorf("SelectImage err: %v", err)
+	}
+
+	ss, err := c.SlideshowStatus(context.Background())
+	if err != nil {
+		t.Errorf("SlideshowStatus err: %v", err)
+	}
+	if ss.Value != "10" {
+		t.Errorf("expected 10")
+	}
+
+	err = c.SetSlideshow(context.Background(), SlideshowStatus{Value: "15"})
+	if err != nil {
+		t.Errorf("SetSlideshow err: %v", err)
+	}
+
+	err = c.SetBrightness(context.Background(), 5)
+	if err != nil {
+		t.Errorf("SetBrightness err: %v", err)
+	}
+
+	// Wrapper coverage
+	if c.DeviceInfo().ModelName != "TEST" {
+		t.Errorf("expected TEST model")
+	}
+
+	err = c.SaveMetadata(context.Background())
+	if err != nil {
+		t.Errorf("SaveMetadata err: %v", err)
+	}
+
+	err = c.TurnOff(context.Background())
+	// Expected context deadline exceeded because mock remote server sleeps / isn't connected exactly,
+	// actually `TurnOff` initiates its own connection to port 8002 via `turnOffTV` so this fails in `conn.Open`
+	if err == nil {
+		t.Errorf("expected TurnOff to fail due to no listener on port 8002")
+	}
+}
+func TestClientUpload(t *testing.T) {
+	// Create mock server representing both Art API and D2D file server (for simplicity they run on the same IP but different port)
+	d2dServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Just simulate accepting file and immediately confirm image_added over websocket
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer d2dServer.Close()
+
+	d2dU, _ := neturl.Parse(d2dServer.URL)
+	d2dHost := d2dU.Hostname()
+	d2dPort := d2dU.Port()
+
+	upgrader := websocket.Upgrader{}
+	wsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
+		b, _ := json.Marshal(resp)
+		_ = conn.WriteMessage(websocket.TextMessage, b)
+
+		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
+		bReady, _ := json.Marshal(respReady)
+		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+
+		var envelope struct {
+			Params struct {
+				Data string `json:"data"`
+			} `json:"params"`
+		}
+		_ = json.Unmarshal(msg, &envelope)
+
+		var innerReq map[string]any
+		_ = json.Unmarshal([]byte(envelope.Params.Data), &innerReq)
+
+		id := innerReq["id"].(string)
+
+		connInfoJSON := fmt.Sprintf(`{"ip":"%s", "port":%s}`, d2dHost, d2dPort)
+		artResp := map[string]any{
+			"request":   "send_image",
+			"id":        id,
+			"conn_info": connInfoJSON,
+		}
+
+		artRespBytes, _ := json.Marshal(artResp)
+		respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
+		respBytes, _ := json.Marshal(respMsg)
+		_ = conn.WriteMessage(websocket.TextMessage, respBytes)
+
+		// Fire image_added immediately
+		time.Sleep(100 * time.Millisecond)
+		addedResp := map[string]any{
+			"event":      "image_added",
+			"content_id": "new-upload-id",
+		}
+		addedRespBytes, _ := json.Marshal(addedResp)
+		respMsgAdded := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(addedRespBytes)}
+		respBytesAdded, _ := json.Marshal(respMsgAdded)
+		_ = conn.WriteMessage(websocket.TextMessage, respBytesAdded)
+		time.Sleep(50 * time.Millisecond)
+	}))
+	defer wsServer.Close()
+
+	u, _ := neturl.Parse(wsServer.URL)
+	host := u.Hostname()
+	port, _ := strconv.Atoi(u.Port())
+
+	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}, slog.Default())
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	if err := c.artConn.Open(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.artAPI = newArtAPI(c.artConn, 2*time.Second, slog.Default())
+
+	// Need a dummy file
+	tmpFile := filepath.Join(t.TempDir(), "dummy.jpg")
+	_ = os.WriteFile(tmpFile, []byte("data"), 0600)
+
+	id, err := c.Upload(context.Background(), tmpFile, ".jpg")
+	if err != nil {
+		t.Fatalf("Upload failed: %v", err)
+	}
+	if id != "new-upload-id" {
+		t.Errorf("expected new-upload-id, got %s", id)
+	}
+}
+func TestIsInArtMode_Branches(t *testing.T) {
+	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
+	c.info = &DeviceInfo{PowerState: "standby"}
+	if c.IsInArtMode(context.Background()) {
+		t.Errorf("expected false when TV is off")
+	}
+
+	// We can't easily test the artAPI GetArtModeStatus returning an error without mocking it.
+	// But it's simple enough.
+}
+func TestClientUpload_FileStatError(t *testing.T) {
+	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
+	_, err := c.Upload(context.Background(), "/does/not/exist.jpg", ".jpg")
+	if err == nil {
+		t.Errorf("expected error on non-existent file")
+	}
+}
+
+func TestSaveMetadata_NoDir(t *testing.T) {
+	c := NewClient("127.0.0.1", &config.Config{TokenDir: "/root/forbidden/path"}, slog.Default())
+
+	// Needs a valid artAPI mock connection or it panics in SaveMetadata's internal call to getSlideshowStatus
+	server := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	defer server.Close()
+
+	u, _ := neturl.Parse(server.URL)
+	host := u.Hostname()
+	port, _ := strconv.Atoi(u.Port())
+
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	_ = c.artConn.Open(context.Background())
+	c.artAPI = newArtAPI(c.artConn, 1*time.Second, slog.Default())
+	defer c.Close()
+
+	err := c.SaveMetadata(context.Background())
+	if err == nil {
+		t.Errorf("expected error when saving to forbidden path")
+	}
+}
+
+func TestClientClose_Nil(t *testing.T) {
+	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
+	err := c.Close()
+	if err != nil {
+		t.Errorf("expected nil when closing uninitialized client")
 	}
 }
