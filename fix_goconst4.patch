@@ -1,0 +1,28 @@
+--- internal/samsung/client_test.go
++++ internal/samsung/client_test.go
+@@ -311,7 +311,7 @@
+				artResp = map[string]any{keyRequest: reqType, "id": id}
+			case "set_art_select_image":
+				artResp = map[string]any{keyRequest: reqType, "id": id}
+			case "get_slideshow_status":
+-				artResp = map[string]any{keyRequest: reqType, "id": id, "value": "10", testType: "slideshow"}
++				artResp = map[string]any{keyRequest: reqType, "id": id, testValue: "10", testType: testSlideshow}
+			case "set_slideshow_status":
+				artResp = map[string]any{keyRequest: reqType, "id": id}
+			case "set_brightness":
+				artResp = map[string]any{keyRequest: reqType, "id": id}
+			case "get_artmode_status":
+-				artResp = map[string]any{keyRequest: reqType, "id": id, "value": "on"}
++				artResp = map[string]any{keyRequest: reqType, "id": id, testValue: "on"}
+			case "get_categories":
+				artResp = map[string]any{keyRequest: reqType, "id": id, "categories": `{"categories":[{"id":"MY-C0002"}]}`}
+			default:
+				artResp = map[string]any{keyRequest: reqType, "id": id}
+			}
+@@ -467,7 +467,7 @@
+		time.Sleep(100 * time.Millisecond)
+		addedResp := map[string]any{
+			"event":      "image_added",
+-			"content_id": "new-upload-id",
++			testContentID: "new-upload-id",
+		}

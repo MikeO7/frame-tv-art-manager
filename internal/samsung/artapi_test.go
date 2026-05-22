@@ -16,7 +16,12 @@ import (
 )
 
 const (
-	extJPG = ".jpg"
+	testType        = "type"
+	testContentList = "content_list"
+	testSendImage   = "send_image"
+	testConnInfo    = "conn_info"
+	testSlideshow   = "slideshow"
+	extJPG          = ".jpg"
 )
 
 func setupMockArtServer(requestName string, artRespData map[string]any) *httptest.Server {
@@ -54,7 +59,7 @@ func setupMockArtServer(requestName string, artRespData map[string]any) *httptes
 		_ = json.Unmarshal([]byte(envelope.Params.Data), &innerReq)
 		id := innerReq["id"].(string)
 
-		artResp := map[string]any{"request": requestName, "id": id}
+		artResp := map[string]any{keyRequest: requestName, "id": id}
 		for k, v := range artRespData {
 			artResp[k] = v
 		}
@@ -84,7 +89,7 @@ func startTestConnection(t *testing.T, server *httptest.Server) *connection {
 
 func TestArtAPI_GetContentList(t *testing.T) {
 	contentList := `[{"content_id":"id1","category_id":"cat1"},{"content_id":"id2","category_id":"cat2"}]`
-	server := setupMockArtServer("get_content_list", map[string]any{"content_list": contentList})
+	server := setupMockArtServer("get_content_list", map[string]any{testContentList: contentList})
 	defer server.Close()
 
 	conn := startTestConnection(t, server)
@@ -103,7 +108,7 @@ func TestArtAPI_GetContentList(t *testing.T) {
 
 func TestArtAPI_GetContentList_Filtered(t *testing.T) {
 	contentList := `[{"content_id":"id1","category_id":"MY-C0002"},{"content_id":"id2","category_id":"OTHER"}]`
-	server := setupMockArtServer("get_content_list", map[string]any{"content_list": contentList})
+	server := setupMockArtServer("get_content_list", map[string]any{testContentList: contentList})
 	defer server.Close()
 
 	conn := startTestConnection(t, server)
@@ -151,7 +156,7 @@ func TestArtAPI_SendImage(t *testing.T) {
 		id := innerReq["id"].(string)
 
 		connInfo := `{"id":"` + id + `","ip":"127.0.0.1","port":12345}`
-		artResp := map[string]any{"request": "send_image", "id": id, "conn_info": connInfo}
+		artResp := map[string]any{keyRequest: "send_image", "id": id, testConnInfo: connInfo}
 		artRespBytes, _ := json.Marshal(artResp)
 		respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
 		respBytes, _ := json.Marshal(respMsg)
@@ -237,7 +242,7 @@ func TestArtAPI_GetArtModeStatus(t *testing.T) {
 func TestArtAPI_GetSlideshowStatus(t *testing.T) {
 	server := setupMockArtServer("get_slideshow_status", map[string]any{
 		testValue:     "3",
-		"type":        "slideshow",
+		testType:      testSlideshow,
 		"category_id": testCat1,
 	})
 	defer server.Close()
