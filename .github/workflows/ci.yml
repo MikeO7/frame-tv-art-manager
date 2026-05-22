@@ -31,7 +31,7 @@ jobs:
       - name: golangci-lint
         run: |
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.6
-          $(go env GOPATH)/bin/golangci-lint run
+          "$(go env GOPATH)"/bin/golangci-lint run
 
   # Lane 2: Security Scan
   security:
