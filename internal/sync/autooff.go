@@ -1,5 +1,4 @@
-// Package schedule provides time-window utilities for the auto-off feature.
-package schedule
+package sync
 
 import (
 	"fmt"

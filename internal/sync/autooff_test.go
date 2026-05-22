@@ -1,5 +1,4 @@
-//nolint:goconst
-package schedule
+package sync
 
 import (
 	"testing"
@@ -116,9 +115,6 @@ func TestIsWithinAutoOffWindow(t *testing.T) {
 }
 
 func TestIsWithinAutoOffWindow_Live(t *testing.T) {
-	// Call the live version just for coverage.
-	// We can't easily assert the result since it depends on the current time,
-	// but we can pass an empty offTime to guarantee a false result.
 	if IsWithinAutoOffWindow("", 2, "UTC") != false {
 		t.Error("expected false for empty offTime")
 	}

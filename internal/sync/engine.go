@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,10 +19,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
-	"github.com/MikeO7/frame-tv-art-manager/internal/resilience"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
-	"github.com/MikeO7/frame-tv-art-manager/internal/sanitize"
-	"github.com/MikeO7/frame-tv-art-manager/internal/schedule"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
@@ -38,7 +34,7 @@ const (
 type Engine struct {
 	cfg               *config.Config
 	logger            *slog.Logger
-	backoff           *resilience.Backoff
+	backoff           *Backoff
 	health            *health.Status
 	srcLoader         *sources.Loader
 	cycleNum          int
@@ -52,19 +48,8 @@ type Engine struct {
 
 // TVClient defines the interface for interacting with a Samsung TV.
 type TVClient interface {
-	Connect(ctx context.Context) error
+	Sync(ctx context.Context, req samsung.SyncRequest) (samsung.SyncResult, error)
 	Close() error
-	DeviceInfo() *samsung.DeviceInfo
-	IsInArtMode(ctx context.Context) bool
-	SaveMetadata(ctx context.Context) error
-	GetUploadedImages(ctx context.Context) ([]samsung.ArtContent, error)
-	Upload(ctx context.Context, filePath, fileType string) (string, error)
-	DeleteImages(ctx context.Context, ids []string) error
-	SelectImage(ctx context.Context, id string) error
-	SlideshowStatus(ctx context.Context) (*samsung.SlideshowStatus, error)
-	SetSlideshow(ctx context.Context, s samsung.SlideshowStatus) error
-	SetBrightness(ctx context.Context, val int) error
-	TurnOff(ctx context.Context) error
 }
 
 func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
@@ -76,7 +61,7 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 	return &Engine{
 		cfg:               cfg,
 		logger:            logger,
-		backoff:           resilience.NewBackoff(logger),
+		backoff:           NewBackoff(logger),
 		health:            healthStatus,
 		srcLoader:         sources.NewLoader(cfg, logger),
 		mappings:          make(map[string]*Mapping),
@@ -257,141 +242,20 @@ type tvSyncSummary struct {
 	ErrorMessage string
 }
 
-// syncTV performs the full sync for a single TV.
-//
-//nolint:gocyclo // Core sync loop requires complex flow control
+// syncTV performs the full sync for a single TV by invoking the TVClient's atomic Sync method.
 func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}, matteConfig *MatteConfig, cycleLog *slog.Logger) (tvSyncSummary, error) {
 	log := cycleLog.With("tv", ip)
 	summary := tvSyncSummary{IP: ip}
 
-	// Connect to TV.
 	client := e.newClient(ip, e.cfg, e.logger)
-	if err := client.Connect(ctx); err != nil {
-		if errors.Is(err, samsung.ErrGateFailed) {
-			log.Info("skipping — REST gate says TV is busy")
-			summary.Status = "skipped (gate)"
-			return summary, nil
-		}
-		summary.Status = statusError
-		return summary, fmt.Errorf("connect: %w", err)
-	}
 	defer func() { _ = client.Close() }()
 
-	// Get model info.
-	if info := client.DeviceInfo(); info != nil {
-		summary.Model = info.ModelName
-	}
-
-	// Check art mode.
-	if !client.IsInArtMode(ctx) {
-		log.Info("skipping — TV not in art mode")
-		summary.Status = "skipped (not art mode)"
-		return summary, nil
-	}
-	summary.ArtMode = true
-
-	// Save detailed metadata for auditing in the background.
-	// Throttled to once per hour per TV to reduce redundant network/disk ops.
-	e.mapMu.Lock()
-	lastSave := e.lastMetadataSaves[ip]
-	shouldSave := time.Since(lastSave) > 1*time.Hour
-	if shouldSave {
-		e.lastMetadataSaves[ip] = time.Now()
-	}
-	e.mapMu.Unlock()
-
-	if shouldSave {
-		go func(bgCtx context.Context) {
-			// Use a sub-timeout to ensure it doesn't leak if the TV stalls.
-			ctx, cancel := context.WithTimeout(bgCtx, 1*time.Minute)
-			defer cancel()
-			if err := client.SaveMetadata(ctx); err != nil {
-				log.Debug("could not save metadata", "error", err)
-			}
-		}(ctx)
-	}
-
-	// Load filename→content_id mapping from cache or disk.
+	// Load mapping database.
 	mapping, err := e.getMapping(ip)
 	if err != nil {
 		summary.Status = statusError
 		return summary, fmt.Errorf("load mapping: %w", err)
 	}
-
-	// Get list of images currently on the TV.
-	tvContent, err := client.GetUploadedImages(ctx)
-	if err != nil {
-		summary.Status = statusError
-		return summary, fmt.Errorf("get TV images: %w", err)
-	}
-
-	// Reconcile: split TV content into tracked vs unknown.
-	trackedFiles := make(map[string]struct{})
-	unknownIDs := make(map[string]struct{})
-
-	allMappings := mapping.AllContentIDs()
-	reverseMap := make(map[string]string, len(allMappings))
-	for filename, cid := range allMappings {
-		reverseMap[cid] = filename
-	}
-
-	// Reconciliation: Purge database entries for images no longer on the TV.
-	// This ensures the mapping always reflects the actual state of the TV.
-	liveIDs := make(map[string]bool)
-	for _, item := range tvContent {
-		liveIDs[item.ContentID] = true
-	}
-
-	purgedCount := 0
-	for filename, contentID := range mapping.AllContentIDs() {
-		if !liveIDs[contentID] {
-			log.Debug("purging stale mapping (not on TV)", "file", filename, "id", contentID)
-			mapping.Delete(filename)
-			purgedCount++
-		}
-	}
-
-	if purgedCount > 0 {
-		log.Info("reconciled database with TV memory", "purged_stale_entries", purgedCount)
-		if err := mapping.Save(); err != nil {
-			log.Error("failed to save mapping after reconciliation", "error", err)
-		}
-		// Refresh reverse map after purge.
-		reverseMap = mapping.AllContentIDs()
-	}
-
-	for _, item := range tvContent {
-		if filename, ok := reverseMap[item.ContentID]; ok {
-			trackedFiles[filename] = struct{}{}
-		} else {
-			unknownIDs[item.ContentID] = struct{}{}
-		}
-	}
-
-	log.Info("TV inventory",
-		"tracked", len(trackedFiles),
-		"unknown", len(unknownIDs),
-	)
-
-	// Diff: determine uploads and deletes.
-	toUpload := diffSets(localFiles, trackedFiles)
-	toDelete := diffSets(trackedFiles, localFiles)
-
-	// Log unknown image handling.
-	if len(unknownIDs) > 0 {
-		if e.cfg.RemoveUnknownImages {
-			log.Info("will remove unknown images", "count", len(unknownIDs))
-		} else {
-			log.Warn("unknown images on TV (set REMOVE_UNKNOWN_IMAGES=true to remove)",
-				"count", len(unknownIDs))
-		}
-	}
-
-	log.Info("sync plan",
-		"to_upload", len(toUpload),
-		"to_delete", len(toDelete),
-		"unknown_to_delete", boolCount(e.cfg.RemoveUnknownImages, len(unknownIDs)),
-	)
 
 	// Determine slideshow settings.
 	var desiredSlideshow *samsung.SlideshowStatus
@@ -404,7 +268,6 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		interval := fmt.Sprintf("%d", e.cfg.SlideshowInterval)
 
 		// Validate against known supported values for 2024 models
-		// Supported: 3, 15, 60 (1h), 720 (12h), 1440 (1d), 10080 (7d)
 		isValid := false
 		supported := []string{"3", "15", "60", "720", "1440", "10080"}
 		for _, s := range supported {
@@ -429,181 +292,69 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		}
 	}
 
-	// Preserve current slideshow if no override and we're making changes.
-	var preserveSlideshow *samsung.SlideshowStatus
-	hasChanges := len(toUpload) > 0 || len(toDelete) > 0 || (e.cfg.RemoveUnknownImages && len(unknownIDs) > 0)
-	if hasChanges && !e.cfg.SlideshowOverride {
-		preserveSlideshow, _ = client.SlideshowStatus(ctx)
-	}
-
-	// Upload new images.
-	for filename := range toUpload {
-		if e.cfg.DryRun {
-			log.Info("[DRY RUN] would upload", "file", filename)
-			summary.Uploaded++
-			continue
-		}
-
-		displayName := filename
-		filename = sanitize.Filename(filename)
-		filePath := filepath.Join(e.cfg.ArtworkDir, displayName) // use original for disk path
-		fileType := FileTypeFromExt(filename)
-		matte := matteConfig.GetMatte(displayName, e.cfg.MatteStyle)
-
-		log.Info("uploading", "file", displayName, "sanitized", filename, "matte", matte)
-
-		contentID, err := client.Upload(ctx, filePath, fileType)
-		if err != nil {
-			log.Error("upload failed", "file", filename, "error", err)
-			time.Sleep(e.cfg.UploadDelay * 2)
-			continue
-		}
-
-		mapping.Set(filename, contentID)
-		log.Info("uploaded", "file", filename, "content_id", contentID)
-		summary.Uploaded++
-
-		time.Sleep(e.cfg.UploadDelay)
-	}
-
-	// Batch save mapping after all uploads
-	if summary.Uploaded > 0 && !e.cfg.DryRun {
-		if err := mapping.Save(); err != nil {
-			log.Error("failed to save mapping after uploads", "error", err)
-		}
-	}
-
-	// Delete tracked images no longer in local directory.
-	if len(toDelete) > 0 {
-		var idsToDelete []string
-		for filename := range toDelete {
-			if cid, ok := mapping.GetContentID(filename); ok {
-				idsToDelete = append(idsToDelete, cid)
-			}
-		}
-
-		if len(idsToDelete) > 0 {
-			if e.cfg.DryRun {
-				log.Info("[DRY RUN] would delete tracked images", "count", len(idsToDelete))
-			} else {
-				log.Info("deleting tracked images", "count", len(idsToDelete))
-				if err := client.DeleteImages(ctx, idsToDelete); err != nil {
-					log.Error("batch delete failed", "error", err)
-				} else {
-					var filesToDelete []string
-					for filename := range toDelete {
-						filesToDelete = append(filesToDelete, filename)
-					}
-					mapping.DeleteBatch(filesToDelete)
-
-					if err := mapping.Save(); err != nil {
-						log.Error("failed to save mapping after delete", "error", err)
-					}
-					log.Info("deleted tracked images", "count", len(idsToDelete))
-				}
-			}
-			summary.Deleted = len(idsToDelete)
-		}
-	}
-
-	// Delete unknown images if configured.
-	if e.cfg.RemoveUnknownImages && len(unknownIDs) > 0 {
-		ids := setToSlice(unknownIDs)
-		if e.cfg.DryRun {
-			log.Info("[DRY RUN] would delete unknown images", "count", len(ids))
-		} else {
-			log.Info("deleting unknown images", "count", len(ids))
-			if err := client.DeleteImages(ctx, ids); err != nil {
-				log.Error("delete unknown images failed", "error", err)
-			}
-		}
-	}
-
-	// Select an image + restore slideshow after changes.
-	if hasChanges && len(localFiles) > 0 {
-		verifiedMap := mapping.AllContentIDs()
-		if len(verifiedMap) > 0 {
-			var selectedID string
-
-			settingsForMode := desiredSlideshow
-			if settingsForMode == nil {
-				settingsForMode = preserveSlideshow
-			}
-
-			if settingsForMode != nil && settingsForMode.Type == "shuffleslideshow" {
-				values := mapValues(verifiedMap)
-				selectedID = values[rand.IntN(len(values))] //nolint:gosec // Not used for crypto
-				log.Info("selecting random image for shuffle mode")
-			} else if len(verifiedMap) > 0 {
-				for _, id := range verifiedMap {
-					selectedID = id
-					break
-				}
-				log.Info("selecting first image")
-			}
-
-			if selectedID != "" && !e.cfg.DryRun {
-				if err := client.SelectImage(ctx, selectedID); err != nil {
-					log.Warn("failed to select image", "error", err)
-				}
-			}
-
-			if preserveSlideshow != nil && !e.cfg.DryRun {
-				if err := client.SetSlideshow(ctx, *preserveSlideshow); err != nil {
-					log.Warn("failed to restore slideshow", "error", err)
-				}
-			}
-		}
-	}
-
-	// Apply slideshow override.
-	if desiredSlideshow != nil && !e.cfg.DryRun {
-		current, _ := client.SlideshowStatus(ctx)
-		needsUpdate := current == nil ||
-			current.Value != desiredSlideshow.Value ||
-			current.Type != desiredSlideshow.Type
-
-		if needsUpdate {
-			log.Info("updating slideshow settings",
-				"interval", desiredSlideshow.Value,
-				"type", desiredSlideshow.Type,
-			)
-			if err := client.SetSlideshow(ctx, *desiredSlideshow); err != nil {
-				log.Warn("failed to set slideshow", "error", err)
-			}
-		}
-		summary.Slideshow = fmt.Sprintf("%s every %s min", desiredSlideshow.Type, desiredSlideshow.Value)
-	}
-
-	// Apply brightness.
+	// Determine brightness.
 	brightnessVal := e.determineBrightness(log)
-	if brightnessVal != nil && !e.cfg.DryRun {
-		if err := client.SetBrightness(ctx, *brightnessVal); err != nil {
-			log.Warn("failed to set brightness", "error", err)
-		}
-		summary.Brightness = fmt.Sprintf("%d", *brightnessVal)
-	}
 
-	// Auto-off check.
-	if schedule.IsWithinAutoOffWindow(e.cfg.AutoOffTime, e.cfg.AutoOffGraceHours, e.cfg.Timezone) {
-		log.Info("within auto-off window, turning off TV",
+	// Check auto-off window.
+	triggerAutoOff := IsWithinAutoOffWindow(e.cfg.AutoOffTime, e.cfg.AutoOffGraceHours, e.cfg.Timezone)
+	if triggerAutoOff {
+		log.Info("within auto-off window, preparing TV power-off trigger",
 			"off_time", e.cfg.AutoOffTime,
-			"grace_hours", schedule.FormatGraceDisplay(e.cfg.AutoOffGraceHours),
+			"grace_hours", FormatGraceDisplay(e.cfg.AutoOffGraceHours),
 		)
-		if !e.cfg.DryRun {
-			if err := client.TurnOff(ctx); err != nil {
-				log.Warn("failed to turn off TV", "error", err)
-			} else {
-				log.Info("TV turned off")
-			}
+	}
+
+	// Package map overrides and current filename mappings
+	matteOverrides := make(map[string]string)
+	for filename := range localFiles {
+		matteOverrides[filename] = matteConfig.GetMatte(filename, e.cfg.MatteStyle)
+	}
+
+	syncRequest := samsung.SyncRequest{
+		LocalFiles:        localFiles,
+		Mapping:           mapping.AllContentIDs(),
+		MatteOverrides:    matteOverrides,
+		DesiredBrightness: brightnessVal,
+		Slideshow:         desiredSlideshow,
+		TriggerAutoOff:    triggerAutoOff,
+	}
+
+	// Trigger synchronization.
+	result, err := client.Sync(ctx, syncRequest)
+	if err != nil {
+		summary.Status = statusError
+		return summary, err
+	}
+
+	// Process mapping changes returned by the client.
+	mappingUpdated := false
+	if len(result.NewUploads) > 0 {
+		for f, id := range result.NewUploads {
+			mapping.Set(sources.Filename(f), id)
+		}
+		mappingUpdated = true
+	}
+	if len(result.DeletedFiles) > 0 {
+		mapping.DeleteBatch(result.DeletedFiles)
+		mappingUpdated = true
+	}
+
+	if mappingUpdated && !e.cfg.DryRun {
+		if err := mapping.Save(); err != nil {
+			log.Error("failed to save mapping", "error", err)
 		}
 	}
 
-	// Calculate total images on TV.
-	summary.TotalImages = len(trackedFiles) + summary.Uploaded - summary.Deleted
-	summary.Status = "ok"
+	summary.Model = result.Model
+	summary.Status = result.Status
+	summary.ArtMode = result.ArtMode
+	summary.Uploaded = result.Uploaded
+	summary.Deleted = result.Deleted
+	summary.TotalImages = result.TotalImages
+	summary.Brightness = result.Brightness
+	summary.Slideshow = result.Slideshow
+	summary.ErrorMessage = result.ErrorMessage
 
-	log.Info("sync completed")
 	return summary, nil
 }
 

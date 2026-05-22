@@ -1,5 +1,4 @@
-// Package sanitize provides filename cleaning utilities.
-package sanitize
+package sources
 
 import (
 	"path/filepath"

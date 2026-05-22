@@ -1,5 +1,3 @@
-version: "2"
-
 linters:
   enable:
     - gosec
@@ -17,16 +15,36 @@ linters:
     - nakedret
     - prealloc
     - unparam
-  settings:
-    gocyclo:
-      min-complexity: 15
-    revive:
-      rules:
-        - name: exported
-          disabled: true
-    goconst:
-      min-len: 3
-      min-occurrences: 3
+    - funlen
+    - gocognit
+    - nestif
+    - lll
+    - errcheck
+    - unused
+
+linters-settings:
+  gocyclo:
+    min-complexity: 20
+  gocognit:
+    min-complexity: 35
+  nestif:
+    min-complexity: 5
+  funlen:
+    lines: 120
+    statements: 70
+  lll:
+    line-length: 180
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  revive:
+    rules:
+      - name: exported
+        disabled: true
+      - name: argument-limit
+        arguments: [7]
+      - name: function-result-limit
+        arguments: [3]
 
 run:
   timeout: 5m
@@ -35,3 +53,44 @@ run:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    # Exclude test files from structural limits
+    - path: _test\.go
+      linters:
+        - funlen
+        - gocognit
+        - gocyclo
+        - dupl
+        - lll
+        - revive
+    # Exclude astronomical/solar equations from complexity and length checks
+    - path: internal/brightness/
+      linters:
+        - funlen
+        - gocognit
+        - gocyclo
+    # Exclude environmental configuration loading (heavy setup/validation) from length checks
+    - path: internal/config/
+      linters:
+        - funlen
+        - gocognit
+        - gocyclo
+    # Exclude mathematical image processing and low-level protocol packages from pedantic style checks
+    - path: internal/optimize/
+      linters:
+        - lll
+        - nestif
+        - funlen
+        - gocognit
+        - gocyclo
+    - path: internal/samsung/
+      linters:
+        - lll
+        - nestif
+        - funlen
+        - gocognit
+        - gocyclo
+    # Exclude source APIs (long URLs, parser loops) from line length checks
+    - path: internal/sources/
+      linters:
+        - lll

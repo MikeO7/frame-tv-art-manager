@@ -1,6 +1,4 @@
-// Package resilience provides connection reliability utilities for
-// handling unreachable TVs gracefully across sync cycles.
-package resilience
+package sync
 
 import (
 	"log/slog"

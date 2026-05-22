@@ -148,6 +148,10 @@ func (c *nasaClient) fetchNASAAssetManifest(ctx context.Context, href string) (s
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("nasa asset manifest api error: %d", resp.StatusCode)
+	}
+
 	var manifest []string
 	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
