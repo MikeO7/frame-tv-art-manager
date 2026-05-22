@@ -32,7 +32,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64.6
-          install-mode: binary
+          install-mode: goinstall
 
   # Lane 2: Security Scan
   security:
