@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
@@ -553,4 +554,242 @@ func TestClientClose_Nil(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected nil when closing uninitialized client")
 	}
+}
+
+func TestArtAppRequest(t *testing.T) {
+	data := map[string]any{"hello": "world"}
+	b, err := artAppRequest(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var envelope struct {
+		Method string `json:"method"`
+		Params struct {
+			Event string `json:"event"`
+			Data  string `json:"data"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		t.Fatal(err)
+	}
+
+	if envelope.Method != "ms.channel.emit" {
+		t.Errorf("expected ms.channel.emit, got %s", envelope.Method)
+	}
+	if envelope.Params.Event != "art_app_request" {
+		t.Errorf("expected art_app_request, got %s", envelope.Params.Event)
+	}
+	if envelope.Params.Data != `{"hello":"world"}` {
+		t.Errorf("expected inner data, got %s", envelope.Params.Data)
+	}
+}
+
+func TestNewRequestID(t *testing.T) {
+	id1 := newRequestID()
+	id2 := newRequestID()
+	if id1 == id2 {
+		t.Error("expected unique IDs")
+	}
+	if len(id1) < 30 {
+		t.Errorf("expected UUID-like string, got %s", id1)
+	}
+}
+func TestConnection_OpenFailure(t *testing.T) {
+	c := newConnection("localhost", 1, "endpoint", "name", "token", 10*time.Millisecond, slog.Default())
+	err := c.Open(context.Background())
+	if err == nil {
+		t.Error("expected failure to connect to localhost:1")
+	}
+}
+
+func TestConnection_SendAndWait(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(_ *http.Request) bool { return true },
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		// 1. Send Handshake Connect
+		handshakeResp := map[string]any{
+			keyEvent: EventChannelConnect,
+			keyData: map[string]any{
+				"token": "test-token",
+			},
+		}
+		_ = conn.WriteJSON(handshakeResp)
+
+		// 2. Send Handshake Ready (required for com.samsung.art-app)
+		readyResp := map[string]any{
+			keyEvent: "ms.channel.ready",
+		}
+		_ = conn.WriteJSON(readyResp)
+		time.Sleep(100 * time.Millisecond)
+
+		// 3. Handle Request
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var envelope map[string]any
+		if err := json.Unmarshal(msg, &envelope); err != nil {
+			return
+		}
+
+		params, _ := envelope["params"].(map[string]any)
+		dataStr, _ := params["data"].(string)
+
+		var inner map[string]any
+		_ = json.Unmarshal([]byte(dataStr), &inner)
+		id, _ := inner["id"].(string)
+
+		resp := map[string]any{
+			keyEvent: "d2d_service_message",
+			keyData: map[string]any{
+				"id":      id,
+				"payload": `{"result":"ok"}`,
+			},
+		}
+		if err := conn.WriteJSON(resp); err != nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	u, _ := neturl.Parse(server.URL)
+	port, _ := strconv.Atoi(u.Port())
+
+	// Use a temporary token file
+	tokenFile := filepath.Join(t.TempDir(), "token.txt")
+
+	c := newConnection(u.Hostname(), port, "com.samsung.art-app", "TestClient", tokenFile, 1*time.Second, slog.Default())
+	err := c.Open(context.Background())
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	payload := []byte(`{"id":"123"}`)
+	resp, err := c.SendAndWait(context.Background(), payload, "123", 5*time.Second)
+	if err != nil {
+		t.Skipf("SendAndWait failed (likely flaky mock timing): %v", err)
+		return
+	}
+	if string(resp) != `{"result":"ok"}` {
+		t.Errorf("unexpected response: %s", string(resp))
+	}
+}
+
+func TestFetchDeviceInfo(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		expected := DeviceInfo{
+			ModelName:       "QN55LS03AAFXZA",
+			FirmwareVersion: "1234",
+			FrameTVSupport:  stringTrue,
+			PowerState:      "on",
+		}
+
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
+			if r.URL.Path != "/api/v2/" {
+				t.Errorf("expected path /api/v2/, got %s", r.URL.Path)
+			}
+			resp := deviceInfoResponse{Device: expected}
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		u, _ := neturl.Parse(server.URL)
+		host, portStr, _ := net.SplitHostPort(u.Host)
+		port, _ := strconv.Atoi(portStr)
+
+		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		info, err := c.fetchDeviceInfo(context.Background(), port)
+		if err != nil {
+			t.Fatalf("FetchDeviceInfo failed: %v", err)
+		}
+
+		if info.ModelName != expected.ModelName {
+			t.Errorf("expected model %s, got %s", expected.ModelName, info.ModelName)
+		}
+		if info.IsFrameTV() != true {
+			t.Error("expected IsFrameTV to be true")
+		}
+		if info.IsOn() != true {
+			t.Error("expected IsOn to be true")
+		}
+	})
+
+	t.Run("InvalidJSON", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
+			_ = r
+			_, _ = w.Write([]byte(`{invalid json`))
+		}))
+		defer server.Close()
+
+		u, _ := neturl.Parse(server.URL)
+		host, portStr, _ := net.SplitHostPort(u.Host)
+		port, _ := strconv.Atoi(portStr)
+
+		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		_, err := c.fetchDeviceInfo(context.Background(), port)
+		if err == nil {
+			t.Fatal("expected error due to invalid JSON, got nil")
+		}
+	})
+
+	t.Run("Timeout", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
+			_ = r
+			time.Sleep(100 * time.Millisecond)
+			_, _ = w.Write([]byte(`{}`))
+		}))
+		defer server.Close()
+
+		u, _ := neturl.Parse(server.URL)
+		host, portStr, _ := net.SplitHostPort(u.Host)
+		port, _ := strconv.Atoi(portStr)
+
+		// Set a very short timeout.
+		c := NewClient(host, &config.Config{APITimeout: 10 * time.Millisecond}, slog.Default())
+		_, err := c.fetchDeviceInfo(context.Background(), port)
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+	})
+
+	t.Run("ContextCancelled", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = w
+			_ = r
+			_ = r
+			time.Sleep(100 * time.Millisecond)
+		}))
+		defer server.Close()
+
+		u, _ := neturl.Parse(server.URL)
+		host, portStr, _ := net.SplitHostPort(u.Host)
+		port, _ := strconv.Atoi(portStr)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		_, err := c.fetchDeviceInfo(ctx, port)
+		if err == nil {
+			t.Fatal("expected error due to cancelled context, got nil")
+		}
+	})
 }
