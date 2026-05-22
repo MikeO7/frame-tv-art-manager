@@ -75,14 +75,6 @@ issues:
         - funlen
         - gocognit
         - gocyclo
-    # Exclude mathematical image processing and low-level protocol packages from pedantic style checks
-    - path: internal/optimize/
-      linters:
-        - lll
-        - nestif
-        - funlen
-        - gocognit
-        - gocyclo
     - path: internal/samsung/
       linters:
         - lll
