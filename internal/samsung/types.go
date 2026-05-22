@@ -11,8 +11,9 @@ const (
 )
 
 const (
-	stringTrue  = "true"
-	stringFalse = "false"
+	methodRemoteControl = "ms.remote.control"
+	stringTrue          = "true"
+	stringFalse         = "false"
 )
 
 // DeviceInfo holds metadata about a connected Samsung TV, retrieved via
