@@ -371,7 +371,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 		Timeout: c.cfg.APITimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, //nolint:gosec // lgtm[go/disabled-certificate-check]
+				InsecureSkipVerify: true, //nolint:gosec // lgtm[go/insecure-tls]
 			}, //nolint:gosec // Required: Samsung TVs use self-signed certs for local REST; verification would prevent connection.
 		},
 	}
