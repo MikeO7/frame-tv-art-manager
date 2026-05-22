@@ -13,6 +13,3 @@
 ## 2024-05-21 - Optimize RGB to CIE Lab Math Overhead
 **Learning:** In Go, calling an anonymous function inside a tight loop like image processing (millions of pixels) adds measurable call stack overhead. Also, floating-point divisions (`16.0 / 116.0`) in per-pixel math, even if constant, can prevent compiler loop unrolling or fast-math paths compared to precomputing the reciprocal/constant.
 **Action:** When performing complex pixel transformations (like converting RGB to CIE Lab), strictly avoid closures within the evaluation loop. Inline calculations and precalculate any static divisions into constants to reduce nanoseconds per operation, which scales heavily in 4K resolution processing.
-## 2026-05-22 - Fast Math Pow Replacement in Tight Loops
-**Learning:** In extremely tight math loops evaluated on a per-pixel basis (like CIEDE2000 calculations), standard library functions like `math.Pow(x, 2)` and `math.Pow(x, 7)` have significant invocation and floating-point logic overhead.
-**Action:** Replace bounded, integer-exponent `math.Pow` calls with explicit multiplication operations (e.g. `x * x` or computing `x^7` using successive squaring `x^2, x^4, x^4 * x^2 * x`). This cut the benchmark time of CIEDE2000 roughly in half.
