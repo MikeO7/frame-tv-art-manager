@@ -379,7 +379,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	client := &http.Client{
 		Timeout: c.cfg.APITimeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Required: Samsung TVs use self-signed certs for local REST; verification would prevent connection.
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // lgtm[go/disabled-certificate-check] Required: Samsung TVs use self-signed certs for local REST; verification would prevent connection.
 		},
 	}
 
@@ -987,7 +987,7 @@ func (c *connection) Open(ctx context.Context) error {
 	c.logger.Debug("dialing WebSocket", "url", wsURL)
 
 	dialer := websocket.Dialer{
-		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // Required: Samsung TVs use self-signed certs for local WSS; verification would prevent connection.
+		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // lgtm[go/disabled-certificate-check] Required: Samsung TVs use self-signed certs for local WSS; verification would prevent connection.
 		HandshakeTimeout: c.timeout,
 	}
 
@@ -1383,7 +1383,7 @@ func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileTyp
 
 	var conn net.Conn
 	if info.Secured {
-		tlsConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Samsung self-signed cert
+		tlsConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // lgtm[go/disabled-certificate-check] Samsung self-signed cert
 		conn, err = tls.DialWithDialer(&dialer, "tcp", addr, tlsConf)
 	} else {
 		conn, err = dialer.DialContext(ctx, "tcp", addr)
