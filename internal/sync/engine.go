@@ -258,39 +258,7 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	}
 
 	// Determine slideshow settings.
-	var desiredSlideshow *samsung.SlideshowStatus
-	if e.cfg.SlideshowOverride && e.cfg.SlideshowEnabled {
-		ssType := ssTypeShuffle
-		if e.cfg.SlideshowType == "sequential" || e.cfg.SlideshowType == "order" {
-			ssType = ssTypeSequential
-		}
-
-		interval := fmt.Sprintf("%d", e.cfg.SlideshowInterval)
-
-		// Validate against known supported values for 2024 models
-		isValid := false
-		supported := []string{"3", "15", "60", "720", "1440", "10080"}
-		for _, s := range supported {
-			if interval == s {
-				isValid = true
-				break
-			}
-		}
-
-		if !isValid {
-			log.Warn("invalid slideshow interval detected for 2024 model, defaulting to 3m shuffle",
-				"requested", interval,
-				"supported", supported)
-			interval = "3"
-			ssType = ssTypeShuffle
-		}
-
-		desiredSlideshow = &samsung.SlideshowStatus{
-			Value:      interval,
-			Type:       ssType,
-			CategoryID: "MY-C0002",
-		}
-	}
+	desiredSlideshow := e.determineSlideshowSettings(log)
 
 	// Determine brightness.
 	brightnessVal := e.determineBrightness(log)
@@ -356,6 +324,43 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	summary.ErrorMessage = result.ErrorMessage
 
 	return summary, nil
+}
+
+func (e *Engine) determineSlideshowSettings(log *slog.Logger) *samsung.SlideshowStatus {
+	if !e.cfg.SlideshowOverride || !e.cfg.SlideshowEnabled {
+		return nil
+	}
+
+	ssType := ssTypeShuffle
+	if e.cfg.SlideshowType == "sequential" || e.cfg.SlideshowType == "order" {
+		ssType = ssTypeSequential
+	}
+
+	interval := fmt.Sprintf("%d", e.cfg.SlideshowInterval)
+
+	// Validate against known supported values for 2024 models
+	isValid := false
+	supported := []string{"3", "15", "60", "720", "1440", "10080"}
+	for _, s := range supported {
+		if interval == s {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		log.Warn("invalid slideshow interval detected for 2024 model, defaulting to 3m shuffle",
+			"requested", interval,
+			"supported", supported)
+		interval = "3"
+		ssType = ssTypeShuffle
+	}
+
+	return &samsung.SlideshowStatus{
+		Value:      interval,
+		Type:       ssType,
+		CategoryID: "MY-C0002",
+	}
 }
 
 // determineBrightness calculates the brightness to apply.
