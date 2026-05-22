@@ -157,7 +157,17 @@ func (c *Client) GetUploadedImages(ctx context.Context) ([]ArtContent, error) {
 }
 
 // Upload sends an image to the TV via the art API + D2D socket transfer.
-// Returns the content_id assigned by the TV.
+//
+// Parameters:
+//   - ctx: Context for timeout and cancellation.
+//   - filePath: Absolute or relative local path to the image file.
+//   - fileType: File extension/type identifier (e.g., "JPEG" or "PNG").
+//
+// Returns the content_id assigned by the TV (e.g., "MY-C0002-1234").
+//
+// Example:
+//
+//	contentID, err := client.Upload(ctx, "/data/art/van_gogh.jpg", "JPEG")
 func (c *Client) Upload(ctx context.Context, filePath, fileType string) (string, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
@@ -196,11 +206,27 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType string) (string,
 }
 
 // DeleteImages removes artwork from the TV by content IDs.
+//
+// Parameters:
+//   - ctx: Context for timeout and cancellation.
+//   - ids: Slice of string content IDs to delete.
+//
+// Example:
+//
+//	err := client.DeleteImages(ctx, []string{"MY-C0002-1234", "MY-C0002-1235"})
 func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 	return c.artAPI.DeleteImages(ctx, ids)
 }
 
 // SelectImage sets the currently displayed artwork.
+//
+// Parameters:
+//   - ctx: Context for timeout and cancellation.
+//   - id: The content ID of the artwork to display.
+//
+// Example:
+//
+//	err := client.SelectImage(ctx, "MY-C0002-1234")
 func (c *Client) SelectImage(ctx context.Context, id string) error {
 	return c.artAPI.SelectImage(ctx, id, true)
 }
