@@ -32,13 +32,15 @@ type Config struct {
 }
 
 var (
-	lutSrgb         [16384]uint8
-	lutSrgbOnce     sync.Once
-	lutRgbToLab     [256]float64
-	lutRgbToLabOnce sync.Once
-	lutWeave        [400]float64
-	lutVarnishPool  [400]float64
-	lutWeaveOnce    sync.Once
+	lutSrgb           [16384]uint8
+	lutSrgbOnce       sync.Once
+	lutRgbToLab       [256]float64
+	lutRgbToLabOnce   sync.Once
+	lutWeave          [400]float64
+	lutVarnishPool    [400]float64
+	lutWeaveOnce      sync.Once
+	lutCraquelure     [65536]float64
+	lutCraquelureOnce sync.Once
 )
 
 // DefaultConfig returns sensible defaults for Frame TV display.
@@ -326,35 +328,149 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	// 1. Generate BMS (Boolean Map Saliency) surroundedness map.
 	bmsMap := generateBMSMap(src)
 
+	// 2. Precompute Mean Lab Color of the entire image to measure color distance
+	var sumL, sumA, sumB float64
+	totalPixels := float64((w - 2) * (h - 2))
+	for y := 1; y < h-1; y++ {
+		for x := 1; x < w-1; x++ {
+			idx := y*src.Stride + x*4
+			r, g, b := src.Pix[idx], src.Pix[idx+1], src.Pix[idx+2]
+			l, aVal, bVal := rgbToLab(r, g, b)
+			sumL += l
+			sumA += aVal
+			sumB += bVal
+		}
+	}
+	meanL := sumL / totalPixels
+	meanA := sumA / totalPixels
+	meanB := sumB / totalPixels
+
 	for y := 1; y < h-1; y++ {
 		for x := 1; x < w-1; x++ {
 			idx := y*src.Stride + x*4
 			r, g, b := src.Pix[idx], src.Pix[idx+1], src.Pix[idx+2]
 
-			// 2. Structural Saliency (Edge Detection via 3x3 Sobel)
+			// 3. Structural Saliency (Edge Detection via 3x3 Sobel)
 			edge := calculateSobelEdge(src, x, y)
 
-			// 3. Skin Tone Saliency (Heuristic)
+			// 4. Skin Tone Saliency (Heuristic)
 			skin := calculateSkinProbability(r, g, b)
 
-			// 4. Object Saliency (BMS)
+			// 5. Object Saliency (BMS)
 			object := bmsMap[y*w+x]
 
-			// 5. Perceptual Lab Saliency (Color Contrast in Lab Space)
-			// Lab space is uniform and captures true human color perception.
-			_, aLab, bLab := rgbToLab(r, g, b)
-			colorWeight := math.Sqrt(aLab*aLab+bLab*bLab) / 128.0
+			// 6. Perceptual Lab Saliency (Color Contrast using CIEDE2000 color difference)
+			// Measures true perceptual distance from the average image background color
+			lLab, aLab, bLab := rgbToLab(r, g, b)
+			colorWeight := ciede2000(lLab, aLab, bLab, meanL, meanA, meanB) / 100.0
+			if colorWeight > 1.0 {
+				colorWeight = 1.0
+			}
 
-			// 6. Aesthetic/Compositional Weight (Rule of Thirds + Balance)
+			// 7. Aesthetic/Compositional Weight (Rule of Thirds + Balance)
 			aesthetic := calculateAestheticScore(x, y, w, h)
 
-			// Weighted Fusion v4.0
-			// BMS remains the core, but we now incorporate perceptual Lab color weight.
+			// Weighted Fusion v4.1
+			// BMS is the core, with perceptual CIEDE2000 color distance as the color contrast weight.
 			fusion := (object * 0.40) + (edge * 0.20) + (skin * 0.25) + (colorWeight * 0.15)
 			mapData[y*w+x] = fusion * (1.0 + aesthetic)
 		}
 	}
 	return mapData
+}
+
+// ciede2000 calculates the exact CIE 2000 color-difference standard between two CIELAB colors.
+func ciede2000(l1, a1, b1, l2, a2, b2 float64) float64 {
+	c1 := math.Sqrt(a1*a1 + b1*b1)
+	c2 := math.Sqrt(a2*a2 + b2*b2)
+	meanC := (c1 + c2) / 2.0
+
+	meanC7 := math.Pow(meanC, 7)
+	const e7 = 6103515625.0 // 25^7
+	g := 0.5 * (1.0 - math.Sqrt(meanC7/(meanC7+e7)))
+
+	aPrime1 := (1.0 + g) * a1
+	aPrime2 := (1.0 + g) * a2
+
+	cPrime1 := math.Sqrt(aPrime1*aPrime1 + b1*b1)
+	cPrime2 := math.Sqrt(aPrime2*aPrime2 + b2*b2)
+
+	radToDeg := func(r float64) float64 {
+		d := r * 180.0 / math.Pi
+		if d < 0 {
+			d += 360.0
+		}
+		return d
+	}
+
+	var hPrime1, hPrime2 float64
+	if aPrime1 != 0 || b1 != 0 {
+		hPrime1 = radToDeg(math.Atan2(b1, aPrime1))
+	}
+	if aPrime2 != 0 || b2 != 0 {
+		hPrime2 = radToDeg(math.Atan2(b2, aPrime2))
+	}
+
+	deltaLPrime := l2 - l1
+	deltaCPrime := cPrime2 - cPrime1
+
+	var deltaHPrime float64
+	var deltahPrime float64
+	if cPrime1*cPrime2 != 0 {
+		deltahPrime = hPrime2 - hPrime1
+		if math.Abs(deltahPrime) > 180.0 {
+			if hPrime2 > hPrime1 {
+				deltahPrime -= 360.0
+			} else {
+				deltahPrime += 360.0
+			}
+		}
+	}
+	deltaHPrime = 2.0 * math.Sqrt(cPrime1*cPrime2) * math.Sin(deltahPrime*math.Pi/360.0)
+
+	meanL := (l1 + l2) / 2.0
+	meanCPrime := (cPrime1 + cPrime2) / 2.0
+
+	var meanHPrime float64
+	if cPrime1*cPrime2 != 0 {
+		if math.Abs(hPrime1-hPrime2) <= 180.0 {
+			meanHPrime = (hPrime1 + hPrime2) / 2.0
+		} else {
+			if hPrime1+hPrime2 < 360.0 {
+				meanHPrime = (hPrime1 + hPrime2 + 360.0) / 2.0
+			} else {
+				meanHPrime = (hPrime1 + hPrime2 - 360.0) / 2.0
+			}
+		}
+	} else {
+		meanHPrime = hPrime1 + hPrime2
+	}
+
+	t := 1.0 - 0.17*math.Cos((meanHPrime-30.0)*math.Pi/180.0) +
+		0.24*math.Cos(2.0*meanHPrime*math.Pi/180.0) +
+		0.32*math.Cos((3.0*meanHPrime+6.0)*math.Pi/180.0) -
+		0.20*math.Cos((4.0*meanHPrime-63.0)*math.Pi/180.0)
+
+	deltaTheta := 30.0 * math.Exp(-math.Pow((meanHPrime-275.0)/25.0, 2))
+
+	meanCPrime7 := math.Pow(meanCPrime, 7)
+	rc := 2.0 * math.Sqrt(meanCPrime7/(meanCPrime7+e7))
+
+	rt := -rc * math.Sin(2.0*deltaTheta*math.Pi/180.0)
+
+	sl := 1.0 + (0.015*math.Pow(meanL-50.0, 2))/math.Sqrt(20.0+math.Pow(meanL-50.0, 2))
+	sc := 1.0 + 0.045*meanCPrime
+	sh := 1.0 + 0.015*meanCPrime*t
+
+	valSq := math.Pow(deltaLPrime/sl, 2) +
+		math.Pow(deltaCPrime/sc, 2) +
+		math.Pow(deltaHPrime/sh, 2) +
+		rt*(deltaCPrime/sc)*(deltaHPrime/sh)
+
+	if valSq < 0 {
+		return 0
+	}
+	return math.Sqrt(valSq)
 }
 
 // rgbToLab performs a fast, simplified conversion from RGB to CIE Lab space.
@@ -861,8 +977,10 @@ func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 
 // applyCanvasTexture simulates a physical interlocking warp-and-weft weave.
 // Uses a 3D Normal-Mapping simulation for light-aware depth and anisotropic grain.
-// UPDATED: Now includes Virtual Impasto (stroke height) and Craquelure (age splitting).
+// UPDATED: Now includes Toroidal Worley connected craquelure and 3x3 Scharr specular impasto.
 func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
+	lutCraquelureOnce.Do(initializeCraquelure)
+
 	// 1. Updated Opacity Curve (1.32 multiplier for more distinct jumps)
 	opacity := 0.04 * math.Pow(1.32, float64(intensity-1))
 	if opacity > 0.60 {
@@ -872,9 +990,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	// To prevent data races, calculateBipolarImpasto reads top and left pixels,
-	// meaning concurrent writes to `src.Pix` by different rows will cause a race.
-	// We will create a destination image and copy edge pixels.
+	// To prevent data races, we write to a destination image and read from src.
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
 
@@ -913,8 +1029,10 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 }
 
 func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
-	// 1. Bipolar Virtual Impasto
-	impasto := calculateBipolarImpasto(src, i)
+	w, h := src.Bounds().Dx(), src.Bounds().Dy()
+
+	// 1. 3D Specular Impasto (Scharr Gradient Kernel)
+	impasto := calculateScharrImpasto(src, x, y, w, h)
 
 	// 2. 3D Interlocking Weave
 	weave, varnishPool := calculateWeave(x, y)
@@ -927,20 +1045,13 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 		weave -= 0.05
 	}
 
-	// 3. Procedural Craquelure
-	*state ^= *state << 13
-	*state ^= *state >> 17
-	*state ^= *state << 5
-	if float32(*state)/float32(0xFFFFFFFF) > 0.9997 {
-		weave -= 0.5
-	}
+	// 3. Seamless connected craquelure (Worley/Voronoi)
+	weave += lookupCraquelure(x, y)
 
 	// Merge topography
 	weave += impasto
 
 	// 4. Blending & Archive Varnish
-	// To prevent race conditions with calculateBipolarImpasto reading adjacent pixels,
-	// calculate new values into temporary variables before modifying the source pixel.
 	aR := float64(src.Pix[i]) / 255.0 * 1.01 // Subtle Red
 	r := applySoftLight(aR, weave, opacity)
 
@@ -955,21 +1066,95 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 	dst.Pix[i+2] = b
 }
 
-func calculateBipolarImpasto(src *image.RGBA, i int) float64 {
-	// Detect ridge direction (Normal Mapping)
-	// Factor out constants and 255.0 division to avoid multiple float64 multiplications per channel
-	// 0.299 * (0.15 / 255.0) = 0.00017588235294117646
-	// 0.587 * (0.15 / 255.0) = 0.00034529411764705883
-	// 0.114 * (0.15 / 255.0) = 0.00006705882352941177
+func getLuminance(src *image.RGBA, x, y, w, h int) float64 {
+	if x < 0 {
+		x = 0
+	} else if x >= w {
+		x = w - 1
+	}
+	if y < 0 {
+		y = 0
+	} else if y >= h {
+		y = h - 1
+	}
+	idx := y*src.Stride + x*4
+	return 0.299*float64(src.Pix[idx]) + 0.587*float64(src.Pix[idx+1]) + 0.114*float64(src.Pix[idx+2])
+}
 
-	// Create a bipolar offset (-0.15 to 0.15) based on edge direction
-	// This creates highlights on one side of a stroke and shadows on the other
-	// Virtual Light from Top-Left (-1, -1)
-	dR := float64(int(src.Pix[i])<<1 - int(src.Pix[i-4]) - int(src.Pix[i-src.Stride]))
-	dG := float64(int(src.Pix[i+1])<<1 - int(src.Pix[i-3]) - int(src.Pix[i-src.Stride+1]))
-	dB := float64(int(src.Pix[i+2])<<1 - int(src.Pix[i-2]) - int(src.Pix[i-src.Stride+2]))
+func calculateScharrImpasto(src *image.RGBA, x, y, w, h int) float64 {
+	// Sample 3x3 grid around pixel
+	m00 := getLuminance(src, x-1, y-1, w, h)
+	m10 := getLuminance(src, x, y-1, w, h)
+	m20 := getLuminance(src, x+1, y-1, w, h)
 
-	return dR*0.00017588235294117646 + dG*0.00034529411764705883 + dB*0.00006705882352941177
+	m01 := getLuminance(src, x-1, y, w, h)
+	m21 := getLuminance(src, x+1, y, w, h)
+
+	m02 := getLuminance(src, x-1, y+1, w, h)
+	m12 := getLuminance(src, x, y+1, w, h)
+	m22 := getLuminance(src, x+1, y+1, w, h)
+
+	gx := 3.0*(m20-m00) + 10.0*(m21-m01) + 3.0*(m22-m02)
+	gy := 3.0*(m02-m00) + 10.0*(m12-m10) + 3.0*(m22-m20)
+
+	// Projected along top-left light direction (-0.707, -0.707)
+	// Bipolar offset scaled to typical range
+	return (gx*-0.707 + gy*-0.707) / 4080.0 * 0.3
+}
+
+func initializeCraquelure() {
+	type pt struct {
+		x, y float64
+	}
+	seeds := make([]pt, 16)
+	state := uint32(12345) // Seed for deterministic crack positions
+	nextRand := func() float64 {
+		state ^= state << 13
+		state ^= state >> 17
+		state ^= state << 5
+		return float64(state) / float64(0xFFFFFFFF)
+	}
+
+	for i := 0; i < 16; i++ {
+		seeds[i] = pt{x: nextRand() * 256.0, y: nextRand() * 256.0}
+	}
+
+	for y := 0; y < 256; y++ {
+		for x := 0; x < 256; x++ {
+			f1 := 999999.0
+			f2 := 999999.0
+
+			for _, s := range seeds {
+				dx := math.Abs(float64(x) - s.x)
+				if dx > 128.0 {
+					dx = 256.0 - dx
+				}
+				dy := math.Abs(float64(y) - s.y)
+				if dy > 128.0 {
+					dy = 256.0 - dy
+				}
+				d := math.Sqrt(dx*dx + dy*dy)
+
+				if d < f1 {
+					f2 = f1
+					f1 = d
+				} else if d < f2 {
+					f2 = d
+				}
+			}
+
+			diff := f2 - f1
+			var val float64
+			if diff < 2.0 {
+				val = -0.4 * (1.0 - diff/2.0)
+			}
+			lutCraquelure[y*256+x] = val
+		}
+	}
+}
+
+func lookupCraquelure(x, y int) float64 {
+	return lutCraquelure[(y%256)*256+(x%256)]
 }
 
 // calculateWeave computes the interlocking warp-and-weft canvas weave.
