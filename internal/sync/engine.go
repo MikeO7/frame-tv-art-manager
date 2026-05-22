@@ -471,41 +471,6 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	e.logger.Info(sb.String())
 }
 
-// --- helpers ---
-
-func diffSets(a, b map[string]struct{}) map[string]struct{} {
-	result := make(map[string]struct{})
-	for k := range a {
-		if _, ok := b[k]; !ok {
-			result[k] = struct{}{}
-		}
-	}
-	return result
-}
-
-func setToSlice(s map[string]struct{}) []string {
-	result := make([]string, 0, len(s))
-	for k := range s {
-		result = append(result, k)
-	}
-	return result
-}
-
-func mapValues(m map[string]string) []string {
-	result := make([]string, 0, len(m))
-	for _, v := range m {
-		result = append(result, v)
-	}
-	return result
-}
-
-func boolCount(cond bool, count int) int {
-	if cond {
-		return count
-	}
-	return 0
-}
-
 func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}, cycleLog *slog.Logger) int {
 	var optimizedCount int64
 
