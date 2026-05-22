@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -35,6 +36,9 @@ func TestEngine_RunOnce_Empty(t *testing.T) {
 	// but for now let's just test the initialization and basic flow.
 
 	e := NewEngine(cfg, slog.Default(), nil)
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
+		return &mockTVClient{artMode: true}
+	}
 
 	_ = e.RunOnce(context.Background())
 	// We expect a connection failure since there's no TV at 127.0.0.1,
@@ -66,27 +70,52 @@ type mockTVClient struct {
 	artMode   bool
 }
 
-func (m *mockTVClient) Connect(_ context.Context) error { m.connected = true; return nil }
-func (m *mockTVClient) Close() error                    { m.connected = false; return nil }
-func (m *mockTVClient) DeviceInfo() *samsung.DeviceInfo {
-	return &samsung.DeviceInfo{ModelName: "Mock TV", PowerState: "on"}
+func (m *mockTVClient) Close() error { m.connected = false; return nil }
+
+func (m *mockTVClient) Sync(ctx context.Context, req samsung.SyncRequest) (samsung.SyncResult, error) {
+	if !m.artMode {
+		return samsung.SyncResult{
+			Status: "skipped (not art mode)",
+		}, nil
+	}
+
+	newUploads := make(map[string]string)
+	for f := range req.LocalFiles {
+		if _, ok := req.Mapping[f]; !ok {
+			newUploads[f] = "new-id"
+		}
+	}
+
+	var deletedFiles []string
+	for f := range req.Mapping {
+		if _, ok := req.LocalFiles[f]; !ok {
+			deletedFiles = append(deletedFiles, f)
+		}
+	}
+
+	brightnessStr := ""
+	if req.DesiredBrightness != nil {
+		brightnessStr = fmt.Sprintf("%d", *req.DesiredBrightness)
+	}
+
+	slideshowStr := ""
+	if req.Slideshow != nil {
+		slideshowStr = fmt.Sprintf("%s every %s min", req.Slideshow.Type, req.Slideshow.Value)
+	}
+
+	return samsung.SyncResult{
+		Model:        "Mock TV",
+		Status:       "ok",
+		ArtMode:      true,
+		Uploaded:     len(newUploads),
+		Deleted:      len(deletedFiles),
+		TotalImages:  len(req.LocalFiles),
+		NewUploads:   newUploads,
+		DeletedFiles: deletedFiles,
+		Brightness:   brightnessStr,
+		Slideshow:    slideshowStr,
+	}, nil
 }
-func (m *mockTVClient) IsInArtMode(_ context.Context) bool   { return m.artMode }
-func (m *mockTVClient) SaveMetadata(_ context.Context) error { return nil }
-func (m *mockTVClient) GetUploadedImages(_ context.Context) ([]samsung.ArtContent, error) {
-	return []samsung.ArtContent{{ContentID: "id1"}}, nil
-}
-func (m *mockTVClient) Upload(_ context.Context, _, _ string) (string, error) {
-	return "new-id", nil
-}
-func (m *mockTVClient) DeleteImages(_ context.Context, _ []string) error { return nil }
-func (m *mockTVClient) SelectImage(_ context.Context, _ string) error    { return nil }
-func (m *mockTVClient) SlideshowStatus(_ context.Context) (*samsung.SlideshowStatus, error) {
-	return &samsung.SlideshowStatus{Value: "3", Type: "slideshow"}, nil
-}
-func (m *mockTVClient) SetSlideshow(_ context.Context, _ samsung.SlideshowStatus) error { return nil }
-func (m *mockTVClient) SetBrightness(_ context.Context, _ int) error                    { return nil }
-func (m *mockTVClient) TurnOff(_ context.Context) error                                 { return nil }
 
 func createSmallJPEG() []byte {
 	return []byte{

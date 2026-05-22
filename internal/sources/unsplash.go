@@ -68,17 +68,19 @@ func (c *unsplashClient) FetchCollectionPhotos(ctx context.Context, collectionID
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("unsplash api error: %d", resp.StatusCode)
 		}
 
 		var pagePhotos []unsplashPhoto
 		maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 		reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-		if err := json.NewDecoder(reader).Decode(&pagePhotos); err != nil {
-			return nil, fmt.Errorf("decode unsplash response: %w", err)
+		decodeErr := json.NewDecoder(reader).Decode(&pagePhotos)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode unsplash response: %w", decodeErr)
 		}
 
 		if len(pagePhotos) == 0 {

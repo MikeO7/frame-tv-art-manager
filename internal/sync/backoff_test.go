@@ -1,4 +1,4 @@
-package resilience
+package sync
 
 import (
 	"log/slog"

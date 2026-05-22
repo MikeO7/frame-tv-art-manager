@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
-	"github.com/MikeO7/frame-tv-art-manager/internal/sanitize"
 	"gopkg.in/yaml.v3"
 )
 
@@ -359,7 +358,7 @@ func (l *Loader) urlToSlug(url string) string {
 		if parts := strings.Split(path, "/"); len(parts) > 0 {
 			path = parts[0]
 		}
-		slug := sanitize.Filename(host + "_" + path)
+		slug := Filename(host + "_" + path)
 		slug = strings.ReplaceAll(slug, " ", "-")
 		if len(slug) > 100 {
 			slug = slug[:100]
@@ -440,7 +439,7 @@ func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error
 			url := ph.URLs.Raw + "&w=3840&q=95&fm=jpg"
 
 			// Use a descriptive identity including provider and source.
-			slug := sanitize.Filename(parts[2] + "-" + ph.ID)
+			slug := Filename(parts[2] + "-" + ph.ID)
 			slug = strings.ReplaceAll(slug, " ", "-")
 			if len(slug) > 100 {
 				slug = slug[:100]
@@ -526,7 +525,7 @@ func (l *Loader) handleNASALine(line string, globalIndex *int32) (int, error) {
 				if len(parts) > 0 {
 					last := parts[len(parts)-1]
 					id := strings.Split(last, "~")[0]
-					slug = sanitize.Filename(id)
+					slug = Filename(id)
 					slug = strings.ReplaceAll(slug, " ", "-")
 					if len(slug) > 100 {
 						slug = slug[:100]
@@ -589,7 +588,7 @@ func (l *Loader) handleArticLine(line string, globalIndex *int32) (int, error) {
 			if strings.Contains(url, "artic.edu") {
 				parts := strings.Split(url, "/")
 				if len(parts) > 5 {
-					slug = sanitize.Filename(parts[5])
+					slug = Filename(parts[5])
 					if len(slug) > 100 {
 						slug = slug[:100]
 					}

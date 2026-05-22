@@ -72,9 +72,9 @@ func (c *pexelsClient) FetchCollection(ctx context.Context, collectionID string)
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("pexels api error: %d", resp.StatusCode)
 		}
 
@@ -84,8 +84,10 @@ func (c *pexelsClient) FetchCollection(ctx context.Context, collectionID string)
 		}
 		maxBytes := int64(10 * 1024 * 1024) // 10MB limit
 		reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-		if err := json.NewDecoder(reader).Decode(&result); err != nil {
-			return nil, fmt.Errorf("decode pexels response: %w", err)
+		decodeErr := json.NewDecoder(reader).Decode(&result)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode pexels response: %w", decodeErr)
 		}
 
 		if len(result.Media) == 0 {

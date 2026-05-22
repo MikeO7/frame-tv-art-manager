@@ -1,4 +1,4 @@
-package sanitize
+package sources
 
 import "testing"
 

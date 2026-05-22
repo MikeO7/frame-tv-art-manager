@@ -8,6 +8,12 @@ This repository follows strict production-grade engineering standards for Tizen 
 3. **Zero-Dependency Core**: Maintain the "zero external dependencies" philosophy for the core engine. The Go standard library is preferred.
 4. **Safety First**: Never modify security-sensitive code (auth, token handling) without ensuring `make vuln` passes and permissions are strictly `0600` for tokens.
 
+## Anti-Slop Directives
+1. **Zero Laziness & Placeholders**: Never write placeholders like `// TODO`, `// ...`, or return empty mock blocks. Every change must be complete and compiling.
+2. **Deep over Shallow**: Keep modules deep and interfaces small. Avoid creating shallow helper packages; maintain locality by grouping helpers with their primary package.
+3. **No Over-Engineering**: Do not introduce unnecessary abstractions or new external packages. Use standard Go idioms.
+4. **Surgical Changes**: Make precise edits. Do not rewrite files or functions unless explicitly requested.
+
 ## Go Best Practices
 1. **Explicit Error Handling**: Check every error. Use `%w` to wrap errors for context: `fmt.Errorf("doing thing: %w", err)`.
 2. **Context Propagation**: Always accept `context.Context` as the first argument in functions performing I/O. Honor `ctx.Done()`.
