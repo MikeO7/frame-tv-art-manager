@@ -240,7 +240,10 @@ func ciede2000(l1, a1, b1, l2, a2, b2 float64) float64 {
 	c2 := math.Sqrt(a2*a2 + b2*b2)
 	meanC := (c1 + c2) / 2.0
 
-	meanC7 := math.Pow(meanC, 7)
+	// ⚡ Bolt: Replace math.Pow(meanC, 7) with direct multiplication for performance
+	meanC2 := meanC * meanC
+	meanC4 := meanC2 * meanC2
+	meanC7 := meanC4 * meanC2 * meanC
 	const e7 = 6103515625.0 // 25^7
 	g := 0.5 * (1.0 - math.Sqrt(meanC7/(meanC7+e7)))
 
@@ -279,20 +282,29 @@ func ciede2000(l1, a1, b1, l2, a2, b2 float64) float64 {
 		0.32*math.Cos((3.0*meanHPrime+6.0)*math.Pi/180.0) -
 		0.20*math.Cos((4.0*meanHPrime-63.0)*math.Pi/180.0)
 
-	deltaTheta := 30.0 * math.Exp(-math.Pow((meanHPrime-275.0)/25.0, 2))
+	dThetaTmp := (meanHPrime - 275.0) / 25.0
+	deltaTheta := 30.0 * math.Exp(-(dThetaTmp * dThetaTmp))
 
-	meanCPrime7 := math.Pow(meanCPrime, 7)
+	// ⚡ Bolt: Replace math.Pow(meanCPrime, 7) with direct multiplication for performance
+	meanCPrime2 := meanCPrime * meanCPrime
+	meanCPrime4 := meanCPrime2 * meanCPrime2
+	meanCPrime7 := meanCPrime4 * meanCPrime2 * meanCPrime
 	rc := 2.0 * math.Sqrt(meanCPrime7/(meanCPrime7+e7))
 
 	rt := -rc * math.Sin(2.0*deltaTheta*math.Pi/180.0)
 
-	sl := 1.0 + (0.015*math.Pow(meanL-50.0, 2))/math.Sqrt(20.0+math.Pow(meanL-50.0, 2))
+	dL := meanL - 50.0
+	dL2 := dL * dL
+	sl := 1.0 + (0.015*dL2)/math.Sqrt(20.0+dL2)
 	sc := 1.0 + 0.045*meanCPrime
 	sh := 1.0 + 0.015*meanCPrime*t
 
-	valSq := math.Pow(deltaLPrime/sl, 2) +
-		math.Pow(deltaCPrime/sc, 2) +
-		math.Pow(deltaHPrime/sh, 2) +
+	dLPrime_sl := deltaLPrime / sl
+	dCPrime_sc := deltaCPrime / sc
+	dHPrime_sh := deltaHPrime / sh
+	valSq := (dLPrime_sl * dLPrime_sl) +
+		(dCPrime_sc * dCPrime_sc) +
+		(dHPrime_sh * dHPrime_sh) +
 		rt*(deltaCPrime/sc)*(deltaHPrime/sh)
 
 	if valSq < 0 {
