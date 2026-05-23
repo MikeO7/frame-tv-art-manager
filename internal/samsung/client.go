@@ -30,7 +30,7 @@ const (
 // sync engine consumes.
 type Client struct {
 	IP     string
-	cfg    *config.Config
+	opts   config.TVConnectOptions
 	logger *slog.Logger
 
 	artConn *connection
@@ -45,10 +45,10 @@ type Client struct {
 
 // NewClient creates a new TV client. Call Connect() to establish the
 // WebSocket connection.
-func NewClient(ip string, cfg *config.Config, logger *slog.Logger) *Client {
+func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Client {
 	return &Client{
 		IP:     ip,
-		cfg:    cfg,
+		opts:   opts,
 		logger: logger.With("tv", ip),
 	}
 }
@@ -58,11 +58,13 @@ func NewClient(ip string, cfg *config.Config, logger *slog.Logger) *Client {
 //  2. Silent REST Gate (if enabled) → abort if TV is not in art mode
 //  3. Open WSS connection to art endpoint on port 8002
 //  4. Fetch device info via REST API
+//
+//nolint:gocognit,nestif // complexity justified for this domain-specific path
 func (c *Client) connect(ctx context.Context) error {
 	// Step 1: Wake-on-LAN.
-	if c.cfg.TVMAC != "" {
-		c.logger.Info("sending Wake-on-LAN", "mac", c.cfg.TVMAC)
-		if err := c.sendWOL(c.cfg.TVMAC); err != nil {
+	if c.opts.TVMAC != "" {
+		c.logger.Info("sending Wake-on-LAN", "mac", c.opts.TVMAC)
+		if err := c.sendWOL(ctx, c.opts.TVMAC); err != nil {
 			c.logger.Warn("WoL failed", "error", err)
 		} else {
 			// Brief pause to let the TV wake up.
@@ -71,7 +73,7 @@ func (c *Client) connect(ctx context.Context) error {
 	}
 
 	// Step 2: Silent REST Gate.
-	if c.cfg.EnableRESTGate {
+	if c.opts.EnableRESTGate {
 		c.logger.Debug("checking REST gate")
 		inArtMode, err := c.checkArtModeGate(ctx)
 		if err != nil {
@@ -105,8 +107,8 @@ func (c *Client) connect(ctx context.Context) error {
 	// Step 4: Open WSS connection to art endpoint.
 	c.artConn = newConnection(
 		c.IP, 8002, "com.samsung.art-app",
-		c.cfg.ClientName, tokenFile,
-		c.cfg.ConnectionTimeout, c.logger,
+		c.opts.ClientName, tokenFile,
+		c.opts.ConnectionTimeout, c.logger,
 	)
 
 	if err := c.artConn.Open(ctx); err != nil {
@@ -231,7 +233,7 @@ func (c *Client) isInArtMode(ctx context.Context) bool {
 		return true
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		c.logger.Debug("could not determine art mode, assuming safe to sync", "error", err)
 		return true // backward-compatible: if we can't tell, try anyway
@@ -269,7 +271,7 @@ func (c *Client) getUploadedImages(ctx context.Context) ([]ArtContent, error) {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		return nil, fmt.Errorf("get_content_list: %w", err)
 	}
@@ -342,14 +344,16 @@ func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, 
 
 // upload sends an image to the TV via the art API + D2D socket transfer.
 //
-//nolint:funlen
-func (c *Client) upload(ctx context.Context, filePath, fileType string) (string, error) {
+//nolint:funlen // complexity justified for this domain-specific path
+func (c *Client) upload(ctx context.Context, filePath, fileType, matte string) (string, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
 		return "", fmt.Errorf("stat %s: %w", filePath, err)
 	}
 
-	matte := c.cfg.MatteStyle
+	if matte == "" {
+		matte = c.opts.MatteStyle
+	}
 
 	// Register the image_added listener BEFORE sending the upload request,
 	// so we don't miss the response if it arrives quickly.
@@ -378,7 +382,7 @@ func (c *Client) upload(ctx context.Context, filePath, fileType string) (string,
 		return "", fmt.Errorf("build send_image request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		return "", fmt.Errorf("send_image: %w", err)
 	}
@@ -405,7 +409,7 @@ func (c *Client) upload(ctx context.Context, filePath, fileType string) (string,
 	c.logger.Debug("send_image parsed conn_info", "ip", ci.IP, "port", ci.Port)
 
 	// Step 2: Transfer the file over D2D socket.
-	if err := uploadImageD2D(ctx, ci, filePath, fileType, c.cfg.ConnectionTimeout); err != nil {
+	if err := uploadImageD2D(ctx, ci, filePath, fileType, c.opts.ConnectionTimeout); err != nil {
 		return "", fmt.Errorf("d2d transfer: %w", err)
 	}
 
@@ -439,7 +443,7 @@ func (c *Client) deleteImages(ctx context.Context, ids []string) error {
 		return fmt.Errorf("build delete request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		return fmt.Errorf("delete_image_list: %w", err)
 	}
@@ -473,7 +477,7 @@ func (c *Client) selectImage(ctx context.Context, id string) error {
 		return fmt.Errorf("build select_image request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, reqID, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, reqID, c.opts.APITimeout)
 	if err != nil {
 		return fmt.Errorf("select_image: %w", err)
 	}
@@ -505,7 +509,7 @@ func (c *Client) slideshowStatus(ctx context.Context) (*SlideshowStatus, error) 
 		return nil, fmt.Errorf("build get_slideshow_status request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		return nil, fmt.Errorf("get_slideshow_status: %w", err)
 	}
@@ -553,7 +557,7 @@ func (c *Client) setSlideshow(ctx context.Context, s SlideshowStatus) error {
 		return fmt.Errorf("build set_slideshow_status request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		return fmt.Errorf("set_slideshow_status: %w", err)
 	}
@@ -586,7 +590,7 @@ func (c *Client) setBrightness(ctx context.Context, val int) error {
 		return fmt.Errorf("build set_brightness request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		return fmt.Errorf("set_brightness: %w", err)
 	}
@@ -618,7 +622,7 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("build get_categories request: %w", err)
 	}
 
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
 	if err != nil {
 		return nil, fmt.Errorf("get_categories: %w", err)
 	}
@@ -649,7 +653,7 @@ func (c *Client) DeviceInfo() *DeviceInfo {
 // tokenFilePath returns the path to the token file for this TV.
 func (c *Client) tokenFilePath() string {
 	safeIP := strings.ReplaceAll(c.IP, ".", "_")
-	return filepath.Join(c.cfg.TokenDir, fmt.Sprintf("tv_%s.txt", safeIP))
+	return filepath.Join(c.opts.TokenDir, fmt.Sprintf("tv_%s.txt", safeIP))
 }
 
 // saveMetadata fetches all available system information and artwork categories,
@@ -685,7 +689,7 @@ func (c *Client) saveMetadata(ctx context.Context) error {
 	}
 
 	safeIP := strings.ReplaceAll(c.IP, ".", "_")
-	path := filepath.Join(c.cfg.TokenDir, fmt.Sprintf("tv_%s_metadata.json", safeIP))
+	path := filepath.Join(c.opts.TokenDir, fmt.Sprintf("tv_%s_metadata.json", safeIP))
 
 	if err := os.WriteFile(path, b, 0o600); err != nil {
 		return fmt.Errorf("write metadata file: %w", err)
@@ -697,7 +701,7 @@ func (c *Client) saveMetadata(ctx context.Context) error {
 
 var macSeparators = regexp.MustCompile(`[^a-fA-F0-9]`)
 
-func (c *Client) sendWOL(macAddr string) error {
+func (c *Client) sendWOL(ctx context.Context, macAddr string) error {
 	if macAddr == "" {
 		return nil
 	}
@@ -728,7 +732,8 @@ func (c *Client) sendWOL(macAddr string) error {
 	}
 
 	// Send to broadcast address.
-	conn, err := net.Dial("udp", "255.255.255.255:9")
+	dialer := net.Dialer{Timeout: 5 * time.Second}
+	conn, err := dialer.DialContext(ctx, "udp", "255.255.255.255:9")
 	if err != nil {
 		return fmt.Errorf("dial broadcast: %w", err)
 	}
@@ -745,7 +750,7 @@ func (c *Client) sendWOL(macAddr string) error {
 func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 	url := fmt.Sprintf("http://%s:8001/ms/art", c.IP)
 
-	client := &http.Client{Timeout: c.cfg.GateTimeout}
+	client := &http.Client{Timeout: c.opts.GateTimeout}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -767,7 +772,7 @@ func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 }
 
 func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
-	conn := newConnection(c.IP, port, "samsung.remote.control", c.cfg.ClientName, tokenFile, c.cfg.ConnectionTimeout, c.logger)
+	conn := newConnection(c.IP, port, "samsung.remote.control", c.opts.ClientName, tokenFile, c.opts.ConnectionTimeout, c.logger)
 
 	// newConnection.Open() handles the handshake and automatically saves
 	// the token to tokenFile if it's received in the ms.channel.connect event.
@@ -783,7 +788,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	url := fmt.Sprintf("https://%s:%d/api/v2/", c.IP, port)
 
 	client := &http.Client{
-		Timeout: c.cfg.APITimeout,
+		Timeout: c.opts.APITimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, //nolint:gosec // lgtm[go/insecure-tls]
@@ -820,7 +825,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 }
 
 func (c *Client) turnOffTV(ctx context.Context, port int) error {
-	conn := newConnection(c.IP, port, "samsung.remote.control", c.cfg.ClientName, c.tokenFilePath(), c.cfg.ConnectionTimeout, c.logger)
+	conn := newConnection(c.IP, port, "samsung.remote.control", c.opts.ClientName, c.tokenFilePath(), c.opts.ConnectionTimeout, c.logger)
 
 	if err := conn.Open(ctx); err != nil {
 		return fmt.Errorf("open remote control connection: %w", err)

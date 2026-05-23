@@ -161,16 +161,7 @@ func (p *articProvider) Resolve(ctx context.Context, line string, globalIndex *i
 
 	images := make([]SourceImage, 0, len(urls))
 	for _, u := range urls {
-		slug := URLToSlug(u)
-		if strings.Contains(u, "artic.edu") {
-			urlParts := strings.Split(u, "/")
-			if len(urlParts) > 5 {
-				slug = Filename(urlParts[5])
-				if len(slug) > 100 {
-					slug = slug[:100]
-				}
-			}
-		}
+		slug := slugFromArticURL(u)
 
 		idx := atomic.AddInt32(globalIndex, 1) - 1
 		identity := fmt.Sprintf("%03d__artic__%s", idx, slug)

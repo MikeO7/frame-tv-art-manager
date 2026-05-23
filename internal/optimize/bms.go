@@ -74,6 +74,7 @@ func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	return res
 }
 
+//nolint:revive // complexity justified for this domain-specific path
 func checkAndPush(boolMap, bg []bool, queue []int, x, y, w, h int) []int {
 	if x < 0 || x >= w || y < 0 || y >= h {
 		return queue

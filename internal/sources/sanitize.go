@@ -38,7 +38,7 @@ func Filename(name string) string {
 	stem = reDots.ReplaceAllString(stem, ".")
 
 	if stem == "" || stem == "." {
-		stem = "image"
+		stem = mediaTypeImage
 	}
 
 	return stem + ext

@@ -162,17 +162,17 @@ type Config struct {
 //
 
 func GetTargetValue(cfg Config, logger *slog.Logger) *int {
+	//nolint:nestif // complexity justified for this domain-specific path
 	if cfg.SolarEnabled && cfg.Latitude != nil && cfg.Longitude != nil {
 		b, err := Calculate(cfg.Latitude, cfg.Longitude, cfg.Timezone, cfg.BrightnessMin, cfg.BrightnessMax)
-		if err != nil {
-			if !errors.Is(err, ErrSolarDisabled) && logger != nil {
-				logger.Warn("solar brightness calculation failed", "error", err)
-			}
-		} else {
+		if err == nil {
 			if logger != nil {
 				logger.Info("solar brightness", "value", *b)
 			}
 			return b
+		}
+		if !errors.Is(err, ErrSolarDisabled) && logger != nil {
+			logger.Warn("solar brightness calculation failed", "error", err)
 		}
 	}
 

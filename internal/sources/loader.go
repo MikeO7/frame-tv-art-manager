@@ -5,7 +5,6 @@ package sources
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +20,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"gopkg.in/yaml.v3"
 )
@@ -44,32 +43,30 @@ type Loader struct {
 	artworkDir         string
 	logger             *slog.Logger
 	client             *http.Client
-	unsplash           *unsplashClient
-	nasa               *nasaClient
-	artic              *articClient
-	pexels             *pexelsClient
-	pixabay            *pixabayClient
 	providers          []SourceProvider
 	maxImages          int
 	maxSizeMB          int
-	index              map[string]string // hash -> filename (content deduplication)
-	prefixMap          map[string]string // prefix -> filename (idempotency check)
-	visited            map[string]bool   // filename -> true (cleanup tracking)
-	lastDirModTime     time.Time
+	index              *ArtworkIndex
 	lastSourcesModTime time.Time
 	cachedUrls         []string
-	mu                 sync.Mutex // Protects index, prefixMap, and visited
 }
 
 // NewLoader creates a new sources loader from application config.
-func NewLoader(cfg *config.Config, logger *slog.Logger) *Loader {
-	unsplash := newUnsplashProvider(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger)
-	nasa := newNasaProvider(cfg.NasaAPIKey, logger)
-	artic := newArticProvider(logger)
-	pexels := newPexelsProvider(cfg.PexelsAPIKey, logger)
-	pixabay := newPixabayProvider(cfg.PixabayAPIKey, logger)
+func NewLoader(cfg *config.Config, logger *slog.Logger, index *ArtworkIndex) *Loader {
+	if index == nil {
+		index = NewArtworkIndex(cfg.ArtworkDir, logger)
+	}
 
-	l := &Loader{
+	providers := []SourceProvider{
+		newUnsplashProvider(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger),
+		newNasaProvider(cfg.NasaAPIKey, logger),
+		newArticProvider(logger),
+		newPexelsProvider(cfg.PexelsAPIKey, logger),
+		newPixabayProvider(cfg.PixabayAPIKey, logger),
+		newDirectProvider(),
+	}
+
+	return &Loader{
 		cfg:         cfg,
 		sourcesFile: cfg.SourcesFile,
 		artworkDir:  cfg.ArtworkDir,
@@ -79,33 +76,66 @@ func NewLoader(cfg *config.Config, logger *slog.Logger) *Loader {
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		unsplash:  unsplash,
-		nasa:      nasa,
-		artic:     artic,
-		pexels:    pexels,
-		pixabay:   pixabay,
-		index:     make(map[string]string),
-		prefixMap: make(map[string]string),
-		visited:   make(map[string]bool),
+		providers: providers,
+		index:     index,
+	}
+}
+
+// Provider returns a registered source provider by name.
+func (l *Loader) Provider(name string) SourceProvider {
+	for _, p := range l.providers {
+		if p.Name() == name {
+			return p
+		}
+	}
+	return nil
+}
+
+// resolveProvider returns the first provider that can handle a source line.
+func (l *Loader) resolveProvider(line string) SourceProvider {
+	for _, p := range l.providers {
+		if p.CanHandle(line) {
+			return p
+		}
+	}
+	return nil
+}
+
+// syncLine resolves and downloads all images for one sources-file line.
+func (l *Loader) syncLine(ctx context.Context, line string, globalIndex *int32) (int, error) {
+	provider := l.resolveProvider(line)
+	if provider == nil {
+		return 0, fmt.Errorf("no provider found for line: %s", line)
 	}
 
-	l.providers = []SourceProvider{
-		unsplash,
-		nasa,
-		artic,
-		pexels,
-		pixabay,
-		newDirectProvider(), // DirectProvider is fallback, matches all direct URLs
+	images, err := provider.Resolve(ctx, line, globalIndex)
+	if err != nil {
+		return 0, err
 	}
 
-	return l
+	var count int
+	for _, img := range images {
+		ok, dErr := l.downloadWithIdentity(ctx, img.URL, img.Identity)
+		if dErr != nil {
+			l.logger.Warn("source download failed", "url", img.URL, "error", dErr)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		count++
+		if img.OnDownload != nil {
+			if hookErr := img.OnDownload(ctx); hookErr != nil {
+				l.logger.Warn("post-download hook failed", "error", hookErr)
+			}
+		}
+	}
+	return count, nil
 }
 
 // Sync reads the sources file and downloads any new images. Returns the
 // number of newly downloaded images. Skips URLs that have already been
 // downloaded.
-//
-//nolint:gocognit
 func (l *Loader) Sync() (int, error) {
 	if l.sourcesFile == "" {
 		return 0, nil
@@ -126,9 +156,9 @@ func (l *Loader) Sync() (int, error) {
 	urls = deduplicateStrings(urls)
 
 	// Build content index to avoid duplicates.
-	l.buildContentIndex()
+	l.index.Rebuild()
 
-	l.visited = make(map[string]bool)
+	l.index.ResetVisited()
 	var downloaded int32
 	var globalIndex int32 = 1
 
@@ -143,51 +173,25 @@ func (l *Loader) Sync() (int, error) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			var provider SourceProvider
-			for _, p := range l.providers {
-				if p.CanHandle(lne) {
-					provider = p
-					break
-				}
-			}
-
-			if provider == nil {
-				l.logger.Error("no provider found for line", "line", lne)
+			count, syncErr := l.syncLine(context.Background(), lne, &globalIndex)
+			if syncErr != nil {
+				l.logger.Warn("source resolve failed", "line", lne, "error", syncErr)
 				return
-			}
-
-			images, resolveErr := provider.Resolve(context.Background(), lne, &globalIndex)
-			if resolveErr != nil {
-				l.logger.Warn("source resolve failed", "line", lne, "error", resolveErr)
-				return
-			}
-
-			var count int
-			for _, img := range images {
-				ok, dErr := l.downloadWithIdentity(img.URL, img.Identity)
-				if dErr != nil {
-					l.logger.Warn("source download failed", "url", img.URL, "error", dErr)
-					continue
-				}
-				if ok {
-					count++
-					if img.OnDownload != nil {
-						if hookErr := img.OnDownload(context.Background()); hookErr != nil {
-							l.logger.Warn("post-download hook failed", "error", hookErr)
-						}
-					}
-				}
 			}
 
 			if count > 0 {
-				atomic.AddInt32(&downloaded, int32(count)) //nolint:gosec
+				//nolint:gosec // per-line download count is bounded by MaxArtworkImages
+				atomic.AddInt32(&downloaded, int32(count))
 			}
 		}(line)
 	}
 	wg.Wait()
 
 	// Remove managed images that are no longer in sources.
-	l.cleanupUnusedSources()
+	for _, filename := range l.index.UnusedManagedFiles() {
+		l.logger.Info("removing unused source image", "file", filename)
+		_ = os.Remove(filepath.Join(l.artworkDir, filename))
+	}
 
 	if downloaded > 0 {
 		l.logger.Info("downloaded new source images", "count", downloaded)
@@ -196,53 +200,16 @@ func (l *Loader) Sync() (int, error) {
 	return int(downloaded), nil
 }
 
-// handleArticLine is a backwards-compatible wrapper for testing.
-func (l *Loader) handleArticLine(line string, globalIndex *int32) (int, error) {
-	var provider SourceProvider
-	for _, p := range l.providers {
-		if p.CanHandle(line) {
-			provider = p
-			break
-		}
-	}
-	if provider == nil {
-		return 0, fmt.Errorf("no provider found for line: %s", line)
-	}
-	images, err := provider.Resolve(context.Background(), line, globalIndex)
-	if err != nil {
-		return 0, err
-	}
-	var count int
-	for _, img := range images {
-		ok, dErr := l.downloadWithIdentity(img.URL, img.Identity)
-		if dErr == nil && ok {
-			count++
-		}
-	}
-	return count, nil
-}
-
 func (l *Loader) checkExisting(identity string) (string, bool) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	existing, ok := l.prefixMap[stripIndexPrefix(identity)]
-	return existing, ok
+	return l.index.LookupPrefix(identity)
 }
 
-// stripIndexPrefix removes the non-deterministic numeric prefix (e.g. "001__") for stable idempotency.
-func stripIndexPrefix(identity string) string {
-	if len(identity) > 5 && identity[3:5] == "__" {
-		return identity[5:]
-	}
-	return identity
-}
-
-func (l *Loader) executeDownload(url, filename string) (bool, error) {
+//nolint:gocyclo,funlen // complexity justified for this domain-specific path
+func (l *Loader) executeDownload(ctx context.Context, url, filename string) (bool, error) {
 	destPath := filepath.Join(l.artworkDir, filename)
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, fmt.Errorf("create request: %w", err)
 	}
@@ -276,9 +243,7 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 
 		// Re-check by identity prefix.
 		if existing, ok := l.checkExisting(filename); ok {
-			l.mu.Lock()
-			l.visited[existing] = true
-			l.mu.Unlock()
+			l.index.MarkVisited(existing)
 			return false, nil
 		}
 	}
@@ -314,9 +279,7 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 		return false, nil
 	}
 
-	l.mu.Lock()
-	l.visited[finalName] = true
-	l.mu.Unlock()
+	l.index.MarkVisited(finalName)
 	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0o600)
 
 	l.logger.Info("downloaded source image", "file", finalName, "size_bytes", written)
@@ -325,68 +288,56 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 
 // downloadWithIdentity is a helper that handles the full download, hashing,
 // and indexing flow for a given identity.
-func (l *Loader) downloadWithIdentity(url, identity string) (bool, error) {
-	l.mu.Lock()
-	limitReached := l.maxImages > 0 && len(l.visited) >= l.maxImages
-	l.mu.Unlock()
-	if limitReached {
+func (l *Loader) downloadWithIdentity(ctx context.Context, url, identity string) (bool, error) {
+	if l.index.MaxReached(l.maxImages) {
 		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
 		return false, nil
 	}
 
 	if existing, ok := l.checkExisting(identity); ok {
-		l.mu.Lock()
-		l.visited[existing] = true
-		l.mu.Unlock()
+		l.index.MarkVisited(existing)
 		return false, nil
 	}
 
 	filename := identity + ".jpg"
-	return l.executeDownload(url, filename)
+	return l.executeDownload(ctx, url, filename)
 }
 
 // finalizeDownload checks for content duplicates, renames the file to include
 // the hash, and updates the index. Returns the final filename and true if the
 // file should be kept.
 func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
-	hash, err := l.fileHash(path)
+	hash, err := fileHash(path)
 	if err != nil {
-		// If hashing fails, we keep the file with its current name but log it.
 		l.logger.Warn("failed to hash downloaded file", "file", filename, "error", err)
 		return filename, true
 	}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if existing, ok := l.index[hash]; ok {
+	if existing, duplicate := l.index.RegisterHash(hash, filename); duplicate {
 		if existing != filename {
 			l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
 			_ = os.Remove(path)
-			l.visited[existing] = true
+			l.index.MarkVisited(existing)
 			return existing, false
 		}
 	}
 
-	// Rename to include hash for future sync cycles.
 	ext := filepath.Ext(filename)
 	identity := strings.TrimSuffix(filename, ext)
-
-	// Strip old .h_ separator if any.
 	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
 		identity = parts[0]
 	}
 
-	finalName := fmt.Sprintf("%s__%s%s", identity, hash[:12], ext)
+	finalName := artwork.BuildHashName(identity, hash[:12], ext)
 	finalPath := filepath.Join(l.artworkDir, finalName)
 
 	if err := os.Rename(path, finalPath); err != nil {
 		l.logger.Warn("failed to rename to hash-based name", "file", filename, "error", err)
-		l.index[hash] = filename
+		l.index.SetHash(hash, filename)
 		return filename, true
 	}
 
-	l.index[hash] = finalName
+	l.index.SetHash(hash, finalName)
 	return finalName, true
 }
 
@@ -510,176 +461,6 @@ func truncateURL(url string) string {
 	return url
 }
 
-type job struct {
-	filename string
-}
-
-type indexResult struct {
-	filename      string
-	hash          string
-	cleanIdentity string
-	identity      string
-	err           error
-}
-
-// buildContentIndex hashes all existing files in the artwork directory
-// to enable deduplication and fast syncs.
-func (l *Loader) buildContentIndex() {
-	info, statErr := os.Stat(l.artworkDir)
-	if statErr == nil {
-		if info.ModTime().Equal(l.lastDirModTime) && l.index != nil {
-			return
-		}
-		l.lastDirModTime = info.ModTime()
-	}
-
-	l.index = make(map[string]string)
-	l.prefixMap = make(map[string]string)
-
-	entries, err := os.ReadDir(l.artworkDir)
-	if err != nil {
-		return
-	}
-
-	jobs := make(chan job, len(entries))
-	results := make(chan indexResult, len(entries))
-
-	numWorkers := runtime.NumCPU()
-	if numWorkers < 4 {
-		numWorkers = 4
-	}
-	if numWorkers > 16 {
-		numWorkers = 16
-	}
-
-	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range jobs {
-				res := l.processSingleFile(j.filename)
-				results <- res
-			}
-		}()
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		jobs <- job{filename: entry.Name()}
-	}
-	close(jobs)
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	for res := range results {
-		if res.err != nil {
-			continue
-		}
-
-		filename := res.filename
-		path := filepath.Join(l.artworkDir, filename)
-		hash := res.hash
-		identity := res.identity
-		cleanIdentity := res.cleanIdentity
-
-		l.mu.Lock()
-		mapIdentity := stripIndexPrefix(cleanIdentity)
-		l.prefixMap[mapIdentity] = filename
-		l.mu.Unlock()
-
-		// If the filename didn't contain the hash, rename it now
-		if !strings.Contains(filename, ".h_"+hash[:12]) && !strings.Contains(filename, "__"+hash[:12]) {
-			ext := filepath.Ext(filename)
-			newName := identity + ".h_" + hash[:12] + ext
-			newPath := filepath.Join(l.artworkDir, newName)
-			if err := os.Rename(path, newPath); err == nil {
-				filename = newName
-				path = newPath
-				l.mu.Lock()
-				l.prefixMap[mapIdentity] = filename
-				l.mu.Unlock()
-			}
-			l.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:12])
-		}
-
-		l.mu.Lock()
-		if existing, ok := l.index[hash]; ok {
-			l.logger.Info("found existing duplicate content, removing", "file", filename, "matches", existing)
-			_ = os.Remove(path)
-		} else {
-			l.index[hash] = filename
-		}
-		l.mu.Unlock()
-	}
-}
-
-func (l *Loader) processSingleFile(filename string) indexResult {
-	path := filepath.Join(l.artworkDir, filename)
-	identity, cleanIdentity, hash := parseFileIdentity(filename)
-
-	if hash == "" {
-		h, err := l.fileHash(path)
-		if err != nil {
-			return indexResult{err: err}
-		}
-		hash = h
-	}
-
-	return indexResult{
-		filename:      filename,
-		hash:          hash,
-		cleanIdentity: cleanIdentity,
-		identity:      identity,
-	}
-}
-
-func parseFileIdentity(filename string) (identity, cleanIdentity, hash string) {
-	ext := filepath.Ext(filename)
-	identity = strings.TrimSuffix(filename, ext)
-
-	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
-		identity = parts[0]
-		hash = parts[1]
-	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
-		hash = parts[len(parts)-1]
-		identity = strings.Join(parts[:len(parts)-1], "__")
-	}
-
-	cleanIdentity = identity
-	cleanIdentity = strings.Split(cleanIdentity, "_opt")[0]
-	if lastUnderscore := strings.LastIndex(cleanIdentity, "_"); lastUnderscore != -1 {
-		suffix := cleanIdentity[lastUnderscore+1:]
-		if strings.Contains(suffix, "x") {
-			var w, h int
-			if n, _ := fmt.Sscanf(suffix, "%dx%d", &w, &h); n == 2 {
-				cleanIdentity = cleanIdentity[:lastUnderscore]
-			}
-		}
-	}
-	return identity, cleanIdentity, hash
-}
-
-// fileHash calculates the SHA256 hash of a file's content.
-func (l *Loader) fileHash(path string) (string, error) {
-	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", h.Sum(nil)), nil
-}
-
 // deduplicateStrings returns a new slice containing only unique strings from the input.
 func deduplicateStrings(input []string) []string {
 	seen := make(map[string]bool)
@@ -691,45 +472,4 @@ func deduplicateStrings(input []string) []string {
 		}
 	}
 	return result
-}
-
-// cleanupUnusedSources removes managed images from the artwork directory
-// that were not encountered during the current sync cycle.
-func (l *Loader) cleanupUnusedSources() {
-	entries, err := os.ReadDir(l.artworkDir)
-	if err != nil {
-		return
-	}
-
-	managedPrefixes := []string{"src_", "unsplash_", "nasa_", "artic_", "pexels_", "pixabay_"}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		filename := entry.Name()
-		l.mu.Lock()
-		visited := l.visited[filename]
-		l.mu.Unlock()
-		if visited {
-			continue
-		}
-
-		isManaged := false
-		if reManagedIndex.MatchString(filename) {
-			isManaged = true
-		} else {
-			for _, prefix := range managedPrefixes {
-				if strings.HasPrefix(filename, prefix) {
-					isManaged = true
-					break
-				}
-			}
-		}
-
-		if isManaged {
-			l.logger.Info("removing unused source image", "file", filename)
-			_ = os.Remove(filepath.Join(l.artworkDir, filename))
-		}
-	}
 }

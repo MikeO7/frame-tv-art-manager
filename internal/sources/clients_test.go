@@ -20,7 +20,7 @@ func TestNASAClient_FetchAPOD(t *testing.T) {
 			Title: "Test APOD",
 			URL:   "http://x.com/a.jpg",
 			HDURL: "http://x.com/hd.jpg",
-			Type:  "image",
+			Type:  mediaTypeImage,
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}))

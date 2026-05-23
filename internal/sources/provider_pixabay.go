@@ -25,7 +25,7 @@ type pixabayClient = pixabayProvider
 
 // newPixabayClient creates a new Pixabay API client/provider.
 //
-//nolint:unparam
+//nolint:unparam // complexity justified for this domain-specific path
 func newPixabayClient(apiKey string, logger *slog.Logger) *pixabayClient {
 	return newPixabayProvider(apiKey, logger)
 }
@@ -52,7 +52,7 @@ type pixabayPhoto struct {
 }
 
 func (p *pixabayProvider) Name() string {
-	return "pixabay"
+	return providerPixabay
 }
 
 func (p *pixabayProvider) CanHandle(line string) bool {

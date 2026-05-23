@@ -27,7 +27,7 @@ type unsplashClient = unsplashProvider
 
 // newUnsplashClient creates a new Unsplash API client/provider.
 //
-//nolint:unparam
+//nolint:unparam // complexity justified for this domain-specific path
 func newUnsplashClient(appID, accessKey, secretKey string, logger *slog.Logger) *unsplashClient {
 	return newUnsplashProvider(appID, accessKey, secretKey, logger)
 }

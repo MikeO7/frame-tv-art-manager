@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,31 @@ import (
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
+
+func newTestLoader(cfg *config.Config, logger *slog.Logger) *Loader {
+	idx := NewArtworkIndex(cfg.ArtworkDir, logger)
+	return NewLoader(cfg, logger, idx)
+}
+
+func setMockProviderURLs(l *Loader, baseURL string) {
+	if p, ok := l.Provider("unsplash").(*unsplashProvider); ok {
+		p.BaseURL = baseURL
+	}
+	if p, ok := l.Provider("nasa").(*nasaProvider); ok {
+		p.BaseURL = baseURL
+		p.SearchURL = baseURL
+	}
+	if p, ok := l.Provider("artic").(*articProvider); ok {
+		p.BaseURL = baseURL
+		p.IIIFBaseURL = baseURL
+	}
+	if p, ok := l.Provider("pexels").(*pexelsProvider); ok {
+		p.BaseURL = baseURL
+	}
+	if p, ok := l.Provider("pixabay").(*pixabayProvider); ok {
+		p.BaseURL = baseURL
+	}
+}
 
 func TestLoader_Sync_Direct(t *testing.T) {
 	artworkDir := t.TempDir()
@@ -30,7 +56,7 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	content := fmt.Sprintf("# comment\n%s\n", server.URL)
 	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
-	l := NewLoader(&config.Config{
+	l := newTestLoader(&config.Config{
 		SourcesFile: sourcesFile,
 		ArtworkDir:  artworkDir,
 	}, slog.Default())
@@ -77,10 +103,10 @@ func TestExtensionFromResponse(t *testing.T) {
 		url  string
 		want string
 	}{
-		{"image/jpeg", testURL, ".jpg"},
+		{"image/jpeg", testURL, extJPG},
 		{"image/png", testURL, extPNG},
 		{"text/plain", "http://x.com/a.png", extPNG},
-		{"text/plain", testURL, ".jpg"}, // default
+		{"text/plain", testURL, extJPG}, // default
 	}
 
 	for _, tt := range tests {
@@ -139,36 +165,29 @@ func TestLoadSources_Txt(t *testing.T) {
 func TestLoader_InternalMethods(t *testing.T) {
 	artworkDir := t.TempDir()
 
-	// Create a file with specific content to test hashing
 	path := filepath.Join(artworkDir, "test__1234567890ab.jpg")
 	_ = os.WriteFile(path, []byte("some-data"), 0o600)
 
-	l := &Loader{
-		artworkDir: artworkDir,
-		logger:     slog.Default(),
-		index:      make(map[string]string),
-		prefixMap:  make(map[string]string),
-		visited:    make(map[string]bool),
+	idx := NewArtworkIndex(artworkDir, slog.Default())
+	idx.Rebuild()
+
+	if _, ok := idx.LookupPrefix("test"); !ok {
+		t.Error("expected prefix entry for test identity")
 	}
 
-	l.buildContentIndex()
-
-	if len(l.prefixMap) != 1 {
-		t.Errorf("expected 1 item in prefixMap, got %d", len(l.prefixMap))
+	idx.MarkVisited("test__1234567890ab.jpg")
+	for _, filename := range idx.UnusedManagedFiles() {
+		_ = os.Remove(filepath.Join(artworkDir, filename))
 	}
-
-	// Test cleanup
-	l.visited["test__1234567890ab.jpg"] = true
-	l.cleanupUnusedSources()
-	// Should not delete the visited file
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Error("visited file was accidentally deleted")
 	}
 
-	// Should delete unvisited file
 	unvisitedPath := filepath.Join(artworkDir, "002__unvisited__hash.jpg")
 	_ = os.WriteFile(unvisitedPath, []byte("x"), 0o600)
-	l.cleanupUnusedSources()
+	for _, filename := range idx.UnusedManagedFiles() {
+		_ = os.Remove(filepath.Join(artworkDir, filename))
+	}
 	if _, err := os.Stat(unvisitedPath); err == nil {
 		t.Error("unvisited file was not deleted")
 	}
@@ -189,7 +208,7 @@ func TestLoader_Sync_Failures(t *testing.T) {
 	content := server.URL + "\n"
 	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
-	l := NewLoader(&config.Config{
+	l := newTestLoader(&config.Config{
 		SourcesFile: sourcesFile,
 		ArtworkDir:  artworkDir,
 	}, slog.Default())
@@ -247,23 +266,17 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	content := "unsplash:photo:123\nunsplash:collection:456\nnasa:apod\nnasa:search:mars\nartic:photo:456\npexels:curated\npexels:collection:789\npixabay:editors_choice\npixabay:search:nature\npixabay:user:mike\n"
 	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
-	l := NewLoader(&config.Config{
+	l := newTestLoader(&config.Config{
 		SourcesFile:       sourcesFile,
 		ArtworkDir:        artworkDir,
 		UnsplashAppID:     "app",
 		UnsplashAccessKey: "key",
 		UnsplashSecretKey: "secret",
-		NasaAPIKey:        "nasa",
-		PexelsAPIKey:      "pexels",
-		PixabayAPIKey:     "pixabay",
+		NasaAPIKey:        providerNASA,
+		PexelsAPIKey:      providerPexels,
+		PixabayAPIKey:     providerPixabay,
 	}, slog.Default())
-	// Override BaseURLs to point to our mock server
-	l.unsplash.BaseURL = server.URL
-	l.nasa.BaseURL = server.URL
-	l.nasa.SearchURL = server.URL
-	l.artic.BaseURL = server.URL
-	l.pexels.BaseURL = server.URL
-	l.pixabay.BaseURL = server.URL
+	setMockProviderURLs(l, server.URL)
 
 	_, err := l.Sync()
 	if err != nil {
@@ -282,15 +295,15 @@ sources:
 `
 	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
-	l := NewLoader(&config.Config{
+	l := newTestLoader(&config.Config{
 		SourcesFile:       sourcesFile,
 		ArtworkDir:        artworkDir,
 		UnsplashAppID:     "app",
 		UnsplashAccessKey: "key",
 		UnsplashSecretKey: "secret",
-		NasaAPIKey:        "nasa",
-		PexelsAPIKey:      "pexels",
-		PixabayAPIKey:     "pixabay",
+		NasaAPIKey:        providerNASA,
+		PexelsAPIKey:      providerPexels,
+		PixabayAPIKey:     providerPixabay,
 	}, slog.Default())
 
 	// Mock server for downloads
@@ -306,7 +319,7 @@ sources:
 		}
 	}))
 	defer server.Close()
-	l.unsplash.BaseURL = server.URL
+	setMockProviderURLs(l, server.URL)
 
 	_, _ = l.Sync()
 }
@@ -336,9 +349,9 @@ func TestLoader_UtilityMethods(t *testing.T) {
 	}
 }
 
-func TestLoader_handleArticLine_Search(t *testing.T) {
+func TestLoader_syncLine_ArticSearch(t *testing.T) {
 	artworkDir := t.TempDir()
-	l := NewLoader(&config.Config{
+	l := newTestLoader(&config.Config{
 		ArtworkDir: artworkDir,
 	}, slog.Default())
 
@@ -358,13 +371,12 @@ func TestLoader_handleArticLine_Search(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	l.artic.BaseURL = server.URL
-	l.artic.IIIFBaseURL = server.URL
+	setMockProviderURLs(l, server.URL)
 
 	var globalIndex int32
-	count, err := l.handleArticLine("artic:search:monet", &globalIndex)
+	count, err := l.syncLine(context.Background(), "artic:search:monet", &globalIndex)
 	if err != nil {
-		t.Fatalf("handleArticLine failed: %v", err)
+		t.Fatalf("syncLine failed: %v", err)
 	}
 	if count != 1 {
 		t.Errorf("expected 1 URL, got %d", count)

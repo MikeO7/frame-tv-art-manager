@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+const (
+	providerNASA    = "nasa"
+	providerPexels  = "pexels"
+	providerPixabay = "pixabay"
+	mediaTypeImage  = "image"
+)
+
 // SourceImage represents resolved metadata for a downloadable image source.
 type SourceImage struct {
 	URL        string
@@ -18,6 +25,41 @@ type SourceProvider interface {
 	Name() string
 	CanHandle(line string) bool
 	Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error)
+}
+
+// slugFromArticURL derives a stable slug from an Art Institute IIIF URL.
+func slugFromArticURL(u string) string {
+	if !strings.Contains(u, "artic.edu") {
+		return URLToSlug(u)
+	}
+	urlParts := strings.Split(u, "/")
+	if len(urlParts) <= 5 {
+		return URLToSlug(u)
+	}
+	slug := Filename(urlParts[5])
+	if len(slug) > 100 {
+		slug = slug[:100]
+	}
+	return slug
+}
+
+// slugFromNASAURL derives a stable slug from a NASA image URL.
+func slugFromNASAURL(u string) string {
+	if !strings.Contains(u, "nasa.gov") {
+		return URLToSlug(u)
+	}
+	urlParts := strings.Split(u, "/")
+	if len(urlParts) == 0 {
+		return URLToSlug(u)
+	}
+	last := urlParts[len(urlParts)-1]
+	id := strings.Split(last, "~")[0]
+	slug := Filename(id)
+	slug = strings.ReplaceAll(slug, " ", "-")
+	if len(slug) > 100 {
+		slug = slug[:100]
+	}
+	return slug
 }
 
 // URLToSlug generates a deterministic slug from a URL.

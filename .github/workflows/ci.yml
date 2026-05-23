@@ -31,6 +31,10 @@ jobs:
         with:
           go-version: '1.26.3'
           cache: true
+      - name: Install govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
 
@@ -46,8 +50,9 @@ jobs:
           cache: true
       - name: golangci-lint
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.12.2
-          "$(go env GOPATH)"/bin/golangci-lint run
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          golangci-lint run --timeout 5m
 
   # Lane 2: Security Scan
   security:
@@ -60,9 +65,9 @@ jobs:
           go-version: '1.26.3'
           cache: true
       - name: govulncheck
-        continue-on-error: true
         run: |
           GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           govulncheck ./...
 
   # Lane 3: Workflow Linting
@@ -85,7 +90,9 @@ jobs:
           go-version: '1.26.3'
           cache: true
       - name: Test & Coverage Check
-        run: make coverage-check
+        run: |
+          sudo apt-get update && sudo apt-get install -y bc
+          make coverage-check
       - name: Upload Coverage
         if: always()
         uses: actions/upload-artifact@v4

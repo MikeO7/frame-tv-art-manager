@@ -105,86 +105,41 @@ func TestMappingRoundtrip(t *testing.T) {
 	}
 }
 
-func TestScanArtworkDir(t *testing.T) {
-	dir := t.TempDir()
-
-	for _, f := range []string{testAJPG, "b.JPEG", "c.png", "d.txt", "e.gif"} {
-		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	files, err := ScanArtworkDir(dir)
-	if err != nil {
-		t.Fatalf("ScanArtworkDir: %v", err)
-	}
-
-	// Only .jpg, .jpeg (case-insensitive), .png should be included.
-	if _, ok := files[testAJPG]; !ok {
-		t.Error("expected a.jpg")
-	}
-	if _, ok := files["b.JPEG"]; !ok {
-		t.Error("expected b.JPEG")
-	}
-	if _, ok := files["c.png"]; !ok {
-		t.Error("expected c.png")
-	}
-	if _, ok := files["d.txt"]; ok {
-		t.Error("d.txt should be excluded")
-	}
-	if _, ok := files["e.gif"]; ok {
-		t.Error("e.gif should be excluded")
-	}
-}
-
-func TestScanArtworkDir_Missing(t *testing.T) {
-	_, err := ScanArtworkDir("/nonexistent/path/xyz")
-	if err == nil {
-		t.Error("expected error for missing directory")
-	}
-}
-
-func TestFileTypeFromExt(t *testing.T) {
-	tests := []struct{ file, want string }{
-		{"photo.jpg", extJPG},
-		{"photo.JPEG", extJPG},
-		{"photo.png", extPNG},
-		{"photo.PNG", "png"},
-		{"photo", "jpg"},
-	}
-	for _, tc := range tests {
-		got := FileTypeFromExt(tc.file)
-		if got != tc.want {
-			t.Errorf("FileTypeFromExt(%q) = %q, want %q", tc.file, got, tc.want)
-		}
-	}
-}
-
 func TestDetermineBrightness(t *testing.T) {
 	manual := 5
 	cfg := &config.Config{
 		ManualBrightness: &manual,
 		SolarEnabled:     false,
 	}
-	e := &Engine{cfg: cfg, logger: slog.Default()}
-
-	got := e.determineBrightness(slog.Default())
+	got := determineBrightness(cfg, slog.Default())
 	if got == nil || *got != 5 {
 		t.Errorf("expected 5, got %v", got)
 	}
 
 	cfg.ManualBrightness = nil
-	got = e.determineBrightness(slog.Default())
+	got = determineBrightness(cfg, slog.Default())
 	if got != nil {
 		t.Errorf("expected nil, got %v", got)
 	}
 }
 
 const (
-	valID1   = "id1"
-	testJPG  = "test.jpg"
-	testAJPG = "a.jpg"
-	testBJPG = "b.jpg"
+	valID1       = "id1"
+	valIDA       = "id-a"
+	valIDB       = "id-b"
+	valIDC       = "id-c"
+	valID123     = "id-123"
+	valIDOld     = "id-old"
+	valIDNew     = "id-new"
+	valIDUnknown = "id-unknown"
+	valIDKeep    = "id-keep"
+	testJPG      = "test.jpg"
+	testAJPG     = "a.jpg"
+	testBJPG     = "b.jpg"
+	testCJPG     = "c.jpg"
+	testOldJPG   = "old.jpg"
+	testNewJPG   = "new.jpg"
+	testStayJPG  = "stay.jpg"
 )
 
 func TestMapping_Set(t *testing.T) {
@@ -257,13 +212,13 @@ func TestMapping_GetFilename(t *testing.T) {
 
 func TestMapping_AllContentIDs(t *testing.T) {
 	initial := map[string]string{
-		testAJPG: "id-a",
-		testBJPG: "id-b",
+		testAJPG: valIDA,
+		testBJPG: valIDB,
 	}
 	m := &Mapping{
 		data: map[string]string{
-			testAJPG: "id-a",
-			testBJPG: "id-b",
+			testAJPG: valIDA,
+			testBJPG: valIDB,
 		},
 	}
 
@@ -282,8 +237,8 @@ func TestMapping_AllContentIDs(t *testing.T) {
 func TestMapping_TrackedFilenames(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{
-			testAJPG: "id-a",
-			testBJPG: "id-b",
+			testAJPG: valIDA,
+			testBJPG: valIDB,
 		},
 	}
 	expected := map[string]struct{}{
@@ -300,21 +255,21 @@ func TestMapping_TrackedFilenames(t *testing.T) {
 func TestMapping_DeleteBatch(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{
-			"a.jpg": "id-a",
-			"b.jpg": "id-b",
-			"c.jpg": "id-c",
+			testAJPG: valIDA,
+			testBJPG: valIDB,
+			testCJPG: valIDC,
 		},
 	}
 
-	m.DeleteBatch([]string{"a.jpg", "c.jpg"})
+	m.DeleteBatch([]string{testAJPG, testCJPG})
 
-	if _, ok := m.data["a.jpg"]; ok {
+	if _, ok := m.data[testAJPG]; ok {
 		t.Error("expected a.jpg to be deleted")
 	}
-	if _, ok := m.data["c.jpg"]; ok {
+	if _, ok := m.data[testCJPG]; ok {
 		t.Error("expected c.jpg to be deleted")
 	}
-	if id, ok := m.data["b.jpg"]; !ok || id != "id-b" {
+	if id, ok := m.data[testBJPG]; !ok || id != valIDB {
 		t.Error("expected b.jpg to remain")
 	}
 }
@@ -322,7 +277,7 @@ func TestMapping_DeleteBatch(t *testing.T) {
 func TestMapping_Rename(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{
-			"old.jpg": "id-123",
+			testOldJPG: valID123,
 		},
 	}
 

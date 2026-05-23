@@ -9,6 +9,8 @@ repos:
     -   id: check-added-large-files
     -   id: check-merge-conflict
     -   id: detect-private-key
+    -   id: check-case-conflict
+    -   id: mixed-line-ending
 
 -   repo: https://github.com/golangci/golangci-lint
     rev: v2.12.2
@@ -36,14 +38,20 @@ repos:
 
     -   id: go-test
         name: go test
-        entry: go test ./...
+        entry: go test -race -shuffle=on ./...
         language: system
         files: \.go$
         pass_filenames: false
 
     -   id: go-vuln-check
         name: go vuln check
-        entry: bash -c 'command -v govulncheck >/dev/null && govulncheck ./... || $(go env GOPATH)/bin/govulncheck ./...'
+        entry: bash -c 'BIN="$(go env GOPATH)/bin"; command -v "$BIN/govulncheck" >/dev/null || GOBIN="$BIN" go install golang.org/x/vuln/cmd/govulncheck@latest; "$BIN/govulncheck" ./...'
         language: system
         files: \.go$
+        pass_filenames: false
+
+    -   id: no-ai-placeholders
+        name: no AI placeholders
+        entry: bash -c '! grep -rE "(TODO:|FIXME:|HACK:|rest of the|implement this)" --include="*.go" .'
+        language: system
         pass_filenames: false

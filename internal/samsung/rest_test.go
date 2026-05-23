@@ -39,7 +39,7 @@ func TestFetchDeviceInfo(t *testing.T) {
 		host, portStr, _ := net.SplitHostPort(u.Host)
 		port, _ := strconv.Atoi(portStr)
 
-		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		c := NewClient(host, (&config.Config{APITimeout: 2 * time.Second}).TVConnectOptions(), slog.Default())
 		info, err := c.fetchDeviceInfo(context.Background(), port)
 		if err != nil {
 			t.Fatalf("FetchDeviceInfo failed: %v", err)
@@ -69,7 +69,7 @@ func TestFetchDeviceInfo(t *testing.T) {
 		host, portStr, _ := net.SplitHostPort(u.Host)
 		port, _ := strconv.Atoi(portStr)
 
-		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		c := NewClient(host, (&config.Config{APITimeout: 2 * time.Second}).TVConnectOptions(), slog.Default())
 		_, err := c.fetchDeviceInfo(context.Background(), port)
 		if err == nil {
 			t.Fatal("expected error due to invalid JSON, got nil")
@@ -91,7 +91,7 @@ func TestFetchDeviceInfo(t *testing.T) {
 		port, _ := strconv.Atoi(portStr)
 
 		// Set a very short timeout.
-		c := NewClient(host, &config.Config{APITimeout: 10 * time.Millisecond}, slog.Default())
+		c := NewClient(host, (&config.Config{APITimeout: 10 * time.Millisecond}).TVConnectOptions(), slog.Default())
 		_, err := c.fetchDeviceInfo(context.Background(), port)
 		if err == nil {
 			t.Fatal("expected timeout error, got nil")
@@ -114,7 +114,7 @@ func TestFetchDeviceInfo(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
-		c := NewClient(host, &config.Config{APITimeout: 2 * time.Second}, slog.Default())
+		c := NewClient(host, (&config.Config{APITimeout: 2 * time.Second}).TVConnectOptions(), slog.Default())
 		_, err := c.fetchDeviceInfo(ctx, port)
 		if err == nil {
 			t.Fatal("expected error due to cancelled context, got nil")

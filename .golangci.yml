@@ -5,23 +5,33 @@ linters:
   enable:
     - asciicheck
     - bodyclose
+    - contextcheck
     - copyloopvar
+    - depguard
     - dupl
+    - dupword
     - errname
     - errorlint
+    - forbidigo
     - funlen
+    - gochecknoinits
+    - gochecknoglobals
     - gocognit
     - goconst
     - gocritic
     - gocyclo
+    - godox
     - goprintffuncname
     - gosec
+    - interfacebloat
     - lll
+    - loggercheck
     - misspell
     - nakedret
     - nestif
     - nilerr
     - nilnil
+    - noctx
     - nolintlint
     - prealloc
     - predeclared
@@ -31,6 +41,23 @@ linters:
     - usestdlibvars
     - whitespace
   settings:
+    depguard:
+      rules:
+        main:
+          allow:
+            - $gostd
+            - github.com/MikeO7/frame-tv-art-manager
+            - github.com/gorilla/websocket
+            - golang.org/x/image
+            - gopkg.in/yaml.v3
+    forbidigo:
+      forbid:
+        - pattern: '^fmt\.Print'
+          msg: use slog, not fmt.Print
+        - pattern: '^log\.'
+          msg: use slog, not log
+        - pattern: '^panic\('
+          msg: return errors, don't panic
     funlen:
       lines: 60
       statements: 35
@@ -41,10 +68,24 @@ linters:
       min-occurrences: 3
     gocyclo:
       min-complexity: 12
+    godox:
+      keywords:
+        - TODO
+        - FIXME
+        - HACK
+        - XXX
+        - BUG
+    interfacebloat:
+      max: 5
     lll:
       line-length: 150
+    loggercheck:
+      slog: true
     nestif:
       min-complexity: 3
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     revive:
       rules:
         - name: exported
@@ -58,6 +99,16 @@ linters:
         - name: file-length-limit
           arguments:
             - max: 1000
+        - name: empty-block
+        - name: superfluous-else
+        - name: early-return
+        - name: indent-error-flow
+        - name: confusing-naming
+          disabled: true
+        - name: unused-receiver
+          disabled: true
+        - name: unhandled-error
+          disabled: true
   exclusions:
     generated: lax
     presets:
@@ -71,6 +122,7 @@ linters:
           - funlen
           - gocognit
           - gocyclo
+          - gochecknoglobals
           - lll
           - revive
         path: _test\.go
@@ -79,6 +131,36 @@ linters:
           - gocognit
           - gocyclo
         path: internal/brightness/
+      - linters:
+          - gochecknoglobals
+        path: cmd/
+      - linters:
+          - gochecknoglobals
+        path: internal/samsung/errors\.go
+      - linters:
+          - gochecknoglobals
+        path: internal/brightness/solar\.go
+      - linters:
+          - gochecknoglobals
+        path: internal/(optimize|sources)/.*\.go
+      - linters:
+          - gochecknoglobals
+        path: internal/samsung/client\.go
+      - linters:
+          - gochecknoglobals
+        path: internal/sync/transport_check\.go
+      - linters:
+          - gochecknoglobals
+        path: internal/sources/index\.go
+      - linters:
+          - noctx
+        path: _test\.go
+      - linters:
+          - interfacebloat
+        path: internal/sync/reconciler\.go
+      - linters:
+          - forbidigo
+        path: cmd/
     paths:
       - third_party$
       - builtin$

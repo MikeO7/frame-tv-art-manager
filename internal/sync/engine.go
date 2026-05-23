@@ -7,67 +7,56 @@ import (
 	"log/slog"
 	"runtime"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/brightness"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
-const (
-	ssTypeShuffle    = "shuffleslideshow"
-	ssTypeSequential = "slideshow"
-)
-
 // Engine orchestrates artwork synchronization across all configured TVs.
 type Engine struct {
-	cfg               *config.Config
-	logger            *slog.Logger
-	health            *health.Status
-	srcLoader         *sources.Loader
-	collection        *Collection
-	cycleNum          int
-	lastMetadataSaves map[string]time.Time
-	newClient         func(ip string, cfg *config.Config, logger *slog.Logger) TVClient
+	cfg        *config.Config
+	logger     *slog.Logger
+	health     *health.Status
+	srcLoader  sources.SourceLoader
+	collection *Collection
+	reporter   *CycleReporter
+	reconciler *Reconciler
+	cycleNum   int
+	newClient  func(ip string, cfg *config.Config, logger *slog.Logger) TVTransport
 
-	// Persistent clients
 	mu      sync.Mutex
-	clients map[string]TVClient
+	clients map[string]TVTransport
 }
 
-// TVClient defines the interface for interacting with a Samsung TV.
-type TVClient interface {
-	Sync(ctx context.Context, req samsung.SyncRequest) (samsung.SyncResult, error)
-	Close() error
-}
-
-func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVClient {
-	return samsung.NewClient(ip, cfg, logger)
+func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVTransport {
+	return samsung.NewClient(ip, cfg.TVConnectOptions(), logger)
 }
 
 // NewEngine creates a sync engine with the given configuration.
 func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Status) *Engine {
+	index := sources.NewArtworkIndex(cfg.ArtworkDir, logger)
 	return &Engine{
-		cfg:               cfg,
-		logger:            logger,
-		health:            healthStatus,
-		srcLoader:         sources.NewLoader(cfg, logger),
-		collection:        NewCollection(cfg, logger),
-		lastMetadataSaves: make(map[string]time.Time),
-		newClient:         defaultNewClient,
+		cfg:        cfg,
+		logger:     logger,
+		health:     healthStatus,
+		srcLoader:  sources.NewLoader(cfg, logger, index),
+		collection: NewCollection(cfg, logger, index),
+		reporter:   NewCycleReporter(cfg, logger),
+		reconciler: NewReconciler(logger),
+		newClient:  defaultNewClient,
 	}
 }
 
-func (e *Engine) getClient(ip string) TVClient {
+func (e *Engine) getClient(ip string) TVTransport {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	if e.clients == nil {
-		e.clients = make(map[string]TVClient)
+		e.clients = make(map[string]TVTransport)
 	}
 
 	if client, ok := e.clients[ip]; ok {
@@ -87,7 +76,6 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 		"artwork_dir", e.cfg.ArtworkDir,
 	)
 
-	// Run immediately on startup.
 	if err := e.RunOnce(ctx); err != nil {
 		e.logger.Error("sync cycle failed", "error", err)
 	}
@@ -109,6 +97,8 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 }
 
 // RunOnce performs a single sync cycle for all configured TVs.
+//
+//nolint:gocognit,nestif,gocyclo,funlen // complexity justified for this domain-specific path
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
 	var cycleWarnings []string
@@ -129,6 +119,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	}()
 
 	e.cycleNum++
+	e.reporter.SetCycleNum(e.cycleNum)
 	cycleLog := e.logger.With("cycle", e.cycleNum)
 
 	startTime := time.Now()
@@ -136,12 +127,9 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 		"tvs", len(e.cfg.TVIPs),
 	)
 
-	var srcDownloaded int
-	srcDownloaded, cycleWarnings = e.downloadSources(cycleLog)
+	srcDownloaded, cycleWarnings := e.downloadSources(cycleLog)
 
-	var localFiles map[string]struct{}
-	var optimized int
-	localFiles, optimized, err = e.collection.ScanAndOptimize(cycleLog)
+	localFiles, optimized, err := e.collection.ScanAndOptimize(cycleLog)
 	if err != nil {
 		return err
 	}
@@ -149,7 +137,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	if e.health != nil {
 		e.health.SetStage("syncing TVs")
 	}
-	tvSummaries := make([]tvSyncSummary, 0, len(e.cfg.TVIPs))
+	tvSummaries := make([]TVSyncResult, 0, len(e.cfg.TVIPs))
 	var summariesMu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -181,13 +169,13 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 						Status: "unreachable",
 					})
 				}
-				tvSummaries = append(tvSummaries, tvSyncSummary{
+				tvSummaries = append(tvSummaries, TVSyncResult{
 					IP:           tvIP,
 					Status:       "failed",
 					ErrorMessage: err.Error(),
 				})
 			} else {
-				if summary.Status == "backoff" {
+				if summary.Status == statusBackoff {
 					tvSummaries = append(tvSummaries, summary)
 					return
 				}
@@ -207,7 +195,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 
 	wg.Wait()
 
-	e.printSummary(startTime, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
+	e.reporter.PrintSummary(startTime, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
 
 	if len(syncErrors) > 0 {
 		return errors.Join(syncErrors...)
@@ -220,67 +208,28 @@ const (
 	statusError   = "error"
 )
 
-type tvSyncSummary struct {
-	IP           string
-	Model        string
-	Status       string // "ok", "skipped", "backoff", "error"
-	ArtMode      bool
-	Uploaded     int
-	Deleted      int
-	TotalImages  int
-	Brightness   string
-	Slideshow    string
-	ErrorMessage string
-}
-
-//nolint:funlen
 func (e *Engine) syncTV(
 	ctx context.Context,
 	ip string,
 	localFiles map[string]struct{},
 	matteConfig *MatteConfig,
 	cycleLog *slog.Logger,
-) (tvSyncSummary, error) {
-	log := cycleLog.With("tv", ip)
-	summary := tvSyncSummary{IP: ip}
+) (TVSyncResult, error) {
+	tvLog := cycleLog.With("tv", ip)
 
 	client := e.getClient(ip)
 
 	mapping, err := e.collection.GetMapping(ip)
 	if err != nil {
-		summary.Status = statusError
-		return summary, fmt.Errorf("load mapping: %w", err)
+		return TVSyncResult{IP: ip, Status: statusError}, fmt.Errorf("load mapping: %w", err)
 	}
 
-	desiredSlideshow := e.determineSlideshowSettings(log)
-	brightnessVal := e.determineBrightness(log)
+	reconcileInput := BuildReconcileInput(e.cfg, localFiles, mapping.AllContentIDs(), matteConfig, tvLog)
 
-	triggerAutoOff := IsWithinAutoOffWindow(e.cfg.AutoOffTime, e.cfg.AutoOffGraceHours, e.cfg.Timezone)
-	if triggerAutoOff {
-		log.Info("within auto-off window, preparing TV power-off trigger",
-			"off_time", e.cfg.AutoOffTime,
-			"grace_hours", FormatGraceDisplay(e.cfg.AutoOffGraceHours),
-		)
-	}
-
-	matteOverrides := make(map[string]string)
-	for filename := range localFiles {
-		matteOverrides[filename] = matteConfig.GetMatte(filename, e.cfg.MatteStyle)
-	}
-
-	syncRequest := samsung.SyncRequest{
-		LocalFiles:        localFiles,
-		Mapping:           mapping.AllContentIDs(),
-		MatteOverrides:    matteOverrides,
-		DesiredBrightness: brightnessVal,
-		Slideshow:         desiredSlideshow,
-		TriggerAutoOff:    triggerAutoOff,
-	}
-
-	result, err := client.Sync(ctx, syncRequest)
+	result, err := e.reconciler.Run(ctx, client, ip, reconcileInput, e.cfg.SyncPolicy())
 	if err != nil {
-		summary.Status = statusError
-		return summary, err
+		result.Status = statusError
+		return result, err
 	}
 
 	mappingUpdated := false
@@ -297,69 +246,11 @@ func (e *Engine) syncTV(
 
 	if mappingUpdated && !e.cfg.DryRun {
 		if err := mapping.Save(); err != nil {
-			log.Error("failed to save mapping", "error", err)
+			tvLog.Error("failed to save mapping", "error", err)
 		}
 	}
 
-	summary.Model = result.Model
-	summary.Status = result.Status
-	summary.ArtMode = result.ArtMode
-	summary.Uploaded = result.Uploaded
-	summary.Deleted = result.Deleted
-	summary.TotalImages = result.TotalImages
-	summary.Brightness = result.Brightness
-	summary.Slideshow = result.Slideshow
-	summary.ErrorMessage = result.ErrorMessage
-
-	return summary, nil
-}
-
-func (e *Engine) determineSlideshowSettings(log *slog.Logger) *samsung.SlideshowStatus {
-	if !e.cfg.SlideshowOverride || !e.cfg.SlideshowEnabled {
-		return nil
-	}
-
-	ssType := ssTypeShuffle
-	if e.cfg.SlideshowType == "sequential" || e.cfg.SlideshowType == "order" {
-		ssType = ssTypeSequential
-	}
-
-	interval := fmt.Sprintf("%d", e.cfg.SlideshowInterval)
-
-	isValid := false
-	supported := []string{"3", "15", "60", "720", "1440", "10080"}
-	for _, s := range supported {
-		if interval == s {
-			isValid = true
-			break
-		}
-	}
-
-	if !isValid {
-		log.Warn("invalid slideshow interval detected for 2024 model, defaulting to 3m shuffle",
-			"requested", interval,
-			"supported", supported)
-		interval = "3"
-		ssType = ssTypeShuffle
-	}
-
-	return &samsung.SlideshowStatus{
-		Value:      interval,
-		Type:       ssType,
-		CategoryID: "MY-C0002",
-	}
-}
-
-func (e *Engine) determineBrightness(log *slog.Logger) *int {
-	return brightness.GetTargetValue(brightness.Config{
-		SolarEnabled:     e.cfg.SolarEnabled,
-		Latitude:         e.cfg.Latitude,
-		Longitude:        e.cfg.Longitude,
-		Timezone:         e.cfg.Timezone,
-		BrightnessMin:    e.cfg.BrightnessMin,
-		BrightnessMax:    e.cfg.BrightnessMax,
-		ManualBrightness: e.cfg.ManualBrightness,
-	}, log)
+	return result, nil
 }
 
 func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {
@@ -373,88 +264,4 @@ func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {
 		cycleWarnings = append(cycleWarnings, fmt.Sprintf("Source download issue: %v", srcErr))
 	}
 	return srcDownloaded, cycleWarnings
-}
-
-func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, optimized int, tvs []tvSyncSummary, warnings []string) {
-	elapsed := time.Since(startTime).Round(time.Millisecond)
-	nextSync := time.Now().Add(time.Duration(e.cfg.SyncIntervalMin) * time.Minute)
-
-	const boxWidth = 50
-
-	padLine := func(content string) string {
-		runes := []rune(content)
-		if len(runes) > boxWidth {
-			runes = runes[:boxWidth]
-		}
-		padding := boxWidth - len(runes)
-		return "║" + string(runes) + strings.Repeat(" ", padding) + "║\n"
-	}
-
-	var sb strings.Builder
-	sb.WriteString("\n╔══════════════════════════════════════════════════╗\n")
-
-	header := fmt.Sprintf("  Sync Cycle #%d - %s", e.cycleNum, time.Now().Format("2006-01-02 15:04:05"))
-	sb.WriteString(padLine(header))
-
-	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
-
-	for _, tv := range tvs {
-		name := tv.IP
-		if tv.Model != "" {
-			name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
-		}
-		sb.WriteString(padLine("  TV: " + name))
-
-		switch tv.Status {
-		case "ok":
-			sb.WriteString(padLine("    Status:     ✔ Art Mode"))
-			sb.WriteString(padLine(fmt.Sprintf("    Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
-			sb.WriteString(padLine(fmt.Sprintf("    Total:      %d images on TV", tv.TotalImages)))
-			if tv.Brightness != "" {
-				sb.WriteString(padLine("    Brightness: " + tv.Brightness))
-			}
-			if tv.Slideshow != "" {
-				sb.WriteString(padLine("    Slideshow:  " + tv.Slideshow))
-			}
-		case "backoff":
-			sb.WriteString(padLine("    Status:     ⏸ Backing off (unreachable)"))
-		default:
-			sb.WriteString(padLine("    Status:     ✘ " + tv.Status))
-			if tv.ErrorMessage != "" {
-				errMsg := tv.ErrorMessage
-				if len(errMsg) > 35 {
-					errMsg = errMsg[:32] + "..."
-				}
-				sb.WriteString(padLine("    Error:      " + errMsg))
-			}
-		}
-		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
-	}
-
-	localSummary := fmt.Sprintf("  Local:  %d files", totalLocal)
-	if fromSources > 0 {
-		localSummary += fmt.Sprintf(" │ %d from URLs", fromSources)
-	}
-	if optimized > 0 {
-		localSummary += fmt.Sprintf(" │ %d optimized", optimized)
-	}
-	sb.WriteString(padLine(localSummary))
-
-	if len(warnings) > 0 {
-		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
-		sb.WriteString(padLine("  ⚠ Warnings during this cycle:"))
-		for _, w := range warnings {
-			if len(w) > 44 {
-				w = w[:41] + "..."
-			}
-			sb.WriteString(padLine("  - " + w))
-		}
-	}
-
-	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
-	sb.WriteString(padLine("  Took:   " + elapsed.String()))
-	sb.WriteString(padLine("  Next:   " + nextSync.Format("15:04:05")))
-	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
-
-	e.logger.Info(sb.String())
 }
