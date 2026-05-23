@@ -3,83 +3,68 @@
 [![CI Status](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MikeO7/frame-tv-art-manager/actions)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-orange.svg)](LICENSE)
 
-A robust, fully automated sync engine designed to keep your Samsung Frame TV populated with stunning, perfectly formatted art. Whether you want to cycle through local directories or turn your television into a dynamic museum using the **Unsplash Auto-Curation Engine**, this manager handles the entire pipeline quietly in the background.
+If you own a Samsung Frame TV, you already know the struggle. Trying to upload your own custom artwork or photos using Samsung's official SmartThings mobile app is incredibly slow, clunky, and frustrating.
 
-It handles Tizen WebSocket authentication, image resizing, matting, solar brightness adjustments, and aesthetic cropping so that your television behaves like a premium physical art gallery—never a glowing digital monitor.
+To make matters worse, if your TV recently updated to the newer **Tizen 8.0+ OS** firmware, you probably noticed that practically every open-source sync tool or command-line script you found online has completely stopped working. Samsung quietly changed how WebSocket authentication and secure channels behave under the hood.
 
----
-
-## 🌟 The Killer Feature: Unsplash Auto-Curation Engine
-
-Stop manually searching for high-res images and transfering them to your TV one by one. The **Unsplash Auto-Curation Engine** transforms your Frame TV into a living art gallery that updates itself automatically.
-
-By linking the manager to Unsplash, you can subscribe to entire curated high-res collections or track specific photographers. Every time a new masterpiece is added to your selected collection, the manager automatically:
-1. **Resolves & Streams**: Fetches the high-resolution source from the Unsplash API.
-2. **Stable Identity Mapping**: Tracks downloads, prevents re-downloads, and deduplicates identical images using stable content hashes.
-3. **Bandwidth Optimization**: Dynamically requests exact `w=3840&q=95&fm=jpg` parameters directly from Unsplash's CDN, ensuring pristine 4K clarity without wasting disk space.
-4. **Physical Canvas Enhancement**: Applies our academic canvas weave and 3D paint texture filters to make the photography look like physical prints.
-5. **Aesthetic Crop & Upload**: Intelligently crops non-16:9 shots and uploads them silently directly to your TV.
-
-It is completely hands-free. You curating a collection on your laptop or phone is all it takes for your living room wall to update itself a few minutes later.
+I built this manager to solve that exact headache. It connects securely to your TV, processes your images so they actually look like real physical canvas prints rather than a giant glowing computer screen, and handles all your scheduling automatically.
 
 ---
 
-## Key Features
+## 🌟 The Killer Feature: Unsplash Auto-Curation
 
-### 📸 Dynamic Unsplash Integration (The Crown Jewel)
-*   **Collection Subscriptions**: Enter any public Unsplash collection ID (e.g., `225444` for "Earth from Space") and watch your TV automatically sync new art when the collection changes.
-*   **Single-Photo Targets**: Direct-target specific iconic shots by ID (e.g., `L9W_5q57_V8`) for permanent exhibition.
-*   **Concurrence & Rate Control**: Features a smart 5-channel API request limiter and caching layer to prevent your developer credentials from being rate-limited.
-*   **Official Download Tracking**: Automatically sends download telemetry signals back to Unsplash to credit photographers for their work.
+This is where the tool becomes truly set-and-forget. Stop manually downloading images, resizing them, cropping them to 16:9, and copying them over one by one.
 
-### 🖼️ Museum-Grade Physical Canvas Simulator ("Artifact Edition")
-Stop displaying flat, glowing digital JPEGs. The built-in image processor transforms your artwork using advanced rendering pipelines:
-*   **Zhao-Peli Asymmetric Canvas Weave**: Simulates physical canvas fibers using a 10px frequency optimized for 4K tangibility, complete with organic "slub" noise to break up repeating digital patterns.
-*   **64-Bit Linear Pipeline**: Processes light and colors in a physics-correct linear space to maintain highly accurate gradients and natural pigment blends.
-*   **Brushstroke Impasto (3D Topography)**: Generates subtle normal maps from the image luminance, applying directional highlights and shadows to give paint ridges real physical volume.
-*   **History-Preserving Craquelure**: Overlays stress-fractal cracks to simulate aged, historic paint structures for classical art pieces.
-*   **Black-Point Restoring Contrast**: Pins the absolute black level (0.0) to prevent the "milky wash" common on modern LCD panels, restoring rich depth to shadows.
-*   **Luminance Headroom Correction**: Relaxes peak white brightness to 235, preserving surface textures and blending the screen naturally with the surrounding wall lighting.
-*   **Depth Matte Bevel**: Adds a subtle, light-aware cardboard matte bevel edge around full-screen images.
+With the **Unsplash Auto-Curation Engine**, you can turn your living room into an ever-changing art gallery:
+1. **Find or Create a Collection**: Browse Unsplash and find a collection you love (or create a private one on your phone).
+2. **Add the ID to Your Configuration**: Drop the collection's ID into a simple `sources.yaml` file.
+3. **Walk Away**: Whenever you add a new photo to that collection on your phone or laptop, the manager automatically catches it, downloads the perfect 4K crop from the Unsplash CDN, applies beautiful physical textures, and pushes it directly onto your wall.
 
-### ✂️ "Director's Cut" Smart Crop v4.0 (Aesthetic Composition)
-Most resizers blindly center or crop. The Frame TV Art Manager analyzes images using a sophisticated computer vision model:
-*   **Boolean Map Saliency (BMS)**: Detects physical subjects and objects based on topological surroundedness and structural contrast instead of simple neural approximations.
-*   **Perceptual CIE Lab Space**: Evaluates color contrast inside a uniform color space that matches human vision, preserving the focal point of vibrant color palettes.
-*   **High-Res Micro-Refinement**: Performs a quick global ROI sweep and follows it up with a high-resolution edge pass to snap crops perfectly to sharp borders.
-*   **Rule-of-Thirds & Visual Mass Balancing**: Integrates Gaussian center bias and visual weight calculations to produce balanced, aesthetic compositions.
-
-### ☀️ Solar Brightness & Auto-Off Syncing
-*   **Sun-Aware Backlight Control**: Automatically tracks the solar elevation at your latitude and longitude. It dims the screen to a soft backlight at sunset and brightens it during the peak midday sun.
-*   **Smart Auto-Off Hours**: Shuts down the TV's art mode at night (e.g., `22:00`) to save energy. It checks if you are watching a movie or playing a game beforehand, ensuring it never interrupts your active entertainment.
-
-### 🔒 Built for Tizen 8.0+ Stability
-*   **Silent REST Gate**: Probes the TV's secure REST endpoints before attempting a WebSocket handshake. If you are watching TV or using an app, the manager backs off silently without causing annoying "Allow Access" prompts to pop up on your screen.
-*   **Persistent Handshake Tokens**: Safely caches connection tokens locally, ensuring you only have to click "Allow" on your TV remote once during your initial configuration.
+It is completely hands-free. You curating a list of photos while riding the bus is all it takes to refresh your home's decor by the time you walk through the front door.
 
 ---
 
-## Why This Exists
+## What It Actually Does
 
-If you own a Samsung Frame TV running Tizen 8.0+ OS, you have likely realized that almost every open-source sync tool or command-line utility has stopped working. The Tizen 8.0+ operating system firmware introduced strict new WebSocket connection security and updated API endpoints, making it incredibly difficult to upload custom art automatically without using Samsung's slow, manual SmartThings mobile application.
+### 🔌 Direct API Integrations (Unsplash, NASA, and More)
+*   **Curated Collections**: Sync entire public or private Unsplash folders automatically.
+*   **NASA Daily Astronomy APOD**: Automatically pull today's official Astronomy Picture of the Day.
+*   **Museum Masterpieces**: Pull classical fine art directly from the Art Institute of Chicago archives (by artist name or specific ID).
+*   **Smart Download Tracking**: Automatically credits photographers on Unsplash by sending download telemetry signals, keeping everything above board.
 
-This project was built to solve those Tizen 8.0+ connection quirks while elevating image quality to a museum-grade standard. It doesn't just push images to the screen; it uses academic color science and 3D texture simulation to make your television panel look like a physical canvas.
+### 🎨 Making Digital Screens Look Like Real Art
+Most TVs displaying photos look like... bright, glowing TVs. To break that digital look, this manager lets you optionally run your artwork through a physical material simulator:
+*   **Tactile Canvas Weave**: Procedurally overlays canvas fabric fibers so the image looks tangible when you stand close to the screen.
+*   **Paint Ridges (3D Impasto)**: Uses image lighting and shadows to generate a 3D normal map, making classical paint brushstrokes look raised and textured.
+*   **Linear Color Spacing**: Handles pigment blending in a mathematically correct 64-bit linear space to prevent digital glows and maintain rich color depth.
+*   **Toned-Down Backlight Adjustments**: Keeps absolute blacks deep and tones down neon bright whites to help the TV blend into the room's actual ambient light.
+
+### ✂️ Smart Cropping (Not Just Center-Cutting)
+If you have a vertical painting or a square photo, typical resizers just stretch it or cut off the sides blindly. This manager runs a visual analyzer to find the actual focal point of the image (whether it is a person, a boat, or a tree) and dynamically crops the 16:9 frame around it so the soul of the composition is never lost.
+
+### ☀️ Auto-Brightness and Smart Power-Off
+*   **Sun-Aware Dimming**: Tracks where the sun is in your local sky based on your city's latitude and longitude. It automatically dims the screen as dusk settles and brightens it during sunny afternoons.
+*   **Gentle Nightly Shutdowns**: You can set a time for Art Mode to turn off at night (like `22:30`) to save power. The manager checks if you are actively watching a movie or playing a video game first, so it never interrupts your evening.
+
+### 🔒 Rock-Solid Tizen 8.0+ Connection Stability
+*   **REST Gate Busy Protection**: Probes the TV's secure REST endpoints before attempting to connect. If your TV is busy running Netflix or YouTube, the manager backs off silently without causing annoying "Allow Access" connection popups to disrupt your screen.
+*   **Cached Remote Tokens**: Saves your TV's authorization token locally on the first handshake. You only have to click "Allow" on your TV remote once.
 
 ---
 
-## Quick Start: The Minimalist Setup
+## Quick Start: The 2-Minute Setup
 
-If you have a folder of local JPEG images and want to sync them directly to your TV, you can get started in less than two minutes using Docker.
+If you have a folder of local JPEG images on a home server or computer and want to sync them directly to your TV, here is the absolute quickest way to do it.
 
-### 1. Structure Your Directory
-Create a dedicated project directory on your host computer:
+### 1. Create Your Local Directories
+Make two folders on your host computer:
 ```bash
 mkdir -p frame-tv-art/artwork
 mkdir -p frame-tv-art/tokens
 ```
 
-### 2. Create the Docker Compose Configuration
-Save the following file as `docker-compose.yml` inside the `frame-tv-art` folder:
+### 2. Create Your `docker-compose.yml`
+Save this file as `docker-compose.yml` inside the `frame-tv-art` folder:
 ```yaml
 services:
   frame-art-manager:
@@ -88,39 +73,38 @@ services:
     restart: unless-stopped
     environment:
       - TV_IPS=192.168.1.150
-      - CLIENT_NAME=Living Room Frame TV
+      - CLIENT_NAME=Living Room TV
       - LOG_LEVEL=info
     volumes:
       - ./artwork:/data/artwork
       - ./tokens:/data/tokens
 ```
-> 💡 *Replace `192.168.1.150` with your Samsung Frame TV's local IP address. You can easily find this in your TV's Network Settings menu.*
+> 💡 *Be sure to replace `192.168.1.150` with your Frame TV's actual local IP address (you can find this easily in your TV's Network Settings menu).*
 
-### 3. Spin Up the Manager
-Run the following command in your terminal:
+### 3. Spin It Up
+Run this command in your terminal:
 ```bash
 docker compose up -d
 ```
 
 ### 4. Authenticate
-Drop a few `.jpg` files into the `./artwork` folder. Check your TV screen; a prompt will appear asking to authorize the WebSocket connection from **"Living Room Frame TV"**. Use your TV remote to press **Allow**. The manager will save this token in your `./tokens` folder and handle all future uploads silently!
+Drop a `.jpg` file into your local `./artwork` folder. Look at your TV; a prompt will pop up asking you to authorize the connection from **"Living Room TV"**. Press **Allow** with your remote. The manager will save that token inside `./tokens` and run silently in the background from now on!
 
 ---
 
-## Setup Guide: Unsplash API & Remote Sources
+## Going Pro: Setting Up Unsplash & Custom Sources
 
-To unlock the Unsplash Auto-Curation Engine and automatically pull space photos from NASA or fine masterpieces from the Art Institute of Chicago, follow these steps.
+To connect Unsplash, NASA, and other automatic feeds, follow this step-by-step guide.
 
-### 🔑 Getting Your Unsplash API Credentials
-1. Go to the [Unsplash Developer Portal](https://unsplash.com/developers) and log in or create a free account.
-2. Click on **New Application**.
-3. Agree to the developer terms and give your application a name (e.g., `My Frame TV`).
-4. Once created, copy the **Access Key** and **Secret Key** provided on your application dashboard.
-5. *(Optional)* Browse Unsplash and find a collection you love. For example, the "Earth from Space" collection URL is:
-   `https://unsplash.com/collections/225444/earth-from-space` -> The Collection ID is **`225444`**.
+### 🔑 Getting Your Unsplash API Keys
+1. Go to the [Unsplash Developer Portal](https://unsplash.com/developers) and create a free developer account.
+2. Click **New Application** and accept their terms (it takes less than a minute).
+3. Give your app a name (like `My Home Frame TV`).
+4. Copy the **Access Key** and **Secret Key** shown on your dashboard.
+5. Browse Unsplash, find a collection you love, and copy its ID from the URL (for example, in `unsplash.com/collections/225444/earth-from-space`, the ID is **`225444`**).
 
-### 1. Update Your Docker Compose Environment
-Add your API keys and the path to your sources file to your `docker-compose.yml`:
+### 1. Update Your `docker-compose.yml`
+Update your environment section to include your API keys and link a sources file:
 ```yaml
 services:
   frame-art-manager:
@@ -129,12 +113,12 @@ services:
     restart: unless-stopped
     environment:
       - TV_IPS=192.168.1.150
-      - CLIENT_NAME=Living Room Frame TV
+      - CLIENT_NAME=Living Room TV
       - LOG_LEVEL=info
-      # Enable API integrations
+      # API Keys & Custom Sources file
       - ARTWORK_SOURCES_FILE=/data/sources.yaml
-      - UNSPLASH_ACCESS_KEY=your_unsplash_access_key_here
-      - UNSPLASH_SECRET_KEY=your_unsplash_secret_key_here
+      - UNSPLASH_ACCESS_KEY=your_real_unsplash_access_key_here
+      - UNSPLASH_SECRET_KEY=your_real_unsplash_secret_key_here
       - NASA_API_KEY=DEMO_KEY
       # Turn on Smart Composition
       - SMART_CROP_ENABLED=true
@@ -144,104 +128,103 @@ services:
       - ./config:/data
 ```
 
-### 2. Write Your `sources.yaml` File
-Create a new file named `sources.yaml` inside your local `./config` directory:
+### 2. Write Your `sources.yaml`
+Create a new file named `sources.yaml` inside your local `./config` folder:
 ```yaml
 # ==============================================================================
-# Frame TV Art Manager — Automated Remote Art Sources
+# Frame TV Art Manager — Custom Art Feed
 # ==============================================================================
 providers:
-  # --- 📸 Unsplash (Stunning Photography) ---
+  # --- 📸 Unsplash (Beautiful Photography) ---
   unsplash:
-    - "collection:225444"          # Sync photos from Earth from Space
-    - "photo:L9W_5q57_V8"          # Sync a single iconic high-res landscape
+    - "collection:225444"          # Sync an entire collection by its ID
+    - "photo:L9W_5q57_V8"          # Target a single specific high-res photo
 
-  # --- 🚀 NASA (Interstellar Wonders) ---
+  # --- 🚀 NASA (Outer Space Photography) ---
   nasa:
-    - "apod"                       # Automatically download today's NASA Astronomy Photo of the Day
-    - "search:james webb"          # Top 10 high-resolution space telescope photos
+    - "apod"                       # Automatically sync today's Astronomy Picture of the Day
+    - "search:james webb"          # Pull the top 10 space telescope pictures
 
-  # --- 🎨 Art Institute of Chicago (Fine Art Masterpieces) ---
+  # --- 🎨 Art Institute of Chicago (Masterpieces) ---
   art_institute_of_chicago:
     - "search:monet"               # Sync 10 historic Claude Monet paintings
-    - "photo:16568"                # Sync a specific painting by its ID
+    - "photo:16568"                # Pull a specific classical piece by its ID
 
-  # --- 🔗 Direct Web Links ---
+  # --- 🔗 Direct URLs ---
   direct:
     - "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?q=80&w=3840"
 ```
-Restart your container to apply the changes:
+Now restart your container to apply the changes:
 ```bash
 docker compose down && docker compose up -d
 ```
-The manager will download, optimize, apply canvas textures, smart-crop, and push the collections to your Frame TV in the background.
+The manager will download your custom feed, run smart crops, generate stable hashes to prevent duplicate downloads, and automatically sync everything with your TV in the background!
 
 ---
 
 ## Configuration Reference
 
-You can customize the manager using the following environment variables:
+You can customize the engine's behavior by adjusting these environment variables:
 
-| Environment Variable | Default | Description |
+| Variable | Default | Description |
 | :--- | :--- | :--- |
-| **`TV_IPS`** | *Required* | Comma-separated list of TV IP addresses (e.g., `192.168.1.150,192.168.1.151`). |
-| `CLIENT_NAME` | `Frame Art Manager` | The identity string passed during WebSocket handshake (prevents recurring popups). |
-| `SYNC_INTERVAL_MINUTES` | `5` | Time in minutes between checks for new artwork. |
-| `ARTWORK_DIR` | `/data/artwork` | Location where local or downloaded artwork is stored inside the container. |
-| `TOKEN_DIR` | `/data/tokens` | Location where authentication handshake tokens are cached. |
-| `ARTWORK_SOURCES_FILE` | *(empty)* | Path to the YAML or TXT file defining remote image sources. |
-| `REMOVE_UNKNOWN_IMAGES` | `false` | When true, automatically deletes any files found on the TV that aren't in your local folder. |
-| `DRY_RUN` | `false` | Processes, crops, and textures all images locally without making connections or changes to the TV. |
+| **`TV_IPS`** | *Required* | Your TV's local IP address (separate with commas for multiple TVs). |
+| `CLIENT_NAME` | `Frame Art Manager` | The connection name passed to the TV (prevents recurring popup warnings). |
+| `SYNC_INTERVAL_MINUTES` | `5` | How often the script runs in the background to look for new art. |
+| `ARTWORK_DIR` | `/data/artwork` | Where downloaded and processed artwork files live. |
+| `TOKEN_DIR` | `/data/tokens` | Where TV authentication files are saved. |
+| `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your `sources.yaml` or custom source list. |
+| `REMOVE_UNKNOWN_IMAGES` | `false` | Set to true to automatically delete images on your TV that aren't in your local folder. |
+| `DRY_RUN` | `false` | Process and texture images locally without actually pushing them to the TV. |
 | `LOG_LEVEL` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error`. |
 
-### 🎨 Fine Art & Matte Settings
+### 🎨 Texture, Matte, & Crop Settings
 
-| Environment Variable | Default | Description |
+| Variable | Default | Description |
 | :--- | :--- | :--- |
-| `IMAGE_OPTIMIZE_ENABLED` | `true` | Resizes oversized local or downloaded files to clean 4K specs. |
-| `IMAGE_MAX_WIDTH` | `3840` | The target horizontal resolution. |
-| `IMAGE_MAX_HEIGHT` | `2160` | The target vertical resolution. |
-| `IMAGE_JPEG_QUALITY` | `95` | Compression ratio for generated JPEG images. |
-| `SMART_CROP_ENABLED` | `false` | Analyzes image saliency to crop 16:9 shots without losing the focal subject. |
-| `IMAGE_MUSEUM_MODE` | `false` | Enables physical canvas, light headroom adjustments, and impasto texturing. |
-| `IMAGE_MUSEUM_INTENSITY` | `5` | Canvas/impasto depth weighting (integer scale from `1` to `10`). |
-| `MATTE_STYLE` | `none` | Surround uploaded images with a virtual matte frame. Options: `none`, `modernthin`, `modern`, `modernwide`, `flexible`, `shadowbox`, `panoramic`, `triptych`, `squares`. |
-| `MATTE_COLOR` | *(empty)* | Colors like `polar`, `sand`, `warm`, `neutral`, `sage`, `burgandy`, `navy`, `apricot`. Format via `MATTE_STYLE=shadowbox_polar`. |
+| `IMAGE_OPTIMIZE_ENABLED` | `true` | Automatically downscale massive images to crisp 4K templates. |
+| `IMAGE_MAX_WIDTH` | `3840` | The horizontal pixel size target. |
+| `IMAGE_MAX_HEIGHT` | `2160` | The vertical pixel size target. |
+| `IMAGE_JPEG_QUALITY` | `95` | JPEG encoding quality (1-100). |
+| `SMART_CROP_ENABLED` | `false` | Use subject saliency maps to crop images perfectly without cutting off the subject. |
+| `IMAGE_MUSEUM_MODE` | `false` | Apply canvas weave, liquid varnish simulations, and 3D impasto brushstroke ridges. |
+| `IMAGE_MUSEUM_INTENSITY` | `5` | Canvas weave/paint ridge depth weighting (scale from `1` to `10`). |
+| `MATTE_STYLE` | `none` | Add a cardboard frame style around your art: `none`, `modernthin`, `modern`, `modernwide`, `flexible`, `shadowbox`, `panoramic`, `triptych`, `squares`. |
+| `MATTE_COLOR` | *(empty)* | Color options: `polar`, `sand`, `warm`, `neutral`, `sage`, `burgandy`, `navy`, `apricot`. Format as `MATTE_STYLE=shadowbox_polar`. |
 
-### ☀️ Sun & Automation Control
+### ☀️ Ambient Elevation & Shutdown Control
 
-| Environment Variable | Default | Description |
+| Variable | Default | Description |
 | :--- | :--- | :--- |
-| `SOLAR_BRIGHTNESS_ENABLED` | `false` | Automatically dims or brightens the TV based on solar elevation. |
-| `LOCATION_LATITUDE` | *(empty)* | Latitude of your home (e.g. `40.7128` for New York). |
-| `LOCATION_LONGITUDE` | *(empty)* | Longitude of your home (e.g. `-74.0060`). |
-| `LOCATION_TIMEZONE` | *(empty)* | Timezone string matching the [IANA Time Zone database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g., `America/New_York`). |
-| `BRIGHTNESS_MIN` | `2` | Light intensity level in pitch darkness (scale `1-10`). |
-| `BRIGHTNESS_MAX` | `10` | Light intensity level at solar zenith. |
-| `AUTO_OFF_TIME` | *(empty)* | 24-hour time to automatically power off the TV when in art mode (e.g., `23:30`). |
-| `AUTO_OFF_GRACE_HOURS` | `2` | Number of hours to continue sending off commands in case the TV was turned back on manually. |
+| `SOLAR_BRIGHTNESS_ENABLED` | `false` | Track where the sun is to automatically dim or brighten the screen. |
+| `LOCATION_LATITUDE` | *(empty)* | Your latitude (e.g. `40.7128` for New York). |
+| `LOCATION_LONGITUDE` | *(empty)* | Your longitude (e.g. `-74.0060`). |
+| `LOCATION_TIMEZONE` | *(empty)* | Your local timezone matching the [IANA database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`). |
+| `BRIGHTNESS_MIN` | `2` | Panel brightness level in pitch darkness (scale `1-10`). |
+| `BRIGHTNESS_MAX` | `10` | Panel brightness level at absolute noon. |
+| `AUTO_OFF_TIME` | *(empty)* | Time to automatically shut down Art Mode at night (e.g. `23:30`). |
+| `AUTO_OFF_GRACE_HOURS` | `2` | Retry window in hours to keep checking in case the TV was manually powered back on. |
 
 ---
 
-## Development & Custom Builds
+## Local Compilation & Development
 
-If you wish to compile or modify the manager from source, this repository provides a full production suite:
+If you want to build or compile the manager from source, this repository has everything set up:
 
-### Prerequisites
+### What you need:
 *   [Go 1.22+](https://golang.org/)
 *   [Make](https://www.gnu.org/software/make/)
 *   [pre-commit](https://pre-commit.com/)
 
-### Compilation and Validation Commands
-Use the provided `Makefile` to run static checks, formatting, and tests:
+### Build Commands:
 ```bash
 # Build the binary locally
 make build
 
-# Run formatting and go modules tidying
+# Run quick format and go mod cleanups
 make tidy fmt
 
-# Run all code linters (golangci-lint), security scanners (govulncheck), and action tests
+# Run all code tests, linters, security audits, and hooks
 make check
 ```
 
@@ -249,10 +232,10 @@ make check
 
 ## Contributing
 
-We welcome structural improvements, bug fixes, and feature additions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) and [AI.md](AI.md) for strict code style requirements, linting guidelines, and rules preventing code placeholders.
+Pull requests are always welcome! Check out [CONTRIBUTING.md](CONTRIBUTING.md) and [AI.md](AI.md) for details on code styles and guidelines.
 
 ---
 
 ## License
 
-Licensed under the **PolyForm Noncommercial License 1.0.0**. Feel free to use this personal manager in your home, run it on a home server, and customize it. Commercial distribution or integration into commercial smart home systems requires separate licensing.
+Licensed under the **PolyForm Noncommercial License 1.0.0**. Feel free to run this in your home, share it with friends, and tweak it. Commercial distributions or selling integrations requires separate licensing.
