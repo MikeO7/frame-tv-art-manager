@@ -44,9 +44,36 @@ func NewReconciler(logger *slog.Logger) *Reconciler {
 	return &Reconciler{logger: logger}
 }
 
+func (r *Reconciler) getTVContent(
+	ctx context.Context,
+	tv TVTransport,
+	policy config.SyncPolicy,
+	result *TVSyncResult,
+) ([]samsung.ArtContent, error) {
+	result.Model = tv.Model()
+
+	if !tv.IsInArtMode(ctx) {
+		r.logger.Info("skipping — TV not in art mode")
+		result.Status = "skipped (not art mode)"
+		return nil, nil
+	}
+	result.ArtMode = true
+
+	if err := tv.SaveMetadata(ctx); err != nil {
+		r.logger.Debug("could not save metadata", "error", err)
+	}
+
+	tvContent, err := tv.ListUploaded(ctx)
+	if err != nil {
+		tv.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
+		result.Status = "error"
+		return nil, fmt.Errorf("get TV images: %w", err)
+	}
+
+	return tvContent, nil
+}
+
 // Run executes the full sync reconciliation cycle.
-//
-//nolint:funlen,gocognit,gocyclo,nestif // complexity justified for this domain-specific path
 func (r *Reconciler) Run(
 	ctx context.Context,
 	tv TVTransport,
@@ -76,24 +103,9 @@ func (r *Reconciler) Run(
 	}
 	defer func() { _ = tv.Close() }()
 
-	result.Model = tv.Model()
-
-	if !tv.IsInArtMode(ctx) {
-		r.logger.Info("skipping — TV not in art mode")
-		result.Status = "skipped (not art mode)"
-		return result, nil
-	}
-	result.ArtMode = true
-
-	if err := tv.SaveMetadata(ctx); err != nil {
-		r.logger.Debug("could not save metadata", "error", err)
-	}
-
-	tvContent, err := tv.ListUploaded(ctx)
-	if err != nil {
-		tv.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-		result.Status = "error"
-		return result, fmt.Errorf("get TV images: %w", err)
+	tvContent, err := r.getTVContent(ctx, tv, policy, &result)
+	if err != nil || result.Status != "" {
+		return result, err
 	}
 
 	trackedFiles, unknownIDs, staleFiles := reconcileInventory(req.Mapping, tvContent, r.logger)
@@ -107,6 +119,32 @@ func (r *Reconciler) Run(
 	toUpload := diffSets(req.LocalFiles, trackedFiles)
 	toDelete := diffSets(trackedFiles, req.LocalFiles)
 
+	r.logSyncPlan(toUpload, toDelete, unknownIDs, policy)
+
+	var preserveSlideshow *samsung.SlideshowStatus
+	hasChanges := len(toUpload) > 0 || len(toDelete) > 0 || (policy.RemoveUnknownImages && len(unknownIDs) > 0)
+	if hasChanges && !policy.SlideshowOverride {
+		preserveSlideshow, _ = tv.SlideshowStatus(ctx)
+	}
+
+	r.processUploads(ctx, tv, req, policy, toUpload, &result)
+
+	r.processDeletions(ctx, tv, req, policy, toDelete, unknownIDs, &result)
+
+	r.applySettings(ctx, tv, req, policy, preserveSlideshow, hasChanges, &result)
+
+	result.TotalImages = len(trackedFiles) + result.Uploaded - result.Deleted
+	result.Status = "ok"
+
+	tv.RecordSuccess()
+	r.logger.Info("sync completed")
+	return result, nil
+}
+
+func (r *Reconciler) logSyncPlan(
+	toUpload, toDelete, unknownIDs map[string]struct{},
+	policy config.SyncPolicy,
+) {
 	if len(unknownIDs) > 0 {
 		if policy.RemoveUnknownImages {
 			r.logger.Info("will remove unknown images", "count", len(unknownIDs))
@@ -121,82 +159,17 @@ func (r *Reconciler) Run(
 		"to_delete", len(toDelete),
 		"unknown_to_delete", boolCount(policy.RemoveUnknownImages, len(unknownIDs)),
 	)
+}
 
-	var preserveSlideshow *samsung.SlideshowStatus
-	hasChanges := len(toUpload) > 0 || len(toDelete) > 0 || (policy.RemoveUnknownImages && len(unknownIDs) > 0)
-	if hasChanges && !policy.SlideshowOverride {
-		preserveSlideshow, _ = tv.SlideshowStatus(ctx)
-	}
-
-	uploadsDone := 0
-	for filename := range toUpload {
-		if uploadsDone > 0 && policy.UploadDelay > 0 && !policy.DryRun {
-			time.Sleep(policy.UploadDelay)
-		}
-
-		if policy.DryRun {
-			r.logger.Info("[DRY RUN] would upload", "file", filename)
-			result.Uploaded++
-			continue
-		}
-
-		filePath := filepath.Join(policy.ArtworkDir, filename)
-		fileType := artwork.FileTypeFromExt(filename)
-		matte := policy.MatteStyle
-		if customMatte, ok := req.MatteOverrides[filename]; ok {
-			matte = customMatte
-		}
-
-		contentID, uploadErr := r.uploadWithRetry(ctx, tv, filePath, fileType, matte, policy)
-		if uploadErr != nil {
-			r.logger.Error("upload failed", "file", filename, "error", uploadErr)
-			continue
-		}
-
-		result.NewUploads[filename] = contentID
-		r.logger.Info("uploaded", "file", filename, "content_id", contentID, "matte", matte)
-		result.Uploaded++
-		uploadsDone++
-	}
-
-	if len(toDelete) > 0 {
-		var idsToDelete []string
-		var filesToDelete []string
-		for filename := range toDelete {
-			if cid, ok := req.Mapping[filename]; ok {
-				idsToDelete = append(idsToDelete, cid)
-				filesToDelete = append(filesToDelete, filename)
-			}
-		}
-
-		if len(idsToDelete) > 0 {
-			if policy.DryRun {
-				r.logger.Info("[DRY RUN] would delete tracked images", "count", len(idsToDelete))
-			} else {
-				r.logger.Info("deleting tracked images", "count", len(idsToDelete))
-				if err := tv.DeleteImages(ctx, idsToDelete); err != nil {
-					r.logger.Error("batch delete failed", "error", err)
-				} else {
-					result.DeletedFiles = append(result.DeletedFiles, filesToDelete...)
-					r.logger.Info("deleted tracked images", "count", len(idsToDelete))
-				}
-			}
-			result.Deleted = len(idsToDelete)
-		}
-	}
-
-	if policy.RemoveUnknownImages && len(unknownIDs) > 0 {
-		ids := setToSlice(unknownIDs)
-		if policy.DryRun {
-			r.logger.Info("[DRY RUN] would delete unknown images", "count", len(ids))
-		} else {
-			r.logger.Info("deleting unknown images", "count", len(ids))
-			if err := tv.DeleteImages(ctx, ids); err != nil {
-				r.logger.Error("delete unknown images failed", "error", err)
-			}
-		}
-	}
-
+func (r *Reconciler) applySettings(
+	ctx context.Context,
+	tv TVTransport,
+	req ReconcileInput,
+	policy config.SyncPolicy,
+	preserveSlideshow *samsung.SlideshowStatus,
+	hasChanges bool,
+	result *TVSyncResult,
+) {
 	finalMapping := buildFinalMapping(req.Mapping, result.NewUploads, result.DeletedFiles)
 	r.applySelectionAndSlideshow(ctx, tv, req, policy, preserveSlideshow, hasChanges, finalMapping, req.LocalFiles)
 
@@ -235,13 +208,95 @@ func (r *Reconciler) Run(
 			}
 		}
 	}
+}
 
-	result.TotalImages = len(trackedFiles) + result.Uploaded - result.Deleted
-	result.Status = "ok"
+//nolint:nestif // complexity justified for this domain-specific path
+func (r *Reconciler) processDeletions(
+	ctx context.Context,
+	tv TVTransport,
+	req ReconcileInput,
+	policy config.SyncPolicy,
+	toDelete map[string]struct{},
+	unknownIDs map[string]struct{},
+	result *TVSyncResult,
+) {
+	if len(toDelete) > 0 {
+		var idsToDelete []string
+		var filesToDelete []string
+		for filename := range toDelete {
+			if cid, ok := req.Mapping[filename]; ok {
+				idsToDelete = append(idsToDelete, cid)
+				filesToDelete = append(filesToDelete, filename)
+			}
+		}
 
-	tv.RecordSuccess()
-	r.logger.Info("sync completed")
-	return result, nil
+		if len(idsToDelete) > 0 {
+			if policy.DryRun {
+				r.logger.Info("[DRY RUN] would delete tracked images", "count", len(idsToDelete))
+			} else {
+				r.logger.Info("deleting tracked images", "count", len(idsToDelete))
+				if err := tv.DeleteImages(ctx, idsToDelete); err != nil {
+					r.logger.Error("batch delete failed", "error", err)
+				} else {
+					result.DeletedFiles = append(result.DeletedFiles, filesToDelete...)
+					r.logger.Info("deleted tracked images", "count", len(idsToDelete))
+				}
+			}
+			result.Deleted = len(idsToDelete)
+		}
+	}
+
+	if policy.RemoveUnknownImages && len(unknownIDs) > 0 {
+		ids := setToSlice(unknownIDs)
+		if policy.DryRun {
+			r.logger.Info("[DRY RUN] would delete unknown images", "count", len(ids))
+		} else {
+			r.logger.Info("deleting unknown images", "count", len(ids))
+			if err := tv.DeleteImages(ctx, ids); err != nil {
+				r.logger.Error("delete unknown images failed", "error", err)
+			}
+		}
+	}
+}
+
+func (r *Reconciler) processUploads(
+	ctx context.Context,
+	tv TVTransport,
+	req ReconcileInput,
+	policy config.SyncPolicy,
+	toUpload map[string]struct{},
+	result *TVSyncResult,
+) {
+	uploadsDone := 0
+	for filename := range toUpload {
+		if uploadsDone > 0 && policy.UploadDelay > 0 && !policy.DryRun {
+			time.Sleep(policy.UploadDelay)
+		}
+
+		if policy.DryRun {
+			r.logger.Info("[DRY RUN] would upload", "file", filename)
+			result.Uploaded++
+			continue
+		}
+
+		filePath := filepath.Join(policy.ArtworkDir, filename)
+		fileType := artwork.FileTypeFromExt(filename)
+		matte := policy.MatteStyle
+		if customMatte, ok := req.MatteOverrides[filename]; ok {
+			matte = customMatte
+		}
+
+		contentID, uploadErr := r.uploadWithRetry(ctx, tv, filePath, fileType, matte, policy)
+		if uploadErr != nil {
+			r.logger.Error("upload failed", "file", filename, "error", uploadErr)
+			continue
+		}
+
+		result.NewUploads[filename] = contentID
+		r.logger.Info("uploaded", "file", filename, "content_id", contentID, "matte", matte)
+		result.Uploaded++
+		uploadsDone++
+	}
 }
 
 //nolint:revive // upload retry needs explicit transport and policy args
