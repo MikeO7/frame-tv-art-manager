@@ -54,7 +54,7 @@ func TestServer_Routes(t *testing.T) {
 	server := NewServer(0, status, logger) // Port 0 doesn't actually start, but we can call handlers.
 
 	// Test handleHealth
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
 	server.handleHealth(rr, req)
 	if rr.Code != http.StatusOK {
@@ -62,7 +62,7 @@ func TestServer_Routes(t *testing.T) {
 	}
 
 	// Test handleStatus
-	req = httptest.NewRequest("GET", "/status", nil)
+	req = httptest.NewRequest(http.MethodGet, "/status", nil)
 	rr = httptest.NewRecorder()
 	server.handleStatus(rr, req)
 	if rr.Code != http.StatusOK {

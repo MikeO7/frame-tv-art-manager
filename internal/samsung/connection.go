@@ -2,6 +2,7 @@ package samsung
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -14,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"crypto/rand"
 	"github.com/gorilla/websocket"
 )
 
@@ -388,7 +388,7 @@ func (c *connection) extractAndSaveToken(data json.RawMessage) {
 	}
 
 	c.logger.Info("new auth token received", "token", d.Token[:min(len(d.Token), 8)]+"...")
-	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0600); err != nil { //nolint:gosec // Safe token write
+	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0o600); err != nil {
 		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
 	}
 }
@@ -400,10 +400,12 @@ type wsResponse struct {
 }
 
 // artAppRequest builds the outer WebSocket message for an art API request.
-const keyMethod = "method"
-const keyParams = "params"
-const keyEvent = "event"
-const keyData = "data"
+const (
+	keyMethod = "method"
+	keyParams = "params"
+	keyEvent  = "event"
+	keyData   = "data"
+)
 
 func artAppRequest(data map[string]any) ([]byte, error) {
 	inner, err := json.Marshal(data)

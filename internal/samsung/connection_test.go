@@ -54,6 +54,7 @@ func TestNewRequestID(t *testing.T) {
 		t.Errorf("expected UUID-like string, got %s", id1)
 	}
 }
+
 func TestConnection_OpenFailure(t *testing.T) {
 	c := newConnection("localhost", 1, "endpoint", "name", "token", 10*time.Millisecond, slog.Default())
 	err := c.Open(context.Background())

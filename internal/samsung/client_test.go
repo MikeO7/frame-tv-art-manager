@@ -265,7 +265,6 @@ func TestTurnOff(t *testing.T) {
 	}
 }
 
-//nolint:gocyclo
 func TestClientWrapperMethods(t *testing.T) {
 	// First, we create an artAPI mock just to satisfy the wrapper.
 	// Since artAPI is created by the Connect function, testing these without connecting
@@ -355,11 +354,11 @@ func TestClientWrapperMethods(t *testing.T) {
 	// Device info test
 	c.info = &DeviceInfo{PowerState: "on", ModelName: "TEST"}
 
-	if !c.IsInArtMode(context.Background()) {
+	if !c.isInArtMode(context.Background()) {
 		t.Errorf("expected IsInArtMode to be true")
 	}
 
-	imgs, err := c.GetUploadedImages(context.Background())
+	imgs, err := c.getUploadedImages(context.Background())
 	if err != nil {
 		t.Errorf("GetUploadedImages err: %v", err)
 	}
@@ -367,17 +366,17 @@ func TestClientWrapperMethods(t *testing.T) {
 		t.Errorf("expected 1 image")
 	}
 
-	err = c.DeleteImages(context.Background(), []string{"id1"})
+	err = c.deleteImages(context.Background(), []string{"id1"})
 	if err != nil {
 		t.Errorf("DeleteImages err: %v", err)
 	}
 
-	err = c.SelectImage(context.Background(), "id1")
+	err = c.selectImage(context.Background(), "id1")
 	if err != nil {
 		t.Errorf("SelectImage err: %v", err)
 	}
 
-	ss, err := c.SlideshowStatus(context.Background())
+	ss, err := c.slideshowStatus(context.Background())
 	if err != nil {
 		t.Errorf("SlideshowStatus err: %v", err)
 	}
@@ -385,12 +384,12 @@ func TestClientWrapperMethods(t *testing.T) {
 		t.Errorf("expected 10")
 	}
 
-	err = c.SetSlideshow(context.Background(), SlideshowStatus{Value: "15"})
+	err = c.setSlideshow(context.Background(), SlideshowStatus{Value: "15"})
 	if err != nil {
 		t.Errorf("SetSlideshow err: %v", err)
 	}
 
-	err = c.SetBrightness(context.Background(), 5)
+	err = c.setBrightness(context.Background(), 5)
 	if err != nil {
 		t.Errorf("SetBrightness err: %v", err)
 	}
@@ -400,18 +399,19 @@ func TestClientWrapperMethods(t *testing.T) {
 		t.Errorf("expected TEST model")
 	}
 
-	err = c.SaveMetadata(context.Background())
+	err = c.saveMetadata(context.Background())
 	if err != nil {
 		t.Errorf("SaveMetadata err: %v", err)
 	}
 
-	err = c.TurnOff(context.Background())
+	err = c.turnOff(context.Background())
 	// Expected context deadline exceeded because mock remote server sleeps / isn't connected exactly,
 	// actually `TurnOff` initiates its own connection to port 8002 via `turnOffTV` so this fails in `conn.Open`
 	if err == nil {
 		t.Errorf("expected TurnOff to fail due to no listener on port 8002")
 	}
 }
+
 func TestClientUpload(t *testing.T) {
 	// Create mock server representing both Art API and D2D file server (for simplicity they run on the same IP but different port)
 	d2dServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -497,9 +497,9 @@ func TestClientUpload(t *testing.T) {
 
 	// Need a dummy file
 	tmpFile := filepath.Join(t.TempDir(), "dummy.jpg")
-	_ = os.WriteFile(tmpFile, []byte("data"), 0600)
+	_ = os.WriteFile(tmpFile, []byte("data"), 0o600)
 
-	id, err := c.Upload(context.Background(), tmpFile, ".jpg")
+	id, err := c.upload(context.Background(), tmpFile, ".jpg")
 	if err != nil {
 		t.Fatalf("Upload failed: %v", err)
 	}
@@ -507,19 +507,21 @@ func TestClientUpload(t *testing.T) {
 		t.Errorf("expected new-upload-id, got %s", id)
 	}
 }
+
 func TestIsInArtMode_Branches(t *testing.T) {
 	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
 	c.info = &DeviceInfo{PowerState: "standby"}
-	if c.IsInArtMode(context.Background()) {
+	if c.isInArtMode(context.Background()) {
 		t.Errorf("expected false when TV is off")
 	}
 
 	// We can't easily test the artAPI GetArtModeStatus returning an error without mocking it.
 	// But it's simple enough.
 }
+
 func TestClientUpload_FileStatError(t *testing.T) {
 	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
-	_, err := c.Upload(context.Background(), "/does/not/exist.jpg", ".jpg")
+	_, err := c.upload(context.Background(), "/does/not/exist.jpg", ".jpg")
 	if err == nil {
 		t.Errorf("expected error on non-existent file")
 	}
@@ -541,7 +543,7 @@ func TestSaveMetadata_NoDir(t *testing.T) {
 	c.artAPI = newArtAPI(c.artConn, 1*time.Second, slog.Default())
 	defer func() { _ = c.Close() }()
 
-	err := c.SaveMetadata(context.Background())
+	err := c.saveMetadata(context.Background())
 	if err == nil {
 		t.Errorf("expected error when saving to forbidden path")
 	}

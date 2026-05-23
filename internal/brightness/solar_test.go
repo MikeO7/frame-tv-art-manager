@@ -1,6 +1,7 @@
 package brightness
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -99,13 +100,17 @@ func TestCalculate_NilCoords(t *testing.T) {
 	t.Parallel()
 
 	result, err := Calculate(nil, nil, "UTC", 2, 10)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error ErrSolarDisabled, got nil")
+	}
+	if !errors.Is(err, ErrSolarDisabled) {
+		t.Fatalf("expected ErrSolarDisabled, got: %v", err)
 	}
 	if result != nil {
 		t.Errorf("expected nil result for nil coordinates, got %d", *result)
 	}
 }
+
 func TestCalculate_InvalidTimezone(t *testing.T) {
 	lat := 40.0
 	lon := -70.0

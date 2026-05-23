@@ -45,7 +45,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 	}
 
 	// 1. Connect to the TV.
-	if err := c.Connect(ctx); err != nil {
+	if err := c.connect(ctx); err != nil {
 		if errors.Is(err, ErrGateFailed) {
 			c.logger.Info("skipping — REST gate says TV is busy")
 			result.Status = "skipped (gate)"
@@ -62,7 +62,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 	}
 
 	// 3. Check art mode.
-	if !c.IsInArtMode(ctx) {
+	if !c.isInArtMode(ctx) {
 		c.logger.Info("skipping — TV not in art mode")
 		result.Status = "skipped (not art mode)"
 		return result, nil
@@ -70,13 +70,12 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 	result.ArtMode = true
 
 	// 4. Background metadata save (handled by caller if throttled, or just run inline here)
-	// We can save metadata inline since it is fast.
-	if err := c.SaveMetadata(ctx); err != nil {
+	if err := c.saveMetadata(ctx); err != nil {
 		c.logger.Debug("could not save metadata", "error", err)
 	}
 
 	// 5. Query currently uploaded images.
-	tvContent, err := c.GetUploadedImages(ctx)
+	tvContent, err := c.getUploadedImages(ctx)
 	if err != nil {
 		result.Status = "error"
 		return result, fmt.Errorf("get TV images: %w", err)
@@ -141,7 +140,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 	var preserveSlideshow *SlideshowStatus
 	hasChanges := len(toUpload) > 0 || len(toDelete) > 0 || (c.cfg.RemoveUnknownImages && len(unknownIDs) > 0)
 	if hasChanges && !c.cfg.SlideshowOverride {
-		preserveSlideshow, _ = c.SlideshowStatus(ctx)
+		preserveSlideshow, _ = c.slideshowStatus(ctx)
 	}
 
 	// 9. Upload new images.
@@ -163,7 +162,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 
 		c.logger.Info("uploading", "file", filename, "matte", matte)
 
-		contentID, err := c.Upload(ctx, filePath, fileType)
+		contentID, err := c.upload(ctx, filePath, fileType)
 		if err != nil {
 			c.logger.Error("upload failed", "file", filename, "error", err)
 			time.Sleep(c.cfg.UploadDelay * 2)
@@ -193,7 +192,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 				c.logger.Info("[DRY RUN] would delete tracked images", "count", len(idsToDelete))
 			} else {
 				c.logger.Info("deleting tracked images", "count", len(idsToDelete))
-				if err := c.DeleteImages(ctx, idsToDelete); err != nil {
+				if err := c.deleteImages(ctx, idsToDelete); err != nil {
 					c.logger.Error("batch delete failed", "error", err)
 				} else {
 					result.DeletedFiles = append(result.DeletedFiles, filesToDelete...)
@@ -211,14 +210,14 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 			c.logger.Info("[DRY RUN] would delete unknown images", "count", len(ids))
 		} else {
 			c.logger.Info("deleting unknown images", "count", len(ids))
-			if err := c.DeleteImages(ctx, ids); err != nil {
+			if err := c.deleteImages(ctx, ids); err != nil {
 				c.logger.Error("delete unknown images failed", "error", err)
 			}
 		}
 	}
 
 	// 12. Select image and restore/apply slideshow.
-	var finalMapping = make(map[string]string)
+	finalMapping := make(map[string]string)
 	for k, v := range req.Mapping {
 		finalMapping[k] = v
 	}
@@ -240,7 +239,8 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 
 			if settingsForMode != nil && settingsForMode.Type == "shuffleslideshow" {
 				values := mapValues(finalMapping)
-				selectedID = values[rand.IntN(len(values))] //nolint:gosec // Shuffle selection does not require cryptographically secure rand
+				//nolint:gosec
+				selectedID = values[rand.IntN(len(values))]
 				c.logger.Info("selecting random image for shuffle mode")
 			} else if len(finalMapping) > 0 {
 				for _, id := range finalMapping {
@@ -251,13 +251,13 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 			}
 
 			if selectedID != "" && !c.cfg.DryRun {
-				if err := c.SelectImage(ctx, selectedID); err != nil {
+				if err := c.selectImage(ctx, selectedID); err != nil {
 					c.logger.Warn("failed to select image", "error", err)
 				}
 			}
 
 			if preserveSlideshow != nil && !c.cfg.DryRun {
-				if err := c.SetSlideshow(ctx, *preserveSlideshow); err != nil {
+				if err := c.setSlideshow(ctx, *preserveSlideshow); err != nil {
 					c.logger.Warn("failed to restore slideshow", "error", err)
 				}
 			}
@@ -266,7 +266,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 
 	// Apply slideshow override.
 	if req.Slideshow != nil && !c.cfg.DryRun {
-		current, _ := c.SlideshowStatus(ctx)
+		current, _ := c.slideshowStatus(ctx)
 		needsUpdate := current == nil ||
 			current.Value != req.Slideshow.Value ||
 			current.Type != req.Slideshow.Type
@@ -276,7 +276,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 				"interval", req.Slideshow.Value,
 				"type", req.Slideshow.Type,
 			)
-			if err := c.SetSlideshow(ctx, *req.Slideshow); err != nil {
+			if err := c.setSlideshow(ctx, *req.Slideshow); err != nil {
 				c.logger.Warn("failed to set slideshow", "error", err)
 			}
 		}
@@ -285,7 +285,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 
 	// 13. Apply brightness.
 	if req.DesiredBrightness != nil && !c.cfg.DryRun {
-		if err := c.SetBrightness(ctx, *req.DesiredBrightness); err != nil {
+		if err := c.setBrightness(ctx, *req.DesiredBrightness); err != nil {
 			c.logger.Warn("failed to set brightness", "error", err)
 		}
 		result.Brightness = fmt.Sprintf("%d", *req.DesiredBrightness)
@@ -295,7 +295,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 	if req.TriggerAutoOff {
 		c.logger.Info("within auto-off window, turning off TV")
 		if !c.cfg.DryRun {
-			if err := c.TurnOff(ctx); err != nil {
+			if err := c.turnOff(ctx); err != nil {
 				c.logger.Warn("failed to turn off TV", "error", err)
 			} else {
 				c.logger.Info("TV turned off")

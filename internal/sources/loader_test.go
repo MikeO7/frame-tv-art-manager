@@ -28,7 +28,7 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	defer server.Close()
 
 	content := fmt.Sprintf("# comment\n%s\n", server.URL)
-	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
+	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
 	l := NewLoader(&config.Config{
 		SourcesFile: sourcesFile,
@@ -105,7 +105,7 @@ providers:
   nasa:
     - apod
 `
-	_ = os.WriteFile(path, []byte(yamlContent), 0600)
+	_ = os.WriteFile(path, []byte(yamlContent), 0o600)
 
 	l := &Loader{sourcesFile: path}
 	urls, err := l.loadSources()
@@ -123,7 +123,7 @@ func TestLoadSources_Txt(t *testing.T) {
 	path := filepath.Join(dir, "sources.txt")
 
 	txtContent := "direct:http://a.com/1.jpg\n# comment\nhttp://b.com/2.jpg\n"
-	_ = os.WriteFile(path, []byte(txtContent), 0600)
+	_ = os.WriteFile(path, []byte(txtContent), 0o600)
 
 	l := &Loader{sourcesFile: path}
 	urls, err := l.loadSources()
@@ -141,7 +141,7 @@ func TestLoader_InternalMethods(t *testing.T) {
 
 	// Create a file with specific content to test hashing
 	path := filepath.Join(artworkDir, "test__1234567890ab.jpg")
-	_ = os.WriteFile(path, []byte("some-data"), 0600)
+	_ = os.WriteFile(path, []byte("some-data"), 0o600)
 
 	l := &Loader{
 		artworkDir: artworkDir,
@@ -167,7 +167,7 @@ func TestLoader_InternalMethods(t *testing.T) {
 
 	// Should delete unvisited file
 	unvisitedPath := filepath.Join(artworkDir, "002__unvisited__hash.jpg")
-	_ = os.WriteFile(unvisitedPath, []byte("x"), 0600)
+	_ = os.WriteFile(unvisitedPath, []byte("x"), 0o600)
 	l.cleanupUnusedSources()
 	if _, err := os.Stat(unvisitedPath); err == nil {
 		t.Error("unvisited file was not deleted")
@@ -187,7 +187,7 @@ func TestLoader_Sync_Failures(t *testing.T) {
 	defer server.Close()
 
 	content := server.URL + "\n"
-	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
+	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
 	l := NewLoader(&config.Config{
 		SourcesFile: sourcesFile,
@@ -245,7 +245,7 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	defer server.Close()
 
 	content := "unsplash:photo:123\nunsplash:collection:456\nnasa:apod\nnasa:search:mars\nartic:photo:456\npexels:curated\npexels:collection:789\npixabay:editors_choice\npixabay:search:nature\npixabay:user:mike\n"
-	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
+	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
 	l := NewLoader(&config.Config{
 		SourcesFile:       sourcesFile,
@@ -280,7 +280,7 @@ sources:
   - unsplash:photo:123
   - nasa:apod
 `
-	_ = os.WriteFile(sourcesFile, []byte(content), 0600)
+	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
 	l := NewLoader(&config.Config{
 		SourcesFile:       sourcesFile,

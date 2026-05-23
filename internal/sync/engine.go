@@ -5,20 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"encoding/json"
 	"github.com/MikeO7/frame-tv-art-manager/internal/brightness"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
-	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
@@ -29,19 +24,14 @@ const (
 )
 
 // Engine orchestrates artwork synchronization across all configured TVs.
-// It implements the full sync lifecycle: sources → optimize → scan →
-// connect → diff → upload → delete → select → brightness → auto-off.
 type Engine struct {
 	cfg               *config.Config
 	logger            *slog.Logger
 	backoff           *Backoff
 	health            *health.Status
 	srcLoader         *sources.Loader
+	collection        *Collection
 	cycleNum          int
-	mappings          map[string]*Mapping
-	mapMu             sync.Mutex
-	lastLocalFiles    map[string]struct{}
-	lastDirModTime    time.Time
 	lastMetadataSaves map[string]time.Time
 	newClient         func(ip string, cfg *config.Config, logger *slog.Logger) TVClient
 }
@@ -64,14 +54,13 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 		backoff:           NewBackoff(logger),
 		health:            healthStatus,
 		srcLoader:         sources.NewLoader(cfg, logger),
-		mappings:          make(map[string]*Mapping),
+		collection:        NewCollection(cfg, logger),
 		lastMetadataSaves: make(map[string]time.Time),
 		newClient:         defaultNewClient,
 	}
 }
 
-// RunLoop executes RunOnce on a repeating interval until the context is
-// cancelled. This is the primary entry point for the long-running service.
+// RunLoop executes RunOnce on a repeating interval until the context is cancelled.
 func (e *Engine) RunLoop(ctx context.Context) error {
 	e.logger.Info("starting sync loop",
 		"tvs", len(e.cfg.TVIPs),
@@ -116,8 +105,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 			e.health.SetStage("idle")
 		}
 
-		// Force Go to release unused memory back to the OS during the idle period.
-		// Image processing allocates large buffers that cause docker memory stats to stay high.
 		runtime.GC()
 		debug.FreeOSMemory()
 	}()
@@ -135,12 +122,11 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 
 	var localFiles map[string]struct{}
 	var optimized int
-	localFiles, optimized, err = e.scanAndOptimize(cycleLog)
+	localFiles, optimized, err = e.collection.ScanAndOptimize(cycleLog)
 	if err != nil {
 		return err
 	}
 
-	// Step 3: Sync each TV in parallel.
 	if e.health != nil {
 		e.health.SetStage("syncing TVs")
 	}
@@ -148,11 +134,9 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var summariesMu sync.Mutex
 	var wg sync.WaitGroup
 
-	// Load per-image matte config once per cycle to save I/O
 	matteConfig := LoadMatteConfig(e.cfg.ArtworkDir)
 
 	for _, ip := range e.cfg.TVIPs {
-		// Respect shutdown context.
 		select {
 		case <-ctx.Done():
 			e.logger.Info("sync cycle cancelled due to shutdown")
@@ -164,7 +148,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 		go func(tvIP string) {
 			defer wg.Done()
 
-			// Check backoff.
 			if e.backoff.ShouldSkip(tvIP) {
 				summariesMu.Lock()
 				tvSummaries = append(tvSummaries, tvSyncSummary{
@@ -213,7 +196,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 
 	wg.Wait()
 
-	// Print summary.
 	e.printSummary(startTime, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
 
 	if len(syncErrors) > 0 {
@@ -222,13 +204,11 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	return nil
 }
 
-// Status string constants for TV summary logging.
 const (
 	statusBackoff = "backoff"
 	statusError   = "error"
 )
 
-// tvSyncSummary captures results for summary logging.
 type tvSyncSummary struct {
 	IP           string
 	Model        string
@@ -242,7 +222,6 @@ type tvSyncSummary struct {
 	ErrorMessage string
 }
 
-// syncTV performs the full sync for a single TV by invoking the TVClient's atomic Sync method.
 func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}, matteConfig *MatteConfig, cycleLog *slog.Logger) (tvSyncSummary, error) {
 	log := cycleLog.With("tv", ip)
 	summary := tvSyncSummary{IP: ip}
@@ -250,20 +229,15 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 	client := e.newClient(ip, e.cfg, e.logger)
 	defer func() { _ = client.Close() }()
 
-	// Load mapping database.
-	mapping, err := e.getMapping(ip)
+	mapping, err := e.collection.GetMapping(ip)
 	if err != nil {
 		summary.Status = statusError
 		return summary, fmt.Errorf("load mapping: %w", err)
 	}
 
-	// Determine slideshow settings.
 	desiredSlideshow := e.determineSlideshowSettings(log)
-
-	// Determine brightness.
 	brightnessVal := e.determineBrightness(log)
 
-	// Check auto-off window.
 	triggerAutoOff := IsWithinAutoOffWindow(e.cfg.AutoOffTime, e.cfg.AutoOffGraceHours, e.cfg.Timezone)
 	if triggerAutoOff {
 		log.Info("within auto-off window, preparing TV power-off trigger",
@@ -272,7 +246,6 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		)
 	}
 
-	// Package map overrides and current filename mappings
 	matteOverrides := make(map[string]string)
 	for filename := range localFiles {
 		matteOverrides[filename] = matteConfig.GetMatte(filename, e.cfg.MatteStyle)
@@ -287,18 +260,16 @@ func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]st
 		TriggerAutoOff:    triggerAutoOff,
 	}
 
-	// Trigger synchronization.
 	result, err := client.Sync(ctx, syncRequest)
 	if err != nil {
 		summary.Status = statusError
 		return summary, err
 	}
 
-	// Process mapping changes returned by the client.
 	mappingUpdated := false
 	if len(result.NewUploads) > 0 {
 		for f, id := range result.NewUploads {
-			mapping.Set(sources.Filename(f), id)
+			mapping.Set(f, id)
 		}
 		mappingUpdated = true
 	}
@@ -338,7 +309,6 @@ func (e *Engine) determineSlideshowSettings(log *slog.Logger) *samsung.Slideshow
 
 	interval := fmt.Sprintf("%d", e.cfg.SlideshowInterval)
 
-	// Validate against known supported values for 2024 models
 	isValid := false
 	supported := []string{"3", "15", "60", "720", "1440", "10080"}
 	for _, s := range supported {
@@ -363,37 +333,36 @@ func (e *Engine) determineSlideshowSettings(log *slog.Logger) *samsung.Slideshow
 	}
 }
 
-// determineBrightness calculates the brightness to apply.
 func (e *Engine) determineBrightness(log *slog.Logger) *int {
-	if e.cfg.SolarEnabled {
-		b, err := brightness.Calculate(
-			e.cfg.Latitude, e.cfg.Longitude,
-			e.cfg.Timezone,
-			e.cfg.BrightnessMin, e.cfg.BrightnessMax,
-		)
-		if err != nil {
-			log.Warn("solar brightness calculation failed", "error", err)
-		}
-		if b != nil {
-			log.Info("solar brightness", "value", *b)
-			return b
-		}
-	}
-
-	if e.cfg.ManualBrightness != nil {
-		log.Info("manual brightness", "value", *e.cfg.ManualBrightness)
-		return e.cfg.ManualBrightness
-	}
-
-	return nil
+	return brightness.GetTargetValue(brightness.Config{
+		SolarEnabled:     e.cfg.SolarEnabled,
+		Latitude:         e.cfg.Latitude,
+		Longitude:        e.cfg.Longitude,
+		Timezone:         e.cfg.Timezone,
+		BrightnessMin:    e.cfg.BrightnessMin,
+		BrightnessMax:    e.cfg.BrightnessMax,
+		ManualBrightness: e.cfg.ManualBrightness,
+	}, log)
 }
 
-// printSummary outputs a formatted sync cycle summary.
+func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {
+	if e.health != nil {
+		e.health.SetStage("downloading sources")
+	}
+	srcDownloaded, srcErr := e.srcLoader.Sync()
+	var cycleWarnings []string
+	if srcErr != nil {
+		cycleLog.Warn("source download error", "error", srcErr)
+		cycleWarnings = append(cycleWarnings, fmt.Sprintf("Source download issue: %v", srcErr))
+	}
+	return srcDownloaded, cycleWarnings
+}
+
 func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, optimized int, tvs []tvSyncSummary, warnings []string) {
 	elapsed := time.Since(startTime).Round(time.Millisecond)
 	nextSync := time.Now().Add(time.Duration(e.cfg.SyncIntervalMin) * time.Minute)
 
-	const boxWidth = 50 // total interior width between borders
+	const boxWidth = 50
 
 	padLine := func(content string) string {
 		runes := []rune(content)
@@ -435,7 +404,6 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		default:
 			sb.WriteString(padLine("    Status:     ✘ " + tv.Status))
 			if tv.ErrorMessage != "" {
-				// Truncate error if too long for the box
 				errMsg := tv.ErrorMessage
 				if len(errMsg) > 35 {
 					errMsg = errMsg[:32] + "..."
@@ -446,7 +414,6 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
 
-	// Local collection summary.
 	localSummary := fmt.Sprintf("  Local:  %d files", totalLocal)
 	if fromSources > 0 {
 		localSummary += fmt.Sprintf(" │ %d from URLs", fromSources)
@@ -456,7 +423,6 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	}
 	sb.WriteString(padLine(localSummary))
 
-	// Warnings Section if any
 	if len(warnings) > 0 {
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 		sb.WriteString(padLine("  ⚠ Warnings during this cycle:"))
@@ -476,512 +442,16 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	e.logger.Info(sb.String())
 }
 
+// --- Backwards Compatible Delegation Wrappers for Testing ---
+
 func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}, cycleLog *slog.Logger) int {
-	var optimizedCount int64
-
-	optCfg := optimize.Config{
-		Enabled:             e.cfg.OptimizeEnabled,
-		MaxWidth:            e.cfg.OptimizeMaxWidth,
-		MaxHeight:           e.cfg.OptimizeMaxHeight,
-		OptimizeJPEGQuality: e.cfg.OptimizeJPEGQuality,
-		MuseumModeEnabled:   e.cfg.MuseumModeEnabled,
-		MuseumModeIntensity: e.cfg.MuseumModeIntensity,
-	}
-
-	// 1. Collect all filenames to process.
-	type job struct {
-		filename string
-	}
-	jobs := make(chan job, len(localFiles))
-	for filename := range localFiles {
-		// Ignore hidden Mac metadata files (AppleDouble).
-		if strings.HasPrefix(filename, "._") {
-			delete(localFiles, filename)
-			continue
-		}
-		jobs <- job{filename: filename}
-	}
-	close(jobs)
-
-	// 2. Spawn workers based on CPU core count (minimum 4, max 16).
-	numWorkers := runtime.NumCPU()
-	if numWorkers < 4 {
-		numWorkers = 4
-	}
-	if numWorkers > 16 {
-		numWorkers = 16
-	}
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	wg.Add(numWorkers)
-
-	for w := 0; w < numWorkers; w++ {
-		go func() {
-			defer wg.Done()
-			for j := range jobs {
-				wasModified, ok := e.handleSingleOptimization(j.filename, localFiles, optCfg, &mu, cycleLog)
-				if ok && wasModified {
-					atomic.AddInt64(&optimizedCount, 1)
-				}
-			}
-		}()
-	}
-
-	wg.Wait()
-	return int(optimizedCount)
-}
-
-func (e *Engine) handleSingleOptimization(filename string, localFiles map[string]struct{}, optCfg optimize.Config, mu *sync.Mutex, log *slog.Logger) (bool, bool) {
-	path := filepath.Join(e.cfg.ArtworkDir, filename)
-
-	// 1. Skip check based on filename metadata (Avoid heavy computing).
-	if optCfg.Enabled && strings.Contains(filename, "_opt.h_") {
-		w, h, ok := parseDimensions(filename)
-		if ok && w <= optCfg.MaxWidth && h <= optCfg.MaxHeight {
-			log.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
-			return false, true
-		}
-	}
-
-	// 2. Perform optimization/validation if needed.
-	if !optCfg.Enabled {
-		if err := optimize.ValidateImage(path); err != nil {
-			log.Warn("skipping corrupt image", "file", filename, "error", err)
-			mu.Lock()
-			delete(localFiles, filename)
-			mu.Unlock()
-			return false, false
-		}
-		return false, true
-	}
-
-	newW, newH, modified, err := optimize.OptimizeFile(path, optCfg, log)
-	if err != nil {
-		log.Warn("skipping bad or unsupported image", "file", filename, "error", err)
-		mu.Lock()
-		delete(localFiles, filename)
-		mu.Unlock()
-		return false, false
-	}
-
-	// 3. Handle renaming if modified or if filename metadata is missing/stale.
-	e.ensureCorrectFilename(filename, newW, newH, modified, localFiles, mu)
-	return modified, true
+	return e.collection.OptimizeLocalArtwork(localFiles, cycleLog)
 }
 
 func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified bool, localFiles map[string]struct{}, mu *sync.Mutex) {
-	currentW, currentH, _ := parseDimensions(filename)
-	isOpt := strings.Contains(filename, "_opt.h_")
-
-	if !modified && isOpt && currentW == newW && currentH == newH {
-		return
-	}
-
-	ext := filepath.Ext(filename)
-	identity := strings.TrimSuffix(filename, ext)
-	var hash string
-
-	// Extract identity and hash using both possible separators.
-	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
-		identity = parts[0]
-		hash = parts[1]
-	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
-		hash = parts[len(parts)-1]
-		identity = strings.Join(parts[:len(parts)-1], "__")
-	} else {
-		// If no hash/separator found, it is a manually added file.
-		// Use a default hash so it gets the canonical format and isn't re-processed on every restart.
-		hash = "local"
-	}
-
-	// Clean identity by removing existing metadata tags.
-	// Strip existing dimensions (e.g., _3840x2160).
-	if lastUnderscore := strings.LastIndex(identity, "_"); lastUnderscore != -1 {
-		suffix := identity[lastUnderscore+1:]
-		if strings.Contains(suffix, "x") {
-			var w, h int
-			if n, _ := fmt.Sscanf(suffix, "%dx%d", &w, &h); n == 2 {
-				identity = identity[:lastUnderscore]
-			}
-		}
-	}
-	// Strip _opt if it exists.
-	identity = strings.Split(identity, "_opt")[0]
-
-	// Construct canonical optimized filename.
-	newFilename := fmt.Sprintf("%s_%dx%d_opt.h_%s%s", identity, newW, newH, hash, ext)
-	if newFilename == filename {
-		return
-	}
-
-	path := filepath.Join(e.cfg.ArtworkDir, filename)
-	newPath := filepath.Join(e.cfg.ArtworkDir, newFilename)
-
-	if err := os.Rename(path, newPath); err == nil {
-		e.logger.Info("updated optimized filename", "old", filename, "new", newFilename)
-		e.updateMappings(filename, newFilename)
-		mu.Lock()
-		delete(localFiles, filename)
-		localFiles[newFilename] = struct{}{}
-		mu.Unlock()
-	}
+	e.collection.EnsureCorrectFilename(filename, newW, newH, modified, localFiles, mu)
 }
 
 func (e *Engine) updateMappings(oldName, newName string) {
-	for _, ip := range e.cfg.TVIPs {
-		m, err := e.getMapping(ip)
-		if err != nil {
-			continue
-		}
-		if m.Rename(oldName, newName) {
-			if err := m.Save(); err != nil {
-				e.logger.Warn("failed to save migrated mapping", "tv", ip, "error", err)
-			}
-		}
-	}
-}
-
-// parseDimensions extracts width and height from a filename like "..._3840x2160_opt.h_...".
-func parseDimensions(filename string) (int, int, bool) {
-	ext := filepath.Ext(filename)
-	identity := strings.TrimSuffix(filename, ext)
-
-	// Handle both possible separators to extract clean identity.
-	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
-		identity = parts[0]
-	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
-		identity = strings.Join(parts[:len(parts)-1], "__")
-	}
-
-	// Look for [WxH] pattern in the remaining identity.
-	parts := strings.Split(identity, "_")
-	for _, p := range parts {
-		if strings.Contains(p, "x") {
-			var w, h int
-			if n, _ := fmt.Sscanf(p, "%dx%d", &w, &h); n == 2 {
-				return w, h, true
-			}
-		}
-	}
-	return 0, 0, false
-}
-
-// getMapping returns a cached or newly loaded mapping for a TV.
-func (e *Engine) getMapping(ip string) (*Mapping, error) {
-	e.mapMu.Lock()
-	defer e.mapMu.Unlock()
-
-	if m, ok := e.mappings[ip]; ok {
-		return m, nil
-	}
-
-	m, err := LoadMapping(e.cfg.TokenDir, ip)
-	if err != nil {
-		return nil, err
-	}
-
-	e.mappings[ip] = m
-	return m, nil
-}
-
-func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {
-	if e.health != nil {
-		e.health.SetStage("downloading sources")
-	}
-	srcDownloaded, srcErr := e.srcLoader.Sync()
-	var cycleWarnings []string
-	if srcErr != nil {
-		cycleLog.Warn("source download error", "error", srcErr)
-		cycleWarnings = append(cycleWarnings, fmt.Sprintf("Source download issue: %v", srcErr))
-	}
-	return srcDownloaded, cycleWarnings
-}
-
-func (e *Engine) scanAndOptimize(cycleLog *slog.Logger) (map[string]struct{}, int, error) {
-	if e.health != nil {
-		e.health.SetStage("scanning local artwork")
-	}
-
-	// Optimization: Skip full disk scan if directory modification time hasn't changed.
-	// This saves significant I/O for large collections.
-	info, statErr := os.Stat(e.cfg.ArtworkDir)
-	if statErr == nil {
-		if info.ModTime().Equal(e.lastDirModTime) && e.lastLocalFiles != nil {
-			cycleLog.Debug("skipping disk scan — directory ModTime unchanged")
-			// We return a copy to prevent concurrent modification of the cache.
-			localFiles := make(map[string]struct{}, len(e.lastLocalFiles))
-			for k := range e.lastLocalFiles {
-				localFiles[k] = struct{}{}
-			}
-			return localFiles, 0, nil
-		}
-		e.lastDirModTime = info.ModTime()
-	}
-
-	localFiles, err := ScanArtworkDir(e.cfg.ArtworkDir)
-	if err != nil {
-		return nil, 0, fmt.Errorf("scan artwork: %w", err)
-	}
-	e.lastLocalFiles = localFiles
-
-	if e.health != nil {
-		e.health.SetStage("optimizing artwork")
-	}
-	optimized := e.optimizeLocalArtwork(localFiles, cycleLog)
-
-	cycleLog.Info("local artwork ready",
-		"total", len(localFiles),
-		"optimized", optimized,
-	)
-	return localFiles, optimized, nil
-}
-
-// supportedExtensions lists the image formats the Samsung Frame TV accepts.
-const extPNG = "png"
-const extJPG = "jpg"
-
-var supportedExtensions = map[string]bool{
-	".jpg":  true,
-	".jpeg": true,
-	".png":  true,
-}
-
-// ScanArtworkDir reads a directory and returns the set of image filenames
-// (not full paths) that have supported extensions (.jpg, .jpeg, .png).
-// Only regular files are included — subdirectories are not traversed.
-func ScanArtworkDir(dir string) (map[string]struct{}, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("artwork directory does not exist: %s", dir)
-		}
-		return nil, fmt.Errorf("read artwork dir %s: %w", dir, err)
-	}
-
-	files := make(map[string]struct{})
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if supportedExtensions[ext] {
-			files[entry.Name()] = struct{}{}
-		}
-	}
-
-	return files, nil
-}
-
-// FileTypeFromExt returns the Samsung-compatible file type string
-// ("jpg" or "png") for a given filename.
-func FileTypeFromExt(filename string) string {
-	ext := strings.ToLower(filepath.Ext(filename))
-	switch ext {
-	case ".png":
-		return extPNG
-	default:
-		return extJPG // .jpg and .jpeg both → "jpg"
-	}
-}
-
-// Mapping persists the filename→content_id relationship for a single TV.
-// The JSON file tracks which local filenames correspond to which content
-// IDs on the TV, enabling accurate diffing on subsequent sync cycles.
-//
-// File format: { "sunset.jpg": "MY_F0001_abc123", ... }
-type Mapping struct {
-	mu   sync.RWMutex
-	path string
-	data map[string]string // filename → content_id
-}
-
-// LoadMapping reads a mapping file from disk. If the file does not exist,
-// returns an empty mapping that will be created on first Save().
-func LoadMapping(dir, tvIP string) (*Mapping, error) {
-	safeIP := strings.ReplaceAll(tvIP, ".", "_")
-	path := filepath.Clean(filepath.Join(dir, fmt.Sprintf("tv_%s_mapping.json", safeIP)))
-
-	m := &Mapping{
-		path: path,
-		data: make(map[string]string),
-	}
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return m, nil // new mapping, will be created on Save
-		}
-		return nil, fmt.Errorf("read mapping %s: %w", path, err)
-	}
-
-	if err := json.Unmarshal(raw, &m.data); err != nil {
-		return nil, fmt.Errorf("parse mapping %s: %w", path, err)
-	}
-
-	return m, nil
-}
-
-// Save writes the mapping to disk as formatted JSON.
-func (m *Mapping) Save() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if err := os.MkdirAll(filepath.Dir(m.path), 0700); err != nil { //nolint:gosec // Need inclusive permissions
-		return fmt.Errorf("create mapping dir: %w", err)
-	}
-
-	raw, err := json.MarshalIndent(m.data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal mapping: %w", err)
-	}
-
-	return os.WriteFile(m.path, raw, 0600) //nolint:gosec // Need inclusive permissions
-}
-
-// Set records a filename→content_id association.
-func (m *Mapping) Set(filename, contentID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.data[filename] = contentID
-}
-
-// Delete removes a filename from the mapping.
-func (m *Mapping) Delete(filename string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.data, filename)
-}
-
-// DeleteBatch removes multiple filenames from the mapping under a single lock.
-func (m *Mapping) DeleteBatch(filenames []string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, filename := range filenames {
-		delete(m.data, filename)
-	}
-}
-
-// Rename updates a filename in the mapping while preserving its content_id.
-// Returns true if the old filename was found and migrated.
-func (m *Mapping) Rename(oldName, newName string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if id, ok := m.data[oldName]; ok {
-		delete(m.data, oldName)
-		m.data[newName] = id
-		return true
-	}
-	return false
-}
-
-// GetContentID returns the content_id for a filename, and whether it exists.
-func (m *Mapping) GetContentID(filename string) (string, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	id, ok := m.data[filename]
-	return id, ok
-}
-
-// GetFilename returns the filename for a content_id, and whether it exists.
-func (m *Mapping) GetFilename(contentID string) (string, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for f, id := range m.data {
-		if id == contentID {
-			return f, true
-		}
-	}
-	return "", false
-}
-
-// AllContentIDs returns a copy of the full filename→content_id map.
-func (m *Mapping) AllContentIDs() map[string]string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make(map[string]string, len(m.data))
-	for k, v := range m.data {
-		out[k] = v
-	}
-	return out
-}
-
-// TrackedFilenames returns the set of filenames that have known content IDs.
-func (m *Mapping) TrackedFilenames() map[string]struct{} {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make(map[string]struct{}, len(m.data))
-	for k := range m.data {
-		out[k] = struct{}{}
-	}
-	return out
-}
-
-// MatteConfig holds per-image matte overrides loaded from a mattes.json
-// file in the artwork directory.
-//
-// File format:
-//
-//	{
-//	  "sunset.jpg": "shadowbox_polar",
-//	  "portrait.jpg": "modern_apricot",
-//	  "_default": "none"
-//	}
-//
-// If a file has no entry, the _default is used. If no _default is set,
-// the global MATTE_STYLE from config is used.
-type MatteConfig struct {
-	overrides    map[string]string
-	defaultMatte string
-}
-
-// LoadMatteConfig reads a mattes.json file from the artwork directory.
-// Returns a no-op config if the file doesn't exist.
-func LoadMatteConfig(artworkDir string) *MatteConfig {
-	mc := &MatteConfig{
-		overrides: make(map[string]string),
-	}
-
-	path := filepath.Join(artworkDir, "mattes.json")
-	raw, err := os.ReadFile(filepath.Clean(path)) //nolint:gosec // Path is controlled
-	if err != nil {
-		return mc // file doesn't exist, use global matte
-	}
-
-	var data map[string]string
-	if err := json.Unmarshal(raw, &data); err != nil {
-		return mc
-	}
-
-	for k, v := range data {
-		if k == "_default" {
-			mc.defaultMatte = v
-		} else {
-			mc.overrides[k] = v
-		}
-	}
-
-	return mc
-}
-
-// GetMatte returns the matte style for a specific filename.
-// Priority: per-file override > mattes.json _default > globalMatte.
-func (mc *MatteConfig) GetMatte(filename, globalMatte string) string {
-	if matte, ok := mc.overrides[filename]; ok {
-		return matte
-	}
-	if mc.defaultMatte != "" {
-		return mc.defaultMatte
-	}
-	return globalMatte
-}
-
-// String returns a summary of the matte configuration for logging.
-func (mc *MatteConfig) String() string {
-	if len(mc.overrides) == 0 && mc.defaultMatte == "" {
-		return "global (no per-file overrides)"
-	}
-	return fmt.Sprintf("%d per-file overrides, default=%q",
-		len(mc.overrides), mc.defaultMatte)
+	e.collection.UpdateMappings(oldName, newName)
 }
