@@ -12,7 +12,7 @@ var (
 
 // ciede2000 calculates the exact CIE 2000 color-difference standard between two CIELAB colors.
 //
-//nolint:revive,staticcheck,funlen // complexity justified for this domain-specific path
+
 func ciede2000(l1, a1, b1, l2, a2, b2 float64) float64 {
 	c1 := math.Sqrt(a1*a1 + b1*b1)
 	c2 := math.Sqrt(a2*a2 + b2*b2)
