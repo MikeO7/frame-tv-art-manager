@@ -61,7 +61,7 @@ Most resizers blindly center or crop. The Frame TV Art Manager analyzes images u
 
 ## Why This Exists
 
-If you own a Samsung Frame TV running Tizen 8.0+ OS, you have likely realized that almost every open-source sync tool or command-line utility has stopped working. Regardless of your TV's specific model year or hardware revision, the Tizen 8.0+ operating system firmware introduced strict new WebSocket connection security and updated API endpoints, making it incredibly difficult to upload custom art automatically without using Samsung's slow, manual SmartThings mobile application.
+If you own a Samsung Frame TV running Tizen 8.0+ OS, you have likely realized that almost every open-source sync tool or command-line utility has stopped working. The Tizen 8.0+ operating system firmware introduced strict new WebSocket connection security and updated API endpoints, making it incredibly difficult to upload custom art automatically without using Samsung's slow, manual SmartThings mobile application.
 
 This project was built to solve those Tizen 8.0+ connection quirks while elevating image quality to a museum-grade standard. It doesn't just push images to the screen; it uses academic color science and 3D texture simulation to make your television panel look like a physical canvas.
 
