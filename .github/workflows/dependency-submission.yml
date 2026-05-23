@@ -1,0 +1,32 @@
+name: "Go Dependency Submission"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - '**.go'
+
+permissions:
+  contents: write
+
+jobs:
+  dependency-submission:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Go Environment
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26.3'
+        cache: true
+
+    - name: Submit Dependencies
+      uses: actions/dependency-submission-action@v1
+      with:
+        # For Go, the default dependency-submission-action automatically detects go.mod / go.sum
+        # and submits the dependency snapshot.
+        token: ${{ secrets.GITHUB_TOKEN }}

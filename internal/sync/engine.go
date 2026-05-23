@@ -27,13 +27,16 @@ const (
 type Engine struct {
 	cfg               *config.Config
 	logger            *slog.Logger
-	backoff           *Backoff
 	health            *health.Status
 	srcLoader         *sources.Loader
 	collection        *Collection
 	cycleNum          int
 	lastMetadataSaves map[string]time.Time
 	newClient         func(ip string, cfg *config.Config, logger *slog.Logger) TVClient
+
+	// Persistent clients
+	mu      sync.Mutex
+	clients map[string]TVClient
 }
 
 // TVClient defines the interface for interacting with a Samsung TV.
@@ -51,13 +54,29 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 	return &Engine{
 		cfg:               cfg,
 		logger:            logger,
-		backoff:           NewBackoff(logger),
 		health:            healthStatus,
 		srcLoader:         sources.NewLoader(cfg, logger),
 		collection:        NewCollection(cfg, logger),
 		lastMetadataSaves: make(map[string]time.Time),
 		newClient:         defaultNewClient,
 	}
+}
+
+func (e *Engine) getClient(ip string) TVClient {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.clients == nil {
+		e.clients = make(map[string]TVClient)
+	}
+
+	if client, ok := e.clients[ip]; ok {
+		return client
+	}
+
+	client := e.newClient(ip, e.cfg, e.logger)
+	e.clients[ip] = client
+	return client
 }
 
 // RunLoop executes RunOnce on a repeating interval until the context is cancelled.
@@ -148,16 +167,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 		go func(tvIP string) {
 			defer wg.Done()
 
-			if e.backoff.ShouldSkip(tvIP) {
-				summariesMu.Lock()
-				tvSummaries = append(tvSummaries, tvSyncSummary{
-					IP:     tvIP,
-					Status: "backoff",
-				})
-				summariesMu.Unlock()
-				return
-			}
-
 			summary, err := e.syncTV(ctx, tvIP, localFiles, matteConfig, cycleLog)
 
 			summariesMu.Lock()
@@ -166,7 +175,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 			if err != nil {
 				e.logger.Error("TV sync failed", "tv", tvIP, "error", err)
 				syncErrors = append(syncErrors, fmt.Errorf("tv %s: %w", tvIP, err))
-				e.backoff.RecordFailure(tvIP, time.Duration(e.cfg.SyncIntervalMin)*time.Minute)
 				if e.health != nil {
 					e.health.SetTVStatus(tvIP, health.TVStatus{
 						IP:     tvIP,
@@ -179,7 +187,10 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 					ErrorMessage: err.Error(),
 				})
 			} else {
-				e.backoff.RecordSuccess(tvIP)
+				if summary.Status == "backoff" {
+					tvSummaries = append(tvSummaries, summary)
+					return
+				}
 				if e.health != nil {
 					e.health.SetTVStatus(tvIP, health.TVStatus{
 						IP:         tvIP,
@@ -222,12 +233,18 @@ type tvSyncSummary struct {
 	ErrorMessage string
 }
 
-func (e *Engine) syncTV(ctx context.Context, ip string, localFiles map[string]struct{}, matteConfig *MatteConfig, cycleLog *slog.Logger) (tvSyncSummary, error) {
+//nolint:funlen
+func (e *Engine) syncTV(
+	ctx context.Context,
+	ip string,
+	localFiles map[string]struct{},
+	matteConfig *MatteConfig,
+	cycleLog *slog.Logger,
+) (tvSyncSummary, error) {
 	log := cycleLog.With("tv", ip)
 	summary := tvSyncSummary{IP: ip}
 
-	client := e.newClient(ip, e.cfg, e.logger)
-	defer func() { _ = client.Close() }()
+	client := e.getClient(ip)
 
 	mapping, err := e.collection.GetMapping(ip)
 	if err != nil {
@@ -440,18 +457,4 @@ func (e *Engine) printSummary(startTime time.Time, totalLocal, fromSources, opti
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
 
 	e.logger.Info(sb.String())
-}
-
-// --- Backwards Compatible Delegation Wrappers for Testing ---
-
-func (e *Engine) optimizeLocalArtwork(localFiles map[string]struct{}, cycleLog *slog.Logger) int {
-	return e.collection.OptimizeLocalArtwork(localFiles, cycleLog)
-}
-
-func (e *Engine) ensureCorrectFilename(filename string, newW, newH int, modified bool, localFiles map[string]struct{}, mu *sync.Mutex) {
-	e.collection.EnsureCorrectFilename(filename, newW, newH, modified, localFiles, mu)
-}
-
-func (e *Engine) updateMappings(oldName, newName string) {
-	e.collection.UpdateMappings(oldName, newName)
 }

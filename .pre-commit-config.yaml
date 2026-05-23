@@ -1,16 +1,29 @@
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
     -   id: check-yaml
+    -   id: check-json
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
     -   id: check-added-large-files
+    -   id: check-merge-conflict
+    -   id: detect-private-key
 
 -   repo: https://github.com/golangci/golangci-lint
-    rev: v1.64.5
+    rev: v2.12.2
     hooks:
     -   id: golangci-lint
+
+-   repo: https://github.com/rhysd/actionlint
+    rev: v1.7.11
+    hooks:
+    -   id: actionlint
+
+-   repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+    -   id: gitleaks
 
 -   repo: local
     hooks:
@@ -24,6 +37,13 @@ repos:
     -   id: go-test
         name: go test
         entry: go test ./...
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+    -   id: go-vuln-check
+        name: go vuln check
+        entry: bash -c 'command -v govulncheck >/dev/null && govulncheck ./... || $(go env GOPATH)/bin/govulncheck ./...'
         language: system
         files: \.go$
         pass_filenames: false

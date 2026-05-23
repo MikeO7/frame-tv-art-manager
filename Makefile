@@ -1,4 +1,4 @@
-.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check
+.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit
 .NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
 
 all: check build
@@ -27,6 +27,14 @@ lint:
 		golangci-lint run --timeout 5m; \
 	else \
 		$$(go env GOPATH)/bin/golangci-lint run --timeout 5m; \
+	fi
+
+precommit:
+	@echo "🎨 Running all pre-commit hooks..."
+	@if command -v pre-commit &> /dev/null; then \
+		pre-commit run --all-files; \
+	else \
+		/Users/mikeo/Library/Python/3.9/bin/pre-commit run --all-files; \
 	fi
 
 vuln:
@@ -61,7 +69,7 @@ docker:
 	@echo "🐳 Building Docker image (local)..."
 	docker build -t frame-tv-art-manager:local .
 
-# The 'check' target now runs test, lint, vuln, actionlint, and coverage-check in parallel 
+# The 'check' target now runs test, lint, vuln, actionlint, and coverage-check in parallel
 # when you run 'make -j check'.
 check: tidy fmt
 	@$(MAKE) -j4 lint vuln actionlint coverage-check

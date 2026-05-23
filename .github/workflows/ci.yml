@@ -18,6 +18,22 @@ permissions:
   contents: read
 
 jobs:
+  # Lane 0: Pre-commit Hook Consistency
+  pre-commit:
+    name: Pre-commit Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+          cache: true
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+
   # Lane 1: High-speed Linting
   lint:
     name: Lint
@@ -30,7 +46,7 @@ jobs:
           cache: true
       - name: golangci-lint
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.6
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.12.2
           "$(go env GOPATH)"/bin/golangci-lint run
 
   # Lane 2: Security Scan

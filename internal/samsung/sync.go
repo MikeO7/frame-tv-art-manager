@@ -44,6 +44,11 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 		NewUploads: make(map[string]string),
 	}
 
+	if c.ShouldSkip() {
+		result.Status = "backoff"
+		return result, nil
+	}
+
 	// 1. Connect to the TV.
 	if err := c.connect(ctx); err != nil {
 		if errors.Is(err, ErrGateFailed) {
@@ -51,6 +56,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 			result.Status = "skipped (gate)"
 			return result, nil
 		}
+		c.RecordFailure(time.Duration(c.cfg.SyncIntervalMin) * time.Minute)
 		result.Status = "error"
 		return result, fmt.Errorf("connect: %w", err)
 	}
@@ -77,6 +83,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 	// 5. Query currently uploaded images.
 	tvContent, err := c.getUploadedImages(ctx)
 	if err != nil {
+		c.RecordFailure(time.Duration(c.cfg.SyncIntervalMin) * time.Minute)
 		result.Status = "error"
 		return result, fmt.Errorf("get TV images: %w", err)
 	}
@@ -307,6 +314,7 @@ func (c *Client) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) 
 	result.TotalImages = len(trackedFiles) + result.Uploaded - result.Deleted
 	result.Status = "ok"
 
+	c.RecordSuccess()
 	c.logger.Info("sync completed")
 	return result, nil
 }

@@ -13,13 +13,19 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
+const (
+	keyRequest   = "request"
+	keyRequestID = "request_id"
+)
+
 // Client is the high-level facade for interacting with a single Samsung
-// Frame TV. It composes the lower-level connection, art API, REST, gate,
+// Frame TV. It composes the lower-level connection, REST, gate,
 // WoL, and remote control components into a clean interface that the
 // sync engine consumes.
 type Client struct {
@@ -28,8 +34,13 @@ type Client struct {
 	logger *slog.Logger
 
 	artConn *connection
-	artAPI  *artAPI
 	info    *DeviceInfo
+
+	// Persistent backoff state
+	mu           sync.Mutex
+	failures     int
+	lastFailure  time.Time
+	backoffUntil time.Time
 }
 
 // NewClient creates a new TV client. Call Connect() to establish the
@@ -102,8 +113,6 @@ func (c *Client) connect(ctx context.Context) error {
 		return fmt.Errorf("connect to art endpoint: %w", err)
 	}
 
-	c.artAPI = newArtAPI(c.artConn, c.cfg.APITimeout, c.logger)
-
 	// Step 4: Fetch device info.
 	info, err := c.fetchDeviceInfo(ctx, 8002)
 	if err != nil {
@@ -129,6 +138,77 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// ShouldSkip returns true if the TV is in a backoff window due to failures.
+func (c *Client) ShouldSkip() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if time.Now().Before(c.backoffUntil) {
+		remaining := time.Until(c.backoffUntil).Round(time.Second)
+		c.logger.Info("TV in backoff period, skipping",
+			"failures", c.failures,
+			"retry_in", remaining.String(),
+		)
+		return true
+	}
+	return false
+}
+
+// RecordFailure tracks a connection failure and calculates exponential backoff.
+func (c *Client) RecordFailure(baseInterval time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.failures++
+	c.lastFailure = time.Now()
+
+	maxDelay := 1 * time.Hour
+	delay := baseInterval
+	for i := 1; i < c.failures; i++ {
+		if delay >= maxDelay {
+			delay = maxDelay
+			break
+		}
+		if delay > maxDelay/2 {
+			delay = maxDelay
+			break
+		}
+		delay *= 2
+	}
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+
+	c.backoffUntil = c.lastFailure.Add(delay)
+
+	c.logger.Warn("TV unreachable, backing off",
+		"consecutive_failures", c.failures,
+		"next_retry", c.backoffUntil.Format(time.Kitchen),
+		"backoff_duration", delay.Round(time.Second).String(),
+	)
+}
+
+// RecordSuccess resets failure count.
+func (c *Client) RecordSuccess() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.failures > 0 {
+		c.logger.Info("TV recovered after failures",
+			"previous_failures", c.failures,
+		)
+	}
+	c.failures = 0
+	c.backoffUntil = time.Time{}
+}
+
+func checkArtError(resp *artResponse) error {
+	if resp.ErrorCode != 0 {
+		return fmt.Errorf("%w: code %d", ErrArtAPIError, resp.ErrorCode)
+	}
+	return nil
+}
+
 // isInArtMode checks if the TV is currently in art mode by querying
 // the art API over the active WebSocket connection.
 func (c *Client) isInArtMode(ctx context.Context) bool {
@@ -138,25 +218,131 @@ func (c *Client) isInArtMode(ctx context.Context) bool {
 		return false
 	}
 
-	// Then check art mode via WebSocket.
-	status, err := c.artAPI.GetArtModeStatus(ctx)
+	id := newRequestID()
+	req := map[string]any{
+		keyRequest:   "get_artmode_status",
+		"id":         id,
+		keyRequestID: id,
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		c.logger.Debug("could not build get_artmode_status request, assuming safe to sync", "error", err)
+		return true
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
 	if err != nil {
 		c.logger.Debug("could not determine art mode, assuming safe to sync", "error", err)
 		return true // backward-compatible: if we can't tell, try anyway
 	}
 
-	isArt := status == "on"
-	c.logger.Debug("art mode status", "value", status, "isArtMode", isArt)
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		c.logger.Debug("parse artmode_status failed, assuming safe to sync", "error", err)
+		return true
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		c.logger.Debug("get_artmode_status error response, assuming safe to sync", "error", err)
+		return true
+	}
+
+	isArt := resp.Value == "on"
+	c.logger.Debug("art mode status", "value", resp.Value, "isArtMode", isArt)
 	return isArt
 }
 
 // getUploadedImages returns the list of user-uploaded images on the TV
 // (category MY-C0002 = "My Photos").
 func (c *Client) getUploadedImages(ctx context.Context) ([]ArtContent, error) {
-	return c.artAPI.GetContentList(ctx, "MY-C0002")
+	id := newRequestID()
+	req := map[string]any{
+		keyRequest:    "get_content_list",
+		"id":          id,
+		keyRequestID:  id,
+		"category_id": "MY-C0002",
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	if err != nil {
+		return nil, fmt.Errorf("get_content_list: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return nil, fmt.Errorf("get_content_list error: %w", err)
+	}
+
+	if resp.ContentList == "" {
+		return nil, nil
+	}
+
+	var items []ArtContent
+	if err := json.Unmarshal([]byte(resp.ContentList), &items); err != nil {
+		return nil, fmt.Errorf("parse content_list: %w", err)
+	}
+
+	// Filter by category if specified.
+	filtered := make([]ArtContent, 0, len(items))
+	for _, item := range items {
+		if item.CategoryID == "MY-C0002" {
+			filtered = append(filtered, item)
+		}
+	}
+
+	return filtered, nil
+}
+
+func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, timeout time.Duration) (string, error)) {
+	ch := make(chan json.RawMessage, 1)
+
+	c.artConn.pendingMu.Lock()
+	c.artConn.pending["image_added"] = ch
+	c.artConn.pendingMu.Unlock()
+
+	return func(ctx context.Context, timeout time.Duration) (string, error) {
+		defer func() {
+			if c.artConn != nil {
+				c.artConn.pendingMu.Lock()
+				delete(c.artConn.pending, "image_added")
+				c.artConn.pendingMu.Unlock()
+			}
+		}()
+
+		select {
+		case data, ok := <-ch:
+			if !ok {
+				return "", ErrNotConnected
+			}
+			var resp artResponse
+			if err := json.Unmarshal(data, &resp); err != nil {
+				return "", fmt.Errorf("parse image_added: %w", err)
+			}
+			if err := checkArtError(&resp); err != nil {
+				return "", fmt.Errorf("image_added error: %w", err)
+			}
+			return resp.ContentID, nil
+		case <-time.After(timeout):
+			return "", fmt.Errorf("%w: waiting for image_added", ErrTimeout)
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
 }
 
 // upload sends an image to the TV via the art API + D2D socket transfer.
+//
+//nolint:funlen
 func (c *Client) upload(ctx context.Context, filePath, fileType string) (string, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
@@ -167,21 +353,59 @@ func (c *Client) upload(ctx context.Context, filePath, fileType string) (string,
 
 	// Register the image_added listener BEFORE sending the upload request,
 	// so we don't miss the response if it arrives quickly.
-	waitForAdded := c.artAPI.RegisterImageAddedListener()
+	waitForAdded := c.registerImageAddedListener()
 
 	// Step 1: Send the upload request to get D2D connection info.
-	connInfo, err := c.artAPI.SendImage(ctx, SendImageRequest{
-		FilePath: filePath,
-		FileType: fileType,
-		FileSize: stat.Size(),
-		Matte:    matte,
-	})
-	if err != nil {
-		return "", fmt.Errorf("send image request: %w", err)
+	id := newRequestID()
+	artReq := map[string]any{
+		keyRequest:   "send_image",
+		"file_type":  fileType,
+		"id":         id,
+		keyRequestID: id,
+		"conn_info": map[string]any{
+			"d2d_mode":      "socket",
+			"connection_id": time.Now().UnixNano() % (4 * 1024 * 1024 * 1024),
+			"id":            id,
+		},
+		"image_date":        time.Now().Format("2006:01:02 15:04:05"),
+		"matte_id":          matte,
+		"portrait_matte_id": matte,
+		"file_size":         stat.Size(),
 	}
 
+	payload, err := artAppRequest(artReq)
+	if err != nil {
+		return "", fmt.Errorf("build send_image request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	if err != nil {
+		return "", fmt.Errorf("send_image: %w", err)
+	}
+
+	c.logger.Debug("send_image raw response", "raw", string(raw))
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return "", fmt.Errorf("parse send_image response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return "", fmt.Errorf("send_image error: %w", err)
+	}
+
+	if resp.ConnInfo == "" {
+		return "", fmt.Errorf("send_image: no conn_info in response")
+	}
+
+	c.logger.Debug("send_image conn_info string", "conn_info", resp.ConnInfo)
+	var ci connInfo
+	if err := json.Unmarshal([]byte(resp.ConnInfo), &ci); err != nil {
+		return "", fmt.Errorf("parse conn_info: %w", err)
+	}
+	c.logger.Debug("send_image parsed conn_info", "ip", ci.IP, "port", ci.Port)
+
 	// Step 2: Transfer the file over D2D socket.
-	if err := uploadImageD2D(ctx, *connInfo, filePath, fileType, c.cfg.ConnectionTimeout); err != nil {
+	if err := uploadImageD2D(ctx, ci, filePath, fileType, c.cfg.ConnectionTimeout); err != nil {
 		return "", fmt.Errorf("d2d transfer: %w", err)
 	}
 
@@ -196,27 +420,219 @@ func (c *Client) upload(ctx context.Context, filePath, fileType string) (string,
 
 // deleteImages removes artwork from the TV by content IDs.
 func (c *Client) deleteImages(ctx context.Context, ids []string) error {
-	return c.artAPI.DeleteImages(ctx, ids)
+	id := newRequestID()
+
+	contentIDList := make([]map[string]string, len(ids))
+	for i, cid := range ids {
+		contentIDList[i] = map[string]string{"content_id": cid}
+	}
+
+	req := map[string]any{
+		keyRequest:        "delete_image_list",
+		"id":              id,
+		keyRequestID:      id,
+		"content_id_list": contentIDList,
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return fmt.Errorf("build delete request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	if err != nil {
+		return fmt.Errorf("delete_image_list: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse delete_image_list response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("delete_image_list error: %w", err)
+	}
+
+	return nil
 }
 
 // selectImage sets the currently displayed artwork.
 func (c *Client) selectImage(ctx context.Context, id string) error {
-	return c.artAPI.SelectImage(ctx, id, true)
+	reqID := newRequestID()
+
+	req := map[string]any{
+		keyRequest:   "select_image",
+		"id":         reqID,
+		keyRequestID: reqID,
+		"content_id": id,
+		"show":       true,
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return fmt.Errorf("build select_image request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, reqID, c.cfg.APITimeout)
+	if err != nil {
+		return fmt.Errorf("select_image: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse select_image response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("select_image error: %w", err)
+	}
+
+	return nil
 }
 
 // slideshowStatus returns the current slideshow configuration.
 func (c *Client) slideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
-	return c.artAPI.GetSlideshowStatus(ctx)
+	id := newRequestID()
+
+	req := map[string]any{
+		keyRequest:   "get_slideshow_status",
+		"id":         id,
+		keyRequestID: id,
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("build get_slideshow_status request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	if err != nil {
+		return nil, fmt.Errorf("get_slideshow_status: %w", err)
+	}
+
+	var artResp artResponse
+	if err := json.Unmarshal(raw, &artResp); err != nil {
+		return nil, fmt.Errorf("parse get_slideshow_status response: %w", err)
+	}
+
+	if err := checkArtError(&artResp); err != nil {
+		return nil, fmt.Errorf("get_slideshow_status error: %w", err)
+	}
+
+	var resp struct {
+		Value      string `json:"value"`
+		Type       string `json:"type"`
+		CategoryID string `json:"category_id"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse slideshow_status: %w", err)
+	}
+
+	return &SlideshowStatus{
+		Value:      resp.Value,
+		Type:       resp.Type,
+		CategoryID: resp.CategoryID,
+	}, nil
 }
 
 // setSlideshow updates the slideshow configuration.
 func (c *Client) setSlideshow(ctx context.Context, s SlideshowStatus) error {
-	return c.artAPI.SetSlideshowStatus(ctx, s)
+	id := newRequestID()
+
+	req := map[string]any{
+		keyRequest:    "set_slideshow_status",
+		"id":          id,
+		keyRequestID:  id,
+		"value":       s.Value,
+		"category_id": s.CategoryID,
+		"type":        s.Type,
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return fmt.Errorf("build set_slideshow_status request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	if err != nil {
+		return fmt.Errorf("set_slideshow_status: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse set_slideshow_status response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("set_slideshow_status error: %w", err)
+	}
+
+	return nil
 }
 
 // setBrightness sets the art mode brightness.
 func (c *Client) setBrightness(ctx context.Context, val int) error {
-	return c.artAPI.SetBrightness(ctx, val)
+	id := newRequestID()
+
+	req := map[string]any{
+		keyRequest:   "set_brightness",
+		"id":         id,
+		keyRequestID: id,
+		"value":      val,
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return fmt.Errorf("build set_brightness request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	if err != nil {
+		return fmt.Errorf("set_brightness: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse set_brightness response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return fmt.Errorf("set_brightness error: %w", err)
+	}
+
+	return nil
+}
+
+// getCategories retrieves the list of all artwork categories available on the TV.
+func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
+	id := newRequestID()
+
+	req := map[string]any{
+		keyRequest:   "get_categories",
+		"id":         id,
+		keyRequestID: id,
+	}
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("build get_categories request: %w", err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.cfg.APITimeout)
+	if err != nil {
+		return nil, fmt.Errorf("get_categories: %w", err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse get_categories response: %w", err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return nil, fmt.Errorf("get_categories error: %w", err)
+	}
+
+	return raw, nil
 }
 
 // turnOff powers off the TV by holding KEY_POWER for 3 seconds via
@@ -253,7 +669,7 @@ func (c *Client) saveMetadata(ctx context.Context) error {
 	}
 
 	// 3. All Categories.
-	if cats, err := c.artAPI.GetCategories(ctx); err == nil {
+	if cats, err := c.getCategories(ctx); err == nil {
 		var raw json.RawMessage
 		if err := json.Unmarshal(cats, &raw); err == nil {
 			metadata["categories"] = raw
