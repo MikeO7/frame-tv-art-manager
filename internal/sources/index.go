@@ -74,11 +74,15 @@ func (idx *ArtworkIndex) SupportedFiles() (map[string]struct{}, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
-	if _, err := os.Stat(idx.artworkDir); err != nil {
+	info, err := os.Stat(idx.artworkDir)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("artwork directory does not exist: %s", idx.artworkDir)
 		}
 		return nil, fmt.Errorf("stat artwork dir %s: %w", idx.artworkDir, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("artwork path is not a directory: %s", idx.artworkDir)
 	}
 
 	out := make(map[string]struct{}, len(idx.catalog))

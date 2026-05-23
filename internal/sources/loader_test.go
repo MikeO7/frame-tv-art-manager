@@ -382,3 +382,66 @@ func TestLoader_syncLine_ArticSearch(t *testing.T) {
 		t.Errorf("expected 1 URL, got %d", count)
 	}
 }
+
+func TestLoader_executeDownload(t *testing.T) {
+	artworkDir := t.TempDir()
+	l := newTestLoader(&config.Config{
+		ArtworkDir:        artworkDir,
+		MaxDownloadSizeMB: 1,
+	}, slog.Default())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a})
+	}))
+	defer server.Close()
+
+	downloaded, err := l.executeDownload(context.Background(), server.URL, "000__direct__test.jpg")
+	if err != nil {
+		t.Fatalf("executeDownload failed: %v", err)
+	}
+	if !downloaded {
+		t.Error("expected downloaded=true")
+	}
+
+	entries, err := os.ReadDir(artworkDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(entries))
+	}
+	if !strings.HasSuffix(entries[0].Name(), ".png") {
+		t.Errorf("expected png extension, got %q", entries[0].Name())
+	}
+}
+
+func TestLoader_downloadWithIdentity_MaxReached(t *testing.T) {
+	artworkDir := t.TempDir()
+	l := newTestLoader(&config.Config{
+		ArtworkDir:       artworkDir,
+		MaxArtworkImages: 1,
+	}, slog.Default())
+	l.index.MarkVisited("existing.jpg")
+
+	downloaded, err := l.downloadWithIdentity(context.Background(), "http://example.com/x.jpg", "001__direct__x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if downloaded {
+		t.Error("expected skip when max reached")
+	}
+}
+
+func TestLoader_loadYamlSources_Invalid(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sources.yaml")
+	if err := os.WriteFile(path, []byte("not: valid: yaml: ["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+	l.sourcesFile = path
+	_, err := l.loadYamlSources()
+	if err == nil {
+		t.Error("expected error for invalid yaml format")
+	}
+}

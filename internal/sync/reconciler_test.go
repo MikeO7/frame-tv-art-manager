@@ -3,6 +3,8 @@ package sync
 import (
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -245,4 +247,137 @@ func TestReconciler_Run_RemoveUnknown(t *testing.T) {
 	if len(fake.deleted) != 1 || fake.deleted[0][0] != "id-unknown" {
 		t.Errorf("deleted = %v", fake.deleted)
 	}
+}
+
+func TestReconciler_Run_GateFailed(t *testing.T) {
+	fake := &fakeTVTransport{connectErr: samsung.ErrGateFailed}
+	r := NewReconciler(slog.Default())
+	result, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "skipped (gate)" {
+		t.Errorf("status = %q", result.Status)
+	}
+}
+
+func TestReconciler_Run_ConnectError(t *testing.T) {
+	fake := &fakeTVTransport{connectErr: context.DeadlineExceeded}
+	r := NewReconciler(slog.Default())
+	_, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{SyncIntervalMin: 1})
+	if err == nil {
+		t.Fatal("expected connect error")
+	}
+	if fake.recordFailures != 1 {
+		t.Errorf("recordFailures = %d", fake.recordFailures)
+	}
+}
+
+func TestReconciler_Run_NotArtMode(t *testing.T) {
+	fake := &fakeTVTransport{artMode: false}
+	r := NewReconciler(slog.Default())
+	result, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "skipped (not art mode)" {
+		t.Errorf("status = %q", result.Status)
+	}
+}
+
+func TestReconciler_Run_ListError(t *testing.T) {
+	fake := &fakeTVTransport{artMode: true, listErr: context.DeadlineExceeded}
+	r := NewReconciler(slog.Default())
+	_, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{SyncIntervalMin: 1})
+	if err == nil {
+		t.Fatal("expected list error")
+	}
+}
+
+func TestReconciler_Run_DryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "photo.jpg")
+	if err := os.WriteFile(filePath, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &fakeTVTransport{
+		artMode: true,
+		listContent: []samsung.ArtContent{
+			{ContentID: "id-old"},
+		},
+	}
+	policy := config.SyncPolicy{
+		ArtworkDir:          tmpDir,
+		DryRun:              true,
+		RemoveUnknownImages: true,
+		MatteStyle:          "none",
+	}
+	req := ReconcileInput{
+		LocalFiles: map[string]struct{}{"photo.jpg": {}},
+		Mapping:    map[string]string{"old.jpg": "id-old"},
+		MatteOverrides: map[string]string{
+			"photo.jpg": "modern_apricot",
+		},
+		DesiredBrightness: intPtr(6),
+		Slideshow:         &samsung.SlideshowStatus{Value: "15", Type: "shuffleslideshow"},
+	}
+
+	r := NewReconciler(slog.Default())
+	result, err := r.Run(context.Background(), fake, "1.2.3.4", req, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Uploaded != 1 {
+		t.Errorf("uploaded = %d", result.Uploaded)
+	}
+	if result.Deleted != 1 {
+		t.Errorf("deleted = %d", result.Deleted)
+	}
+}
+
+func TestReconciler_Run_ShuffleSelection(t *testing.T) {
+	tmpDir := t.TempDir()
+	fake := &fakeTVTransport{
+		artMode: true,
+		listContent: []samsung.ArtContent{
+			{ContentID: "id-a"},
+		},
+		uploadContent: "id-b",
+	}
+	policy := config.SyncPolicy{
+		ArtworkDir:     tmpDir,
+		MatteStyle:     "none",
+		UploadAttempts: 1,
+	}
+	req := ReconcileInput{
+		LocalFiles: map[string]struct{}{"new.jpg": {}},
+		Mapping:    map[string]string{"old.jpg": "id-a"},
+		MatteOverrides: map[string]string{
+			"new.jpg": "none",
+		},
+		Slideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffleslideshow"},
+	}
+
+	r := NewReconciler(slog.Default())
+	_, err := r.Run(context.Background(), fake, "1.2.3.4", req, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.selected == "" {
+		t.Error("expected image selection in shuffle mode")
+	}
+}
+
+func TestReconciler_Run_AutoOff(t *testing.T) {
+	fake := &fakeTVTransport{artMode: true}
+	r := NewReconciler(slog.Default())
+	_, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{TriggerAutoOff: true}, config.SyncPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func intPtr(v int) *int {
+	return &v
 }

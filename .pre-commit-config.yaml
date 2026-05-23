@@ -12,16 +12,6 @@ repos:
     -   id: check-case-conflict
     -   id: mixed-line-ending
 
--   repo: https://github.com/golangci/golangci-lint
-    rev: v2.12.2
-    hooks:
-    -   id: golangci-lint
-
--   repo: https://github.com/rhysd/actionlint
-    rev: v1.7.11
-    hooks:
-    -   id: actionlint
-
 -   repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:
@@ -36,22 +26,8 @@ repos:
         files: \.go$
         pass_filenames: false
 
-    -   id: go-test
-        name: go test
-        entry: go test -race -shuffle=on ./...
-        language: system
-        files: \.go$
-        pass_filenames: false
-
-    -   id: go-vuln-check
-        name: go vuln check
-        entry: bash -c 'BIN="$(go env GOPATH)/bin"; command -v "$BIN/govulncheck" >/dev/null || GOBIN="$BIN" go install golang.org/x/vuln/cmd/govulncheck@latest; "$BIN/govulncheck" ./...'
-        language: system
-        files: \.go$
-        pass_filenames: false
-
-    -   id: no-ai-placeholders
-        name: no AI placeholders
-        entry: bash -c '! grep -rE "(TODO:|FIXME:|HACK:|rest of the|implement this)" --include="*.go" .'
-        language: system
+    -   id: anti-slop-hygiene
+        name: AI anti-slop and code hygiene
+        entry: ./scripts/check-anti-slop.sh
+        language: script
         pass_filenames: false

@@ -119,3 +119,56 @@ func TestCalculate_InvalidTimezone(t *testing.T) {
 		t.Error("expected error for invalid timezone")
 	}
 }
+
+func TestGetTargetValue(t *testing.T) {
+	t.Parallel()
+
+	lat := 40.7128
+	lon := -74.0060
+	manual := 5
+
+	t.Run("solar enabled", func(t *testing.T) {
+		val := GetTargetValue(Config{
+			SolarEnabled:  true,
+			Latitude:      &lat,
+			Longitude:     &lon,
+			Timezone:      "UTC",
+			BrightnessMin: 2,
+			BrightnessMax: 10,
+		}, nil)
+		if val == nil {
+			t.Fatal("expected solar brightness value")
+		}
+		if *val < 2 || *val > 10 {
+			t.Errorf("brightness %d out of range", *val)
+		}
+	})
+
+	t.Run("manual fallback", func(t *testing.T) {
+		val := GetTargetValue(Config{
+			ManualBrightness: &manual,
+		}, nil)
+		if val == nil || *val != 5 {
+			t.Errorf("expected manual brightness 5, got %v", val)
+		}
+	})
+
+	t.Run("solar invalid timezone falls back to manual", func(t *testing.T) {
+		val := GetTargetValue(Config{
+			SolarEnabled:     true,
+			Latitude:         &lat,
+			Longitude:        &lon,
+			Timezone:         "Invalid/Zone",
+			ManualBrightness: &manual,
+		}, nil)
+		if val == nil || *val != 5 {
+			t.Errorf("expected manual fallback, got %v", val)
+		}
+	})
+
+	t.Run("nil when unset", func(t *testing.T) {
+		if val := GetTargetValue(Config{}, nil); val != nil {
+			t.Errorf("expected nil, got %d", *val)
+		}
+	})
+}

@@ -1,4 +1,4 @@
-.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit
+.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix
 .NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
 
 PRE_COMMIT := $(shell command -v pre-commit 2>/dev/null)
@@ -16,11 +16,14 @@ ifeq ($(GOVULNCHECK),)
 GOVULNCHECK := $(shell go env GOPATH)/bin/govulncheck
 endif
 
+GO_TEST_FLAGS ?= -shuffle=on
+
 all: check build
+
 
 test:
 	@echo "🔍 Running tests..."
-	go test -race -shuffle=on -v -count=1 -coverprofile=coverage.out ./...
+	go test $(GO_TEST_FLAGS) -v -coverprofile=coverage.out ./...
 
 coverage: test
 	@echo "📊 Generating coverage report..."
@@ -76,6 +79,14 @@ build:
 docker:
 	@echo "🐳 Building Docker image (local)..."
 	docker build -t frame-tv-art-manager:local .
+
+fix: tidy fmt
+	@echo "🔧 Auto-fixing linter issues..."
+	-$(GOLANGCI_LINT) run --fix --timeout 5m
+
+agent-fix:
+	@chmod +x scripts/agent-loop.sh
+	./scripts/agent-loop.sh
 
 check: tidy fmt lint vuln actionlint coverage-check precommit
 	@echo "✅ All local checks passed!"

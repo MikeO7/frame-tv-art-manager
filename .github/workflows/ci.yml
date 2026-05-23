@@ -31,10 +31,6 @@ jobs:
         with:
           go-version: '1.26.3'
           cache: true
-      - name: Install govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
 
@@ -92,7 +88,7 @@ jobs:
       - name: Test & Coverage Check
         run: |
           sudo apt-get update && sudo apt-get install -y bc
-          make coverage-check
+          make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on"
       - name: Upload Coverage
         if: always()
         uses: actions/upload-artifact@v4
