@@ -20,8 +20,8 @@ func TestEngine_RunOnce_Empty(t *testing.T) {
 	tmpDir := t.TempDir()
 	artworkDir := filepath.Join(tmpDir, "artwork")
 	tokenDir := filepath.Join(tmpDir, "tokens")
-	_ = os.MkdirAll(artworkDir, 0700)
-	_ = os.MkdirAll(tokenDir, 0700)
+	_ = os.MkdirAll(artworkDir, 0o700)
+	_ = os.MkdirAll(tokenDir, 0o700)
 
 	cfg := &config.Config{
 		TVIPs:           []string{testIP},
@@ -135,11 +135,11 @@ func TestEngine_RunOnce_Full(t *testing.T) {
 	tmpDir := t.TempDir()
 	artworkDir := filepath.Join(tmpDir, "artwork")
 	tokenDir := filepath.Join(tmpDir, "tokens")
-	_ = os.MkdirAll(artworkDir, 0700)
-	_ = os.MkdirAll(tokenDir, 0700)
+	_ = os.MkdirAll(artworkDir, 0o700)
+	_ = os.MkdirAll(tokenDir, 0o700)
 
 	// Create a dummy image
-	_ = os.WriteFile(filepath.Join(artworkDir, "test.jpg"), createSmallJPEG(), 0600)
+	_ = os.WriteFile(filepath.Join(artworkDir, "test.jpg"), createSmallJPEG(), 0o600)
 
 	cfg := &config.Config{
 		TVIPs:           []string{testIP},
@@ -163,7 +163,7 @@ func TestEngine_RunOnce_Full(t *testing.T) {
 
 func TestEngine_RunOnce_DryRun(t *testing.T) {
 	artworkDir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(artworkDir, "test.jpg"), []byte("data"), 0600)
+	_ = os.WriteFile(filepath.Join(artworkDir, "test.jpg"), []byte("data"), 0o600)
 
 	cfg := &config.Config{
 		TVIPs:           []string{testIP},
@@ -268,7 +268,7 @@ func TestEngine_DetermineBrightness(t *testing.T) {
 func TestEngine_OptimizationFlow(t *testing.T) {
 	tmpDir := t.TempDir()
 	artworkDir := filepath.Join(tmpDir, "artwork")
-	_ = os.MkdirAll(artworkDir, 0700)
+	_ = os.MkdirAll(artworkDir, 0o700)
 
 	// Create a dummy JPEG (just a few bytes is enough for some parts, but optimize.OptimizeFile might fail)
 	// We'll use a file that doesn't exist to test failure handling too.
@@ -293,7 +293,7 @@ func TestEngine_OptimizationFlow(t *testing.T) {
 func TestEngine_EnsureCorrectFilename(t *testing.T) {
 	tmpDir := t.TempDir()
 	artworkDir := filepath.Join(tmpDir, "artwork")
-	_ = os.MkdirAll(artworkDir, 0700)
+	_ = os.MkdirAll(artworkDir, 0o700)
 
 	cfg := &config.Config{ArtworkDir: artworkDir}
 	e := NewEngine(cfg, slog.Default(), nil)
@@ -303,7 +303,7 @@ func TestEngine_EnsureCorrectFilename(t *testing.T) {
 
 	// Test renaming a file with old format
 	oldName := "photo__abc.jpg"
-	_ = os.WriteFile(filepath.Join(artworkDir, oldName), []byte("data"), 0600)
+	_ = os.WriteFile(filepath.Join(artworkDir, oldName), []byte("data"), 0o600)
 	e.ensureCorrectFilename(oldName, 3840, 2160, true, localFiles, mu)
 
 	// Check if new file exists
@@ -338,7 +338,7 @@ func TestEngine_UpdateMappings(t *testing.T) {
 func TestEngine_RunOnce_ScanError(t *testing.T) {
 	// Use a path that is a file, so ScanArtworkDir fails (it expects a dir)
 	tmpFile := filepath.Join(t.TempDir(), "not-a-dir")
-	_ = os.WriteFile(tmpFile, []byte("data"), 0600)
+	_ = os.WriteFile(tmpFile, []byte("data"), 0o600)
 
 	cfg := &config.Config{
 		TVIPs:      []string{testIP},
@@ -356,7 +356,7 @@ func TestEngine_RunOnce_ScanError(t *testing.T) {
 func TestEngine_DownloadSources_Error(t *testing.T) {
 	artworkDir := t.TempDir()
 	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
-	_ = os.WriteFile(sourcesFile, []byte("invalid:prefix:123"), 0600)
+	_ = os.WriteFile(sourcesFile, []byte("invalid:prefix:123"), 0o600)
 
 	cfg := &config.Config{
 		ArtworkDir:  artworkDir,
@@ -367,6 +367,7 @@ func TestEngine_DownloadSources_Error(t *testing.T) {
 	// Sync will fail because of invalid prefix
 	_, _ = e.downloadSources(slog.Default())
 }
+
 func TestEngine_Backoff(t *testing.T) {
 	cfg := &config.Config{
 		TVIPs:      []string{"1.1.1.1"},
@@ -397,7 +398,7 @@ func TestEngine_SyncTV_Success(t *testing.T) {
 	}
 
 	// Create a dummy image
-	_ = os.WriteFile(filepath.Join(tmpDir, "test.jpg"), createSmallJPEG(), 0600)
+	_ = os.WriteFile(filepath.Join(tmpDir, "test.jpg"), createSmallJPEG(), 0o600)
 
 	err := e.RunOnce(context.Background())
 	if err != nil {

@@ -5,9 +5,14 @@
 package brightness
 
 import (
+	"errors"
+	"log/slog"
 	"math"
 	"time"
 )
+
+// ErrSolarDisabled is returned when solar calculations are disabled or not configured.
+var ErrSolarDisabled = errors.New("solar calculation disabled")
 
 // sunElevation calculates the sun's elevation angle in degrees for a given
 // geographic position and time. Uses a simplified solar position algorithm
@@ -97,16 +102,14 @@ func sunElevation(lat, lon float64, t time.Time) float64 {
 }
 
 // brightnessFromElevation maps a sun elevation angle (degrees) to a
-// brightness value between min and max using the Kasten-Young atmospheric
+// brightness value between minVal and maxVal using the Kasten-Young atmospheric
 // attenuation model.
 //
-// When elevation is at or below 0° (sunset/night), returns min.
-// At zenith (90°), returns close to max.
-//
-//nolint:revive
-func brightnessFromElevation(elevation float64, min, max int) int {
+// When elevation is at or below 0° (sunset/night), returns minVal.
+// At zenith (90°), returns close to maxVal.
+func brightnessFromElevation(elevation float64, minVal, maxVal int) int {
 	if elevation <= 0 {
-		return min
+		return minVal
 	}
 
 	elevRad := elevation * math.Pi / 180
@@ -118,20 +121,18 @@ func brightnessFromElevation(elevation float64, min, max int) int {
 	irradiance := math.Pow(0.7, math.Pow(airMass, 0.678))
 
 	// Map to brightness range.
-	brightness := min + int(float64(max-min)*irradiance)
+	brightness := minVal + int(float64(maxVal-minVal)*irradiance)
 
 	return brightness
 }
 
 // Calculate returns the brightness value for the current time and location,
-// or nil if solar brightness is not applicable.
+// or ErrSolarDisabled if solar brightness is not applicable.
 //
 // Parameters lat and lon may be nil if solar is disabled.
-//
-//nolint:revive
-func Calculate(lat, lon *float64, tz string, min, max int) (*int, error) {
+func Calculate(lat, lon *float64, tz string, minVal, maxVal int) (*int, error) {
 	if lat == nil || lon == nil {
-		return nil, nil
+		return nil, ErrSolarDisabled
 	}
 
 	loc, err := time.LoadLocation(tz)
@@ -141,6 +142,46 @@ func Calculate(lat, lon *float64, tz string, min, max int) (*int, error) {
 
 	now := time.Now().In(loc)
 	elevation := sunElevation(*lat, *lon, now)
-	b := brightnessFromElevation(elevation, min, max)
+	b := brightnessFromElevation(elevation, minVal, maxVal)
 	return &b, nil
+}
+
+// Config holds the parameters needed to determine the target brightness.
+type Config struct {
+	SolarEnabled     bool
+	Latitude         *float64
+	Longitude        *float64
+	Timezone         string
+	BrightnessMin    int
+	BrightnessMax    int
+	ManualBrightness *int
+}
+
+// GetTargetValue calculates the final target brightness using solar elevation,
+// falling back to manual brightness or nil if neither is configured.
+//
+
+func GetTargetValue(cfg Config, logger *slog.Logger) *int {
+	if cfg.SolarEnabled && cfg.Latitude != nil && cfg.Longitude != nil {
+		b, err := Calculate(cfg.Latitude, cfg.Longitude, cfg.Timezone, cfg.BrightnessMin, cfg.BrightnessMax)
+		if err != nil {
+			if !errors.Is(err, ErrSolarDisabled) && logger != nil {
+				logger.Warn("solar brightness calculation failed", "error", err)
+			}
+		} else {
+			if logger != nil {
+				logger.Info("solar brightness", "value", *b)
+			}
+			return b
+		}
+	}
+
+	if cfg.ManualBrightness != nil {
+		if logger != nil {
+			logger.Info("manual brightness", "value", *cfg.ManualBrightness)
+		}
+		return cfg.ManualBrightness
+	}
+
+	return nil
 }

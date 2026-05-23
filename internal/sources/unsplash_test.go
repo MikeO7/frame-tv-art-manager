@@ -76,6 +76,7 @@ func TestUnsplashClient_TrackDownload(t *testing.T) {
 		t.Error("expected track request to be sent")
 	}
 }
+
 func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
 	pages := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

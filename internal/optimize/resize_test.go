@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,20 +34,22 @@ func TestOptimizeFile(t *testing.T) {
 	cfg.MaxHeight = 100
 	cfg.SmartCropEnabled = true
 
-	w, h, mod, err := OptimizeFile(path, cfg, slog.Default())
+	newName, mod, err := OptimizeFile(path, cfg, slog.Default())
 	if err != nil {
 		t.Fatalf("OptimizeFile failed: %v", err)
 	}
 
-	if w != 100 || h != 100 {
-		t.Errorf("expected 100x100, got %dx%d", w, h)
-	}
 	if !mod {
 		t.Error("expected modified to be true")
 	}
 
+	// The file should have been renamed according to naming policy.
+	if !strings.Contains(newName, "100x100_opt.h_") {
+		t.Errorf("expected new filename to contain 100x100_opt.h_, got %s", newName)
+	}
+
 	// Check if file still exists and is valid
-	if err := ValidateImage(path); err != nil {
+	if err := ValidateImage(filepath.Join(tmpDir, newName)); err != nil {
 		t.Errorf("optimized image is invalid: %v", err)
 	}
 }
@@ -70,12 +73,15 @@ func TestOptimizeFile_MuseumMode(t *testing.T) {
 	cfg.MuseumModeEnabled = true
 	cfg.MuseumModeIntensity = 5
 
-	_, _, mod, err := OptimizeFile(path, cfg, slog.Default())
+	newName, mod, err := OptimizeFile(path, cfg, slog.Default())
 	if err != nil {
 		t.Fatalf("OptimizeFile museum mode failed: %v", err)
 	}
 	if !mod {
 		t.Error("expected modified to be true in museum mode")
+	}
+	if !strings.Contains(newName, "100x100_opt.h_") {
+		t.Errorf("expected new filename to contain 100x100_opt.h_, got %s", newName)
 	}
 }
 
@@ -105,7 +111,7 @@ func TestDither(t *testing.T) {
 func TestValidateImage_Invalid(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "invalid.jpg")
-	_ = os.WriteFile(path, []byte("not an image"), 0600)
+	_ = os.WriteFile(path, []byte("not an image"), 0o600)
 
 	if err := ValidateImage(path); err == nil {
 		t.Error("expected error for invalid image")

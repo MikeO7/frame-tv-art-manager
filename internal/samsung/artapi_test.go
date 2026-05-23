@@ -3,6 +3,7 @@ package samsung
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"log/slog"
 )
 
 const (
@@ -218,9 +218,11 @@ func TestArtAPI_SetBrightness(t *testing.T) {
 	}
 }
 
-const testValue = "value"
-const testCat1 = "cat1"
-const testContentID = "content_id"
+const (
+	testValue     = "value"
+	testCat1      = "cat1"
+	testContentID = "content_id"
+)
 
 func TestArtAPI_GetArtModeStatus(t *testing.T) {
 	server := setupMockArtServer("get_artmode_status", map[string]any{testValue: "on"})

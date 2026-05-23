@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
-// nasaClient handles communication with NASA APIs.
-type nasaClient struct {
+// nasaProvider handles communication with NASA APIs and resolves artwork sources.
+type nasaProvider struct {
 	apiKey    string
 	client    *http.Client
 	logger    *slog.Logger
@@ -20,12 +21,20 @@ type nasaClient struct {
 	SearchURL string
 }
 
-// newNASAClient creates a new NASA API client.
+// nasaClient is a type alias for nasaProvider to maintain backwards compatibility in tests.
+type nasaClient = nasaProvider
+
+// newNASAClient creates a new NASA API client/provider.
 func newNASAClient(apiKey string, logger *slog.Logger) *nasaClient {
+	return newNasaProvider(apiKey, logger)
+}
+
+// newNasaProvider creates a new NASA provider.
+func newNasaProvider(apiKey string, logger *slog.Logger) *nasaProvider {
 	if apiKey == "" {
 		apiKey = "DEMO_KEY"
 	}
-	return &nasaClient{
+	return &nasaProvider{
 		apiKey: apiKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -44,15 +53,23 @@ type apodResponse struct {
 	Type  string `json:"media_type"`
 }
 
+func (p *nasaProvider) Name() string {
+	return "nasa"
+}
+
+func (p *nasaProvider) CanHandle(line string) bool {
+	return strings.HasPrefix(line, "nasa:")
+}
+
 // FetchAPOD retrieves today's Astronomy Picture of the Day.
-func (c *nasaClient) FetchAPOD(ctx context.Context) (*apodResponse, error) {
-	url := fmt.Sprintf("%s/planetary/apod?api_key=%s", c.BaseURL, c.apiKey)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+func (p *nasaProvider) FetchAPOD(ctx context.Context) (*apodResponse, error) {
+	urlStr := fmt.Sprintf("%s/planetary/apod?api_key=%s", p.BaseURL, p.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -77,14 +94,14 @@ func (c *nasaClient) FetchAPOD(ctx context.Context) (*apodResponse, error) {
 }
 
 // SearchNASAImageLibrary searches for high-resolution images in the NASA library.
-func (c *nasaClient) SearchNASAImageLibrary(ctx context.Context, query string) ([]string, error) {
-	searchURL := fmt.Sprintf("%s/search?q=%s&media_type=image", c.SearchURL, url.QueryEscape(query))
-	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
+func (p *nasaProvider) SearchNASAImageLibrary(ctx context.Context, query string) ([]string, error) {
+	searchURL := fmt.Sprintf("%s/search?q=%s&media_type=image", p.SearchURL, url.QueryEscape(query))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -121,10 +138,9 @@ func (c *nasaClient) SearchNASAImageLibrary(ctx context.Context, query string) (
 
 	for i := 0; i < maxItems; i++ {
 		item := result.Collection.Items[i]
-		// Each item has a manifest URL (href) which contains the actual image links.
-		manifestURL, err := c.fetchNASAAssetManifest(ctx, item.Href)
+		manifestURL, err := p.fetchNASAAssetManifest(ctx, item.Href)
 		if err != nil {
-			c.logger.Warn("failed to fetch nasa asset manifest", "href", item.Href, "error", err)
+			p.logger.Warn("failed to fetch nasa asset manifest", "href", item.Href, "error", err)
 			continue
 		}
 		if manifestURL != "" {
@@ -136,13 +152,13 @@ func (c *nasaClient) SearchNASAImageLibrary(ctx context.Context, query string) (
 }
 
 // fetchNASAAssetManifest resolves the actual high-res image link from a NASA manifest.
-func (c *nasaClient) fetchNASAAssetManifest(ctx context.Context, href string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", href, nil)
+func (p *nasaProvider) fetchNASAAssetManifest(ctx context.Context, href string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, href, nil)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -159,7 +175,6 @@ func (c *nasaClient) fetchNASAAssetManifest(ctx context.Context, href string) (s
 		return "", err
 	}
 
-	// Manifest contains various sizes. Look for ~orig.jpg or ~large.jpg
 	var bestURL string
 	for _, u := range manifest {
 		if strings.HasSuffix(u, "~orig.jpg") {
@@ -171,4 +186,67 @@ func (c *nasaClient) fetchNASAAssetManifest(ctx context.Context, href string) (s
 	}
 
 	return bestURL, nil
+}
+
+func (p *nasaProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
+	parts := strings.Split(line, ":")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid nasa format: %s", line)
+	}
+
+	var urls []string
+	var err error
+
+	switch parts[1] {
+	case "apod":
+		apod, apodErr := p.FetchAPOD(ctx)
+		if apodErr != nil {
+			return nil, apodErr
+		}
+		u := apod.HDURL
+		if u == "" {
+			u = apod.URL
+		}
+		if u != "" {
+			urls = append(urls, u)
+		}
+	case cmdSearch:
+		if len(parts) < 3 {
+			return nil, fmt.Errorf("nasa search requires a query: nasa:search:query")
+		}
+		urls, err = p.SearchNASAImageLibrary(ctx, parts[2])
+	default:
+		return nil, fmt.Errorf("unknown nasa type: %s", parts[1])
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	images := make([]SourceImage, 0, len(urls))
+	for _, u := range urls {
+		slug := URLToSlug(u)
+		if strings.Contains(u, "nasa.gov") {
+			urlParts := strings.Split(u, "/")
+			if len(urlParts) > 0 {
+				last := urlParts[len(urlParts)-1]
+				id := strings.Split(last, "~")[0]
+				slug = Filename(id)
+				slug = strings.ReplaceAll(slug, " ", "-")
+				if len(slug) > 100 {
+					slug = slug[:100]
+				}
+			}
+		}
+
+		idx := atomic.AddInt32(globalIndex, 1) - 1
+		identity := fmt.Sprintf("%03d__nasa__%s", idx, slug)
+
+		images = append(images, SourceImage{
+			URL:      u,
+			Identity: identity,
+		})
+	}
+
+	return images, nil
 }

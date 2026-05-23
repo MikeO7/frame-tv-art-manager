@@ -103,11 +103,11 @@ func validateDirectories(cfg *config.Config, logger *slog.Logger) {
 		path string
 		perm os.FileMode
 	}{
-		{"artwork", cfg.ArtworkDir, 0700},
-		{"tokens", cfg.TokenDir, 0700},
+		{"artwork", cfg.ArtworkDir, 0o700},
+		{"tokens", cfg.TokenDir, 0o700},
 	}
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir.path, dir.perm); err != nil { //nolint:gosec // Required for shared volumes
+		if err := os.MkdirAll(dir.path, dir.perm); err != nil {
 			logger.Error("Failed to create/access directory", "name", dir.name, "path", dir.path, "error", err)
 			os.Exit(1)
 		}
@@ -117,7 +117,7 @@ func validateDirectories(cfg *config.Config, logger *slog.Logger) {
 			}
 		}
 		testFile := fmt.Sprintf("%s/.write_test", dir.path)
-		if err := os.WriteFile(testFile, []byte("ok"), 0600); err != nil { //nolint:gosec // Test file
+		if err := os.WriteFile(testFile, []byte("ok"), 0o600); err != nil {
 			logger.Error("Directory is not writable", "name", dir.name, "path", dir.path, "error", err)
 			os.Exit(1)
 		}
@@ -169,7 +169,7 @@ func bootstrapSources(cfg *config.Config, logger *slog.Logger) {
 		"# - Pixabay Photo/User: pixabay.com/.../name-123 -> 123\n" +
 		"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n"
 
-	if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0600); err != nil {
+	if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0o600); err != nil {
 		logger.Warn("Failed to bootstrap sources file", "error", err)
 	}
 }

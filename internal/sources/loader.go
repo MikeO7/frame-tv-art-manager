@@ -7,13 +7,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	//nolint:revive
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"log/slog"
 	"net/http"
-	neturl "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +18,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	_ "image/jpeg"
+	_ "image/png"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"gopkg.in/yaml.v3"
@@ -34,6 +33,8 @@ const (
 	cmdPhoto  = "photo"
 	cmdSearch = "search"
 )
+
+var reManagedIndex = regexp.MustCompile(`^[0-9]{3}__`)
 
 // Loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
@@ -48,6 +49,7 @@ type Loader struct {
 	artic              *articClient
 	pexels             *pexelsClient
 	pixabay            *pixabayClient
+	providers          []SourceProvider
 	maxImages          int
 	maxSizeMB          int
 	index              map[string]string // hash -> filename (content deduplication)
@@ -61,7 +63,13 @@ type Loader struct {
 
 // NewLoader creates a new sources loader from application config.
 func NewLoader(cfg *config.Config, logger *slog.Logger) *Loader {
-	return &Loader{
+	unsplash := newUnsplashProvider(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger)
+	nasa := newNasaProvider(cfg.NasaAPIKey, logger)
+	artic := newArticProvider(logger)
+	pexels := newPexelsProvider(cfg.PexelsAPIKey, logger)
+	pixabay := newPixabayProvider(cfg.PixabayAPIKey, logger)
+
+	l := &Loader{
 		cfg:         cfg,
 		sourcesFile: cfg.SourcesFile,
 		artworkDir:  cfg.ArtworkDir,
@@ -71,34 +79,33 @@ func NewLoader(cfg *config.Config, logger *slog.Logger) *Loader {
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		unsplash:  newUnsplashClient(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger),
-		nasa:      newNASAClient(cfg.NasaAPIKey, logger),
-		artic:     newArticClient(logger),
-		pexels:    newPexelsClient(cfg.PexelsAPIKey, logger),
-		pixabay:   newPixabayClient(cfg.PixabayAPIKey, logger),
+		unsplash:  unsplash,
+		nasa:      nasa,
+		artic:     artic,
+		pexels:    pexels,
+		pixabay:   pixabay,
 		index:     make(map[string]string),
 		prefixMap: make(map[string]string),
 		visited:   make(map[string]bool),
 	}
+
+	l.providers = []SourceProvider{
+		unsplash,
+		nasa,
+		artic,
+		pexels,
+		pixabay,
+		newDirectProvider(), // DirectProvider is fallback, matches all direct URLs
+	}
+
+	return l
 }
 
 // Sync reads the sources file and downloads any new images. Returns the
 // number of newly downloaded images. Skips URLs that have already been
-// downloaded (matched by URL hash filename).
+// downloaded.
 //
-// Sources file format (one URL per line):
-//
-//	# Lines starting with # are comments
-//	https://example.com/photo.jpg
-//	https://images.unsplash.com/photo-abc123?w=3840
-//
-// Downloaded files are named by SHA256 hash of the URL to enable
-// idempotent re-runs.
-// Sync reads the sources file and downloads any new images. Returns the
-// number of newly downloaded images. Skips URLs that have already been
-// downloaded (matched by URL hash filename).
-//
-//nolint:gocyclo // Sync loop handles multiple source types sequentially
+//nolint:gocognit
 func (l *Loader) Sync() (int, error) {
 	if l.sourcesFile == "" {
 		return 0, nil
@@ -136,37 +143,44 @@ func (l *Loader) Sync() (int, error) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			var count int
-			var err error
-
-			switch {
-			case strings.HasPrefix(lne, "unsplash:"):
-				count, err = l.handleUnsplashLine(lne, &globalIndex)
-			case strings.HasPrefix(lne, "nasa:"):
-				count, err = l.handleNASALine(lne, &globalIndex)
-			case strings.HasPrefix(lne, "artic:") || strings.HasPrefix(lne, "art_institute:") || strings.HasPrefix(lne, "art_institute_of_chicago:"):
-				count, err = l.handleArticLine(lne, &globalIndex)
-			case strings.HasPrefix(lne, "pexels:"):
-				count, err = l.handlePexelsLine(lne, &globalIndex)
-			case strings.HasPrefix(lne, "pixabay:"):
-				count, err = l.handlePixabayLine(lne, &globalIndex)
-			default:
-				lne = strings.TrimPrefix(lne, "direct:")
-				// We need a unique index for direct sources too.
-				idx := atomic.AddInt32(&globalIndex, 1) - 1
-				identity := fmt.Sprintf("%03d__direct__%s", idx, l.urlToSlug(lne))
-				ok, dErr := l.downloadWithIdentity(lne, identity)
-				if dErr == nil && ok {
-					count = 1
+			var provider SourceProvider
+			for _, p := range l.providers {
+				if p.CanHandle(lne) {
+					provider = p
+					break
 				}
-				err = dErr
 			}
 
-			if err != nil {
-				l.logger.Warn("source sync failed", "line", lne, "error", err)
+			if provider == nil {
+				l.logger.Error("no provider found for line", "line", lne)
+				return
 			}
+
+			images, resolveErr := provider.Resolve(context.Background(), lne, &globalIndex)
+			if resolveErr != nil {
+				l.logger.Warn("source resolve failed", "line", lne, "error", resolveErr)
+				return
+			}
+
+			var count int
+			for _, img := range images {
+				ok, dErr := l.downloadWithIdentity(img.URL, img.Identity)
+				if dErr != nil {
+					l.logger.Warn("source download failed", "url", img.URL, "error", dErr)
+					continue
+				}
+				if ok {
+					count++
+					if img.OnDownload != nil {
+						if hookErr := img.OnDownload(context.Background()); hookErr != nil {
+							l.logger.Warn("post-download hook failed", "error", hookErr)
+						}
+					}
+				}
+			}
+
 			if count > 0 {
-				atomic.AddInt32(&downloaded, int32(count)) //nolint:gosec // count is small
+				atomic.AddInt32(&downloaded, int32(count)) //nolint:gosec
 			}
 		}(line)
 	}
@@ -180,6 +194,32 @@ func (l *Loader) Sync() (int, error) {
 	}
 
 	return int(downloaded), nil
+}
+
+// handleArticLine is a backwards-compatible wrapper for testing.
+func (l *Loader) handleArticLine(line string, globalIndex *int32) (int, error) {
+	var provider SourceProvider
+	for _, p := range l.providers {
+		if p.CanHandle(line) {
+			provider = p
+			break
+		}
+	}
+	if provider == nil {
+		return 0, fmt.Errorf("no provider found for line: %s", line)
+	}
+	images, err := provider.Resolve(context.Background(), line, globalIndex)
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	for _, img := range images {
+		ok, dErr := l.downloadWithIdentity(img.URL, img.Identity)
+		if dErr == nil && ok {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (l *Loader) checkExisting(identity string) (string, bool) {
@@ -202,7 +242,7 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 	destPath := filepath.Join(l.artworkDir, filename)
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return false, fmt.Errorf("create request: %w", err)
 	}
@@ -245,7 +285,7 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 
 	// Write to temp file then rename for atomicity.
 	tmpPath := destPath + ".tmp"
-	out, err := os.Create(filepath.Clean(tmpPath)) //nolint:gosec // Safe temporary path
+	out, err := os.Create(filepath.Clean(tmpPath))
 	if err != nil {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
@@ -277,7 +317,7 @@ func (l *Loader) executeDownload(url, filename string) (bool, error) {
 	l.mu.Lock()
 	l.visited[finalName] = true
 	l.mu.Unlock()
-	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0600) //nolint:gosec
+	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0o600)
 
 	l.logger.Info("downloaded source image", "file", finalName, "size_bytes", written)
 	return true, nil
@@ -350,22 +390,8 @@ func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
 	return finalName, true
 }
 
-// urlToSlug generates a deterministic slug from a URL.
 func (l *Loader) urlToSlug(url string) string {
-	if u, err := neturl.Parse(url); err == nil && u.Host != "" {
-		host := strings.TrimPrefix(u.Host, "www.")
-		path := strings.Trim(u.Path, "/")
-		if parts := strings.Split(path, "/"); len(parts) > 0 {
-			path = parts[0]
-		}
-		slug := Filename(host + "_" + path)
-		slug = strings.ReplaceAll(slug, " ", "-")
-		if len(slug) > 100 {
-			slug = slug[:100]
-		}
-		return slug
-	}
-	return "direct-source"
+	return URLToSlug(url)
 }
 
 // extensionFromResponse determines the file extension from the HTTP
@@ -389,364 +415,6 @@ func extensionFromResponse(resp *http.Response, url string) string {
 	}
 
 	return extJPG // default
-}
-
-// handleUnsplashLine resolves Unsplash collection or photo IDs and downloads them.
-func (l *Loader) handleUnsplashLine(line string, globalIndex *int32) (int, error) {
-	if l.unsplash.accessKey == "" {
-		return 0, fmt.Errorf("UNSPLASH_ACCESS_KEY not configured")
-	}
-
-	parts := strings.Split(line, ":")
-	if len(parts) < 3 {
-		return 0, fmt.Errorf("invalid unsplash format: %s", line)
-	}
-
-	ctx := context.Background()
-	var photos []unsplashPhoto
-
-	switch parts[1] {
-	case "collection":
-		p, err := l.unsplash.FetchCollectionPhotos(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		photos = p
-	case cmdPhoto:
-		p, err := l.unsplash.FetchPhoto(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		photos = []unsplashPhoto{*p}
-	default:
-		return 0, fmt.Errorf("unknown unsplash type: %s", parts[1])
-	}
-
-	downloaded := int32(0)
-	var wg sync.WaitGroup
-	for _, p := range photos {
-		// Check global limit.
-		//nolint:gosec // maxImages comes from config and is safe to cast
-		if l.maxImages > 0 && int(atomic.LoadInt32(globalIndex)) > l.maxImages {
-			l.logger.Warn("global image limit reached, skipping unsplash photo", "limit", l.maxImages)
-			break
-		}
-
-		wg.Add(1)
-		go func(ph unsplashPhoto) {
-			defer wg.Done()
-			// Prefer RAW for maximum quality, with Frame TV friendly width.
-			url := ph.URLs.Raw + "&w=3840&q=95&fm=jpg"
-
-			// Use a descriptive identity including provider and source.
-			slug := Filename(parts[2] + "-" + ph.ID)
-			slug = strings.ReplaceAll(slug, " ", "-")
-			if len(slug) > 100 {
-				slug = slug[:100]
-			}
-			idx := atomic.AddInt32(globalIndex, 1) - 1
-			identity := fmt.Sprintf("%03d__unsplash__%s", idx, slug)
-
-			// Fast path: skip download tracking and downloading if we already have it.
-			if existing, ok := l.checkExisting(identity); ok {
-				l.mu.Lock()
-				l.visited[existing] = true
-				l.mu.Unlock()
-				return
-			}
-
-			// Track download as required by TOS.
-			l.unsplash.TrackDownload(ctx, ph.Links.DownloadLocation)
-
-			ok, err := l.downloadWithIdentity(url, identity)
-			if err != nil {
-				l.logger.Warn("failed to download unsplash image", "id", ph.ID, "error", err)
-				return
-			}
-			if ok {
-				atomic.AddInt32(&downloaded, 1)
-			}
-		}(p)
-	}
-	wg.Wait()
-
-	return int(downloaded), nil
-}
-
-// handleNASALine resolves NASA APOD or search queries and downloads them.
-//
-//nolint:gocyclo // handleNASALine resolves NASA APOD or search queries and downloads them.
-func (l *Loader) handleNASALine(line string, globalIndex *int32) (int, error) {
-	parts := strings.Split(line, ":")
-	if len(parts) < 2 {
-		return 0, fmt.Errorf("invalid nasa format: %s", line)
-	}
-
-	ctx := context.Background()
-	var urls []string
-
-	switch parts[1] {
-	case "apod":
-		apod, err := l.nasa.FetchAPOD(ctx)
-		if err != nil {
-			return 0, err
-		}
-		// Prefer HD version for Frame TV.
-		u := apod.HDURL
-		if u == "" {
-			u = apod.URL
-		}
-		if u != "" {
-			urls = append(urls, u)
-		}
-	case cmdSearch:
-		if len(parts) < 3 {
-			return 0, fmt.Errorf("nasa search requires a query: nasa:search:query")
-		}
-		p, err := l.nasa.SearchNASAImageLibrary(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		urls = p
-	default:
-		return 0, fmt.Errorf("unknown nasa type: %s", parts[1])
-	}
-
-	downloaded := int32(0)
-	var wg sync.WaitGroup
-	for _, u := range urls {
-		wg.Add(1)
-		go func(url string) {
-			defer wg.Done()
-			// Use a deterministic slug based on URL.
-			slug := l.urlToSlug(url)
-			if strings.Contains(url, "nasa.gov") {
-				parts := strings.Split(url, "/")
-				if len(parts) > 0 {
-					last := parts[len(parts)-1]
-					id := strings.Split(last, "~")[0]
-					slug = Filename(id)
-					slug = strings.ReplaceAll(slug, " ", "-")
-					if len(slug) > 100 {
-						slug = slug[:100]
-					}
-				}
-			}
-
-			idx := atomic.AddInt32(globalIndex, 1) - 1
-			identity := fmt.Sprintf("%03d__nasa__%s", idx, slug)
-
-			ok, err := l.downloadWithIdentity(url, identity)
-			if err != nil {
-				l.logger.Warn("failed to download nasa image", "url", url, "error", err)
-				return
-			}
-			if ok {
-				atomic.AddInt32(&downloaded, 1)
-			}
-		}(u)
-	}
-	wg.Wait()
-
-	return int(downloaded), nil
-}
-
-// handleArticLine resolves Art Institute of Chicago search queries or photo IDs and downloads them.
-func (l *Loader) handleArticLine(line string, globalIndex *int32) (int, error) {
-	parts := strings.Split(line, ":")
-	if len(parts) < 3 {
-		return 0, fmt.Errorf("invalid art_institute_of_chicago format: %s (expected art_institute_of_chicago:search:query or art_institute_of_chicago:photo:id)", line)
-	}
-
-	ctx := context.Background()
-	var urls []string
-
-	switch parts[1] {
-	case cmdSearch:
-		p, err := l.artic.Search(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		urls = p
-	case cmdPhoto:
-		p, err := l.artic.FetchPhoto(ctx, parts[2])
-		if err != nil {
-			return 0, err
-		}
-		urls = []string{p}
-	default:
-		return 0, fmt.Errorf("unknown artic type: %s", parts[1])
-	}
-
-	downloaded := int32(0)
-	var wg sync.WaitGroup
-	for _, u := range urls {
-		wg.Add(1)
-		go func(url string) {
-			defer wg.Done()
-			slug := l.urlToSlug(url)
-			if strings.Contains(url, "artic.edu") {
-				parts := strings.Split(url, "/")
-				if len(parts) > 5 {
-					slug = Filename(parts[5])
-					if len(slug) > 100 {
-						slug = slug[:100]
-					}
-				}
-			}
-
-			idx := atomic.AddInt32(globalIndex, 1) - 1
-			identity := fmt.Sprintf("%03d__artic__%s", idx, slug)
-
-			ok, err := l.downloadWithIdentity(url, identity)
-			if err != nil {
-				l.logger.Warn("failed to download artic image", "url", url, "error", err)
-				return
-			}
-			if ok {
-				atomic.AddInt32(&downloaded, 1)
-			}
-		}(u)
-	}
-	wg.Wait()
-
-	return int(downloaded), nil
-}
-
-// handlePexelsLine resolves Pexels search queries, curated lists, or photo IDs and downloads them.
-func (l *Loader) handlePexelsLine(line string, globalIndex *int32) (int, error) {
-	parts := strings.Split(line, ":")
-	if len(parts) < 2 {
-		return 0, fmt.Errorf("invalid pexels format: %s (expected pexels:search:query, pexels:curated, or pexels:photo:id)", line)
-	}
-
-	ctx := context.Background()
-	var urls []string
-	var err error
-
-	urls, err = l.fetchPexelsURLs(ctx, parts)
-	if err != nil {
-		return 0, err
-	}
-
-	return l.processPexelsURLs(urls, globalIndex)
-}
-
-func (l *Loader) fetchPexelsURLs(ctx context.Context, parts []string) ([]string, error) {
-	switch parts[1] {
-	case cmdSearch:
-		if len(parts) < 3 {
-			return nil, fmt.Errorf("pexels search requires a query")
-		}
-		return l.pexels.Search(ctx, parts[2])
-	case "curated":
-		return l.pexels.Curated(ctx)
-	case "collection":
-		if len(parts) < 3 {
-			return nil, fmt.Errorf("pexels collection requires an ID")
-		}
-		return l.pexels.FetchCollection(ctx, parts[2])
-	case cmdPhoto:
-		if len(parts) < 3 {
-			return nil, fmt.Errorf("pexels photo requires an ID")
-		}
-		p, err := l.pexels.FetchPhoto(ctx, parts[2])
-		if err != nil {
-			return nil, err
-		}
-		return []string{p}, nil
-	default:
-		return nil, fmt.Errorf("unknown pexels type: %s", parts[1])
-	}
-}
-
-func (l *Loader) processPexelsURLs(urls []string, globalIndex *int32) (int, error) {
-	downloaded := int32(0)
-	var wg sync.WaitGroup
-	for _, u := range urls {
-		wg.Add(1)
-		go func(url string) {
-			defer wg.Done()
-			slug := l.urlToSlug(url)
-			idx := atomic.AddInt32(globalIndex, 1) - 1
-			identity := fmt.Sprintf("%03d__pexels__%s", idx, slug)
-			ok, err := l.downloadWithIdentity(url, identity)
-			if err != nil {
-				l.logger.Warn("failed to download pexels image", "url", truncateURL(url), "error", err)
-				return
-			}
-			if ok {
-				atomic.AddInt32(&downloaded, 1)
-			}
-		}(u)
-	}
-	wg.Wait()
-	return int(downloaded), nil
-}
-
-// handlePixabayLine resolves Pixabay search queries, editor's choice lists, or photo IDs and downloads them.
-func (l *Loader) handlePixabayLine(line string, globalIndex *int32) (int, error) {
-	parts := strings.Split(line, ":")
-	if len(parts) < 2 {
-		return 0, fmt.Errorf("invalid pixabay format: %s (expected pixabay:search:query, pixabay:editors_choice, or pixabay:photo:id)", line)
-	}
-
-	ctx := context.Background()
-	var urls []string
-	var err error
-
-	switch parts[1] {
-	case cmdSearch:
-		if len(parts) < 3 {
-			return 0, fmt.Errorf("pixabay search requires a query: %s", line)
-		}
-		urls, err = l.pixabay.Search(ctx, parts[2])
-	case "editors_choice":
-		urls, err = l.pixabay.EditorsChoice(ctx)
-	case cmdPhoto:
-		if len(parts) < 3 {
-			return 0, fmt.Errorf("pixabay photo requires an ID: %s", line)
-		}
-		var p string
-		p, err = l.pixabay.FetchPhoto(ctx, parts[2])
-		if err == nil {
-			urls = []string{p}
-		}
-	case "user":
-		if len(parts) < 3 {
-			return 0, fmt.Errorf("pixabay user requires an ID: %s", line)
-		}
-		urls, err = l.pixabay.User(ctx, parts[2])
-	default:
-		return 0, fmt.Errorf("unknown pixabay type: %s", parts[1])
-	}
-
-	if err != nil {
-		return 0, err
-	}
-
-	downloaded := int32(0)
-	var wg sync.WaitGroup
-	for _, u := range urls {
-		wg.Add(1)
-		go func(url string) {
-			defer wg.Done()
-			slug := l.urlToSlug(url)
-			idx := atomic.AddInt32(globalIndex, 1) - 1
-			identity := fmt.Sprintf("%03d__pixabay__%s", idx, slug)
-			ok, err := l.downloadWithIdentity(url, identity)
-			if err != nil {
-				l.logger.Warn("failed to download pixabay image", "url", truncateURL(url), "error", err)
-				return
-			}
-			if ok {
-				atomic.AddInt32(&downloaded, 1)
-			}
-		}(u)
-	}
-	wg.Wait()
-
-	return int(downloaded), nil
 }
 
 // loadSources reads the sources file (TXT or YAML) and returns a list of source strings.
@@ -856,8 +524,6 @@ type indexResult struct {
 
 // buildContentIndex hashes all existing files in the artwork directory
 // to enable deduplication and fast syncs.
-//
-//nolint:gocyclo // Safe to have slightly higher complexity here for concurrent processing
 func (l *Loader) buildContentIndex() {
 	info, statErr := os.Stat(l.artworkDir)
 	if statErr == nil {
@@ -927,7 +593,7 @@ func (l *Loader) buildContentIndex() {
 		l.prefixMap[mapIdentity] = filename
 		l.mu.Unlock()
 
-		// If the filename didn't contain the hash, rename it now (sequentially to be safe)
+		// If the filename didn't contain the hash, rename it now
 		if !strings.Contains(filename, ".h_"+hash[:12]) && !strings.Contains(filename, "__"+hash[:12]) {
 			ext := filepath.Ext(filename)
 			newName := identity + ".h_" + hash[:12] + ext
@@ -1027,8 +693,8 @@ func deduplicateStrings(input []string) []string {
 	return result
 }
 
-// cleanupUnusedSources removes managed images (src_, unsplash_, etc.) from the artwork
-// directory that were not encountered during the current sync cycle.
+// cleanupUnusedSources removes managed images from the artwork directory
+// that were not encountered during the current sync cycle.
 func (l *Loader) cleanupUnusedSources() {
 	entries, err := os.ReadDir(l.artworkDir)
 	if err != nil {
@@ -1050,8 +716,7 @@ func (l *Loader) cleanupUnusedSources() {
 		}
 
 		isManaged := false
-		// Match old format (source_) and new format (000__)
-		if regexp.MustCompile(`^[0-9]{3}__`).MatchString(filename) {
+		if reManagedIndex.MatchString(filename) {
 			isManaged = true
 		} else {
 			for _, prefix := range managedPrefixes {

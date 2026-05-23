@@ -42,12 +42,12 @@ func NewClient(ip string, cfg *config.Config, logger *slog.Logger) *Client {
 	}
 }
 
-// Connect establishes a connection to the TV with the following sequence:
+// connect establishes a connection to the TV with the following sequence:
 //  1. Wake-on-LAN (if MAC configured)
 //  2. Silent REST Gate (if enabled) → abort if TV is not in art mode
 //  3. Open WSS connection to art endpoint on port 8002
 //  4. Fetch device info via REST API
-func (c *Client) Connect(ctx context.Context) error {
+func (c *Client) connect(ctx context.Context) error {
 	// Step 1: Wake-on-LAN.
 	if c.cfg.TVMAC != "" {
 		c.logger.Info("sending Wake-on-LAN", "mac", c.cfg.TVMAC)
@@ -80,7 +80,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
 		c.logger.Info("no token found, performing one-time remote handshake")
 		// Ensure directory exists for token.
-		if err := os.MkdirAll(filepath.Dir(tokenFile), 0700); err != nil { //nolint:gosec // Required token directory permissions
+		if err := os.MkdirAll(filepath.Dir(tokenFile), 0o700); err != nil {
 			return fmt.Errorf("create token dir: %w", err)
 		}
 		if err := c.ensureToken(ctx, tokenFile, 8002); err != nil {
@@ -129,9 +129,9 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// IsInArtMode checks if the TV is currently in art mode by querying
+// isInArtMode checks if the TV is currently in art mode by querying
 // the art API over the active WebSocket connection.
-func (c *Client) IsInArtMode(ctx context.Context) bool {
+func (c *Client) isInArtMode(ctx context.Context) bool {
 	// First check power state via REST.
 	if c.info != nil && !c.info.IsOn() {
 		c.logger.Debug("TV is powered off")
@@ -150,25 +150,14 @@ func (c *Client) IsInArtMode(ctx context.Context) bool {
 	return isArt
 }
 
-// GetUploadedImages returns the list of user-uploaded images on the TV
+// getUploadedImages returns the list of user-uploaded images on the TV
 // (category MY-C0002 = "My Photos").
-func (c *Client) GetUploadedImages(ctx context.Context) ([]ArtContent, error) {
+func (c *Client) getUploadedImages(ctx context.Context) ([]ArtContent, error) {
 	return c.artAPI.GetContentList(ctx, "MY-C0002")
 }
 
-// Upload sends an image to the TV via the art API + D2D socket transfer.
-//
-// Parameters:
-//   - ctx: Context for timeout and cancellation.
-//   - filePath: Absolute or relative local path to the image file.
-//   - fileType: File extension/type identifier (e.g., "JPEG" or "PNG").
-//
-// Returns the content_id assigned by the TV (e.g., "MY-C0002-1234").
-//
-// Example:
-//
-//	contentID, err := client.Upload(ctx, "/data/art/van_gogh.jpg", "JPEG")
-func (c *Client) Upload(ctx context.Context, filePath, fileType string) (string, error) {
+// upload sends an image to the TV via the art API + D2D socket transfer.
+func (c *Client) upload(ctx context.Context, filePath, fileType string) (string, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
 		return "", fmt.Errorf("stat %s: %w", filePath, err)
@@ -205,50 +194,34 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType string) (string,
 	return contentID, nil
 }
 
-// DeleteImages removes artwork from the TV by content IDs.
-//
-// Parameters:
-//   - ctx: Context for timeout and cancellation.
-//   - ids: Slice of string content IDs to delete.
-//
-// Example:
-//
-//	err := client.DeleteImages(ctx, []string{"MY-C0002-1234", "MY-C0002-1235"})
-func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
+// deleteImages removes artwork from the TV by content IDs.
+func (c *Client) deleteImages(ctx context.Context, ids []string) error {
 	return c.artAPI.DeleteImages(ctx, ids)
 }
 
-// SelectImage sets the currently displayed artwork.
-//
-// Parameters:
-//   - ctx: Context for timeout and cancellation.
-//   - id: The content ID of the artwork to display.
-//
-// Example:
-//
-//	err := client.SelectImage(ctx, "MY-C0002-1234")
-func (c *Client) SelectImage(ctx context.Context, id string) error {
+// selectImage sets the currently displayed artwork.
+func (c *Client) selectImage(ctx context.Context, id string) error {
 	return c.artAPI.SelectImage(ctx, id, true)
 }
 
-// SlideshowStatus returns the current slideshow configuration.
-func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
+// slideshowStatus returns the current slideshow configuration.
+func (c *Client) slideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
 	return c.artAPI.GetSlideshowStatus(ctx)
 }
 
-// SetSlideshow updates the slideshow configuration.
-func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
+// setSlideshow updates the slideshow configuration.
+func (c *Client) setSlideshow(ctx context.Context, s SlideshowStatus) error {
 	return c.artAPI.SetSlideshowStatus(ctx, s)
 }
 
-// SetBrightness sets the art mode brightness.
-func (c *Client) SetBrightness(ctx context.Context, val int) error {
+// setBrightness sets the art mode brightness.
+func (c *Client) setBrightness(ctx context.Context, val int) error {
 	return c.artAPI.SetBrightness(ctx, val)
 }
 
-// TurnOff powers off the TV by holding KEY_POWER for 3 seconds via
+// turnOff powers off the TV by holding KEY_POWER for 3 seconds via
 // a separate remote control WebSocket connection.
-func (c *Client) TurnOff(ctx context.Context) error {
+func (c *Client) turnOff(ctx context.Context) error {
 	return c.turnOffTV(ctx, 8002)
 }
 
@@ -263,9 +236,9 @@ func (c *Client) tokenFilePath() string {
 	return filepath.Join(c.cfg.TokenDir, fmt.Sprintf("tv_%s.txt", safeIP))
 }
 
-// SaveMetadata fetches all available system information and artwork categories,
+// saveMetadata fetches all available system information and artwork categories,
 // saving them to a JSON file in the tokens directory for auditing.
-func (c *Client) SaveMetadata(ctx context.Context) error {
+func (c *Client) saveMetadata(ctx context.Context) error {
 	metadata := make(map[string]any)
 	metadata["timestamp"] = time.Now().Format(time.RFC3339)
 
@@ -275,7 +248,7 @@ func (c *Client) SaveMetadata(ctx context.Context) error {
 	}
 
 	// 2. Slideshow Status.
-	if ss, err := c.SlideshowStatus(ctx); err == nil {
+	if ss, err := c.slideshowStatus(ctx); err == nil {
 		metadata["slideshow"] = ss
 	}
 
@@ -298,7 +271,7 @@ func (c *Client) SaveMetadata(ctx context.Context) error {
 	safeIP := strings.ReplaceAll(c.IP, ".", "_")
 	path := filepath.Join(c.cfg.TokenDir, fmt.Sprintf("tv_%s_metadata.json", safeIP))
 
-	if err := os.WriteFile(path, b, 0600); err != nil { //nolint:gosec // Standard file permissions
+	if err := os.WriteFile(path, b, 0o600); err != nil {
 		return fmt.Errorf("write metadata file: %w", err)
 	}
 
@@ -398,7 +371,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, //nolint:gosec // lgtm[go/insecure-tls]
-			}, //nolint:gosec // Required: Samsung TVs use self-signed certs for local REST; verification would prevent connection.
+			},
 		},
 	}
 

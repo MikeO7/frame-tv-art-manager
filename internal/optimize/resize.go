@@ -6,7 +6,6 @@ package optimize
 import (
 	"fmt"
 	"image"
-	std_draw "image/draw"
 	"image/jpeg"
 	_ "image/png" // Needed for decoding PNG images
 	"log/slog"
@@ -14,9 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-
-	"golang.org/x/image/draw"
 )
 
 type Config struct {
@@ -44,316 +40,169 @@ func DefaultConfig() Config {
 	}
 }
 
+// parseDimensions extracts width and height from a filename like "..._3840x2160_opt.h_...".
+func parseDimensions(filename string) (int, int, bool) {
+	ext := filepath.Ext(filename)
+	identity := strings.TrimSuffix(filename, ext)
+
+	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
+		identity = parts[0]
+	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
+		identity = strings.Join(parts[:len(parts)-1], "__")
+	}
+
+	parts := strings.Split(identity, "_")
+	for _, p := range parts {
+		if strings.Contains(p, "x") {
+			var w, h int
+			if n, _ := fmt.Sscanf(p, "%dx%d", &w, &h); n == 2 {
+				return w, h, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
 // OptimizeFile checks if an image needs resizing and optimizes it
-// in-place. Returns the new width, height, and whether the file was modified.
+// in-place. It encapsulates the naming convention and returns the
+// final path/filename and whether the file was modified.
 //
-//nolint:revive // the package structure makes the OptimizeFile name acceptable and backward compatible
-func OptimizeFile(path string, cfg Config, logger *slog.Logger) (int, int, bool, error) {
+//nolint:gocyclo,nestif,funlen // the package structure makes the OptimizeFile name acceptable and backward compatible
+func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
+	filename := filepath.Base(path)
+	dir := filepath.Dir(path)
 	if !cfg.Enabled {
-		return 0, 0, false, nil
+		return filename, false, nil
 	}
 
 	// Only optimize JPEGs (Frame TV primary format).
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext != ".jpg" && ext != ".jpeg" {
-		return 0, 0, false, nil
+		return filename, false, nil
 	}
 
-	//nolint:gosec // Path is internally controlled
+	// Fast path check: if filename is already optimized with matching dimensions, skip!
+	if strings.Contains(filename, "_opt.h_") {
+		w, h, ok := parseDimensions(filename)
+		if ok && w <= cfg.MaxWidth && h <= cfg.MaxHeight {
+			logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
+			return filename, false, nil
+		}
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, 0, false, fmt.Errorf("open image: %w", err)
+		return filename, false, fmt.Errorf("open image: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
-	// 1. Fast path: check dimensions without full decode.
 	imgCfg, _, err := image.DecodeConfig(f)
 	if err != nil {
-		return 0, 0, false, fmt.Errorf("decode image config: %w", err)
+		return filename, false, fmt.Errorf("decode image config: %w", err)
 	}
 
 	width, height := imgCfg.Width, imgCfg.Height
-
-	// Only optimize if dimensions don't match target exactly or museum mode requires it.
 	needsAdjustment := width != cfg.MaxWidth || height != cfg.MaxHeight
+
+	var finalW, finalH int
+	var modified bool
+
 	if !needsAdjustment && !cfg.MuseumModeEnabled {
-		return width, height, false, nil
-	}
-
-	// 2. Full decode required.
-	if _, err := f.Seek(0, 0); err != nil {
-		return 0, 0, false, fmt.Errorf("seek to start: %w", err)
-	}
-
-	img, _, err := image.Decode(f)
-	if err != nil {
-		return 0, 0, false, fmt.Errorf("decode image: %w", err)
-	}
-
-	logger.Info("optimizing image", "file", filepath.Base(path), "original_dims", fmt.Sprintf("%dx%d", width, height))
-
-	// 1. Convert to RGBA for fast processing.
-	rgba := toRGBA(img)
-
-	// 2. Progressive Resize/Fill to match target dimensions.
-	if needsAdjustment {
-		rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
-	}
-
-	// 3. Sharpening pass.
-	rgba = sharpen(rgba)
-
-	// 4. Apply Museum Mode aesthetic if enabled.
-	if cfg.MuseumModeEnabled {
-		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
-	}
-
-	// 5. Final Dithering pass (always last to prevent banding).
-	rgba = dither(rgba)
-
-	// 6. Save back to disk.
-	//nolint:gosec // Path is internally controlled
-	out, err := os.Create(path)
-	if err != nil {
-		return 0, 0, false, fmt.Errorf("create optimized file: %w", err)
-	}
-	defer func() { _ = out.Close() }()
-
-	err = jpeg.Encode(out, rgba, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
-	if err != nil {
-		return 0, 0, false, fmt.Errorf("encode jpeg: %w", err)
-	}
-
-	newBounds := rgba.Bounds()
-	return newBounds.Dx(), newBounds.Dy(), true, nil
-}
-
-// toRGBA converts any image type to a standard RGBA image for processing.
-// This also serves as a color normalization step, flattening different
-// color profiles into a consistent sRGB-like space for the TV.
-func toRGBA(img image.Image) *image.RGBA {
-	if rgba, ok := img.(*image.RGBA); ok {
-		return rgba
-	}
-	bounds := img.Bounds()
-	rgba := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
-	std_draw.Draw(rgba, rgba.Bounds(), img, bounds.Min, std_draw.Src)
-	return rgba
-}
-
-// centerCrop performs a content-aware crop and high-fidelity scale to target dimensions.
-// It uses the Director's Cut Saliency Engine to identify subjects and optimize composition.
-func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
-	srcBounds := src.Bounds()
-	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
-
-	targetAspect := float64(targetW) / float64(targetH)
-	srcAspect := float64(srcW) / float64(srcH)
-
-	var cropRect image.Rectangle
-	if srcAspect > targetAspect {
-		// Image is wider than target.
-		cropW := int(float64(srcH) * targetAspect)
-		bestX := (srcW - cropW) / 2 // Default to center
-		if smart {
-			bestX = findBestDirectorCrop(src, cropW, srcH, true)
-		}
-		cropRect = image.Rect(bestX, 0, bestX+cropW, srcH)
+		finalW, finalH = width, height
+		modified = false
 	} else {
-		// Image is taller than target.
-		cropH := int(float64(srcW) / targetAspect)
-		bestY := (srcH - cropH) / 2 // Default to center
-		if smart {
-			bestY = findBestDirectorCrop(src, srcW, cropH, false)
+		// Full decode required.
+		if _, err := f.Seek(0, 0); err != nil {
+			return filename, false, fmt.Errorf("seek to start: %w", err)
 		}
-		cropRect = image.Rect(0, bestY, srcW, bestY+cropH)
+
+		img, _, err := image.Decode(f)
+		if err != nil {
+			return filename, false, fmt.Errorf("decode image: %w", err)
+		}
+
+		logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", width, height))
+
+		rgba := toRGBA(img)
+		if needsAdjustment {
+			rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
+		}
+		rgba = sharpen(rgba)
+		if cfg.MuseumModeEnabled {
+			rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
+		}
+		rgba = dither(rgba)
+
+		// Close original file so we can overwrite or rename it.
+		_ = f.Close()
+
+		// Save back to disk.
+
+		out, err := os.Create(path)
+		if err != nil {
+			return filename, false, fmt.Errorf("create optimized file: %w", err)
+		}
+		defer func() { _ = out.Close() }()
+
+		err = jpeg.Encode(out, rgba, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+		if err != nil {
+			return filename, false, fmt.Errorf("encode jpeg: %w", err)
+		}
+		_ = out.Close()
+
+		newBounds := rgba.Bounds()
+		finalW, finalH = newBounds.Dx(), newBounds.Dy()
+		modified = true
 	}
 
-	// Single-pass high-fidelity scaling using Catmull-Rom (Bicubic).
-	final := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
-	draw.CatmullRom.Scale(final, final.Bounds(), src, cropRect, draw.Src, nil)
-	return final
-}
+	// Rename the file using the naming policy if needed.
+	currentW, currentH, _ := parseDimensions(filename)
+	isOpt := strings.Contains(filename, "_opt.h_")
 
-// dither applies a subtle random jitter to pixel values to break up banding in gradients.
-//
-//nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
-func dither(src *image.RGBA) *image.RGBA {
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
+	if !modified && isOpt && currentW == finalW && currentH == finalH {
+		return filename, false, nil
+	}
 
-	var wg sync.WaitGroup
-	workers := 8
-	chunk := (height + workers - 1) / workers
+	identity := strings.TrimSuffix(filename, ext)
+	var hash string
 
-	for i := 0; i < workers; i++ {
-		startY := i * chunk
-		endY := startY + chunk
-		if endY > height {
-			endY = height
-		}
-		if startY >= height {
-			break
-		}
+	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
+		identity = parts[0]
+		hash = parts[1]
+	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
+		hash = parts[len(parts)-1]
+		identity = strings.Join(parts[:len(parts)-1], "__")
+	} else {
+		hash = "local"
+	}
 
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
-
-			// Fast thread-local PRNG (Xorshift32)
-			state := uint32(sy + 1) //nolint:gosec // Seed based on row
-
-			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
-				for x := 0; x < width; x++ {
-					i := offset + x*4
-
-					// xorshift32
-					state ^= state << 13
-					state ^= state >> 17
-					state ^= state << 5
-
-					// Generate -1, 0, or 1
-					jitter := int((state % 3)) - 1
-
-					// R
-					valR := int(src.Pix[i]) + jitter
-					if valR < 0 {
-						valR = 0
-					} else if valR > 255 {
-						valR = 255
-					}
-					//nolint:gosec // Int to uint8 bounded
-					src.Pix[i] = uint8(valR)
-
-					// G
-					valG := int(src.Pix[i+1]) + jitter
-					if valG < 0 {
-						valG = 0
-					} else if valG > 255 {
-						valG = 255
-					}
-					//nolint:gosec // Int to uint8 bounded
-					src.Pix[i+1] = uint8(valG)
-
-					// B
-					valB := int(src.Pix[i+2]) + jitter
-					if valB < 0 {
-						valB = 0
-					} else if valB > 255 {
-						valB = 255
-					}
-					//nolint:gosec // Int to uint8 bounded
-					src.Pix[i+2] = uint8(valB)
-				}
+	if lastUnderscore := strings.LastIndex(identity, "_"); lastUnderscore != -1 {
+		suffix := identity[lastUnderscore+1:]
+		if strings.Contains(suffix, "x") {
+			var w, h int
+			if n, _ := fmt.Sscanf(suffix, "%dx%d", &w, &h); n == 2 {
+				identity = identity[:lastUnderscore]
 			}
-		}(startY, endY)
-	}
-	wg.Wait()
-	return src
-}
-
-// sharpen applies a high-performance 3x3 sharpening kernel to the image.
-//
-//nolint:gocyclo // Highly optimized, performance-critical loops are manually unrolled
-func sharpen(src *image.RGBA) *image.RGBA {
-	bounds := src.Bounds()
-	dst := image.NewRGBA(bounds)
-	width, height := bounds.Dx(), bounds.Dy()
-
-	if width < 3 || height < 3 {
-		std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
-		return dst
-	}
-
-	var wg sync.WaitGroup
-	workers := 8 // Target 8 routines to map well to multi-core CPUs
-	chunk := (height - 2) / workers
-	if chunk == 0 {
-		chunk = 1
-	}
-
-	for i := 0; i < workers; i++ {
-		startY := 1 + i*chunk
-		endY := startY + chunk
-		if i == workers-1 {
-			endY = height - 1
 		}
-		if startY >= height-1 {
-			break
-		}
-
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
-			for y := sy; y < ey; y++ {
-				srcOffset := y * src.Stride
-				dstOffset := y * dst.Stride
-				srcTopOffset := (y - 1) * src.Stride
-				srcBottomOffset := (y + 1) * src.Stride
-
-				for x := 1; x < width-1; x++ {
-					iDst := dstOffset + x*4
-					iSrc := srcOffset + x*4
-					iTop := srcTopOffset + x*4
-					iBottom := srcBottomOffset + x*4
-					iLeft := iSrc - 4
-					iRight := iSrc + 4
-
-					// R
-					valR := (int(src.Pix[iSrc]) * 5) - int(src.Pix[iTop]) - int(src.Pix[iBottom]) - int(src.Pix[iLeft]) - int(src.Pix[iRight])
-					if valR < 0 {
-						valR = 0
-					} else if valR > 255 {
-						valR = 255
-					}
-					//nolint:gosec // Int to uint8 bounded
-					dst.Pix[iDst] = uint8(valR)
-
-					// G
-					valG := (int(src.Pix[iSrc+1]) * 5) - int(src.Pix[iTop+1]) - int(src.Pix[iBottom+1]) - int(src.Pix[iLeft+1]) - int(src.Pix[iRight+1])
-					if valG < 0 {
-						valG = 0
-					} else if valG > 255 {
-						valG = 255
-					}
-					//nolint:gosec // Int to uint8 bounded
-					dst.Pix[iDst+1] = uint8(valG)
-
-					// B
-					valB := (int(src.Pix[iSrc+2]) * 5) - int(src.Pix[iTop+2]) - int(src.Pix[iBottom+2]) - int(src.Pix[iLeft+2]) - int(src.Pix[iRight+2])
-					if valB < 0 {
-						valB = 0
-					} else if valB > 255 {
-						valB = 255
-					}
-					//nolint:gosec // Int to uint8 bounded
-					dst.Pix[iDst+2] = uint8(valB)
-
-					// A
-					dst.Pix[iDst+3] = src.Pix[iSrc+3]
-				}
-			}
-		}(startY, endY)
 	}
-	wg.Wait()
+	identity = strings.Split(identity, "_opt")[0]
 
-	// Copy borders
-	for x := 0; x < width; x++ {
-		copy(dst.Pix[0*dst.Stride+x*4:0*dst.Stride+x*4+4], src.Pix[0*src.Stride+x*4:0*src.Stride+x*4+4])
-		copy(dst.Pix[(height-1)*dst.Stride+x*4:(height-1)*dst.Stride+x*4+4], src.Pix[(height-1)*src.Stride+x*4:(height-1)*src.Stride+x*4+4])
-	}
-	for y := 0; y < height; y++ {
-		copy(dst.Pix[y*dst.Stride+0*4:y*dst.Stride+0*4+4], src.Pix[y*src.Stride+0*4:y*src.Stride+0*4+4])
-		copy(dst.Pix[y*dst.Stride+(width-1)*4:y*dst.Stride+(width-1)*4+4], src.Pix[y*src.Stride+(width-1)*4:y*src.Stride+(width-1)*4+4])
+	newFilename := fmt.Sprintf("%s_%dx%d_opt.h_%s%s", identity, finalW, finalH, hash, ext)
+	if newFilename == filename {
+		return filename, modified, nil
 	}
 
-	return dst
+	newPath := filepath.Join(dir, newFilename)
+	if err := os.Rename(path, newPath); err != nil {
+		return filename, modified, fmt.Errorf("rename to optimized: %w", err)
+	}
+
+	logger.Info("updated optimized filename", "old", filename, "new", newFilename)
+	return newFilename, true, nil
 }
 
 // ValidateImage performs a low-cost check to ensure an image file is not corrupt.
 func ValidateImage(path string) error {
-	//nolint:gosec // Path is internally controlled
 	f, err := os.Open(path)
 	if err != nil {
 		return err

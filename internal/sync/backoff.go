@@ -79,16 +79,25 @@ func (b *Backoff) RecordFailure(ip string, baseInterval time.Duration) {
 	state.failures++
 	state.lastFailure = time.Now()
 
-	// Exponential backoff: 2^failures * base interval, capped.
+	// Exponential backoff: 2^(failures-1) * base interval, capped.
 	delay := baseInterval
-	for i := 1; i < state.failures && delay < b.maxDelay; i++ {
+	for i := 1; i < state.failures; i++ {
+		if delay >= b.maxDelay {
+			delay = b.maxDelay
+			break
+		}
+		// Prevent overflow of time.Duration (int64)
+		if delay > b.maxDelay/2 {
+			delay = b.maxDelay
+			break
+		}
 		delay *= 2
 	}
 	if delay > b.maxDelay {
 		delay = b.maxDelay
 	}
 
-	state.backoffUntil = time.Now().Add(delay)
+	state.backoffUntil = state.lastFailure.Add(delay)
 
 	b.logger.Warn("TV unreachable, backing off",
 		"tv", ip,

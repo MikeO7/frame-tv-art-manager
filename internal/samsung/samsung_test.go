@@ -4,18 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"log/slog"
-	"net"
-	"net/url"
-	"os"
-	"strconv"
 )
 
 func TestConnection_Open_Handshake(t *testing.T) {
@@ -75,7 +75,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 	}
 
 	// Verify token was saved.
-	savedToken, _ := os.ReadFile(tokenFile) //nolint:gosec // ReadFile safe in test
+	savedToken, _ := os.ReadFile(tokenFile)
 	if string(savedToken) != "test-token-123" {
 		t.Errorf("expected token 'test-token-123', got %q", string(savedToken))
 	}

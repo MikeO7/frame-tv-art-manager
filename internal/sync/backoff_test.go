@@ -34,7 +34,7 @@ func TestBackoff(t *testing.T) {
 	}
 }
 
-func TestBackoff_Exponential(_ *testing.T) {
+func TestBackoff_Exponential(t *testing.T) {
 	b := NewBackoff(slog.Default())
 	b.maxDelay = 10 * time.Millisecond
 	ip := "1.1.1.1"
@@ -44,4 +44,17 @@ func TestBackoff_Exponential(_ *testing.T) {
 	b.RecordFailure(ip, 1*time.Millisecond) // 4ms
 	b.RecordFailure(ip, 1*time.Millisecond) // 8ms
 	b.RecordFailure(ip, 1*time.Millisecond) // 10ms (capped)
+
+	// High failure count to trigger potential overflow
+	for i := 0; i < 100; i++ {
+		b.RecordFailure(ip, 1*time.Millisecond)
+	}
+
+	b.mu.Lock()
+	delay := b.states[ip].backoffUntil.Sub(b.states[ip].lastFailure)
+	b.mu.Unlock()
+
+	if delay > 10*time.Millisecond || delay < 0 {
+		t.Errorf("expected capped backoff delay <= 10ms and > 0, got %v", delay)
+	}
 }

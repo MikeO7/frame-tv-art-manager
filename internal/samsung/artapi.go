@@ -1,4 +1,3 @@
-//nolint:goconst
 package samsung
 
 import (
@@ -12,8 +11,10 @@ import (
 // ArtAPI provides typed methods for Samsung Frame TV art channel operations.
 // All communication happens over the WebSocket connection to the
 // "com.samsung.art-app" endpoint.
-const keyRequest = "request"
-const keyRequestID = "request_id"
+const (
+	keyRequest   = "request"
+	keyRequestID = "request_id"
+)
 
 type artAPI struct {
 	conn    *connection
