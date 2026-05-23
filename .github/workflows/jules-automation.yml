@@ -1,0 +1,31 @@
+name: Jules PR Automation
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automate:
+    name: Secure PR Automation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Secure PR Automation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./scripts/jules-automation.sh
+          ./scripts/jules-automation.sh \
+            "${{ github.event.workflow_run.id }}" \
+            "${{ github.event.workflow_run.conclusion }}" \
+            "${{ github.event.workflow_run.head_branch }}" \
+            "${{ github.event.workflow_run.head_sha }}" \
+            "${{ github.event.workflow_run.head_repository.full_name != github.repository }}"
