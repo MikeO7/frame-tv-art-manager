@@ -18,6 +18,17 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	testType        = "type"
+	testContentList = "content_list"
+	testSendImage   = "send_image"
+	testConnInfo    = "conn_info"
+	testSlideshow   = "slideshow"
+	testValue       = "value"
+	testCat1        = "cat1"
+	testContentID   = "content_id"
+)
+
 func TestClient_New(t *testing.T) {
 	cfg := &config.Config{TokenDir: "/tmp"}
 	c := NewClient("192.168.1.10", cfg, slog.Default())
@@ -253,7 +264,7 @@ func TestTurnOff(t *testing.T) {
 	// We could temporarily modify `newConnection` dialer or just extract port to parameter,
 	// but let's intercept the `DialContext` for websockets or just change turnOffTV.
 	// Wait, we can just change `turnOffTV` to accept a port just like `ensureToken` does!
-	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second}, slog.Default())
+	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second, TokenDir: t.TempDir()}, slog.Default())
 
 	// Fast context so we don't wait the full 3 seconds in testing
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -349,7 +360,6 @@ func TestClientWrapperMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Close() }()
-	c.artAPI = newArtAPI(c.artConn, 1*time.Second, slog.Default())
 
 	// Device info test
 	c.info = &DeviceInfo{PowerState: "on", ModelName: "TEST"}
@@ -493,7 +503,6 @@ func TestClientUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Close() }()
-	c.artAPI = newArtAPI(c.artConn, 2*time.Second, slog.Default())
 
 	// Need a dummy file
 	tmpFile := filepath.Join(t.TempDir(), "dummy.jpg")
@@ -540,7 +549,6 @@ func TestSaveMetadata_NoDir(t *testing.T) {
 
 	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
 	_ = c.artConn.Open(context.Background())
-	c.artAPI = newArtAPI(c.artConn, 1*time.Second, slog.Default())
 	defer func() { _ = c.Close() }()
 
 	err := c.saveMetadata(context.Background())

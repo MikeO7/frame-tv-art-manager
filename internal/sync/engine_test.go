@@ -283,7 +283,7 @@ func TestEngine_OptimizationFlow(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.optimizeLocalArtwork(localFiles, slog.Default())
+	e.collection.OptimizeLocalArtwork(localFiles, slog.Default())
 
 	if _, ok := localFiles["missing.jpg"]; ok {
 		t.Error("expected missing.jpg to be removed from localFiles")
@@ -304,7 +304,7 @@ func TestEngine_EnsureCorrectFilename(t *testing.T) {
 	// Test renaming a file with old format
 	oldName := "photo__abc.jpg"
 	_ = os.WriteFile(filepath.Join(artworkDir, oldName), []byte("data"), 0o600)
-	e.ensureCorrectFilename(oldName, 3840, 2160, true, localFiles, mu)
+	e.collection.EnsureCorrectFilename(oldName, 3840, 2160, true, localFiles, mu)
 
 	// Check if new file exists
 	expectedName := "photo_3840x2160_opt.h_abc.jpg"
@@ -326,7 +326,7 @@ func TestEngine_UpdateMappings(t *testing.T) {
 	m.Set("old.jpg", "id1")
 	_ = m.Save()
 
-	e.updateMappings("old.jpg", "new.jpg")
+	e.collection.UpdateMappings("old.jpg", "new.jpg")
 
 	// Load it back
 	m2, _ := LoadMapping(tmpDir, "1.2.3.4")
@@ -377,7 +377,9 @@ func TestEngine_Backoff(t *testing.T) {
 	e := NewEngine(cfg, slog.Default(), nil)
 
 	// Force a failure to trigger backoff
-	e.backoff.RecordFailure("1.1.1.1", 1*time.Minute)
+	if c, ok := e.getClient("1.1.1.1").(*samsung.Client); ok {
+		c.RecordFailure(1 * time.Minute)
+	}
 
 	err := e.RunOnce(context.Background())
 	if err != nil {

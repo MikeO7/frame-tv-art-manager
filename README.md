@@ -107,6 +107,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) and [AI
 
 ## License
 
-Licensed under the **PolyForm Noncommercial License 1.0.0**. 
+Licensed under the **PolyForm Noncommercial License 1.0.0**.
 
 Feel free to use this for your home, share it with friends, or tweak the code for your own setup. Just don't sell it or use it for commercial services.
