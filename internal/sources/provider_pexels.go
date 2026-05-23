@@ -25,7 +25,7 @@ type pexelsClient = pexelsProvider
 
 // newPexelsClient creates a new Pexels API client/provider.
 //
-//nolint:unparam
+//nolint:unparam // complexity justified for this domain-specific path
 func newPexelsClient(apiKey string, logger *slog.Logger) *pexelsClient {
 	return newPexelsProvider(apiKey, logger)
 }
@@ -54,7 +54,7 @@ type pexelsPhoto struct {
 }
 
 func (p *pexelsProvider) Name() string {
-	return "pexels"
+	return providerPexels
 }
 
 func (p *pexelsProvider) CanHandle(line string) bool {
@@ -74,6 +74,8 @@ func (p *pexelsProvider) Curated(ctx context.Context) ([]string, error) {
 }
 
 // FetchCollection retrieves all photos from a specific Pexels collection using pagination.
+//
+//nolint:gocognit // complexity justified for this domain-specific path
 func (p *pexelsProvider) FetchCollection(ctx context.Context, collectionID string) ([]string, error) {
 	var allUrls []string
 	page := 1

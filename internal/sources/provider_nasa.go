@@ -54,7 +54,7 @@ type apodResponse struct {
 }
 
 func (p *nasaProvider) Name() string {
-	return "nasa"
+	return providerNASA
 }
 
 func (p *nasaProvider) CanHandle(line string) bool {
@@ -86,7 +86,7 @@ func (p *nasaProvider) FetchAPOD(ctx context.Context) (*apodResponse, error) {
 		return nil, fmt.Errorf("decode nasa apod response: %w", err)
 	}
 
-	if apod.Type != "image" {
+	if apod.Type != mediaTypeImage {
 		return nil, fmt.Errorf("today's apod is a %s, not an image", apod.Type)
 	}
 
@@ -225,19 +225,7 @@ func (p *nasaProvider) Resolve(ctx context.Context, line string, globalIndex *in
 
 	images := make([]SourceImage, 0, len(urls))
 	for _, u := range urls {
-		slug := URLToSlug(u)
-		if strings.Contains(u, "nasa.gov") {
-			urlParts := strings.Split(u, "/")
-			if len(urlParts) > 0 {
-				last := urlParts[len(urlParts)-1]
-				id := strings.Split(last, "~")[0]
-				slug = Filename(id)
-				slug = strings.ReplaceAll(slug, " ", "-")
-				if len(slug) > 100 {
-					slug = slug[:100]
-				}
-			}
-		}
+		slug := slugFromNASAURL(u)
 
 		idx := atomic.AddInt32(globalIndex, 1) - 1
 		identity := fmt.Sprintf("%03d__nasa__%s", idx, slug)

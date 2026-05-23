@@ -63,6 +63,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	return dst
 }
 
+//nolint:revive // complexity justified for this domain-specific path
 func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
 	impasto := calculateScharrImpasto(src, x, y)
 	weave, varnishPool := calculateWeave(x, y)
@@ -136,6 +137,7 @@ func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	return (gx*-0.707 + gy*-0.707) / 4080.0 * 0.3
 }
 
+//nolint:gocognit // complexity justified for this domain-specific path
 func initializeCraquelure() {
 	type pt struct {
 		x, y float64

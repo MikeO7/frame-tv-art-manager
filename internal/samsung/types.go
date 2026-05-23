@@ -63,14 +63,6 @@ type SlideshowStatus struct {
 	CategoryID string `json:"category_id"`
 }
 
-// SendImageRequest holds the metadata for an image upload request.
-type SendImageRequest struct {
-	FilePath string
-	FileType string // "jpg" or "png"
-	FileSize int64
-	Matte    string // matte style or "none"
-}
-
 // deviceInfoResponse is the raw JSON envelope from GET /api/v2/.
 type deviceInfoResponse struct {
 	Device DeviceInfo `json:"device"`

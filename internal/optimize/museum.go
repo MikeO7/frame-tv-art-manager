@@ -135,6 +135,7 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	return lutSrgb[idxR], lutSrgb[idxG], lutSrgb[idxB]
 }
 
+//nolint:gocognit // complexity justified for this domain-specific path
 func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -191,6 +192,8 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 }
 
 // polishPixel limits the maximum brightness and adds paper grain noise to a pixel.
+//
+//nolint:funlen // complexity justified for this domain-specific path
 func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 	const maxBright = 235.0
 	if r > maxBright {

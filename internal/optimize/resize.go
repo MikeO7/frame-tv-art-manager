@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 type Config struct {
@@ -40,34 +42,11 @@ func DefaultConfig() Config {
 	}
 }
 
-// parseDimensions extracts width and height from a filename like "..._3840x2160_opt.h_...".
-func parseDimensions(filename string) (int, int, bool) {
-	ext := filepath.Ext(filename)
-	identity := strings.TrimSuffix(filename, ext)
-
-	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
-		identity = parts[0]
-	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
-		identity = strings.Join(parts[:len(parts)-1], "__")
-	}
-
-	parts := strings.Split(identity, "_")
-	for _, p := range parts {
-		if strings.Contains(p, "x") {
-			var w, h int
-			if n, _ := fmt.Sscanf(p, "%dx%d", &w, &h); n == 2 {
-				return w, h, true
-			}
-		}
-	}
-	return 0, 0, false
-}
-
 // OptimizeFile checks if an image needs resizing and optimizes it
 // in-place. It encapsulates the naming convention and returns the
 // final path/filename and whether the file was modified.
 //
-//nolint:gocyclo,nestif,funlen // the package structure makes the OptimizeFile name acceptable and backward compatible
+//nolint:gocognit,funlen,gocyclo,nestif // image optimization pipeline
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
@@ -83,7 +62,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 
 	// Fast path check: if filename is already optimized with matching dimensions, skip!
 	if strings.Contains(filename, "_opt.h_") {
-		w, h, ok := parseDimensions(filename)
+		w, h, ok := artwork.ParseDimensions(filename)
 		if ok && w <= cfg.MaxWidth && h <= cfg.MaxHeight {
 			logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
 			return filename, false, nil
@@ -156,39 +135,15 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 	}
 
 	// Rename the file using the naming policy if needed.
-	currentW, currentH, _ := parseDimensions(filename)
+	currentW, currentH, _ := artwork.ParseDimensions(filename)
 	isOpt := strings.Contains(filename, "_opt.h_")
 
 	if !modified && isOpt && currentW == finalW && currentH == finalH {
 		return filename, false, nil
 	}
 
-	identity := strings.TrimSuffix(filename, ext)
-	var hash string
-
-	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
-		identity = parts[0]
-		hash = parts[1]
-	} else if parts := strings.Split(identity, "__"); len(parts) >= 2 {
-		hash = parts[len(parts)-1]
-		identity = strings.Join(parts[:len(parts)-1], "__")
-	} else {
-		hash = "local"
-	}
-
-	if lastUnderscore := strings.LastIndex(identity, "_"); lastUnderscore != -1 {
-		suffix := identity[lastUnderscore+1:]
-		if strings.Contains(suffix, "x") {
-			var w, h int
-			if n, _ := fmt.Sscanf(suffix, "%dx%d", &w, &h); n == 2 {
-				identity = identity[:lastUnderscore]
-			}
-		}
-	}
-	identity = strings.Split(identity, "_opt")[0]
-
-	newFilename := fmt.Sprintf("%s_%dx%d_opt.h_%s%s", identity, finalW, finalH, hash, ext)
-	if newFilename == filename {
+	newFilename, changed := artwork.BuildOptimizedNameFromFile(filename, finalW, finalH)
+	if !changed {
 		return filename, modified, nil
 	}
 

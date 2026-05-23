@@ -31,7 +31,7 @@ const (
 
 func TestClient_New(t *testing.T) {
 	cfg := &config.Config{TokenDir: "/tmp"}
-	c := NewClient("192.168.1.10", cfg, slog.Default())
+	c := NewClient("192.168.1.10", cfg.TVConnectOptions(), slog.Default())
 	if c.IP != "192.168.1.10" {
 		t.Errorf("expected IP 192.168.1.10, got %s", c.IP)
 	}
@@ -39,7 +39,7 @@ func TestClient_New(t *testing.T) {
 
 func TestClient_TokenFilePath(t *testing.T) {
 	cfg := &config.Config{TokenDir: "/data/tokens"}
-	c := NewClient("1.2.3.4", cfg, slog.Default())
+	c := NewClient("1.2.3.4", cfg.TVConnectOptions(), slog.Default())
 	path := c.tokenFilePath()
 
 	expected := filepath.Join("/data/tokens", "tv_1_2_3_4.txt")
@@ -83,26 +83,26 @@ func TestArtResponse_ConnInfoParsing(t *testing.T) {
 }
 
 func TestSendWOL_Invalid(t *testing.T) {
-	c := NewClient("192.168.1.10", &config.Config{}, slog.Default())
-	err := c.sendWOL("invalid")
+	c := NewClient("192.168.1.10", (&config.Config{}).TVConnectOptions(), slog.Default())
+	err := c.sendWOL(context.Background(), "invalid")
 	if err == nil {
 		t.Error("expected error for invalid MAC, got nil")
 	}
 
-	err = c.sendWOL("")
+	err = c.sendWOL(context.Background(), "")
 	if err != nil {
 		t.Errorf("expected nil for empty MAC, got %v", err)
 	}
 }
 
 func TestSendWOL_ValidFormat(_ *testing.T) {
-	c := NewClient("192.168.1.10", &config.Config{}, slog.Default())
+	c := NewClient("192.168.1.10", (&config.Config{}).TVConnectOptions(), slog.Default())
 	// Actually, sendWOL calls net.Dial.
 	// Since we are mocking/ignoring network, we just want to ensure it parses the MAC correctly
 	// and attempts to send. If the test environment allows UDP broadcast, it passes.
 	// If it fails with "network is unreachable", that's also acceptable for this unit test context,
 	// but let's just make sure it doesn't fail parsing.
-	_ = c.sendWOL("AA:BB:CC:DD:EE:FF")
+	_ = c.sendWOL(context.Background(), "AA:BB:CC:DD:EE:FF")
 }
 
 func TestEnsureToken(t *testing.T) {
@@ -126,7 +126,7 @@ func TestEnsureToken(t *testing.T) {
 	port, _ := strconv.Atoi(u.Port())
 	tokenFile := filepath.Join(t.TempDir(), "token.txt")
 
-	c := NewClient(host, &config.Config{ConnectionTimeout: 1 * time.Second}, slog.Default())
+	c := NewClient(host, (&config.Config{ConnectionTimeout: 1 * time.Second}).TVConnectOptions(), slog.Default())
 	err := c.ensureToken(context.Background(), tokenFile, port)
 	if err != nil {
 		t.Fatalf("ensureToken failed: %v", err)
@@ -160,7 +160,7 @@ func TestCheckArtModeGate(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusNotFound, Body: http.NoBody}
 		})
 
-		c := NewClient("192.168.1.10", &config.Config{GateTimeout: 1 * time.Second}, slog.Default())
+		c := NewClient("192.168.1.10", (&config.Config{GateTimeout: 1 * time.Second}).TVConnectOptions(), slog.Default())
 		isArt, err := c.checkArtModeGate(context.Background())
 		if err != nil {
 			t.Fatalf("expected nil err, got %v", err)
@@ -178,7 +178,7 @@ func TestCheckArtModeGate(t *testing.T) {
 			}
 		})
 
-		c := NewClient("192.168.1.10", &config.Config{GateTimeout: 1 * time.Second}, slog.Default())
+		c := NewClient("192.168.1.10", (&config.Config{GateTimeout: 1 * time.Second}).TVConnectOptions(), slog.Default())
 		isArt, err := c.checkArtModeGate(context.Background())
 		if err != nil {
 			t.Fatalf("expected nil err, got %v", err)
@@ -201,7 +201,7 @@ func TestCheckArtModeGate_Timeout(t *testing.T) {
 
 	http.DefaultTransport = errorTransport{}
 
-	c := NewClient("192.168.1.10", &config.Config{GateTimeout: 1 * time.Second}, slog.Default())
+	c := NewClient("192.168.1.10", (&config.Config{GateTimeout: 1 * time.Second}).TVConnectOptions(), slog.Default())
 	isArt, err := c.checkArtModeGate(context.Background())
 	if err != nil {
 		t.Fatalf("expected nil err, got %v", err)
@@ -264,7 +264,7 @@ func TestTurnOff(t *testing.T) {
 	// We could temporarily modify `newConnection` dialer or just extract port to parameter,
 	// but let's intercept the `DialContext` for websockets or just change turnOffTV.
 	// Wait, we can just change `turnOffTV` to accept a port just like `ensureToken` does!
-	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second, TokenDir: t.TempDir()}, slog.Default())
+	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
 
 	// Fast context so we don't wait the full 3 seconds in testing
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -352,7 +352,7 @@ func TestClientWrapperMethods(t *testing.T) {
 	host := u.Hostname()
 	port, _ := strconv.Atoi(u.Port())
 
-	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}, slog.Default())
+	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
 
 	// Create art connection directly to test wrappers
 	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
@@ -497,7 +497,7 @@ func TestClientUpload(t *testing.T) {
 	host := u.Hostname()
 	port, _ := strconv.Atoi(u.Port())
 
-	c := NewClient(host, &config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}, slog.Default())
+	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
 	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
 	if err := c.artConn.Open(context.Background()); err != nil {
 		t.Fatal(err)
@@ -508,7 +508,7 @@ func TestClientUpload(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "dummy.jpg")
 	_ = os.WriteFile(tmpFile, []byte("data"), 0o600)
 
-	id, err := c.upload(context.Background(), tmpFile, ".jpg")
+	id, err := c.upload(context.Background(), tmpFile, "jpg", "shadowbox_polar")
 	if err != nil {
 		t.Fatalf("Upload failed: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestClientUpload(t *testing.T) {
 }
 
 func TestIsInArtMode_Branches(t *testing.T) {
-	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
+	c := NewClient("127.0.0.1", (&config.Config{}).TVConnectOptions(), slog.Default())
 	c.info = &DeviceInfo{PowerState: "standby"}
 	if c.isInArtMode(context.Background()) {
 		t.Errorf("expected false when TV is off")
@@ -529,15 +529,15 @@ func TestIsInArtMode_Branches(t *testing.T) {
 }
 
 func TestClientUpload_FileStatError(t *testing.T) {
-	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
-	_, err := c.upload(context.Background(), "/does/not/exist.jpg", ".jpg")
+	c := NewClient("127.0.0.1", (&config.Config{}).TVConnectOptions(), slog.Default())
+	_, err := c.upload(context.Background(), "/does/not/exist.jpg", "jpg", "none")
 	if err == nil {
 		t.Errorf("expected error on non-existent file")
 	}
 }
 
 func TestSaveMetadata_NoDir(t *testing.T) {
-	c := NewClient("127.0.0.1", &config.Config{TokenDir: "/root/forbidden/path"}, slog.Default())
+	c := NewClient("127.0.0.1", (&config.Config{TokenDir: "/root/forbidden/path"}).TVConnectOptions(), slog.Default())
 
 	// Needs a valid artAPI mock connection or it panics in SaveMetadata's internal call to getSlideshowStatus
 	server := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
@@ -558,7 +558,7 @@ func TestSaveMetadata_NoDir(t *testing.T) {
 }
 
 func TestClientClose_Nil(t *testing.T) {
-	c := NewClient("127.0.0.1", &config.Config{}, slog.Default())
+	c := NewClient("127.0.0.1", (&config.Config{}).TVConnectOptions(), slog.Default())
 	err := c.Close()
 	if err != nil {
 		t.Errorf("expected nil when closing uninitialized client")

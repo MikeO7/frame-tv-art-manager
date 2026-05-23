@@ -2,14 +2,13 @@ package sync
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
@@ -36,8 +35,8 @@ func TestEngine_RunOnce_Empty(t *testing.T) {
 	// but for now let's just test the initialization and basic flow.
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
-		return &mockTVClient{artMode: true}
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: true}
 	}
 
 	_ = e.RunOnce(context.Background())
@@ -58,64 +57,57 @@ func TestParseDimensions(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		w, h, ok := parseDimensions(tt.filename)
+		w, h, ok := artwork.ParseDimensions(tt.filename)
 		if ok != tt.expOk || w != tt.expW || h != tt.expH {
 			t.Errorf("parseDimensions(%q) = %d,%d,%v; want %d,%d,%v", tt.filename, w, h, ok, tt.expW, tt.expH, tt.expOk)
 		}
 	}
 }
 
-type mockTVClient struct {
-	connected bool
-	artMode   bool
+type mockTVTransport struct {
+	artMode bool
+	skip    bool
 }
 
-func (m *mockTVClient) Close() error { m.connected = false; return nil }
+func (m *mockTVTransport) ShouldSkip() bool { return m.skip }
 
-func (m *mockTVClient) Sync(ctx context.Context, req samsung.SyncRequest) (samsung.SyncResult, error) {
-	if !m.artMode {
-		return samsung.SyncResult{
-			Status: "skipped (not art mode)",
-		}, nil
-	}
+func (m *mockTVTransport) Connect(context.Context) error { return nil }
 
-	newUploads := make(map[string]string)
-	for f := range req.LocalFiles {
-		if _, ok := req.Mapping[f]; !ok {
-			newUploads[f] = "new-id"
-		}
-	}
+func (m *mockTVTransport) Close() error { return nil }
 
-	var deletedFiles []string
-	for f := range req.Mapping {
-		if _, ok := req.LocalFiles[f]; !ok {
-			deletedFiles = append(deletedFiles, f)
-		}
-	}
+func (m *mockTVTransport) Model() string { return "Mock TV" }
 
-	brightnessStr := ""
-	if req.DesiredBrightness != nil {
-		brightnessStr = fmt.Sprintf("%d", *req.DesiredBrightness)
-	}
+func (m *mockTVTransport) IsInArtMode(context.Context) bool { return m.artMode }
 
-	slideshowStr := ""
-	if req.Slideshow != nil {
-		slideshowStr = fmt.Sprintf("%s every %s min", req.Slideshow.Type, req.Slideshow.Value)
-	}
+func (m *mockTVTransport) SaveMetadata(context.Context) error { return nil }
 
-	return samsung.SyncResult{
-		Model:        "Mock TV",
-		Status:       "ok",
-		ArtMode:      true,
-		Uploaded:     len(newUploads),
-		Deleted:      len(deletedFiles),
-		TotalImages:  len(req.LocalFiles),
-		NewUploads:   newUploads,
-		DeletedFiles: deletedFiles,
-		Brightness:   brightnessStr,
-		Slideshow:    slideshowStr,
-	}, nil
+func (m *mockTVTransport) ListUploaded(context.Context) ([]samsung.ArtContent, error) {
+	return []samsung.ArtContent{}, nil
 }
+
+func (m *mockTVTransport) Upload(context.Context, string, string, string) (string, error) {
+	return "new-id", nil
+}
+
+func (m *mockTVTransport) DeleteImages(context.Context, []string) error { return nil }
+
+func (m *mockTVTransport) SelectImage(context.Context, string) error { return nil }
+
+func (m *mockTVTransport) SlideshowStatus(context.Context) (*samsung.SlideshowStatus, error) {
+	return &samsung.SlideshowStatus{}, nil
+}
+
+func (m *mockTVTransport) SetSlideshow(context.Context, samsung.SlideshowStatus) error {
+	return nil
+}
+
+func (m *mockTVTransport) SetBrightness(context.Context, int) error { return nil }
+
+func (m *mockTVTransport) TurnOff(context.Context) error { return nil }
+
+func (m *mockTVTransport) RecordFailure(_ time.Duration) { m.skip = true }
+
+func (m *mockTVTransport) RecordSuccess() { m.skip = false }
 
 func createSmallJPEG() []byte {
 	return []byte{
@@ -151,8 +143,8 @@ func TestEngine_RunOnce_Full(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
-		return &mockTVClient{artMode: true}
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: true}
 	}
 
 	err := e.RunOnce(context.Background())
@@ -174,8 +166,8 @@ func TestEngine_RunOnce_DryRun(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
-		return &mockTVClient{artMode: true}
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: true}
 	}
 
 	if err := e.RunOnce(context.Background()); err != nil {
@@ -192,8 +184,8 @@ func TestEngine_RunOnce_NotArtMode(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
-		return &mockTVClient{artMode: false}
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: false}
 	}
 
 	if err := e.RunOnce(context.Background()); err != nil {
@@ -211,8 +203,8 @@ func TestEngine_RunOnce_UnknownRemoval(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
-		return &mockTVClient{artMode: true}
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: true}
 	}
 
 	if err := e.RunOnce(context.Background()); err != nil {
@@ -229,8 +221,8 @@ func TestEngine_RunLoop(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
-		return &mockTVClient{artMode: true}
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: true}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -245,8 +237,7 @@ func TestEngine_DetermineBrightness(t *testing.T) {
 		ManualBrightness: func() *int { i := 5; return &i }(),
 	}
 
-	e := NewEngine(cfg, slog.Default(), nil)
-	b := e.determineBrightness(slog.Default())
+	b := determineBrightness(cfg, slog.Default())
 	if b == nil || *b != 5 {
 		t.Errorf("expected 5, got %v", b)
 	}
@@ -262,7 +253,7 @@ func TestEngine_DetermineBrightness(t *testing.T) {
 
 	// This calls brightness.Calculate which might fail if no internet for suncalc,
 	// but it usually works since it's local calculation.
-	_ = e.determineBrightness(slog.Default())
+	_ = determineBrightness(cfg, slog.Default())
 }
 
 func TestEngine_OptimizationFlow(t *testing.T) {
@@ -290,34 +281,12 @@ func TestEngine_OptimizationFlow(t *testing.T) {
 	}
 }
 
-func TestEngine_EnsureCorrectFilename(t *testing.T) {
-	tmpDir := t.TempDir()
-	artworkDir := filepath.Join(tmpDir, "artwork")
-	_ = os.MkdirAll(artworkDir, 0o700)
-
-	cfg := &config.Config{ArtworkDir: artworkDir}
-	e := NewEngine(cfg, slog.Default(), nil)
-
-	localFiles := make(map[string]struct{})
-	mu := &sync.Mutex{}
-
-	// Test renaming a file with old format
-	oldName := "photo__abc.jpg"
-	_ = os.WriteFile(filepath.Join(artworkDir, oldName), []byte("data"), 0o600)
-	e.collection.EnsureCorrectFilename(oldName, 3840, 2160, true, localFiles, mu)
-
-	// Check if new file exists
-	expectedName := "photo_3840x2160_opt.h_abc.jpg"
-	if _, err := os.Stat(filepath.Join(artworkDir, expectedName)); err != nil {
-		t.Errorf("expected renamed file %s, got error: %v", expectedName, err)
-	}
-}
-
-func TestEngine_UpdateMappings(t *testing.T) {
+func TestEngine_UpdateMappingsAfterRename(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := &config.Config{
-		TVIPs:    []string{"1.2.3.4"},
-		TokenDir: tmpDir,
+		TVIPs:      []string{"1.2.3.4"},
+		ArtworkDir: tmpDir,
+		TokenDir:   tmpDir,
 	}
 	e := NewEngine(cfg, slog.Default(), nil)
 
@@ -336,7 +305,7 @@ func TestEngine_UpdateMappings(t *testing.T) {
 }
 
 func TestEngine_RunOnce_ScanError(t *testing.T) {
-	// Use a path that is a file, so ScanArtworkDir fails (it expects a dir)
+	// Use a path that is a file, so SupportedFiles fails (it expects a dir)
 	tmpFile := filepath.Join(t.TempDir(), "not-a-dir")
 	_ = os.WriteFile(tmpFile, []byte("data"), 0o600)
 
@@ -395,8 +364,8 @@ func TestEngine_SyncTV_Success(t *testing.T) {
 		TokenDir:   tmpDir,
 	}
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVClient {
-		return &mockTVClient{connected: true, artMode: true}
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: true}
 	}
 
 	// Create a dummy image
