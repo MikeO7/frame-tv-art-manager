@@ -186,7 +186,7 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			// 6. Perceptual Lab Saliency (Color Contrast using CIEDE2000 color difference)
 			// Measures true perceptual distance from the average image background color
 			lLab, aLab, bLab := rgbToLab(r, g, b)
-			colorWeight := ciede2000(lLab, aLab, bLab, meanL, meanA, meanB) / 100.0
+			colorWeight := ciede2000(labColor{l: lLab, a: aLab, b: bLab}, labColor{l: meanL, a: meanA, b: meanB}) / 100.0
 			if colorWeight > 1.0 {
 				colorWeight = 1.0
 			}

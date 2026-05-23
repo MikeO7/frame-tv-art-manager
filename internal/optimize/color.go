@@ -10,10 +10,18 @@ var (
 	lutRgbToLabOnce sync.Once
 )
 
+type labColor struct {
+	l float64
+	a float64
+	b float64
+}
+
 // ciede2000 calculates the exact CIE 2000 color-difference standard between two CIELAB colors.
 //
-
-func ciede2000(l1, a1, b1, l2, a2, b2 float64) float64 {
+//nolint:funlen // mathematical formula requiring monolithic execution flow for performance and readability
+func ciede2000(color1, color2 labColor) float64 {
+	l1, a1, b1 := color1.l, color1.a, color1.b
+	l2, a2, b2 := color2.l, color2.a, color2.b
 	c1 := math.Sqrt(a1*a1 + b1*b1)
 	c2 := math.Sqrt(a2*a2 + b2*b2)
 	meanC := (c1 + c2) / 2.0
