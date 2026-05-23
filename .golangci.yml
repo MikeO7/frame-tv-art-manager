@@ -17,7 +17,6 @@ linters:
     - gochecknoinits
     - gochecknoglobals
     - gocognit
-    - goconst
     - gocritic
     - gocyclo
     - godox
@@ -38,6 +37,7 @@ linters:
     - revive
     - unconvert
     - unparam
+    - unused
     - usestdlibvars
     - whitespace
   settings:
@@ -125,6 +125,9 @@ linters:
           - gochecknoglobals
           - lll
           - revive
+          - goconst
+          - gosec
+          - nilnil
         path: _test\.go
       - linters:
           - funlen

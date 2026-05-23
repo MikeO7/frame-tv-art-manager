@@ -1,6 +1,7 @@
 package samsung
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -144,5 +145,58 @@ func TestConnection_SendAndWait(t *testing.T) {
 	}
 	if string(resp) != `{"result":"ok"}` {
 		t.Errorf("unexpected response: %s", string(resp))
+	}
+}
+
+func TestConnection_SendAndWaitEvent(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{CheckOrigin: func(_ *http.Request) bool { return true }}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		_ = conn.WriteJSON(map[string]any{
+			keyEvent: EventChannelConnect,
+			keyData:  map[string]any{"token": "test-token"},
+		})
+		_ = conn.WriteJSON(map[string]any{keyEvent: "ms.channel.ready"})
+		time.Sleep(50 * time.Millisecond)
+
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		_ = msg
+
+		added := map[string]any{
+			keyEvent: "d2d_service_message",
+			keyData: map[string]any{
+				"event":      "image_added",
+				"content_id": "new-id",
+			},
+		}
+		_ = conn.WriteJSON(added)
+		time.Sleep(50 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	u, _ := url.Parse(server.URL)
+	port, _ := strconv.Atoi(u.Port())
+	tokenFile := filepath.Join(t.TempDir(), "token.txt")
+
+	c := newConnection(u.Hostname(), port, "com.samsung.art-app", "TestClient", tokenFile, 1*time.Second, slog.Default())
+	if err := c.Open(context.Background()); err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	resp, err := c.SendAndWaitEvent(context.Background(), []byte(`{"id":"upload"}`), "image_added", 3*time.Second)
+	if err != nil {
+		t.Fatalf("SendAndWaitEvent failed: %v", err)
+	}
+	if !bytes.Contains(resp, []byte("new-id")) {
+		t.Errorf("unexpected event payload: %s", string(resp))
 	}
 }

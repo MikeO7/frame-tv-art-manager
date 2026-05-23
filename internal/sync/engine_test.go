@@ -316,6 +316,9 @@ func TestEngine_RunOnce_ScanError(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{artMode: true}
+	}
 	err := e.RunOnce(context.Background())
 	if err == nil {
 		t.Error("expected error when scanning a file as a directory")

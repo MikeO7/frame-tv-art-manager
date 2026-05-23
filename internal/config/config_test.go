@@ -102,4 +102,69 @@ func TestEnvHelpers(t *testing.T) {
 	if envFloat("MISSING", 4.56) != 4.56 {
 		t.Error("envFloat default failed")
 	}
+
+	if envBoolWithDefault("MISSING", true) != true {
+		t.Error("envBoolWithDefault missing should return default true")
+	}
+	t.Setenv("BOOL_DEFAULT", "yes")
+	if !envBoolWithDefault("BOOL_DEFAULT", false) {
+		t.Error("envBoolWithDefault yes failed")
+	}
+	t.Setenv("BOOL_DEFAULT", "maybe")
+	if envBoolWithDefault("BOOL_DEFAULT", true) != true {
+		t.Error("envBoolWithDefault invalid should return default")
+	}
+}
+
+func TestLoad_ValidationErrors(t *testing.T) {
+	os.Clearenv()
+	t.Setenv("TV_IPS", "127.0.0.1")
+	t.Setenv("BRIGHTNESS_MIN", "10")
+	t.Setenv("BRIGHTNESS_MAX", "5")
+	if _, err := Load(); err == nil {
+		t.Error("expected brightness min/max validation error")
+	}
+
+	os.Clearenv()
+	t.Setenv("TV_IPS", "127.0.0.1")
+	t.Setenv("SLIDESHOW_TYPE", "random")
+	if _, err := Load(); err == nil {
+		t.Error("expected invalid slideshow type error")
+	}
+
+	os.Clearenv()
+	t.Setenv("TV_IPS", "127.0.0.1")
+	t.Setenv("BRIGHTNESS", "not-a-number")
+	if _, err := Load(); err == nil {
+		t.Error("expected invalid manual brightness error")
+	}
+
+	os.Clearenv()
+	t.Setenv("TV_IPS", " , , ")
+	if _, err := Load(); err == nil {
+		t.Error("expected error when TV_IPS has no valid entries")
+	}
+}
+
+func TestLoad_OptionalFields(t *testing.T) {
+	os.Clearenv()
+	t.Setenv("TV_IPS", "127.0.0.1")
+	t.Setenv("BRIGHTNESS", "7")
+	t.Setenv("SLIDESHOW_ENABLED", "true")
+	t.Setenv("LOCATION_LATITUDE", "51.5")
+	t.Setenv("LOCATION_LONGITUDE", "-0.1")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.ManualBrightness == nil || *cfg.ManualBrightness != 7 {
+		t.Error("expected manual brightness 7")
+	}
+	if !cfg.SlideshowOverride {
+		t.Error("expected slideshow override when SLIDESHOW_ENABLED is set")
+	}
+	if cfg.Latitude == nil || cfg.Longitude == nil {
+		t.Error("expected parsed coordinates")
+	}
 }

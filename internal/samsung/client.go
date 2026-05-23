@@ -680,7 +680,7 @@ func (c *Client) saveMetadata(ctx context.Context) error {
 		}
 	}
 
-	// 4. Detailed Environment (Placeholder for future sensors).
+	// 4. Detailed Environment (reserved for future telemetry integration).
 	metadata["platform"] = "Y2025"
 
 	b, err := json.MarshalIndent(metadata, "", "  ")

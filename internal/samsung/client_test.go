@@ -564,3 +564,149 @@ func TestClientClose_Nil(t *testing.T) {
 		t.Errorf("expected nil when closing uninitialized client")
 	}
 }
+
+func TestClient_Backoff(t *testing.T) {
+	c := NewClient("1.1.1.1", (&config.Config{}).TVConnectOptions(), slog.Default())
+
+	c.backoffUntil = time.Now().Add(5 * time.Minute)
+	if !c.ShouldSkip() {
+		t.Error("expected ShouldSkip during backoff")
+	}
+
+	c.RecordFailure(time.Minute)
+	if c.failures != 1 {
+		t.Errorf("failures = %d", c.failures)
+	}
+	if !c.ShouldSkip() {
+		t.Error("expected ShouldSkip after RecordFailure")
+	}
+
+	c.RecordSuccess()
+	if c.ShouldSkip() {
+		t.Error("expected no skip after RecordSuccess")
+	}
+	if c.failures != 0 {
+		t.Errorf("failures after success = %d", c.failures)
+	}
+}
+
+func TestClient_RecordFailure_MaxBackoff(t *testing.T) {
+	c := NewClient("1.1.1.1", (&config.Config{}).TVConnectOptions(), slog.Default())
+	for i := 0; i < 10; i++ {
+		c.RecordFailure(time.Minute)
+	}
+	if c.failures != 10 {
+		t.Errorf("failures = %d", c.failures)
+	}
+	if !c.ShouldSkip() {
+		t.Error("expected skip after repeated failures")
+	}
+}
+
+func TestClient_Model_Empty(t *testing.T) {
+	c := NewClient("1.1.1.1", (&config.Config{}).TVConnectOptions(), slog.Default())
+	if c.Model() != "" {
+		t.Errorf("expected empty model, got %q", c.Model())
+	}
+}
+
+func TestClient_PublicTransportMethods(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"saved-token"}`)}
+		b, _ := json.Marshal(resp)
+		_ = conn.WriteMessage(websocket.TextMessage, b)
+
+		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
+		bReady, _ := json.Marshal(respReady)
+		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var envelope struct {
+				Params struct {
+					Data string `json:"data"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(msg, &envelope)
+
+			var innerReq map[string]any
+			_ = json.Unmarshal([]byte(envelope.Params.Data), &innerReq)
+			id := innerReq["id"].(string)
+			reqType := innerReq["request"].(string)
+
+			var artResp map[string]any
+
+			switch reqType {
+			case "get_content_list":
+				artResp = map[string]any{keyRequest: reqType, "id": id, testContentList: `[{"content_id":"cid1", "category_id": "MY-C0002"}]`}
+			case "get_artmode_status":
+				artResp = map[string]any{keyRequest: reqType, "id": id, testValue: "on"}
+			default:
+				artResp = map[string]any{keyRequest: reqType, "id": id, testValue: "on"}
+			}
+			artRespBytes, _ := json.Marshal(artResp)
+			respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
+			respBytes, _ := json.Marshal(respMsg)
+			_ = conn.WriteMessage(websocket.TextMessage, respBytes)
+			time.Sleep(50 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	u, _ := neturl.Parse(server.URL)
+	host := u.Hostname()
+	port, _ := strconv.Atoi(u.Port())
+
+	c := NewClient(host, (&config.Config{
+		TokenDir:          t.TempDir(),
+		ConnectionTimeout: 2 * time.Second,
+		APITimeout:        2 * time.Second,
+	}).TVConnectOptions(), slog.Default())
+
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	if err := c.artConn.Open(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	c.info = &DeviceInfo{PowerState: "on", ModelName: "Frame TV"}
+
+	if c.Model() != "Frame TV" {
+		t.Errorf("Model() = %q", c.Model())
+	}
+	if !c.IsInArtMode(context.Background()) {
+		t.Error("expected art mode")
+	}
+	imgs, err := c.ListUploaded(context.Background())
+	if err != nil || len(imgs) != 1 {
+		t.Errorf("ListUploaded = %v err=%v", imgs, err)
+	}
+	if err := c.DeleteImages(context.Background(), []string{"cid1"}); err != nil {
+		t.Errorf("DeleteImages: %v", err)
+	}
+	if err := c.SelectImage(context.Background(), "cid1"); err != nil {
+		t.Errorf("SelectImage: %v", err)
+	}
+	ss, err := c.SlideshowStatus(context.Background())
+	if err != nil || ss == nil {
+		t.Errorf("SlideshowStatus = %v err=%v", ss, err)
+	}
+	if err := c.SetSlideshow(context.Background(), SlideshowStatus{Value: "15"}); err != nil {
+		t.Errorf("SetSlideshow: %v", err)
+	}
+	if err := c.SetBrightness(context.Background(), 6); err != nil {
+		t.Errorf("SetBrightness: %v", err)
+	}
+	if err := c.SaveMetadata(context.Background()); err != nil {
+		t.Errorf("SaveMetadata: %v", err)
+	}
+}

@@ -109,6 +109,26 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 }
 
+func TestStatus_SetStage(t *testing.T) {
+	status := NewStatus()
+	status.SetStage("syncing TVs")
+	status.mu.RLock()
+	stage := status.CurrentStage
+	status.mu.RUnlock()
+	if stage != "syncing TVs" {
+		t.Errorf("CurrentStage = %q", stage)
+	}
+}
+
+func TestServer_Start_DisabledPort(t *testing.T) {
+	status := NewStatus()
+	server := NewServer(0, status, silentLogger())
+	server.Start()
+	if server.server != nil {
+		t.Error("expected no http.Server when port is 0")
+	}
+}
+
 func TestShutdown_NilServer(t *testing.T) {
 	// Shutdown on a server that was never started should not panic.
 	srv := NewServer(0, NewStatus(), silentLogger())
