@@ -91,15 +91,8 @@ func (r *Reconciler) Run(
 		return result, nil
 	}
 
-	if err := tv.Connect(ctx); err != nil {
-		if errors.Is(err, samsung.ErrGateFailed) {
-			r.logger.Info("skipping — REST gate says TV is busy")
-			result.Status = "skipped (gate)"
-			return result, nil
-		}
-		tv.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-		result.Status = "error"
-		return result, fmt.Errorf("connect: %w", err)
+	if err := r.connectTV(ctx, tv, policy, &result); err != nil || result.Status != "" {
+		return result, err
 	}
 	defer func() { _ = tv.Close() }()
 
@@ -110,28 +103,21 @@ func (r *Reconciler) Run(
 
 	trackedFiles, unknownIDs, staleFiles := reconcileInventory(req.Mapping, tvContent, r.logger)
 	result.DeletedFiles = append(result.DeletedFiles, staleFiles...)
+	r.logger.Info("TV inventory", "tracked", len(trackedFiles), "unknown", len(unknownIDs))
 
-	r.logger.Info("TV inventory",
-		"tracked", len(trackedFiles),
-		"unknown", len(unknownIDs),
-	)
-
-	toUpload := diffSets(req.LocalFiles, trackedFiles)
-	toDelete := diffSets(trackedFiles, req.LocalFiles)
-
-	r.logSyncPlan(toUpload, toDelete, unknownIDs, policy)
-
-	var preserveSlideshow *samsung.SlideshowStatus
-	hasChanges := len(toUpload) > 0 || len(toDelete) > 0 || (policy.RemoveUnknownImages && len(unknownIDs) > 0)
-	if hasChanges && !policy.SlideshowOverride {
-		preserveSlideshow, _ = tv.SlideshowStatus(ctx)
+	state := &syncState{
+		ctx:    ctx,
+		tv:     tv,
+		req:    req,
+		policy: policy,
+		result: &result,
 	}
 
-	r.processUploads(ctx, tv, req, policy, toUpload, &result)
+	plan := r.planSync(state, trackedFiles, unknownIDs)
 
-	r.processDeletions(ctx, tv, req, policy, toDelete, unknownIDs, &result)
-
-	r.applySettings(ctx, tv, req, policy, preserveSlideshow, hasChanges, &result)
+	r.processUploads(state, plan.toUpload)
+	r.processDeletions(state, plan.toDelete, unknownIDs)
+	r.applySettings(state, plan.preserveSlideshow, plan.hasChanges)
 
 	result.TotalImages = len(trackedFiles) + result.Uploaded - result.Deleted
 	result.Status = "ok"
@@ -139,6 +125,25 @@ func (r *Reconciler) Run(
 	tv.RecordSuccess()
 	r.logger.Info("sync completed")
 	return result, nil
+}
+
+func (r *Reconciler) connectTV(
+	ctx context.Context,
+	tv TVTransport,
+	policy config.SyncPolicy,
+	result *TVSyncResult,
+) error {
+	if err := tv.Connect(ctx); err != nil {
+		if errors.Is(err, samsung.ErrGateFailed) {
+			r.logger.Info("skipping — REST gate says TV is busy")
+			result.Status = "skipped (gate)"
+			return nil
+		}
+		tv.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
+		result.Status = "error"
+		return fmt.Errorf("connect: %w", err)
+	}
+	return nil
 }
 
 func (r *Reconciler) logSyncPlan(
@@ -161,161 +166,215 @@ func (r *Reconciler) logSyncPlan(
 	)
 }
 
+type syncPlan struct {
+	toUpload          map[string]struct{}
+	toDelete          map[string]struct{}
+	preserveSlideshow *samsung.SlideshowStatus
+	hasChanges        bool
+}
+
+func (r *Reconciler) planSync(
+	state *syncState,
+	trackedFiles, unknownIDs map[string]struct{},
+) syncPlan {
+	toUpload := diffSets(state.req.LocalFiles, trackedFiles)
+	toDelete := diffSets(trackedFiles, state.req.LocalFiles)
+
+	r.logSyncPlan(toUpload, toDelete, unknownIDs, state.policy)
+
+	hasChanges := len(toUpload) > 0 || len(toDelete) > 0 || (state.policy.RemoveUnknownImages && len(unknownIDs) > 0)
+	var preserveSlideshow *samsung.SlideshowStatus
+	if hasChanges && !state.policy.SlideshowOverride {
+		preserveSlideshow, _ = state.tv.SlideshowStatus(state.ctx)
+	}
+	return syncPlan{
+		toUpload:          toUpload,
+		toDelete:          toDelete,
+		preserveSlideshow: preserveSlideshow,
+		hasChanges:        hasChanges,
+	}
+}
+
+type syncState struct {
+	ctx    context.Context
+	tv     TVTransport
+	req    ReconcileInput
+	policy config.SyncPolicy
+	result *TVSyncResult
+}
+
 func (r *Reconciler) applySettings(
-	ctx context.Context,
-	tv TVTransport,
-	req ReconcileInput,
-	policy config.SyncPolicy,
+	state *syncState,
 	preserveSlideshow *samsung.SlideshowStatus,
 	hasChanges bool,
-	result *TVSyncResult,
 ) {
-	finalMapping := buildFinalMapping(req.Mapping, result.NewUploads, result.DeletedFiles)
-	r.applySelectionAndSlideshow(ctx, tv, req, policy, preserveSlideshow, hasChanges, finalMapping, req.LocalFiles)
+	finalMapping := buildFinalMapping(state.req.Mapping, state.result.NewUploads, state.result.DeletedFiles)
+	r.applySelectionAndSlideshow(
+		state.ctx,
+		state.tv,
+		state.req,
+		state.policy,
+		preserveSlideshow,
+		hasChanges,
+		finalMapping,
+		state.req.LocalFiles,
+	)
 
-	if req.Slideshow != nil && !policy.DryRun {
-		current, _ := tv.SlideshowStatus(ctx)
-		needsUpdate := current == nil ||
-			current.Value != req.Slideshow.Value ||
-			current.Type != req.Slideshow.Type
+	r.updateSlideshow(state, state.req.Slideshow)
+	r.updateBrightness(state, state.req.DesiredBrightness)
+	r.handleAutoOff(state, state.req.TriggerAutoOff)
+}
 
-		if needsUpdate {
-			r.logger.Info("updating slideshow settings",
-				"interval", req.Slideshow.Value,
-				"type", req.Slideshow.Type,
-			)
-			if err := tv.SetSlideshow(ctx, *req.Slideshow); err != nil {
-				r.logger.Warn("failed to set slideshow", "error", err)
-			}
-		}
-		result.Slideshow = fmt.Sprintf("%s every %s min", req.Slideshow.Type, req.Slideshow.Value)
+func (r *Reconciler) updateSlideshow(state *syncState, slideshow *samsung.SlideshowStatus) {
+	if slideshow == nil || state.policy.DryRun {
+		return
 	}
+	current, _ := state.tv.SlideshowStatus(state.ctx)
+	needsUpdate := current == nil ||
+		current.Value != slideshow.Value ||
+		current.Type != slideshow.Type
 
-	if req.DesiredBrightness != nil && !policy.DryRun {
-		if err := tv.SetBrightness(ctx, *req.DesiredBrightness); err != nil {
-			r.logger.Warn("failed to set brightness", "error", err)
+	if needsUpdate {
+		r.logger.Info("updating slideshow settings",
+			"interval", slideshow.Value,
+			"type", slideshow.Type,
+		)
+		if err := state.tv.SetSlideshow(state.ctx, *slideshow); err != nil {
+			r.logger.Warn("failed to set slideshow", "error", err)
 		}
-		result.Brightness = fmt.Sprintf("%d", *req.DesiredBrightness)
 	}
+	state.result.Slideshow = fmt.Sprintf("%s every %s min", slideshow.Type, slideshow.Value)
+}
 
-	if req.TriggerAutoOff {
-		r.logger.Info("within auto-off window, turning off TV")
-		if !policy.DryRun {
-			if err := tv.TurnOff(ctx); err != nil {
-				r.logger.Warn("failed to turn off TV", "error", err)
-			} else {
-				r.logger.Info("TV turned off")
-			}
+func (r *Reconciler) updateBrightness(state *syncState, brightness *int) {
+	if brightness == nil || state.policy.DryRun {
+		return
+	}
+	if err := state.tv.SetBrightness(state.ctx, *brightness); err != nil {
+		r.logger.Warn("failed to set brightness", "error", err)
+	}
+	state.result.Brightness = fmt.Sprintf("%d", *brightness)
+}
+
+func (r *Reconciler) handleAutoOff(state *syncState, trigger bool) {
+	if !trigger {
+		return
+	}
+	r.logger.Info("within auto-off window, turning off TV")
+	if !state.policy.DryRun {
+		if err := state.tv.TurnOff(state.ctx); err != nil {
+			r.logger.Warn("failed to turn off TV", "error", err)
+		} else {
+			r.logger.Info("TV turned off")
 		}
 	}
 }
 
-//nolint:nestif // complexity justified for this domain-specific path
 func (r *Reconciler) processDeletions(
-	ctx context.Context,
-	tv TVTransport,
-	req ReconcileInput,
-	policy config.SyncPolicy,
+	state *syncState,
 	toDelete map[string]struct{},
 	unknownIDs map[string]struct{},
-	result *TVSyncResult,
 ) {
-	if len(toDelete) > 0 {
-		var idsToDelete []string
-		var filesToDelete []string
-		for filename := range toDelete {
-			if cid, ok := req.Mapping[filename]; ok {
-				idsToDelete = append(idsToDelete, cid)
-				filesToDelete = append(filesToDelete, filename)
-			}
-		}
+	r.deleteTrackedImages(state, toDelete)
+	r.deleteUnknownImages(state, unknownIDs)
+}
 
-		if len(idsToDelete) > 0 {
-			if policy.DryRun {
-				r.logger.Info("[DRY RUN] would delete tracked images", "count", len(idsToDelete))
-			} else {
-				r.logger.Info("deleting tracked images", "count", len(idsToDelete))
-				if err := tv.DeleteImages(ctx, idsToDelete); err != nil {
-					r.logger.Error("batch delete failed", "error", err)
-				} else {
-					result.DeletedFiles = append(result.DeletedFiles, filesToDelete...)
-					r.logger.Info("deleted tracked images", "count", len(idsToDelete))
-				}
-			}
-			result.Deleted = len(idsToDelete)
+func (r *Reconciler) deleteTrackedImages(state *syncState, toDelete map[string]struct{}) {
+	if len(toDelete) == 0 {
+		return
+	}
+	var idsToDelete []string
+	var filesToDelete []string
+	for filename := range toDelete {
+		if cid, ok := state.req.Mapping[filename]; ok {
+			idsToDelete = append(idsToDelete, cid)
+			filesToDelete = append(filesToDelete, filename)
 		}
 	}
 
-	if policy.RemoveUnknownImages && len(unknownIDs) > 0 {
-		ids := setToSlice(unknownIDs)
-		if policy.DryRun {
-			r.logger.Info("[DRY RUN] would delete unknown images", "count", len(ids))
-		} else {
-			r.logger.Info("deleting unknown images", "count", len(ids))
-			if err := tv.DeleteImages(ctx, ids); err != nil {
-				r.logger.Error("delete unknown images failed", "error", err)
-			}
+	if len(idsToDelete) == 0 {
+		return
+	}
+	if state.policy.DryRun {
+		r.logger.Info("[DRY RUN] would delete tracked images", "count", len(idsToDelete))
+		state.result.Deleted = len(idsToDelete)
+		return
+	}
+
+	r.logger.Info("deleting tracked images", "count", len(idsToDelete))
+	if err := state.tv.DeleteImages(state.ctx, idsToDelete); err != nil {
+		r.logger.Error("batch delete failed", "error", err)
+		state.result.Deleted = len(idsToDelete)
+		return
+	}
+
+	state.result.DeletedFiles = append(state.result.DeletedFiles, filesToDelete...)
+	r.logger.Info("deleted tracked images", "count", len(idsToDelete))
+	state.result.Deleted = len(idsToDelete)
+}
+
+func (r *Reconciler) deleteUnknownImages(state *syncState, unknownIDs map[string]struct{}) {
+	if !state.policy.RemoveUnknownImages || len(unknownIDs) == 0 {
+		return
+	}
+	ids := setToSlice(unknownIDs)
+	if state.policy.DryRun {
+		r.logger.Info("[DRY RUN] would delete unknown images", "count", len(ids))
+	} else {
+		r.logger.Info("deleting unknown images", "count", len(ids))
+		if err := state.tv.DeleteImages(state.ctx, ids); err != nil {
+			r.logger.Error("delete unknown images failed", "error", err)
 		}
 	}
 }
 
-func (r *Reconciler) processUploads(
-	ctx context.Context,
-	tv TVTransport,
-	req ReconcileInput,
-	policy config.SyncPolicy,
-	toUpload map[string]struct{},
-	result *TVSyncResult,
-) {
+func (r *Reconciler) processUploads(state *syncState, toUpload map[string]struct{}) {
 	uploadsDone := 0
 	for filename := range toUpload {
-		if uploadsDone > 0 && policy.UploadDelay > 0 && !policy.DryRun {
-			time.Sleep(policy.UploadDelay)
+		if uploadsDone > 0 && state.policy.UploadDelay > 0 && !state.policy.DryRun {
+			time.Sleep(state.policy.UploadDelay)
 		}
 
-		if policy.DryRun {
+		if state.policy.DryRun {
 			r.logger.Info("[DRY RUN] would upload", "file", filename)
-			result.Uploaded++
+			state.result.Uploaded++
 			continue
 		}
 
-		filePath := filepath.Join(policy.ArtworkDir, filename)
+		filePath := filepath.Join(state.policy.ArtworkDir, filename)
 		fileType := artwork.FileTypeFromExt(filename)
-		matte := policy.MatteStyle
-		if customMatte, ok := req.MatteOverrides[filename]; ok {
+		matte := state.policy.MatteStyle
+		if customMatte, ok := state.req.MatteOverrides[filename]; ok {
 			matte = customMatte
 		}
 
-		contentID, uploadErr := r.uploadWithRetry(ctx, tv, filePath, fileType, matte, policy)
+		contentID, uploadErr := r.uploadWithRetry(state, filePath, fileType, matte)
 		if uploadErr != nil {
 			r.logger.Error("upload failed", "file", filename, "error", uploadErr)
 			continue
 		}
 
-		result.NewUploads[filename] = contentID
+		state.result.NewUploads[filename] = contentID
 		r.logger.Info("uploaded", "file", filename, "content_id", contentID, "matte", matte)
-		result.Uploaded++
+		state.result.Uploaded++
 		uploadsDone++
 	}
 }
 
-//nolint:revive // upload retry needs explicit transport and policy args
 func (r *Reconciler) uploadWithRetry(
-	ctx context.Context,
-	tv TVTransport,
+	state *syncState,
 	filePath, fileType, matte string,
-	policy config.SyncPolicy,
 ) (string, error) {
 	var lastErr error
-	for attempt := 1; attempt <= policy.UploadAttempts; attempt++ {
-		contentID, err := tv.Upload(ctx, filePath, fileType, matte)
+	for attempt := 1; attempt <= state.policy.UploadAttempts; attempt++ {
+		contentID, err := state.tv.Upload(state.ctx, filePath, fileType, matte)
 		if err == nil {
 			return contentID, nil
 		}
 		lastErr = err
-		if attempt < policy.UploadAttempts {
+		if attempt < state.policy.UploadAttempts {
 			r.logger.Warn("upload retry", "attempt", attempt, "error", err)
-			time.Sleep(policy.UploadDelay * 2)
+			time.Sleep(state.policy.UploadDelay * 2)
 		}
 	}
 	return "", lastErr
