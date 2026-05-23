@@ -18,6 +18,10 @@ on:
       - '.gitignore'
       - 'LICENSE'
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: mikeo7/frame-tv-art-manager
@@ -47,11 +51,16 @@ jobs:
 
     - name: Log in to GitHub Container Registry
       if: github.event_name != 'pull_request'
-      uses: docker/login-action@v4
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      shell: bash
+      run: |
+        for attempt in 1 2 3 4 5; do
+          if echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${{ env.REGISTRY }}" -u "${GITHUB_ACTOR}" --password-stdin; then
+            exit 0
+          fi
+          echo "GHCR login attempt ${attempt} failed, retrying in 10s..."
+          sleep 10
+        done
+        exit 1
 
     - name: Extract metadata (tags, labels)
       id: meta
@@ -85,12 +94,14 @@ jobs:
         sbom: false
 
     - name: Export digest
+      if: github.event_name != 'pull_request'
       run: |
         mkdir -p /tmp/digests
         digest="${{ steps.build.outputs.digest }}"
         touch "/tmp/digests/${digest#sha256:}"
 
     - name: Upload digest
+      if: github.event_name != 'pull_request'
       uses: actions/upload-artifact@v4
       with:
         name: digests-${{ strategy.job-index }}
@@ -105,6 +116,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: [build]
     permissions:
+      contents: read
       packages: write
     steps:
     - name: Download digests
@@ -118,11 +130,16 @@ jobs:
       uses: docker/setup-buildx-action@v4
 
     - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v4
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      shell: bash
+      run: |
+        for attempt in 1 2 3 4 5; do
+          if echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${{ env.REGISTRY }}" -u "${GITHUB_ACTOR}" --password-stdin; then
+            exit 0
+          fi
+          echo "GHCR login attempt ${attempt} failed, retrying in 10s..."
+          sleep 10
+        done
+        exit 1
 
     - name: Create manifest list and push
       working-directory: /tmp/digests
