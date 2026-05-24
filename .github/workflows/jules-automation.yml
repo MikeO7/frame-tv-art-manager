@@ -21,11 +21,16 @@ jobs:
       - name: Run Secure PR Automation
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          IS_FORK: ${{ github.event.workflow_run.head_repository.full_name != github.repository }}
         run: |
           chmod +x ./scripts/jules-automation.sh
           ./scripts/jules-automation.sh \
-            "${{ github.event.workflow_run.id }}" \
-            "${{ github.event.workflow_run.conclusion }}" \
-            "${{ github.event.workflow_run.head_branch }}" \
-            "${{ github.event.workflow_run.head_sha }}" \
-            "${{ github.event.workflow_run.head_repository.full_name != github.repository }}"
+            "$WORKFLOW_RUN_ID" \
+            "$WORKFLOW_RUN_CONCLUSION" \
+            "$WORKFLOW_RUN_HEAD_BRANCH" \
+            "$WORKFLOW_RUN_HEAD_SHA" \
+            "$IS_FORK"
