@@ -17,6 +17,24 @@ type Mapping struct {
 }
 
 // LoadMapping reads a mapping file from disk.
+//
+// Parameters:
+//   - dir: The directory where the TV-specific mapping JSON files are stored.
+//   - tvIP: The IPv4 address of the target TV (used to generate the unique filename).
+//
+// Returns:
+//   - *Mapping: An instantiated, thread-safe mapping struct loaded with existing filename→content_id pairs.
+//   - error:    Any file I/O error encountered during read/parse, excluding "file not found" (which returns an empty Mapping).
+//
+// Example:
+//
+//	mapping, err := sync.LoadMapping("/data/artwork", "192.168.1.150")
+//	if err != nil {
+//	    log.Fatal("Could not load mapping state:", err)
+//	}
+//	if contentID, exists := mapping.GetContentID("monet.jpg"); exists {
+//	    fmt.Println("Found existing artwork:", contentID)
+//	}
 func LoadMapping(dir, tvIP string) (*Mapping, error) {
 	safeIP := strings.ReplaceAll(tvIP, ".", "_")
 	path := filepath.Clean(filepath.Join(dir, fmt.Sprintf("tv_%s_mapping.json", safeIP)))

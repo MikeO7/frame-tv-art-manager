@@ -46,6 +46,26 @@ func DefaultConfig() Config {
 // in-place. It encapsulates the naming convention and returns the
 // final path/filename and whether the file was modified.
 //
+// Parameters:
+//   - path: The absolute or relative file path to the original image (must be a JPEG).
+//   - cfg:  The configuration containing MaxWidth, MaxHeight, SmartCrop, and Quality preferences.
+//   - logger: A structured logger for emitting processing stages and skipped file notifications.
+//
+// Returns:
+//   - string: The final filename of the optimized image (e.g., "monet_opt.h_1a2b.jpg").
+//   - bool:   True if the file was actively modified, false if skipped due to dimensions or config.
+//   - error:  Any file I/O or decoding error encountered during the operation.
+//
+// Example:
+//
+//	finalName, modified, err := optimize.OptimizeFile("/data/artwork/monet.jpg", optimize.DefaultConfig(), logger)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	if modified {
+//	    fmt.Printf("Optimized file into %s\n", finalName)
+//	}
+//
 //nolint:gocognit,funlen,gocyclo,nestif // image optimization pipeline
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
