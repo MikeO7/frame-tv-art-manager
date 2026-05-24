@@ -11,11 +11,9 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
-	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
 var reManagedIndex = regexp.MustCompile(`^[0-9]{3}__`)
@@ -323,108 +321,4 @@ func (c *ArtworkCatalog) UnusedManagedFiles() []string {
 	}
 
 	return unused
-}
-
-// Optimize executes worker pool image resizing and other optimization processing.
-//
-//nolint:gocognit // complexity justified for this domain-specific path
-func (c *ArtworkCatalog) Optimize(
-	optCfg optimize.Config,
-	onRename func(oldName, newName string),
-) (int, error) {
-	localFiles, err := c.SupportedFiles()
-	if err != nil {
-		return 0, err
-	}
-
-	var optimizedCount int64
-
-	type job struct {
-		filename string
-	}
-	jobs := make(chan job, len(localFiles))
-	for filename := range localFiles {
-		if strings.HasPrefix(filename, "._") {
-			delete(localFiles, filename)
-			continue
-		}
-		jobs <- job{filename: filename}
-	}
-	close(jobs)
-
-	numWorkers := runtime.NumCPU()
-	if numWorkers < 4 {
-		numWorkers = 4
-	}
-	if numWorkers > 16 {
-		numWorkers = 16
-	}
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	wg.Add(numWorkers)
-
-	for w := 0; w < numWorkers; w++ {
-		go func() {
-			defer wg.Done()
-			for j := range jobs {
-				wasModified, ok := c.HandleSingleOptimization(j.filename, localFiles, optCfg, onRename, &mu)
-				if ok && wasModified {
-					atomic.AddInt64(&optimizedCount, 1)
-				}
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	if optimizedCount > 0 {
-		c.InvalidateCache()
-	}
-
-	return int(optimizedCount), nil
-}
-
-// HandleSingleOptimization handles resizing/validating a single image.
-func (c *ArtworkCatalog) HandleSingleOptimization(
-	filename string,
-	localFiles map[string]struct{},
-	optCfg optimize.Config,
-	onRename func(oldName, newName string),
-	mu *sync.Mutex,
-) (bool, bool) {
-	path := filepath.Join(c.artworkDir, filename)
-
-	if !optCfg.Enabled {
-		if err := optimize.ValidateImage(path); err != nil {
-			c.logger.Warn("skipping corrupt image", "file", filename, "error", err)
-			mu.Lock()
-			delete(localFiles, filename)
-			mu.Unlock()
-			return false, false
-		}
-		return false, true
-	}
-
-	newFilename, modified, err := optimize.OptimizeFile(path, optCfg, c.logger)
-	if err != nil {
-		c.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
-		mu.Lock()
-		delete(localFiles, filename)
-		mu.Unlock()
-		return false, false
-	}
-
-	if modified && newFilename != filename {
-		if onRename != nil {
-			onRename(filename, newFilename)
-		}
-		c.NoteFileRename(filename, newFilename)
-		mu.Lock()
-		delete(localFiles, filename)
-		localFiles[newFilename] = struct{}{}
-		mu.Unlock()
-	}
-
-	return modified, true
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
@@ -128,7 +129,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	srcDownloaded, cycleWarnings := e.downloadSources(cycleLog)
 
 	optCfg := e.cfg.OptimizeOptions()
-	optimized, optErr := e.catalog.Optimize(optCfg, func(oldName, newName string) {
+	optimized, optErr := optimize.OptimizeCatalog(ctx, e.cfg.ArtworkDir, e.catalog, optCfg, func(oldName, newName string) {
 		for _, ip := range e.cfg.TVIPs {
 			m, err := LoadMapping(e.cfg.TokenDir, ip)
 			if err != nil {
@@ -140,9 +141,12 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 				}
 			}
 		}
-	})
+	}, e.logger)
 	if optErr != nil {
 		return optErr
+	}
+	if optimized > 0 {
+		e.catalog.InvalidateCache()
 	}
 
 	localFiles, err := e.catalog.SupportedFiles()
@@ -158,7 +162,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var summariesMu sync.Mutex
 	var wg sync.WaitGroup
 
-	matteConfig := LoadMatteConfig(e.cfg.ArtworkDir)
+	matteConfig := config.LoadMatteConfig(e.cfg.ArtworkDir)
 
 	for _, ip := range e.cfg.TVIPs {
 		select {
@@ -224,7 +228,7 @@ func (e *Engine) syncTV(
 	ctx context.Context,
 	ip string,
 	localFiles map[string]struct{},
-	matteConfig *MatteConfig,
+	matteConfig *config.MatteConfig,
 	cycleLog *slog.Logger,
 ) (TVSyncResult, error) {
 	client := e.getClient(ip)

@@ -65,14 +65,14 @@ type TVSyncSession struct {
 	cfg         *config.Config
 	logger      *slog.Logger
 	mapping     *Mapping
-	matteConfig *MatteConfig
+	matteConfig *config.MatteConfig
 }
 
 // NewTVSyncSession instantiates a new TV synchronization session.
 func NewTVSyncSession(
 	ip string,
 	cfg *config.Config,
-	matteConfig *MatteConfig,
+	matteConfig *config.MatteConfig,
 	logger *slog.Logger,
 ) (*TVSyncSession, error) {
 	mapping, err := LoadMapping(cfg.TokenDir, ip)
