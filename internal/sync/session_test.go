@@ -157,7 +157,7 @@ func TestTVSyncSession_Reconcile_UploadAndDelete(t *testing.T) {
 	m.Set(testOldJPG, valIDOld)
 	_ = m.Save()
 
-	mc := LoadMatteConfig(tmpDir)
+	mc := config.LoadMatteConfig(tmpDir)
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -200,7 +200,7 @@ func TestTVSyncSession_Reconcile_Backoff(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{skip: true}
 	cfg := &config.Config{TokenDir: tmpDir}
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -230,7 +230,7 @@ func TestTVSyncSession_Reconcile_RemoveUnknown(t *testing.T) {
 		RemoveUnknownImages: true,
 		DryRun:              false,
 	}
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -250,7 +250,7 @@ func TestTVSyncSession_Reconcile_GateFailed(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{connectErr: samsung.ErrGateFailed}
 	cfg := &config.Config{TokenDir: tmpDir}
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -273,7 +273,7 @@ func TestTVSyncSession_Reconcile_ConnectError(t *testing.T) {
 		TokenDir:        tmpDir,
 		SyncIntervalMin: 1,
 	}
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -293,7 +293,7 @@ func TestTVSyncSession_Reconcile_NotArtMode(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{artMode: false}
 	cfg := &config.Config{TokenDir: tmpDir}
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -316,7 +316,7 @@ func TestTVSyncSession_Reconcile_ListError(t *testing.T) {
 		TokenDir:        tmpDir,
 		SyncIntervalMin: 1,
 	}
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -354,7 +354,7 @@ func TestTVSyncSession_Reconcile_DryRun(t *testing.T) {
 	m.Set("old.jpg", "id-old")
 	_ = m.Save()
 
-	mc := &MatteConfig{overrides: map[string]string{"photo.jpg": "modern_apricot"}}
+	mc := &config.MatteConfig{Overrides: map[string]string{"photo.jpg": "modern_apricot"}}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -400,7 +400,7 @@ func TestTVSyncSession_Reconcile_ShuffleSelection(t *testing.T) {
 	m.Set("old.jpg", "id-a")
 	_ = m.Save()
 
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
@@ -427,7 +427,7 @@ func TestTVSyncSession_Reconcile_AutoOff(t *testing.T) {
 		AutoOffGraceHours: 2.0,
 		Timezone:          "America/New_York",
 	}
-	mc := &MatteConfig{}
+	mc := &config.MatteConfig{}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {

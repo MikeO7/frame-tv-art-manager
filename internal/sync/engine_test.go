@@ -10,6 +10,7 @@ import (
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
@@ -267,7 +268,7 @@ func TestEngine_OptimizationFlow(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	_, _ = e.catalog.Optimize(cfg.OptimizeOptions(), nil)
+	_, _ = optimize.OptimizeCatalog(context.Background(), cfg.ArtworkDir, e.catalog, cfg.OptimizeOptions(), nil, slog.Default())
 }
 
 func TestEngine_UpdateMappingsAfterRename(t *testing.T) {

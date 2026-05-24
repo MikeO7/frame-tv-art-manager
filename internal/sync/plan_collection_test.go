@@ -8,12 +8,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
@@ -79,9 +80,12 @@ func TestCatalog_ScanAndOptimize(t *testing.T) {
 	catalog := sources.NewArtworkCatalog(dir, slog.Default())
 
 	optCfg := (&config.Config{OptimizeEnabled: false}).OptimizeOptions()
-	optimized, err := catalog.Optimize(optCfg, nil)
+	optimized, err := optimize.OptimizeCatalog(context.Background(), dir, catalog, optCfg, nil, slog.Default())
 	if err != nil {
 		t.Fatal(err)
+	}
+	if optimized > 0 {
+		catalog.InvalidateCache()
 	}
 	files, err := catalog.SupportedFiles()
 	if err != nil {
@@ -95,7 +99,7 @@ func TestCatalog_ScanAndOptimize(t *testing.T) {
 	}
 }
 
-func TestCatalog_HandleSingleOptimization_RemovesCorrupt(t *testing.T) {
+func TestCatalog_OptimizeCatalog_RemovesCorrupt(t *testing.T) {
 	dir := t.TempDir()
 	badFile := "bad.jpg"
 	if err := os.WriteFile(filepath.Join(dir, badFile), []byte("not-an-image"), 0o600); err != nil {
@@ -104,15 +108,28 @@ func TestCatalog_HandleSingleOptimization_RemovesCorrupt(t *testing.T) {
 
 	catalog := sources.NewArtworkCatalog(dir, slog.Default())
 
-	localFiles := map[string]struct{}{badFile: {}}
-	var mu sync.Mutex
 	optCfg := (&config.Config{OptimizeEnabled: false}).OptimizeOptions()
-	modified, ok := catalog.HandleSingleOptimization(badFile, localFiles, optCfg, nil, &mu)
-	if modified || ok {
-		t.Errorf("expected corrupt file to be skipped: modified=%v ok=%v", modified, ok)
+	files, err := catalog.SupportedFiles()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, exists := localFiles[badFile]; exists {
-		t.Error("corrupt file should be removed from local set")
+	found := false
+	for f := range files {
+		if strings.HasPrefix(f, "bad") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected bad.jpg (or its hashed rename) to be in supported files, catalog has: %v", files)
+	}
+
+	optimized, err := optimize.OptimizeCatalog(context.Background(), dir, catalog, optCfg, nil, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if optimized != 0 {
+		t.Errorf("expected 0 optimized, got %d", optimized)
 	}
 }
 
@@ -157,7 +174,7 @@ func TestTVSyncSession_Reconcile_UploadWithRetry(t *testing.T) {
 	m, _ := LoadMapping(tmpDir, "1.2.3.4")
 	_ = m.Save()
 
-	mc := &MatteConfig{overrides: map[string]string{"photo.jpg": "none"}}
+	mc := &config.MatteConfig{Overrides: map[string]string{"photo.jpg": "none"}}
 
 	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {

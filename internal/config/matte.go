@@ -1,4 +1,4 @@
-package sync
+package config
 
 import (
 	"encoding/json"
@@ -9,14 +9,14 @@ import (
 
 // MatteConfig holds per-image matte overrides loaded from a mattes.json file.
 type MatteConfig struct {
-	overrides    map[string]string
-	defaultMatte string
+	Overrides    map[string]string
+	DefaultMatte string
 }
 
 // LoadMatteConfig reads a mattes.json file from the artwork directory.
 func LoadMatteConfig(artworkDir string) *MatteConfig {
 	mc := &MatteConfig{
-		overrides: make(map[string]string),
+		Overrides: make(map[string]string),
 	}
 
 	path := filepath.Join(artworkDir, "mattes.json")
@@ -32,9 +32,9 @@ func LoadMatteConfig(artworkDir string) *MatteConfig {
 
 	for k, v := range data {
 		if k == "_default" {
-			mc.defaultMatte = v
+			mc.DefaultMatte = v
 		} else {
-			mc.overrides[k] = v
+			mc.Overrides[k] = v
 		}
 	}
 
@@ -43,19 +43,19 @@ func LoadMatteConfig(artworkDir string) *MatteConfig {
 
 // GetMatte returns the matte style for a specific filename.
 func (mc *MatteConfig) GetMatte(filename, globalMatte string) string {
-	if matte, ok := mc.overrides[filename]; ok {
+	if matte, ok := mc.Overrides[filename]; ok {
 		return matte
 	}
-	if mc.defaultMatte != "" {
-		return mc.defaultMatte
+	if mc.DefaultMatte != "" {
+		return mc.DefaultMatte
 	}
 	return globalMatte
 }
 
 // String returns a summary of the matte configuration for logging.
 func (mc *MatteConfig) String() string {
-	if len(mc.overrides) == 0 && mc.defaultMatte == "" {
+	if len(mc.Overrides) == 0 && mc.DefaultMatte == "" {
 		return "global (no per-file overrides)"
 	}
-	return fmt.Sprintf("%d per-file overrides, default=%q", len(mc.overrides), mc.defaultMatte)
+	return fmt.Sprintf("%d per-file overrides, default=%q", len(mc.Overrides), mc.DefaultMatte)
 }
