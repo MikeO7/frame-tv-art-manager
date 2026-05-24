@@ -146,25 +146,24 @@ func Calculate(lat, lon *float64, tz string, minVal, maxVal int) (*int, error) {
 	return &b, nil
 }
 
-// Config holds the parameters needed to determine the target brightness.
-type Config struct {
-	SolarEnabled     bool
-	Latitude         *float64
-	Longitude        *float64
-	Timezone         string
-	BrightnessMin    int
-	BrightnessMax    int
-	ManualBrightness *int
+// SolarLocation represents the geographic and timezone parameters for solar calculation.
+type SolarLocation struct {
+	Latitude  *float64
+	Longitude *float64
+	Timezone  string
 }
 
 // GetTargetValue calculates the final target brightness using solar elevation,
 // falling back to manual brightness or nil if neither is configured.
-//
-
-func GetTargetValue(cfg Config, logger *slog.Logger) *int {
+func GetTargetValue(
+	loc *SolarLocation,
+	minVal, maxVal int,
+	manualBrightness *int,
+	logger *slog.Logger,
+) *int {
 	//nolint:nestif // complexity justified for this domain-specific path
-	if cfg.SolarEnabled && cfg.Latitude != nil && cfg.Longitude != nil {
-		b, err := Calculate(cfg.Latitude, cfg.Longitude, cfg.Timezone, cfg.BrightnessMin, cfg.BrightnessMax)
+	if loc != nil && loc.Latitude != nil && loc.Longitude != nil {
+		b, err := Calculate(loc.Latitude, loc.Longitude, loc.Timezone, minVal, maxVal)
 		if err == nil {
 			if logger != nil {
 				logger.Info("solar brightness", "value", *b)
@@ -176,11 +175,11 @@ func GetTargetValue(cfg Config, logger *slog.Logger) *int {
 		}
 	}
 
-	if cfg.ManualBrightness != nil {
+	if manualBrightness != nil {
 		if logger != nil {
-			logger.Info("manual brightness", "value", *cfg.ManualBrightness)
+			logger.Info("manual brightness", "value", *manualBrightness)
 		}
-		return cfg.ManualBrightness
+		return manualBrightness
 	}
 
 	return nil

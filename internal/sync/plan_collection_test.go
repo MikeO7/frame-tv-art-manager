@@ -18,56 +18,53 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
-func TestBuildReconcileInput_Slideshow(t *testing.T) {
+func TestDetermineSlideshowSettings(t *testing.T) {
 	cfg := &config.Config{
 		SlideshowOverride: true,
 		SlideshowEnabled:  true,
 		SlideshowInterval: 15,
 		SlideshowType:     "sequential",
-		MatteStyle:        "none",
-		Timezone:          "UTC",
 	}
-	input := BuildReconcileInput(cfg, map[string]struct{}{"a.jpg": {}}, map[string]string{}, &MatteConfig{}, slog.Default())
-	if input.Slideshow == nil {
+	s := determineSlideshowSettings(cfg, slog.Default())
+	if s == nil {
 		t.Fatal("expected slideshow settings")
 	}
-	if input.Slideshow.Type != "slideshow" {
-		t.Errorf("type = %q", input.Slideshow.Type)
+	if s.Type != "slideshow" {
+		t.Errorf("type = %q", s.Type)
 	}
-	if input.Slideshow.Value != "15" {
-		t.Errorf("interval = %q", input.Slideshow.Value)
+	if s.Value != "15" {
+		t.Errorf("interval = %q", s.Value)
 	}
 }
 
-func TestBuildReconcileInput_InvalidSlideshowInterval(t *testing.T) {
+func TestDetermineSlideshowSettings_InvalidInterval(t *testing.T) {
 	cfg := &config.Config{
 		SlideshowOverride: true,
 		SlideshowEnabled:  true,
 		SlideshowInterval: 99,
 		SlideshowType:     "shuffle",
-		MatteStyle:        "none",
 	}
-	input := BuildReconcileInput(cfg, nil, nil, &MatteConfig{}, slog.Default())
-	if input.Slideshow == nil {
+	s := determineSlideshowSettings(cfg, slog.Default())
+	if s == nil {
 		t.Fatal("expected defaulted slideshow settings")
 	}
-	if input.Slideshow.Value != "3" || input.Slideshow.Type != "shuffleslideshow" {
-		t.Errorf("slideshow = %+v", input.Slideshow)
+	if s.Value != "3" || s.Type != "shuffleslideshow" {
+		t.Errorf("slideshow = %+v", s)
 	}
 }
 
-func TestBuildReconcileInput_NoSlideshowOverride(t *testing.T) {
+func TestDetermineSlideshowSettings_NoOverride(t *testing.T) {
 	cfg := &config.Config{
 		SlideshowOverride: false,
 		SlideshowEnabled:  true,
 	}
-	input := BuildReconcileInput(cfg, nil, nil, &MatteConfig{}, slog.Default())
-	if input.Slideshow != nil {
-		t.Errorf("expected nil slideshow, got %+v", input.Slideshow)
+	s := determineSlideshowSettings(cfg, slog.Default())
+	if s != nil {
+		t.Errorf("expected nil slideshow, got %+v", s)
 	}
 }
 
-func TestCollection_ScanAndOptimize(t *testing.T) {
+func TestCatalog_ScanAndOptimize(t *testing.T) {
 	dir := t.TempDir()
 	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
 	var buf bytes.Buffer
@@ -79,16 +76,14 @@ func TestCollection_ScanAndOptimize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{
-		ArtworkDir:      dir,
-		TVIPs:           []string{"1.2.3.4"},
-		TokenDir:        t.TempDir(),
-		OptimizeEnabled: false,
-	}
-	index := sources.NewArtworkIndex(dir, slog.Default())
-	collection := NewCollection(cfg, slog.Default(), index)
+	catalog := sources.NewArtworkCatalog(dir, slog.Default())
 
-	files, optimized, err := collection.ScanAndOptimize(slog.Default())
+	optCfg := (&config.Config{OptimizeEnabled: false}).OptimizeOptions()
+	optimized, err := catalog.Optimize(optCfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := catalog.SupportedFiles()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,55 +95,24 @@ func TestCollection_ScanAndOptimize(t *testing.T) {
 	}
 }
 
-func TestCollection_HandleSingleOptimization_RemovesCorrupt(t *testing.T) {
+func TestCatalog_HandleSingleOptimization_RemovesCorrupt(t *testing.T) {
 	dir := t.TempDir()
 	badFile := "bad.jpg"
 	if err := os.WriteFile(filepath.Join(dir, badFile), []byte("not-an-image"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{
-		ArtworkDir:      dir,
-		TVIPs:           []string{"1.2.3.4"},
-		TokenDir:        t.TempDir(),
-		OptimizeEnabled: false,
-	}
-	index := sources.NewArtworkIndex(dir, slog.Default())
-	collection := NewCollection(cfg, slog.Default(), index)
+	catalog := sources.NewArtworkCatalog(dir, slog.Default())
 
 	localFiles := map[string]struct{}{badFile: {}}
 	var mu sync.Mutex
-	modified, ok := collection.HandleSingleOptimization(badFile, localFiles, cfg.OptimizeOptions(), &mu, slog.Default())
+	optCfg := (&config.Config{OptimizeEnabled: false}).OptimizeOptions()
+	modified, ok := catalog.HandleSingleOptimization(badFile, localFiles, optCfg, nil, &mu)
 	if modified || ok {
 		t.Errorf("expected corrupt file to be skipped: modified=%v ok=%v", modified, ok)
 	}
 	if _, exists := localFiles[badFile]; exists {
 		t.Error("corrupt file should be removed from local set")
-	}
-}
-
-func TestMappingStore_GetAndRenameAll(t *testing.T) {
-	tokenDir := t.TempDir()
-	cfg := &config.Config{
-		TokenDir: tokenDir,
-		TVIPs:    []string{"1.2.3.4", "5.6.7.8"},
-	}
-	store := NewMappingStore(cfg, slog.Default())
-
-	m1, err := store.Get("1.2.3.4")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m1.Set("old.jpg", "id-old")
-	if err := m1.Save(); err != nil {
-		t.Fatal(err)
-	}
-
-	store.RenameAll("old.jpg", "new.jpg")
-
-	m1, _ = store.Get("1.2.3.4")
-	if cid, ok := m1.GetContentID("new.jpg"); !ok || cid != "id-old" {
-		t.Errorf("expected renamed mapping on TV1, got %q ok=%v", cid, ok)
 	}
 }
 
@@ -174,29 +138,36 @@ func TestCycleReporter_PrintSummary(t *testing.T) {
 	)
 }
 
-func TestReconciler_UploadWithRetry(t *testing.T) {
+func TestTVSyncSession_Reconcile_UploadWithRetry(t *testing.T) {
 	retryFake := &retryUploadTransport{
 		failuresBeforeSuccess: 1,
 		contentID:             "uploaded-id",
 	}
 
-	r := NewReconciler(slog.Default())
-	policy := config.SyncPolicy{
-		ArtworkDir:     t.TempDir(),
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		TokenDir:       tmpDir,
+		ArtworkDir:     tmpDir,
 		UploadAttempts: 3,
 		UploadDelay:    time.Millisecond,
 		MatteStyle:     "none",
 		DryRun:         false,
 	}
 
-	req := ReconcileInput{
-		LocalFiles:     map[string]struct{}{"photo.jpg": {}},
-		Mapping:        map[string]string{},
-		MatteOverrides: map[string]string{"photo.jpg": "none"},
-	}
-	result, err := r.Run(context.Background(), retryFake, "1.2.3.4", req, policy)
+	m, _ := LoadMapping(tmpDir, "1.2.3.4")
+	_ = m.Save()
+
+	mc := &MatteConfig{overrides: map[string]string{"photo.jpg": "none"}}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
-		t.Fatalf("Run failed: %v", err)
+		t.Fatal(err)
+	}
+
+	localFiles := map[string]struct{}{"photo.jpg": {}}
+	result, err := s.Reconcile(context.Background(), retryFake, localFiles)
+	if err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
 	}
 	if result.Uploaded != 1 {
 		t.Errorf("uploaded = %d", result.Uploaded)

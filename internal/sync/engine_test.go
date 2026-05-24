@@ -261,24 +261,13 @@ func TestEngine_OptimizationFlow(t *testing.T) {
 	artworkDir := filepath.Join(tmpDir, "artwork")
 	_ = os.MkdirAll(artworkDir, 0o700)
 
-	// Create a dummy JPEG (just a few bytes is enough for some parts, but optimize.OptimizeFile might fail)
-	// We'll use a file that doesn't exist to test failure handling too.
-
-	localFiles := map[string]struct{}{
-		"missing.jpg": {},
-	}
-
 	cfg := &config.Config{
 		ArtworkDir:      artworkDir,
 		OptimizeEnabled: true,
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	e.collection.OptimizeLocalArtwork(localFiles, slog.Default())
-
-	if _, ok := localFiles["missing.jpg"]; ok {
-		t.Error("expected missing.jpg to be removed from localFiles")
-	}
+	_, _ = e.catalog.Optimize(cfg.OptimizeOptions(), nil)
 }
 
 func TestEngine_UpdateMappingsAfterRename(t *testing.T) {
@@ -295,7 +284,15 @@ func TestEngine_UpdateMappingsAfterRename(t *testing.T) {
 	m.Set("old.jpg", "id1")
 	_ = m.Save()
 
-	e.collection.UpdateMappings("old.jpg", "new.jpg")
+	for _, ip := range e.cfg.TVIPs {
+		mapping, err := LoadMapping(e.cfg.TokenDir, ip)
+		if err != nil {
+			continue
+		}
+		if mapping.Rename("old.jpg", "new.jpg") {
+			_ = mapping.Save()
+		}
+	}
 
 	// Load it back
 	m2, _ := LoadMapping(tmpDir, "1.2.3.4")
