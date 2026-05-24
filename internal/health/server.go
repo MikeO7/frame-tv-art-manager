@@ -65,13 +65,6 @@ func (s *Status) SetStage(stage string) {
 	s.CurrentStage = stage
 }
 
-// GetStage returns the current operation stage thread-safely.
-func (s *Status) GetStage() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.CurrentStage
-}
-
 // SetTVStatus updates the status for a specific TV.
 func (s *Status) SetTVStatus(ip string, status TVStatus) {
 	s.mu.Lock()
