@@ -16,7 +16,7 @@ import (
 )
 
 func newTestLoader(cfg *config.Config, logger *slog.Logger) *Loader {
-	idx := NewArtworkIndex(cfg.ArtworkDir, logger)
+	idx := NewArtworkCatalog(cfg.ArtworkDir, logger)
 	return NewLoader(cfg, logger, idx)
 }
 
@@ -168,7 +168,7 @@ func TestLoader_InternalMethods(t *testing.T) {
 	path := filepath.Join(artworkDir, "test__1234567890ab.jpg")
 	_ = os.WriteFile(path, []byte("some-data"), 0o600)
 
-	idx := NewArtworkIndex(artworkDir, slog.Default())
+	idx := NewArtworkCatalog(artworkDir, slog.Default())
 	idx.Rebuild()
 
 	if _, ok := idx.LookupPrefix("test"); !ok {

@@ -18,15 +18,14 @@ import (
 
 // Engine orchestrates artwork synchronization across all configured TVs.
 type Engine struct {
-	cfg        *config.Config
-	logger     *slog.Logger
-	health     *health.Status
-	srcLoader  sources.SourceLoader
-	collection *Collection
-	reporter   *CycleReporter
-	reconciler *Reconciler
-	cycleNum   int
-	newClient  func(ip string, cfg *config.Config, logger *slog.Logger) TVTransport
+	cfg       *config.Config
+	logger    *slog.Logger
+	health    *health.Status
+	srcLoader sources.SourceLoader
+	catalog   *sources.ArtworkCatalog
+	reporter  *CycleReporter
+	cycleNum  int
+	newClient func(ip string, cfg *config.Config, logger *slog.Logger) TVTransport
 
 	mu      sync.Mutex
 	clients map[string]TVTransport
@@ -38,16 +37,15 @@ func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVTran
 
 // NewEngine creates a sync engine with the given configuration.
 func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Status) *Engine {
-	index := sources.NewArtworkIndex(cfg.ArtworkDir, logger)
+	catalog := sources.NewArtworkCatalog(cfg.ArtworkDir, logger)
 	return &Engine{
-		cfg:        cfg,
-		logger:     logger,
-		health:     healthStatus,
-		srcLoader:  sources.NewLoader(cfg, logger, index),
-		collection: NewCollection(cfg, logger, index),
-		reporter:   NewCycleReporter(cfg, logger),
-		reconciler: NewReconciler(logger),
-		newClient:  defaultNewClient,
+		cfg:       cfg,
+		logger:    logger,
+		health:    healthStatus,
+		srcLoader: sources.NewLoader(cfg, logger, catalog),
+		catalog:   catalog,
+		reporter:  NewCycleReporter(cfg, logger),
+		newClient: defaultNewClient,
 	}
 }
 
@@ -98,7 +96,7 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 
 // RunOnce performs a single sync cycle for all configured TVs.
 //
-//nolint:gocognit,nestif,gocyclo,funlen // complexity justified for this domain-specific path
+//nolint:gocognit,nestif,gocyclo,funlen // complexity justified for this path
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
 	var cycleWarnings []string
@@ -129,10 +127,29 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 
 	srcDownloaded, cycleWarnings := e.downloadSources(cycleLog)
 
-	localFiles, optimized, err := e.collection.ScanAndOptimize(cycleLog)
+	optCfg := e.cfg.OptimizeOptions()
+	optimized, optErr := e.catalog.Optimize(optCfg, func(oldName, newName string) {
+		for _, ip := range e.cfg.TVIPs {
+			m, err := LoadMapping(e.cfg.TokenDir, ip)
+			if err != nil {
+				continue
+			}
+			if m.Rename(oldName, newName) {
+				if err := m.Save(); err != nil {
+					e.logger.Warn("failed to save migrated mapping", "tv", ip, "error", err)
+				}
+			}
+		}
+	})
+	if optErr != nil {
+		return optErr
+	}
+
+	localFiles, err := e.catalog.SupportedFiles()
 	if err != nil {
 		return err
 	}
+	cycleLog.Info("local artwork ready", "total", len(localFiles), "optimized", optimized)
 
 	if e.health != nil {
 		e.health.SetStage("syncing TVs")
@@ -203,11 +220,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	return nil
 }
 
-const (
-	statusBackoff = "backoff"
-	statusError   = "error"
-)
-
 func (e *Engine) syncTV(
 	ctx context.Context,
 	ip string,
@@ -215,42 +227,14 @@ func (e *Engine) syncTV(
 	matteConfig *MatteConfig,
 	cycleLog *slog.Logger,
 ) (TVSyncResult, error) {
-	tvLog := cycleLog.With("tv", ip)
-
 	client := e.getClient(ip)
 
-	mapping, err := e.collection.GetMapping(ip)
+	session, err := NewTVSyncSession(ip, e.cfg, matteConfig, cycleLog)
 	if err != nil {
-		return TVSyncResult{IP: ip, Status: statusError}, fmt.Errorf("load mapping: %w", err)
+		return TVSyncResult{IP: ip, Status: statusError}, err
 	}
 
-	reconcileInput := BuildReconcileInput(e.cfg, localFiles, mapping.AllContentIDs(), matteConfig, tvLog)
-
-	result, err := e.reconciler.Run(ctx, client, ip, reconcileInput, e.cfg.SyncPolicy())
-	if err != nil {
-		result.Status = statusError
-		return result, err
-	}
-
-	mappingUpdated := false
-	if len(result.NewUploads) > 0 {
-		for f, id := range result.NewUploads {
-			mapping.Set(f, id)
-		}
-		mappingUpdated = true
-	}
-	if len(result.DeletedFiles) > 0 {
-		mapping.DeleteBatch(result.DeletedFiles)
-		mappingUpdated = true
-	}
-
-	if mappingUpdated && !e.cfg.DryRun {
-		if err := mapping.Save(); err != nil {
-			tvLog.Error("failed to save mapping", "error", err)
-		}
-	}
-
-	return result, nil
+	return session.Reconcile(ctx, client, localFiles)
 }
 
 func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {

@@ -10,9 +10,9 @@ import (
 	"testing"
 )
 
-func TestArtworkIndex_InvalidateCacheAndRename(t *testing.T) {
+func TestArtworkCatalog_InvalidateCacheAndRename(t *testing.T) {
 	dir := t.TempDir()
-	idx := NewArtworkIndex(dir, slog.Default())
+	idx := NewArtworkCatalog(dir, slog.Default())
 
 	idx.catalog["old.jpg"] = struct{}{}
 	idx.prefixMap["identity"] = "old.jpg"
@@ -35,8 +35,8 @@ func TestArtworkIndex_InvalidateCacheAndRename(t *testing.T) {
 	}
 }
 
-func TestArtworkIndex_RegisterHashAndMaxReached(t *testing.T) {
-	idx := NewArtworkIndex(t.TempDir(), slog.Default())
+func TestArtworkCatalog_RegisterHashAndMaxReached(t *testing.T) {
+	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
 
 	if existing, dup := idx.RegisterHash("hash1", "a.jpg"); dup || existing != "" {
 		t.Errorf("first register should not be duplicate: %q %v", existing, dup)
@@ -55,27 +55,27 @@ func TestArtworkIndex_RegisterHashAndMaxReached(t *testing.T) {
 	}
 }
 
-func TestArtworkIndex_SetHash(t *testing.T) {
-	idx := NewArtworkIndex(t.TempDir(), slog.Default())
+func TestArtworkCatalog_SetHash(t *testing.T) {
+	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
 	idx.SetHash("hash", "file.jpg")
 	if idx.hashIndex["hash"] != "file.jpg" {
 		t.Errorf("SetHash failed: %q", idx.hashIndex["hash"])
 	}
 }
 
-func TestArtworkIndex_UnsupportedPath(t *testing.T) {
+func TestArtworkCatalog_UnsupportedPath(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(tmpFile, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	idx := NewArtworkIndex(tmpFile, slog.Default())
+	idx := NewArtworkCatalog(tmpFile, slog.Default())
 	_, err := idx.SupportedFiles()
 	if err == nil {
 		t.Error("expected error when artwork path is a file")
 	}
 }
 
-func TestArtworkIndex_UnusedManagedFiles(t *testing.T) {
+func TestArtworkCatalog_UnusedManagedFiles(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"001__nasa__apod.h_abc.jpg", "002__direct__x.h_def.jpg", "manual.jpg"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("data"), 0o600); err != nil {
@@ -83,7 +83,7 @@ func TestArtworkIndex_UnusedManagedFiles(t *testing.T) {
 		}
 	}
 
-	idx := NewArtworkIndex(dir, slog.Default())
+	idx := NewArtworkCatalog(dir, slog.Default())
 	idx.MarkVisited("001__nasa__apod.h_abc.jpg")
 
 	unused := idx.UnusedManagedFiles()
@@ -92,7 +92,7 @@ func TestArtworkIndex_UnusedManagedFiles(t *testing.T) {
 	}
 }
 
-func TestArtworkIndex_RebuildMigratesHashName(t *testing.T) {
+func TestArtworkCatalog_RebuildMigratesHashName(t *testing.T) {
 	dir := t.TempDir()
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	var buf bytes.Buffer
@@ -104,7 +104,7 @@ func TestArtworkIndex_RebuildMigratesHashName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idx := NewArtworkIndex(dir, slog.Default())
+	idx := NewArtworkCatalog(dir, slog.Default())
 	files, err := idx.SupportedFiles()
 	if err != nil {
 		t.Fatal(err)
@@ -119,13 +119,13 @@ func TestArtworkIndex_RebuildMigratesHashName(t *testing.T) {
 	}
 }
 
-func TestArtworkIndex_RebuildCacheHit(t *testing.T) {
+func TestArtworkCatalog_RebuildCacheHit(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("jpeg-data"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	idx := NewArtworkIndex(dir, slog.Default())
+	idx := NewArtworkCatalog(dir, slog.Default())
 	if _, err := idx.SupportedFiles(); err != nil {
 		t.Fatal(err)
 	}
@@ -136,8 +136,8 @@ func TestArtworkIndex_RebuildCacheHit(t *testing.T) {
 	}
 }
 
-func TestArtworkIndex_LookupAndRegisterPrefix(t *testing.T) {
-	idx := NewArtworkIndex(t.TempDir(), slog.Default())
+func TestArtworkCatalog_LookupAndRegisterPrefix(t *testing.T) {
+	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
 	idx.RegisterPrefix("001__nasa__apod", "001__nasa__apod.h_abc.jpg")
 
 	got, ok := idx.LookupPrefix("001__nasa__apod")
@@ -151,7 +151,7 @@ func TestArtworkIndex_LookupAndRegisterPrefix(t *testing.T) {
 	}
 }
 
-func TestFileHash(t *testing.T) {
+func TestArtworkCatalog_FileHash(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "data.bin")
 	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
@@ -166,9 +166,9 @@ func TestFileHash(t *testing.T) {
 	}
 }
 
-func TestProcessFile_WithEmbeddedHash(t *testing.T) {
+func TestArtworkCatalog_ProcessFile_WithEmbeddedHash(t *testing.T) {
 	dir := t.TempDir()
-	idx := NewArtworkIndex(dir, slog.Default())
+	idx := NewArtworkCatalog(dir, slog.Default())
 	entry := idx.processFile("001__photo.h_abc123def456.jpg")
 	if entry.hash != "abc123def456" {
 		t.Errorf("hash = %q", entry.hash)

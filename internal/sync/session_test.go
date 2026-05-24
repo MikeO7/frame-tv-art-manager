@@ -135,24 +135,7 @@ func TestDiffSets(t *testing.T) {
 	}
 }
 
-func TestBuildFinalMapping(t *testing.T) {
-	base := map[string]string{testOldJPG: valIDOld, testStayJPG: "id-stay"}
-	uploads := map[string]string{testNewJPG: valIDNew}
-	deleted := []string{testOldJPG}
-
-	got := buildFinalMapping(base, uploads, deleted)
-	if _, ok := got[testOldJPG]; ok {
-		t.Error("old.jpg should be deleted")
-	}
-	if got[testNewJPG] != valIDNew {
-		t.Errorf("new.jpg = %q", got[testNewJPG])
-	}
-	if got[testStayJPG] != "id-stay" {
-		t.Errorf("stay.jpg = %q", got[testStayJPG])
-	}
-}
-
-func TestReconciler_Run_UploadAndDelete(t *testing.T) {
+func TestTVSyncSession_Reconcile_UploadAndDelete(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{
 		artMode: true,
@@ -162,29 +145,32 @@ func TestReconciler_Run_UploadAndDelete(t *testing.T) {
 		uploadContent: valIDNew,
 	}
 
-	policy := config.SyncPolicy{
+	cfg := &config.Config{
+		TokenDir:       tmpDir,
 		ArtworkDir:     tmpDir,
 		MatteStyle:     "shadowbox_warm",
 		DryRun:         false,
 		UploadAttempts: 1,
 	}
 
-	req := ReconcileInput{
-		LocalFiles: map[string]struct{}{
-			testNewJPG: {},
-		},
-		Mapping: map[string]string{
-			testOldJPG: valIDOld,
-		},
-		MatteOverrides: map[string]string{
-			testNewJPG: "modern_apricot",
-		},
+	m, _ := LoadMapping(tmpDir, "1.2.3.4")
+	m.Set(testOldJPG, valIDOld)
+	_ = m.Save()
+
+	mc := LoadMatteConfig(tmpDir)
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	r := NewReconciler(slog.Default())
-	result, err := r.Run(context.Background(), fake, "1.2.3.4", req, policy)
+	localFiles := map[string]struct{}{
+		testNewJPG: {},
+	}
+
+	result, err := s.Reconcile(context.Background(), fake, localFiles)
 	if err != nil {
-		t.Fatalf("Run failed: %v", err)
+		t.Fatalf("Reconcile failed: %v", err)
 	}
 
 	if result.Status != "ok" {
@@ -210,11 +196,18 @@ func TestReconciler_Run_UploadAndDelete(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_Backoff(t *testing.T) {
+func TestTVSyncSession_Reconcile_Backoff(t *testing.T) {
+	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{skip: true}
-	r := NewReconciler(slog.Default())
+	cfg := &config.Config{TokenDir: tmpDir}
+	mc := &MatteConfig{}
 
-	result, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{})
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +216,8 @@ func TestReconciler_Run_Backoff(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_RemoveUnknown(t *testing.T) {
+func TestTVSyncSession_Reconcile_RemoveUnknown(t *testing.T) {
+	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{
 		artMode: true,
 		listContent: []samsung.ArtContent{
@@ -231,16 +225,19 @@ func TestReconciler_Run_RemoveUnknown(t *testing.T) {
 		},
 	}
 
-	policy := config.SyncPolicy{
+	cfg := &config.Config{
+		TokenDir:            tmpDir,
 		RemoveUnknownImages: true,
 		DryRun:              false,
 	}
+	mc := &MatteConfig{}
 
-	r := NewReconciler(slog.Default())
-	_, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{
-		LocalFiles: map[string]struct{}{},
-		Mapping:    map[string]string{},
-	}, policy)
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,10 +246,18 @@ func TestReconciler_Run_RemoveUnknown(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_GateFailed(t *testing.T) {
+func TestTVSyncSession_Reconcile_GateFailed(t *testing.T) {
+	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{connectErr: samsung.ErrGateFailed}
-	r := NewReconciler(slog.Default())
-	result, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{})
+	cfg := &config.Config{TokenDir: tmpDir}
+	mc := &MatteConfig{}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,10 +266,21 @@ func TestReconciler_Run_GateFailed(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_ConnectError(t *testing.T) {
+func TestTVSyncSession_Reconcile_ConnectError(t *testing.T) {
+	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{connectErr: context.DeadlineExceeded}
-	r := NewReconciler(slog.Default())
-	_, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{SyncIntervalMin: 1})
+	cfg := &config.Config{
+		TokenDir:        tmpDir,
+		SyncIntervalMin: 1,
+	}
+	mc := &MatteConfig{}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err == nil {
 		t.Fatal("expected connect error")
 	}
@@ -273,10 +289,18 @@ func TestReconciler_Run_ConnectError(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_NotArtMode(t *testing.T) {
+func TestTVSyncSession_Reconcile_NotArtMode(t *testing.T) {
+	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{artMode: false}
-	r := NewReconciler(slog.Default())
-	result, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{})
+	cfg := &config.Config{TokenDir: tmpDir}
+	mc := &MatteConfig{}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,16 +309,27 @@ func TestReconciler_Run_NotArtMode(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_ListError(t *testing.T) {
+func TestTVSyncSession_Reconcile_ListError(t *testing.T) {
+	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{artMode: true, listErr: context.DeadlineExceeded}
-	r := NewReconciler(slog.Default())
-	_, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{}, config.SyncPolicy{SyncIntervalMin: 1})
+	cfg := &config.Config{
+		TokenDir:        tmpDir,
+		SyncIntervalMin: 1,
+	}
+	mc := &MatteConfig{}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err == nil {
 		t.Fatal("expected list error")
 	}
 }
 
-func TestReconciler_Run_DryRun(t *testing.T) {
+func TestTVSyncSession_Reconcile_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "photo.jpg")
 	if err := os.WriteFile(filePath, []byte("data"), 0o600); err != nil {
@@ -307,24 +342,28 @@ func TestReconciler_Run_DryRun(t *testing.T) {
 			{ContentID: "id-old"},
 		},
 	}
-	policy := config.SyncPolicy{
+	cfg := &config.Config{
+		TokenDir:            tmpDir,
 		ArtworkDir:          tmpDir,
 		DryRun:              true,
 		RemoveUnknownImages: true,
 		MatteStyle:          "none",
 	}
-	req := ReconcileInput{
-		LocalFiles: map[string]struct{}{"photo.jpg": {}},
-		Mapping:    map[string]string{"old.jpg": "id-old"},
-		MatteOverrides: map[string]string{
-			"photo.jpg": "modern_apricot",
-		},
-		DesiredBrightness: intPtr(6),
-		Slideshow:         &samsung.SlideshowStatus{Value: "15", Type: "shuffleslideshow"},
+
+	m, _ := LoadMapping(tmpDir, "1.2.3.4")
+	m.Set("old.jpg", "id-old")
+	_ = m.Save()
+
+	mc := &MatteConfig{overrides: map[string]string{"photo.jpg": "modern_apricot"}}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	r := NewReconciler(slog.Default())
-	result, err := r.Run(context.Background(), fake, "1.2.3.4", req, policy)
+	localFiles := map[string]struct{}{"photo.jpg": {}}
+
+	result, err := s.Reconcile(context.Background(), fake, localFiles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +375,7 @@ func TestReconciler_Run_DryRun(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_ShuffleSelection(t *testing.T) {
+func TestTVSyncSession_Reconcile_ShuffleSelection(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{
 		artMode: true,
@@ -345,22 +384,32 @@ func TestReconciler_Run_ShuffleSelection(t *testing.T) {
 		},
 		uploadContent: "id-b",
 	}
-	policy := config.SyncPolicy{
-		ArtworkDir:     tmpDir,
-		MatteStyle:     "none",
-		UploadAttempts: 1,
-	}
-	req := ReconcileInput{
-		LocalFiles: map[string]struct{}{"new.jpg": {}},
-		Mapping:    map[string]string{"old.jpg": "id-a"},
-		MatteOverrides: map[string]string{
-			"new.jpg": "none",
-		},
-		Slideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffleslideshow"},
+
+	cfg := &config.Config{
+		TokenDir:          tmpDir,
+		ArtworkDir:        tmpDir,
+		MatteStyle:        "none",
+		UploadAttempts:    1,
+		SlideshowOverride: true,
+		SlideshowEnabled:  true,
+		SlideshowType:     "shuffle",
+		SlideshowInterval: 15,
 	}
 
-	r := NewReconciler(slog.Default())
-	_, err := r.Run(context.Background(), fake, "1.2.3.4", req, policy)
+	m, _ := LoadMapping(tmpDir, "1.2.3.4")
+	m.Set("old.jpg", "id-a")
+	_ = m.Save()
+
+	mc := &MatteConfig{}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	localFiles := map[string]struct{}{"new.jpg": {}}
+
+	_, err = s.Reconcile(context.Background(), fake, localFiles)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,15 +418,24 @@ func TestReconciler_Run_ShuffleSelection(t *testing.T) {
 	}
 }
 
-func TestReconciler_Run_AutoOff(t *testing.T) {
+func TestTVSyncSession_Reconcile_AutoOff(t *testing.T) {
+	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{artMode: true}
-	r := NewReconciler(slog.Default())
-	_, err := r.Run(context.Background(), fake, "1.2.3.4", ReconcileInput{TriggerAutoOff: true}, config.SyncPolicy{})
+	cfg := &config.Config{
+		TokenDir:          tmpDir,
+		AutoOffTime:       "22:00",
+		AutoOffGraceHours: 2.0,
+		Timezone:          "America/New_York",
+	}
+	mc := &MatteConfig{}
+
+	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
-}
 
-func intPtr(v int) *int {
-	return &v
+	_, err = s.Reconcile(context.Background(), fake, make(map[string]struct{}))
+	if err != nil {
+		t.Fatal(err)
+	}
 }

@@ -128,14 +128,8 @@ func TestGetTargetValue(t *testing.T) {
 	manual := 5
 
 	t.Run("solar enabled", func(t *testing.T) {
-		val := GetTargetValue(Config{
-			SolarEnabled:  true,
-			Latitude:      &lat,
-			Longitude:     &lon,
-			Timezone:      "UTC",
-			BrightnessMin: 2,
-			BrightnessMax: 10,
-		}, nil)
+		loc := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
+		val := GetTargetValue(loc, 2, 10, nil, nil)
 		if val == nil {
 			t.Fatal("expected solar brightness value")
 		}
@@ -145,29 +139,22 @@ func TestGetTargetValue(t *testing.T) {
 	})
 
 	t.Run("manual fallback", func(t *testing.T) {
-		val := GetTargetValue(Config{
-			ManualBrightness: &manual,
-		}, nil)
+		val := GetTargetValue(nil, 0, 0, &manual, nil)
 		if val == nil || *val != 5 {
 			t.Errorf("expected manual brightness 5, got %v", val)
 		}
 	})
 
 	t.Run("solar invalid timezone falls back to manual", func(t *testing.T) {
-		val := GetTargetValue(Config{
-			SolarEnabled:     true,
-			Latitude:         &lat,
-			Longitude:        &lon,
-			Timezone:         "Invalid/Zone",
-			ManualBrightness: &manual,
-		}, nil)
+		loc := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"}
+		val := GetTargetValue(loc, 2, 10, &manual, nil)
 		if val == nil || *val != 5 {
 			t.Errorf("expected manual fallback, got %v", val)
 		}
 	})
 
 	t.Run("nil when unset", func(t *testing.T) {
-		if val := GetTargetValue(Config{}, nil); val != nil {
+		if val := GetTargetValue(nil, 0, 0, nil, nil); val != nil {
 			t.Errorf("expected nil, got %d", *val)
 		}
 	})

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,8 +32,6 @@ const (
 	cmdSearch = "search"
 )
 
-var reManagedIndex = regexp.MustCompile(`^[0-9]{3}__`)
-
 // Loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
 type Loader struct {
@@ -46,15 +43,15 @@ type Loader struct {
 	providers          []SourceProvider
 	maxImages          int
 	maxSizeMB          int
-	index              *ArtworkIndex
+	index              *ArtworkCatalog
 	lastSourcesModTime time.Time
 	cachedUrls         []string
 }
 
 // NewLoader creates a new sources loader from application config.
-func NewLoader(cfg *config.Config, logger *slog.Logger, index *ArtworkIndex) *Loader {
+func NewLoader(cfg *config.Config, logger *slog.Logger, index *ArtworkCatalog) *Loader {
 	if index == nil {
-		index = NewArtworkIndex(cfg.ArtworkDir, logger)
+		index = NewArtworkCatalog(cfg.ArtworkDir, logger)
 	}
 
 	providers := []SourceProvider{
@@ -473,3 +470,11 @@ func deduplicateStrings(input []string) []string {
 	}
 	return result
 }
+
+// SourceLoader downloads remote artwork into the local collection.
+type SourceLoader interface {
+	Sync() (downloaded int, err error)
+}
+
+// Ensure Loader implements SourceLoader.
+var _ SourceLoader = (*Loader)(nil)
