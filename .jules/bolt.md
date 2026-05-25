@@ -16,3 +16,6 @@
 ## 2024-05-23 - Optimize math.Pow in CIEDE2000 calculations
 **Learning:** Using `math.Pow` with small integer exponents (like 2, 4, or 7) is surprisingly heavy inside deep execution loops due to IEEE float handling. Direct explicit multiplication is drastically faster.
 **Action:** Replace `math.Pow(x, 2)` with `x * x` and `math.Pow(x, 7)` with `x2 := x * x; x4 := x2 * x2; x7 := x4 * x2 * x`. This single fix on a high-frequency function cuts execution time drastically in the `ciede2000` execution path without loss of precision. Always include inline comments explaining the unrolled math optimization.
+## 2026-05-25 - Bit-shifted integer optimization in calculateScharrImpasto
+**Learning:** Re-ordering convolution matrix equations to perform subtraction and addition using bit-shifted integer logic (`x << 1` vs `x * 2`), and aggregating pixel values before applying a single precomputed floating-point multiplication constant at the very end drastically reduces CPU overhead.
+**Action:** In highly repetitive per-pixel convolution functions like `calculateScharrImpasto`, bypass individual `float64` operations. Execute core differences via integers and bit-shifts (`d_10_r << 3 + d_10_r << 1`), aggregate final luminosity values, and apply a single precalculated float constant (`const scale = (-0.707 * 0.3) / (4080.0 * 1000.0)`) at the return boundary.
