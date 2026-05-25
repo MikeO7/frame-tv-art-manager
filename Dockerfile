@@ -41,4 +41,8 @@ COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
 # Create default directories.
 VOLUME ["/data"]
 
+# Enable container self-healing.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD ["/frame-tv-art-manager", "-healthcheck"]
+
 ENTRYPOINT ["/frame-tv-art-manager"]

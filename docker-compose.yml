@@ -54,6 +54,9 @@ services:
       # ARTWORK_SOURCES_FILE: "/data/sources.txt"
       # UNSPLASH_ACCESS_KEY: "your_key_here"
       # NASA_API_KEY: "DEMO_KEY"  # Default is DEMO_KEY if unset
+
+      # --- Optional: Health Check Port (Default 8080) ---
+      # HEALTH_PORT: "8080"
     volumes:
       # Mount a single data directory. The app will automatically create
       # frame-tv-art-manager/artwork and frame-tv-art-manager/tokens subfolders.

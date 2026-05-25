@@ -137,7 +137,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 
 		// Save back to disk.
 
-		out, err := os.Create(path)
+		out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 		if err != nil {
 			return filename, false, fmt.Errorf("create optimized file: %w", err)
 		}

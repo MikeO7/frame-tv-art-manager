@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
@@ -78,8 +82,69 @@ func handleCLIArgs() {
 			//nolint:forbidigo // standard CLI version output
 			fmt.Printf("frame-tv-art-manager version %s (commit %s) built on %s\n", Version, Commit, BuildDate)
 			os.Exit(0)
+		case "-healthcheck", "--healthcheck":
+			runHealthCheck()
 		}
 	}
+}
+
+func runHealthCheck() {
+	portStr := os.Getenv("HEALTH_PORT")
+	port := 8080
+	if portStr != "" {
+		if p, err := strconv.Atoi(portStr); err == nil {
+			port = p
+		}
+	}
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	//nolint:gosec // strictly local request to health port
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/health", port), nil)
+	if err != nil {
+		cancel()
+		fmt.Fprintf(os.Stderr, "Failed to create health check request: %v\n", err)
+		os.Exit(1)
+	}
+
+	//nolint:gosec // strictly local request to health port
+	resp, err := client.Do(req)
+	if err != nil {
+		cancel()
+		fmt.Fprintf(os.Stderr, "Health check failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		cancel()
+		fmt.Fprintf(os.Stderr, "Health check failed: HTTP status %d\n", resp.StatusCode)
+		os.Exit(1)
+	}
+
+	var status struct {
+		Status string `json:"status"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&status)
+	_ = resp.Body.Close()
+	cancel()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Health check failed to decode JSON: %v\n", err)
+		os.Exit(1)
+	}
+
+	if status.Status != "ok" {
+		fmt.Fprintf(os.Stderr, "Health check returned status: %q\n", status.Status)
+		os.Exit(1)
+	}
+
+	//nolint:forbidigo // CLI success output
+	fmt.Println("Healthy")
+	os.Exit(0)
 }
 
 func setupLogger(logLevel string) *slog.Logger {

@@ -139,7 +139,7 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename string) (boo
 	}
 
 	tmpPath := destPath + ".tmp"
-	out, err := os.Create(filepath.Clean(tmpPath))
+	out, err := os.OpenFile(filepath.Clean(tmpPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
