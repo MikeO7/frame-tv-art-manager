@@ -7,15 +7,6 @@ import (
 	"sync"
 )
 
-//nolint:gochecknoglobals // global read-only lookup tables for impasto and canvas simulation performance
-var (
-	lutWeave          [400]float64
-	lutVarnishPool    [400]float64
-	lutWeaveOnce      sync.Once
-	lutCraquelure     [65536]float64
-	lutCraquelureOnce sync.Once
-)
-
 func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	lutCraquelureOnce.Do(initializeCraquelure)
 
@@ -93,6 +84,7 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 	dst.Pix[i+2] = b
 }
 
+//nolint:funlen // complexity justified for this domain-specific mathematical path
 func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	stride := src.Stride
 	pix := src.Pix
@@ -109,153 +101,57 @@ func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	colNext := (x + 1) * 4
 
 	idx00 := rowPrev + colPrev
-	m00 := 0.299*float64(pix[idx00]) + 0.587*float64(pix[idx00+1]) + 0.114*float64(pix[idx00+2])
-
 	idx10 := rowPrev + colCurr
-	m10 := 0.299*float64(pix[idx10]) + 0.587*float64(pix[idx10+1]) + 0.114*float64(pix[idx10+2])
-
 	idx20 := rowPrev + colNext
-	m20 := 0.299*float64(pix[idx20]) + 0.587*float64(pix[idx20+1]) + 0.114*float64(pix[idx20+2])
-
 	idx01 := rowCurr + colPrev
-	m01 := 0.299*float64(pix[idx01]) + 0.587*float64(pix[idx01+1]) + 0.114*float64(pix[idx01+2])
-
 	idx21 := rowCurr + colNext
-	m21 := 0.299*float64(pix[idx21]) + 0.587*float64(pix[idx21+1]) + 0.114*float64(pix[idx21+2])
-
 	idx02 := rowNext + colPrev
-	m02 := 0.299*float64(pix[idx02]) + 0.587*float64(pix[idx02+1]) + 0.114*float64(pix[idx02+2])
-
 	idx12 := rowNext + colCurr
-	m12 := 0.299*float64(pix[idx12]) + 0.587*float64(pix[idx12+1]) + 0.114*float64(pix[idx12+2])
-
 	idx22 := rowNext + colNext
-	m22 := 0.299*float64(pix[idx22]) + 0.587*float64(pix[idx22+1]) + 0.114*float64(pix[idx22+2])
 
-	gx := 3.0*(m20-m00) + 10.0*(m21-m01) + 3.0*(m22-m02)
-	gy := 3.0*(m02-m00) + 10.0*(m12-m10) + 3.0*(m22-m20)
+	d20x00R := int(pix[idx20]) - int(pix[idx00])
+	d20x00G := int(pix[idx20+1]) - int(pix[idx00+1])
+	d20x00B := int(pix[idx20+2]) - int(pix[idx00+2])
 
-	return (gx*-0.707 + gy*-0.707) / 4080.0 * 0.3
-}
+	d21x01R := int(pix[idx21]) - int(pix[idx01])
+	d21x01G := int(pix[idx21+1]) - int(pix[idx01+1])
+	d21x01B := int(pix[idx21+2]) - int(pix[idx01+2])
 
-//nolint:gocognit // complexity justified for this domain-specific path
-func initializeCraquelure() {
-	type pt struct {
-		x, y float64
-	}
-	seeds := make([]pt, 16)
-	state := uint32(12345)
-	nextRand := func() float64 {
-		state ^= state << 13
-		state ^= state >> 17
-		state ^= state << 5
-		return float64(state) / float64(0xFFFFFFFF)
-	}
+	d22x02R := int(pix[idx22]) - int(pix[idx02])
+	d22x02G := int(pix[idx22+1]) - int(pix[idx02+1])
+	d22x02B := int(pix[idx22+2]) - int(pix[idx02+2])
 
-	for i := 0; i < 16; i++ {
-		seeds[i] = pt{x: nextRand() * 256.0, y: nextRand() * 256.0}
-	}
+	d02x00R := int(pix[idx02]) - int(pix[idx00])
+	d02x00G := int(pix[idx02+1]) - int(pix[idx00+1])
+	d02x00B := int(pix[idx02+2]) - int(pix[idx00+2])
 
-	for y := 0; y < 256; y++ {
-		for x := 0; x < 256; x++ {
-			f1 := 999999.0
-			f2 := 999999.0
+	d12x10R := int(pix[idx12]) - int(pix[idx10])
+	d12x10G := int(pix[idx12+1]) - int(pix[idx10+1])
+	d12x10B := int(pix[idx12+2]) - int(pix[idx10+2])
 
-			for _, s := range seeds {
-				dx := math.Abs(float64(x) - s.x)
-				if dx > 128.0 {
-					dx = 256.0 - dx
-				}
-				dy := math.Abs(float64(y) - s.y)
-				if dy > 128.0 {
-					dy = 256.0 - dy
-				}
-				d := math.Sqrt(dx*dx + dy*dy)
+	d22x20R := int(pix[idx22]) - int(pix[idx20])
+	d22x20G := int(pix[idx22+1]) - int(pix[idx20+1])
+	d22x20B := int(pix[idx22+2]) - int(pix[idx20+2])
 
-				if d < f1 {
-					f2 = f1
-					f1 = d
-				} else if d < f2 {
-					f2 = d
-				}
-			}
+	d3R := d20x00R + d02x00R + d22x02R + d22x20R
+	d10R := d21x01R + d12x10R
+	gR := (d3R<<1 + d3R) + (d10R<<3 + d10R<<1)
 
-			diff := f2 - f1
-			var val float64
-			if diff < 2.0 {
-				val = -0.4 * (1.0 - diff/2.0)
-			}
-			lutCraquelure[y*256+x] = val
-		}
-	}
-}
+	d3G := d20x00G + d02x00G + d22x02G + d22x20G
+	d10G := d21x01G + d12x10G
+	gG := (d3G<<1 + d3G) + (d10G<<3 + d10G<<1)
 
-func lookupCraquelure(x, y int) float64 {
-	return lutCraquelure[(y%256)*256+(x%256)]
-}
+	d3B := d20x00B + d02x00B + d22x02B + d22x20B
+	d10B := d21x01B + d12x10B
+	gB := (d3B<<1 + d3B) + (d10B<<3 + d10B<<1)
 
-// calculateWarpCell calculates weave topography for a warp cell.
-func calculateWarpCell(cellX int, lightDirX float64) float64 {
-	nx := (float64(cellX) - 4.5) / 5.0
-	diffuse := nx * lightDirX
-	if diffuse < 0 {
-		diffuse = 0
-	}
-	return 0.4 + (diffuse * 0.3)
-}
+	// Combine differences weighted by perceived luminosity components: (299*R + 587*G + 114*B)
+	// We aggregate them globally to delay expensive float conversions until the absolute end
+	g := gR*299 + gG*587 + gB*114
 
-// calculateWeftCell calculates weave topography for a weft cell.
-func calculateWeftCell(cellY int, lightDirY float64) float64 {
-	ny := (float64(cellY) - 4.5) / 5.0
-	diffuse := ny * lightDirY
-	if diffuse < 0 {
-		diffuse = 0
-	}
-	weave := 0.4 + (diffuse * 0.3)
-
-	absNy := ny
-	if absNy < 0 {
-		absNy = -absNy
-	}
-	if absNy < 0.2 {
-		weave += 0.15
-	}
-	return weave
-}
-
-func calculateWeave(x, y int) (float64, float64) {
-	lutWeaveOnce.Do(func() {
-		for wy := 0; wy < 20; wy++ {
-			for wx := 0; wx < 20; wx++ {
-				idX, idY := wx/10, wy/10
-				cellX, cellY := wx%10, wy%10
-				isWarp := (idX+idY)%2 == 0
-
-				var weave float64
-				lightDirX, lightDirY := -0.707, -0.707
-
-				if isWarp {
-					weave = calculateWarpCell(cellX, lightDirX)
-				} else {
-					weave = calculateWeftCell(cellY, lightDirY)
-				}
-
-				isValley := cellX == 0 || cellX == 9 || cellY == 0 || cellY == 9
-				varnishPool := 1.0
-				if isValley {
-					weave *= 0.8
-					varnishPool = 0.96
-				}
-
-				idx := wy*20 + wx
-				lutWeave[idx] = weave
-				lutVarnishPool[idx] = varnishPool
-			}
-		}
-	})
-
-	idx := (y%20)*20 + (x % 20)
-	return lutWeave[idx], lutVarnishPool[idx]
+	// scale = (-0.707 * 0.3) / (4080.0 * 1000.0) where 1000.0 is from summing 299+587+114
+	const scale = (-0.707 * 0.3) / (4080.0 * 1000.0)
+	return float64(g) * scale
 }
 
 func applySoftLight(a, b, opacity float64) uint8 {
