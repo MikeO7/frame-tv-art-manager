@@ -524,8 +524,7 @@ func TestIsInArtMode_Branches(t *testing.T) {
 		t.Errorf("expected false when TV is off")
 	}
 
-	// We can't easily test the artAPI GetArtModeStatus returning an error without mocking it.
-	// But it's simple enough.
+	// Error handling tests for GetArtModeStatus require extensive mocking.
 }
 
 func TestClientUpload_FileStatError(t *testing.T) {

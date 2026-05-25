@@ -5,6 +5,7 @@ import (
 	"sync"
 )
 
+//nolint:gochecknoglobals // global read-only lookup table for performance-critical RGB-to-Lab calculations
 var (
 	lutRgbToLab     [256]float64
 	lutRgbToLabOnce sync.Once

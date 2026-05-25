@@ -19,6 +19,8 @@ var ErrSolarDisabled = errors.New("solar calculation disabled")
 // based on the solar declination and hour angle.
 //
 // Returns negative values when the sun is below the horizon.
+//
+//nolint:funlen // astronomical calculation formula is sequential
 func sunElevation(lat, lon float64, t time.Time) float64 {
 	// Convert to UTC for calculation.
 	t = t.UTC()

@@ -141,7 +141,7 @@ func (s *TVReconciler) applySelectionAndSlideshowPlan(
 		settingsForMode = plan.PreserveSlideshow
 	}
 
-	if settingsForMode != nil && settingsForMode.Type == "shuffleslideshow" {
+	if settingsForMode != nil && settingsForMode.Type == ssTypeShuffle {
 		values := mapValues(finalMapping)
 		if len(values) > 0 {
 			//nolint:gosec // weak random number generator is fine for selecting artwork shuffle order

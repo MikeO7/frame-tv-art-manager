@@ -35,6 +35,14 @@ linters:
     - prealloc
     - predeclared
     - revive
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - wastedassign
+    - goconst
+    - sloglint
+    - fatcontext
     - unconvert
     - unparam
     - unused
@@ -134,40 +142,8 @@ linters:
           - nilnil
         path: _test\.go
       - linters:
-          - funlen
-          - gocognit
-          - gocyclo
-        path: internal/brightness/
-      - linters:
-          - gochecknoglobals
-        path: cmd/
-      - linters:
-          - gochecknoglobals
-        path: internal/samsung/errors\.go
-      - linters:
-          - gochecknoglobals
-        path: internal/brightness/solar\.go
-      - linters:
-          - gochecknoglobals
-        path: internal/(optimize|sources)/.*\.go
-      - linters:
-          - gochecknoglobals
-        path: internal/samsung/client\.go
-      - linters:
-          - gochecknoglobals
-        path: internal/sync/transport_check\.go
-      - linters:
-          - gochecknoglobals
-        path: internal/sources/index\.go
-      - linters:
           - noctx
         path: _test\.go
-      - linters:
-          - interfacebloat
-        path: internal/sync/reconciler\.go
-      - linters:
-          - forbidigo
-        path: cmd/
     paths:
       - third_party$
       - builtin$

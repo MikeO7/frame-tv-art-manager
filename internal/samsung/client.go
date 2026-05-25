@@ -14,8 +14,11 @@ import (
 )
 
 const (
-	keyRequest   = "request"
-	keyRequestID = "request_id"
+	keyRequest          = "request"
+	keyRequestID        = "request_id"
+	keyGetArtModeStatus = "get_artmode_status"
+	keyGetContentList   = "get_content_list"
+	keyContentID        = "content_id"
 )
 
 // Client is the high-level facade for interacting with a single Samsung

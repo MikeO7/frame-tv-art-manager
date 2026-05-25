@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	providerNASA    = "nasa"
-	providerPexels  = "pexels"
-	providerPixabay = "pixabay"
-	mediaTypeImage  = "image"
+	providerNASA     = "nasa"
+	providerPexels   = "pexels"
+	providerPixabay  = "pixabay"
+	mediaTypeImage   = "image"
+	slugDirectSource = "direct-source"
 )
 
 // SourceImage represents resolved metadata for a downloadable image source.
@@ -77,5 +78,5 @@ func URLToSlug(url string) string {
 		}
 		return slug
 	}
-	return "direct-source"
+	return slugDirectSource
 }
