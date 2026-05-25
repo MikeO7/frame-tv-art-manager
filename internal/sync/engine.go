@@ -24,7 +24,6 @@ type Engine struct {
 	health    *health.Status
 	srcLoader sources.SourceLoader
 	catalog   *sources.ArtworkCatalog
-	reporter  *CycleReporter
 	cycleNum  int
 	newClient func(ip string, cfg *config.Config, logger *slog.Logger) TVTransport
 
@@ -45,7 +44,6 @@ func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Sta
 		health:    healthStatus,
 		srcLoader: sources.NewLoader(cfg, logger, catalog),
 		catalog:   catalog,
-		reporter:  NewCycleReporter(cfg, logger),
 		newClient: defaultNewClient,
 	}
 }
@@ -118,7 +116,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	}()
 
 	e.cycleNum++
-	e.reporter.SetCycleNum(e.cycleNum)
 	cycleLog := e.logger.With("cycle", e.cycleNum)
 
 	startTime := time.Now()
@@ -135,11 +132,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 			if err != nil {
 				continue
 			}
-			if m.Rename(oldName, newName) {
-				if err := m.Save(); err != nil {
-					e.logger.Warn("failed to save migrated mapping", "tv", ip, "error", err)
-				}
-			}
+			_ = m.Rename(oldName, newName)
 		}
 	}, e.logger)
 	if optErr != nil {
@@ -216,7 +209,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 
 	wg.Wait()
 
-	e.reporter.PrintSummary(startTime, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
+	LogCycleSummary(e.logger, e.cycleNum, startTime, e.cfg.SyncIntervalMin, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
 
 	if len(syncErrors) > 0 {
 		return errors.Join(syncErrors...)
@@ -233,12 +226,12 @@ func (e *Engine) syncTV(
 ) (TVSyncResult, error) {
 	client := e.getClient(ip)
 
-	session, err := NewTVSyncSession(ip, e.cfg, matteConfig, cycleLog)
+	reconciler, err := NewTVReconciler(ip, e.cfg, matteConfig, cycleLog)
 	if err != nil {
 		return TVSyncResult{IP: ip, Status: statusError}, err
 	}
 
-	return session.Reconcile(ctx, client, localFiles)
+	return reconciler.Reconcile(ctx, client, localFiles)
 }
 
 func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {

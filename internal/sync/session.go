@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
@@ -22,24 +24,26 @@ const (
 
 // TVTransport is the seam for Samsung TV I/O used during reconciliation.
 //
-//nolint:interfacebloat // TVTransport requires these exact Samsung operations
+//nolint:interfacebloat // TVTransport requires these Samsung operations
 type TVTransport interface {
 	ShouldSkip() bool
 	Connect(ctx context.Context) error
 	Close() error
-	Model() string
-	IsInArtMode(ctx context.Context) bool
-	SaveMetadata(ctx context.Context) error
+	RecordFailure(baseInterval time.Duration)
+	RecordSuccess()
+
 	ListUploaded(ctx context.Context) ([]samsung.ArtContent, error)
 	Upload(ctx context.Context, filePath, fileType, matte string) (string, error)
 	DeleteImages(ctx context.Context, ids []string) error
+
+	Model() string
+	IsInArtMode(ctx context.Context) bool
+	SaveMetadata(ctx context.Context) error
 	SelectImage(ctx context.Context, contentID string) error
 	SlideshowStatus(ctx context.Context) (*samsung.SlideshowStatus, error)
 	SetSlideshow(ctx context.Context, status samsung.SlideshowStatus) error
 	SetBrightness(ctx context.Context, val int) error
 	TurnOff(ctx context.Context) error
-	RecordFailure(baseInterval time.Duration)
-	RecordSuccess()
 }
 
 // TVSyncResult is the outcome of a single TV reconciliation run.
@@ -59,8 +63,8 @@ type TVSyncResult struct {
 	DeletedFiles []string
 }
 
-// TVSyncSession orchestrates a single synchronization cycle for one TV.
-type TVSyncSession struct {
+// TVReconciler orchestrates a single synchronization cycle for one TV.
+type TVReconciler struct {
 	ip          string
 	cfg         *config.Config
 	logger      *slog.Logger
@@ -68,19 +72,19 @@ type TVSyncSession struct {
 	matteConfig *config.MatteConfig
 }
 
-// NewTVSyncSession instantiates a new TV synchronization session.
-func NewTVSyncSession(
+// NewTVReconciler instantiates a new TV synchronization session.
+func NewTVReconciler(
 	ip string,
 	cfg *config.Config,
 	matteConfig *config.MatteConfig,
 	logger *slog.Logger,
-) (*TVSyncSession, error) {
+) (*TVReconciler, error) {
 	mapping, err := LoadMapping(cfg.TokenDir, ip)
 	if err != nil {
 		return nil, fmt.Errorf("load mapping: %w", err)
 	}
 
-	return &TVSyncSession{
+	return &TVReconciler{
 		ip:          ip,
 		cfg:         cfg,
 		logger:      logger.With("tv", ip),
@@ -89,12 +93,40 @@ func NewTVSyncSession(
 	}, nil
 }
 
-// Reconcile executes the synchronization session against the TVTransport.
+// ArtInventory represents the planned inventory delta between local files and the TV.
+type ArtInventory struct {
+	TrackedFiles map[string]struct{}
+	UnknownIDs   map[string]struct{}
+	StaleFiles   []string
+	ToUpload     map[string]struct{}
+	ToDelete     map[string]struct{}
+}
+
+// ReconcileArtInventory compares local art against mapping and TV content.
+func ReconcileArtInventory(
+	localFiles map[string]struct{},
+	mapping map[string]string,
+	tvContent []samsung.ArtContent,
+	logger *slog.Logger,
+) *ArtInventory {
+	trackedFiles, unknownIDs, staleFiles := reconcileInventory(mapping, tvContent, logger)
+	toUpload := diffSets(localFiles, trackedFiles)
+	toDelete := diffSets(trackedFiles, localFiles)
+	return &ArtInventory{
+		TrackedFiles: trackedFiles,
+		UnknownIDs:   unknownIDs,
+		StaleFiles:   staleFiles,
+		ToUpload:     toUpload,
+		ToDelete:     toDelete,
+	}
+}
+
+// Reconcile executes the synchronization session against the TV transport.
 //
-//nolint:gocyclo,funlen // complexity justified for this domain-specific path
-func (s *TVSyncSession) Reconcile(
+//nolint:funlen // complexity justified for this domain-specific path
+func (s *TVReconciler) Reconcile(
 	ctx context.Context,
-	tv TVTransport,
+	transport TVTransport,
 	localFiles map[string]struct{},
 ) (TVSyncResult, error) {
 	result := TVSyncResult{
@@ -104,52 +136,49 @@ func (s *TVSyncSession) Reconcile(
 
 	policy := s.cfg.SyncPolicy()
 
-	if tv.ShouldSkip() {
+	if transport.ShouldSkip() {
 		result.Status = statusBackoff
 		return result, nil
 	}
 
 	// Connect to the TV.
-	if err := s.connectTV(ctx, tv, policy, &result); err != nil || result.Status != "" {
+	if err := s.connectTV(ctx, transport, policy, &result); err != nil || result.Status != "" {
 		return result, err
 	}
-	defer func() { _ = tv.Close() }()
+	defer func() { _ = transport.Close() }()
 
 	// Fetch uploaded images from TV.
-	tvContent, err := s.getTVContent(ctx, tv, policy, &result)
+	tvContent, err := s.getTVContent(ctx, transport, &result)
 	if err != nil || result.Status != "" {
+		if err != nil {
+			transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
+			result.Status = "error"
+		}
 		return result, err
 	}
 
 	// Inventory reconciliation.
-	trackedFiles, unknownIDs, staleFiles := reconcileInventory(s.mapping.AllContentIDs(), tvContent, s.logger)
-	result.DeletedFiles = append(result.DeletedFiles, staleFiles...)
-	s.logger.Info("TV inventory", "tracked", len(trackedFiles), "unknown", len(unknownIDs))
+	inv := ReconcileArtInventory(localFiles, s.mapping.AllContentIDs(), tvContent, s.logger)
+	result.DeletedFiles = append(result.DeletedFiles, inv.StaleFiles...)
+	s.logger.Info("TV inventory", "tracked", len(inv.TrackedFiles), "unknown", len(inv.UnknownIDs))
 
-	// Plan sync.
-	toUpload := diffSets(localFiles, trackedFiles)
-	toDelete := diffSets(trackedFiles, localFiles)
+	s.logSyncPlan(inv.ToUpload, inv.ToDelete, inv.UnknownIDs, policy)
 
-	s.logSyncPlan(toUpload, toDelete, unknownIDs, policy)
-
-	hasChanges := len(toUpload) > 0 || len(toDelete) > 0 || (policy.RemoveUnknownImages && len(unknownIDs) > 0)
+	hasChanges := len(inv.ToUpload) > 0 || len(inv.ToDelete) > 0 || (policy.RemoveUnknownImages && len(inv.UnknownIDs) > 0)
 	var preserveSlideshow *samsung.SlideshowStatus
 	if hasChanges && !policy.SlideshowOverride {
-		preserveSlideshow, _ = tv.SlideshowStatus(ctx)
+		preserveSlideshow, _ = transport.SlideshowStatus(ctx)
 	}
 
 	state := &sessionState{
 		ctx:               ctx,
-		tv:                tv,
+		transport:         transport,
 		policy:            policy,
 		result:            &result,
-		toUpload:          toUpload,
-		toDelete:          toDelete,
-		unknownIDs:        unknownIDs,
+		inventory:         inv,
 		preserveSlideshow: preserveSlideshow,
 		hasChanges:        hasChanges,
 		localFiles:        localFiles,
-		trackedFiles:      trackedFiles,
 	}
 
 	// Execute changes.
@@ -157,83 +186,71 @@ func (s *TVSyncSession) Reconcile(
 	s.processDeletions(state)
 	s.applySettings(state)
 
-	result.TotalImages = len(trackedFiles) + result.Uploaded - result.Deleted
+	result.TotalImages = len(inv.TrackedFiles) + result.Uploaded - result.Deleted
 	result.Status = "ok"
 
-	if hasChanges && !policy.DryRun {
-		if err := s.mapping.Save(); err != nil {
-			s.logger.Error("failed to save mapping", "error", err)
-		}
-	}
-
-	tv.RecordSuccess()
+	transport.RecordSuccess()
 	s.logger.Info("sync completed")
 	return result, nil
 }
 
 type sessionState struct {
 	ctx               context.Context
-	tv                TVTransport
+	transport         TVTransport
 	policy            config.SyncPolicy
 	result            *TVSyncResult
-	toUpload          map[string]struct{}
-	toDelete          map[string]struct{}
-	unknownIDs        map[string]struct{}
+	inventory         *ArtInventory
 	preserveSlideshow *samsung.SlideshowStatus
 	hasChanges        bool
 	localFiles        map[string]struct{}
-	trackedFiles      map[string]struct{}
 }
 
-func (s *TVSyncSession) connectTV(
+func (s *TVReconciler) connectTV(
 	ctx context.Context,
-	tv TVTransport,
+	transport TVTransport,
 	policy config.SyncPolicy,
 	result *TVSyncResult,
 ) error {
-	if err := tv.Connect(ctx); err != nil {
+	if err := transport.Connect(ctx); err != nil {
 		if errors.Is(err, samsung.ErrGateFailed) {
 			s.logger.Info("skipping — REST gate says TV is busy")
 			result.Status = "skipped (gate)"
 			return nil
 		}
-		tv.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
+		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
 		result.Status = "error"
 		return fmt.Errorf("connect: %w", err)
 	}
 	return nil
 }
 
-func (s *TVSyncSession) getTVContent(
+func (s *TVReconciler) getTVContent(
 	ctx context.Context,
-	tv TVTransport,
-	policy config.SyncPolicy,
+	transport TVTransport,
 	result *TVSyncResult,
 ) ([]samsung.ArtContent, error) {
-	result.Model = tv.Model()
+	result.Model = transport.Model()
 
-	if !tv.IsInArtMode(ctx) {
+	if !transport.IsInArtMode(ctx) {
 		s.logger.Info("skipping — TV not in art mode")
 		result.Status = "skipped (not art mode)"
 		return nil, nil
 	}
 	result.ArtMode = true
 
-	if err := tv.SaveMetadata(ctx); err != nil {
+	if err := transport.SaveMetadata(ctx); err != nil {
 		s.logger.Debug("could not save metadata", "error", err)
 	}
 
-	tvContent, err := tv.ListUploaded(ctx)
+	tvContent, err := transport.ListUploaded(ctx)
 	if err != nil {
-		tv.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-		result.Status = "error"
 		return nil, fmt.Errorf("get TV images: %w", err)
 	}
 
 	return tvContent, nil
 }
 
-func (s *TVSyncSession) logSyncPlan(
+func (s *TVReconciler) logSyncPlan(
 	toUpload, toDelete, unknownIDs map[string]struct{},
 	policy config.SyncPolicy,
 ) {
@@ -253,9 +270,9 @@ func (s *TVSyncSession) logSyncPlan(
 	)
 }
 
-func (s *TVSyncSession) processUploads(state *sessionState) {
+func (s *TVReconciler) processUploads(state *sessionState) {
 	uploadsDone := 0
-	for filename := range state.toUpload {
+	for filename := range state.inventory.ToUpload {
 		if uploadsDone > 0 && state.policy.UploadDelay > 0 && !state.policy.DryRun {
 			time.Sleep(state.policy.UploadDelay)
 		}
@@ -287,13 +304,13 @@ func (s *TVSyncSession) processUploads(state *sessionState) {
 	}
 }
 
-func (s *TVSyncSession) uploadWithRetry(
+func (s *TVReconciler) uploadWithRetry(
 	state *sessionState,
 	filePath, fileType, matte string,
 ) (string, error) {
 	var lastErr error
 	for attempt := 1; attempt <= state.policy.UploadAttempts; attempt++ {
-		contentID, err := state.tv.Upload(state.ctx, filePath, fileType, matte)
+		contentID, err := state.transport.Upload(state.ctx, filePath, fileType, matte)
 		if err == nil {
 			return contentID, nil
 		}
@@ -306,18 +323,18 @@ func (s *TVSyncSession) uploadWithRetry(
 	return "", lastErr
 }
 
-func (s *TVSyncSession) processDeletions(state *sessionState) {
+func (s *TVReconciler) processDeletions(state *sessionState) {
 	s.deleteTrackedImages(state)
 	s.deleteUnknownImages(state)
 }
 
-func (s *TVSyncSession) deleteTrackedImages(state *sessionState) {
-	if len(state.toDelete) == 0 {
+func (s *TVReconciler) deleteTrackedImages(state *sessionState) {
+	if len(state.inventory.ToDelete) == 0 {
 		return
 	}
 	var idsToDelete []string
 	var filesToDelete []string
-	for filename := range state.toDelete {
+	for filename := range state.inventory.ToDelete {
 		if cid, ok := s.mapping.GetContentID(filename); ok {
 			idsToDelete = append(idsToDelete, cid)
 			filesToDelete = append(filesToDelete, filename)
@@ -334,7 +351,7 @@ func (s *TVSyncSession) deleteTrackedImages(state *sessionState) {
 	}
 
 	s.logger.Info("deleting tracked images", "count", len(idsToDelete))
-	if err := state.tv.DeleteImages(state.ctx, idsToDelete); err != nil {
+	if err := state.transport.DeleteImages(state.ctx, idsToDelete); err != nil {
 		s.logger.Error("batch delete failed", "error", err)
 		state.result.Deleted = len(idsToDelete)
 		return
@@ -348,22 +365,22 @@ func (s *TVSyncSession) deleteTrackedImages(state *sessionState) {
 	state.result.Deleted = len(idsToDelete)
 }
 
-func (s *TVSyncSession) deleteUnknownImages(state *sessionState) {
-	if !state.policy.RemoveUnknownImages || len(state.unknownIDs) == 0 {
+func (s *TVReconciler) deleteUnknownImages(state *sessionState) {
+	if !state.policy.RemoveUnknownImages || len(state.inventory.UnknownIDs) == 0 {
 		return
 	}
-	ids := setToSlice(state.unknownIDs)
+	ids := setToSlice(state.inventory.UnknownIDs)
 	if state.policy.DryRun {
 		s.logger.Info("[DRY RUN] would delete unknown images", "count", len(ids))
 	} else {
 		s.logger.Info("deleting unknown images", "count", len(ids))
-		if err := state.tv.DeleteImages(state.ctx, ids); err != nil {
+		if err := state.transport.DeleteImages(state.ctx, ids); err != nil {
 			s.logger.Error("delete unknown images failed", "error", err)
 		}
 	}
 }
 
-func (s *TVSyncSession) applySettings(state *sessionState) {
+func (s *TVReconciler) applySettings(state *sessionState) {
 	finalMapping := s.mapping.AllContentIDs()
 	s.applySelectionAndSlideshow(state, finalMapping)
 
@@ -373,7 +390,7 @@ func (s *TVSyncSession) applySettings(state *sessionState) {
 }
 
 //nolint:gocyclo // complexity justified for this domain-specific path
-func (s *TVSyncSession) applySelectionAndSlideshow(
+func (s *TVReconciler) applySelectionAndSlideshow(
 	state *sessionState,
 	finalMapping map[string]string,
 ) {
@@ -402,24 +419,24 @@ func (s *TVSyncSession) applySelectionAndSlideshow(
 	}
 
 	if selectedID != "" && !state.policy.DryRun {
-		if err := state.tv.SelectImage(state.ctx, selectedID); err != nil {
+		if err := state.transport.SelectImage(state.ctx, selectedID); err != nil {
 			s.logger.Warn("failed to select image", "error", err)
 		}
 	}
 
 	if state.preserveSlideshow != nil && !state.policy.DryRun {
-		if err := state.tv.SetSlideshow(state.ctx, *state.preserveSlideshow); err != nil {
+		if err := state.transport.SetSlideshow(state.ctx, *state.preserveSlideshow); err != nil {
 			s.logger.Warn("failed to restore slideshow", "error", err)
 		}
 	}
 }
 
-func (s *TVSyncSession) updateSlideshow(state *sessionState) {
+func (s *TVReconciler) updateSlideshow(state *sessionState) {
 	slideshow := determineSlideshowSettings(s.cfg, s.logger)
 	if slideshow == nil || state.policy.DryRun {
 		return
 	}
-	current, _ := state.tv.SlideshowStatus(state.ctx)
+	current, _ := state.transport.SlideshowStatus(state.ctx)
 	needsUpdate := current == nil ||
 		current.Value != slideshow.Value ||
 		current.Type != slideshow.Type
@@ -429,32 +446,32 @@ func (s *TVSyncSession) updateSlideshow(state *sessionState) {
 			"interval", slideshow.Value,
 			"type", slideshow.Type,
 		)
-		if err := state.tv.SetSlideshow(state.ctx, *slideshow); err != nil {
+		if err := state.transport.SetSlideshow(state.ctx, *slideshow); err != nil {
 			s.logger.Warn("failed to set slideshow", "error", err)
 		}
 	}
 	state.result.Slideshow = fmt.Sprintf("%s every %s min", slideshow.Type, slideshow.Value)
 }
 
-func (s *TVSyncSession) updateBrightness(state *sessionState) {
+func (s *TVReconciler) updateBrightness(state *sessionState) {
 	brightnessVal := determineBrightness(s.cfg, s.logger)
 	if brightnessVal == nil || state.policy.DryRun {
 		return
 	}
-	if err := state.tv.SetBrightness(state.ctx, *brightnessVal); err != nil {
+	if err := state.transport.SetBrightness(state.ctx, *brightnessVal); err != nil {
 		s.logger.Warn("failed to set brightness", "error", err)
 	}
 	state.result.Brightness = fmt.Sprintf("%d", *brightnessVal)
 }
 
-func (s *TVSyncSession) handleAutoOff(state *sessionState) {
-	trigger := IsWithinAutoOffWindow(s.cfg.AutoOffTime, s.cfg.AutoOffGraceHours, s.cfg.Timezone)
+func (s *TVReconciler) handleAutoOff(state *sessionState) {
+	trigger := isWithinAutoOffWindow(s.cfg.AutoOffTime, s.cfg.AutoOffGraceHours, s.cfg.Timezone)
 	if !trigger {
 		return
 	}
 	s.logger.Info("within auto-off window, turning off TV")
 	if !state.policy.DryRun {
-		if err := state.tv.TurnOff(state.ctx); err != nil {
+		if err := state.transport.TurnOff(state.ctx); err != nil {
 			s.logger.Warn("failed to turn off TV", "error", err)
 		} else {
 			s.logger.Info("TV turned off")
@@ -588,4 +605,65 @@ func boolCount(cond bool, count int) int {
 		return count
 	}
 	return 0
+}
+
+// isWithinAutoOffWindow returns true if the current time falls within the
+// auto-off window: [offTime, offTime + graceHours). Handles midnight wrap.
+func isWithinAutoOffWindow(autoOffTime string, graceHours float64, tz string) bool {
+	return isWithinAutoOffWindowAt(autoOffTime, graceHours, tz, time.Now())
+}
+
+// isWithinAutoOffWindowAt accepts an explicit "now" time.
+func isWithinAutoOffWindowAt(autoOffTime string, graceHours float64, tz string, now time.Time) bool {
+	if autoOffTime == "" {
+		return false
+	}
+
+	parts := strings.SplitN(autoOffTime, ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+
+	offHour, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+	offMinute, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false
+	}
+
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return false
+	}
+
+	now = now.In(loc)
+	graceDuration := time.Duration(graceHours * float64(time.Hour))
+
+	// Build today's off time.
+	todayOff := time.Date(now.Year(), now.Month(), now.Day(), offHour, offMinute, 0, 0, loc)
+	todayGraceEnd := todayOff.Add(graceDuration)
+
+	// Check today's window.
+	if !now.Before(todayOff) && now.Before(todayGraceEnd) {
+		return true
+	}
+
+	// Check yesterday's window (handles midnight wrap).
+	yesterdayOff := todayOff.AddDate(0, 0, -1)
+	yesterdayGraceEnd := yesterdayOff.Add(graceDuration)
+	if !now.Before(yesterdayOff) && now.Before(yesterdayGraceEnd) {
+		return true
+	}
+
+	return false
+}
+
+// formatGraceDisplay returns a human-readable string for the grace period.
+func formatGraceDisplay(hours float64) string {
+	if hours == float64(int(hours)) {
+		return fmt.Sprintf("%d", int(hours))
+	}
+	return fmt.Sprintf("%.1f", hours)
 }

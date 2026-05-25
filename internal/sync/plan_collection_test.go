@@ -133,13 +133,12 @@ func TestCatalog_OptimizeCatalog_RemovesCorrupt(t *testing.T) {
 	}
 }
 
-func TestCycleReporter_PrintSummary(t *testing.T) {
-	cfg := &config.Config{SyncIntervalMin: 5}
-	reporter := NewCycleReporter(cfg, slog.Default())
-	reporter.SetCycleNum(2)
-
-	reporter.PrintSummary(
+func TestLogCycleSummary(t *testing.T) {
+	LogCycleSummary(
+		slog.Default(),
+		2,
 		time.Now().Add(-time.Second),
+		5,
 		3, 1, 2,
 		[]TVSyncResult{
 			{
@@ -155,7 +154,7 @@ func TestCycleReporter_PrintSummary(t *testing.T) {
 	)
 }
 
-func TestTVSyncSession_Reconcile_UploadWithRetry(t *testing.T) {
+func TestTVReconciler_Reconcile_UploadWithRetry(t *testing.T) {
 	retryFake := &retryUploadTransport{
 		failuresBeforeSuccess: 1,
 		contentID:             "uploaded-id",
@@ -176,7 +175,7 @@ func TestTVSyncSession_Reconcile_UploadWithRetry(t *testing.T) {
 
 	mc := &config.MatteConfig{Overrides: map[string]string{"photo.jpg": "none"}}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
