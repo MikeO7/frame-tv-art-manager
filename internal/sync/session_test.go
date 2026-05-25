@@ -567,3 +567,69 @@ func TestFormatGraceDisplay(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanSync(t *testing.T) {
+	cfg := &config.Config{
+		ArtworkDir:          "/tmp/artwork",
+		TokenDir:            "/tmp/tokens",
+		MatteStyle:          "none",
+		RemoveUnknownImages: true,
+	}
+
+	mappingData := map[string]string{
+		"keep.jpg":  "id-keep",
+		"stale.jpg": "id-stale",
+	}
+
+	tvContent := []samsung.ArtContent{
+		{ContentID: "id-keep"},
+		{ContentID: "id-stale"},
+		{ContentID: "id-unknown"},
+	}
+
+	localFiles := map[string]struct{}{
+		"keep.jpg": {},
+		"new.jpg":  {},
+	}
+
+	matteCfg := &config.MatteConfig{
+		Overrides: map[string]string{
+			"new.jpg": "modern_apricot",
+		},
+	}
+
+	plan := PlanSync(
+		"1.2.3.4",
+		cfg,
+		matteCfg,
+		mappingData,
+		tvContent,
+		localFiles,
+		nil,
+		slog.Default(),
+	)
+
+	if plan.IP != "1.2.3.4" {
+		t.Errorf("expected plan IP 1.2.3.4, got %s", plan.IP)
+	}
+
+	// Verify uploads
+	if len(plan.ToUpload) != 1 || plan.ToUpload[0].Filename != "new.jpg" {
+		t.Errorf("expected upload for new.jpg, got %+v", plan.ToUpload)
+	}
+	if plan.ToUpload[0].Matte != "modern_apricot" {
+		t.Errorf("expected matte modern_apricot, got %s", plan.ToUpload[0].Matte)
+	}
+
+	// Verify deletions
+	if len(plan.ToDeleteIDs) != 1 || plan.ToDeleteIDs[0] != "id-stale" {
+		t.Errorf("expected deletion of id-stale, got %v", plan.ToDeleteIDs)
+	}
+	if len(plan.ToDeleteUnknownIDs) != 1 || plan.ToDeleteUnknownIDs[0] != "id-unknown" {
+		t.Errorf("expected deletion of unknown id-unknown, got %v", plan.ToDeleteUnknownIDs)
+	}
+
+	if !plan.HasChanges {
+		t.Error("expected HasChanges to be true")
+	}
+}
