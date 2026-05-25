@@ -24,6 +24,11 @@ FORBIDDEN_PATTERNS=(
     "\\.\\.\\. rest of"
     "//\\s*\\.\\.\\."
     "/\\*\\s*\\.\\.\\.\\s*\\*/"
+    "//\\s*(Here you can|You can|We can|Here is where)"
+    "//\\s*(Note:|As you can see)"
+    "select\\s*\\{\\s*\\}"
+    "//\\s*[A-Za-z0-9_]+\\s+does\\s+[a-z0-9_\\s]+"
+    "\\b(mock|placeholder|dummy|temporary|temp)\\b\\s*[^a-zA-Z0-9]*\\s*(implementation|function|method|value|data|stub)"
 )
 
 # Files to check: Go, Shell scripts, Dockerfiles, YAML files, JSON files.

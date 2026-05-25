@@ -3,8 +3,6 @@ package health
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -50,7 +48,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestServer_Routes(t *testing.T) {
 	status := NewStatus()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := silentLogger()
 	server := NewServer(0, status, logger) // Port 0 doesn't actually start, but we can call handlers.
 
 	// Test handleHealth
@@ -72,7 +70,7 @@ func TestServer_Routes(t *testing.T) {
 
 func TestServer_Shutdown(t *testing.T) {
 	status := NewStatus()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := silentLogger()
 	server := NewServer(12345, status, logger)
 
 	// Start server in background

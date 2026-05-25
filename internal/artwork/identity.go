@@ -11,12 +11,15 @@ import (
 const (
 	FileTypeJPEG = "jpg"
 	FileTypePNG  = "png"
+	extJPEG      = ".jpg"
+	extJPEG2     = ".jpeg"
+	extPNG       = ".png"
 )
 
 // IsSupportedExtension reports whether ext is a supported artwork extension.
 func IsSupportedExtension(ext string) bool {
 	switch strings.ToLower(ext) {
-	case ".jpg", ".jpeg", ".png":
+	case extJPEG, extJPEG2, extPNG:
 		return true
 	default:
 		return false
@@ -131,7 +134,7 @@ func BuildOptimizedNameFromFile(filename string, w, h int) (string, bool) {
 // FileTypeFromExt returns the TV-compatible file type for a filename.
 func FileTypeFromExt(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
-	if ext == ".png" {
+	if ext == extPNG {
 		return FileTypePNG
 	}
 	return FileTypeJPEG

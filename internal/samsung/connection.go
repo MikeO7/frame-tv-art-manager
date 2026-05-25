@@ -134,7 +134,7 @@ func (c *connection) Open(ctx context.Context) error {
 			return fmt.Errorf("parse channel ready: %w", err)
 		}
 
-		if readyResp.Event != "ms.channel.ready" {
+		if readyResp.Event != EventChannelReady {
 			_ = conn.Close()
 			return fmt.Errorf("%w: expected ms.channel.ready, got %q", ErrConnectionFailure, readyResp.Event)
 		}
