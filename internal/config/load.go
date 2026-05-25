@@ -50,7 +50,7 @@ func Load() (*Config, error) {
 		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 95),
 		MuseumModeEnabled:   envBoolWithDefault("IMAGE_MUSEUM_MODE", false),
 		MuseumModeIntensity: envInt("IMAGE_MUSEUM_INTENSITY", 5),
-		HealthPort:          envInt("HEALTH_PORT", 0),
+		HealthPort:          envInt("HEALTH_PORT", 8080),
 		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,
 		APITimeout:          time.Duration(envInt("API_TIMEOUT_SECONDS", 60)) * time.Second,
 		UploadDelay:         time.Duration(envInt("UPLOAD_DELAY_MS", 3000)) * time.Millisecond,
