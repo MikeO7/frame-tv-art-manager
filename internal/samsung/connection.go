@@ -2,7 +2,6 @@ package samsung
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -19,13 +18,6 @@ import (
 )
 
 // connection manages a single WSS connection to a Samsung Frame TV endpoint.
-//
-// The TV uses two WebSocket endpoints:
-//   - "com.samsung.art-app"       — for art management (upload, list, select, etc.)
-//   - "samsung.remote.control"    — for remote key commands (power off)
-//
-// Each endpoint requires its own connection instance, but they share the
-// same token file for authentication.
 type connection struct {
 	host      string
 	port      int
@@ -46,8 +38,7 @@ type connection struct {
 	pending   map[string]chan json.RawMessage
 }
 
-// newConnection creates a new WebSocket connection manager. It does not
-// connect automatically — call Open() to establish the connection.
+// newConnection creates a new WebSocket connection manager.
 //
 //nolint:revive // complexity justified for this domain-specific path
 func newConnection(host string, port int, endpoint, name, tokenFile string, timeout time.Duration, logger *slog.Logger) *connection {
@@ -64,15 +55,7 @@ func newConnection(host string, port int, endpoint, name, tokenFile string, time
 }
 
 // Open establishes the WSS connection, performs the handshake, and starts
-// the background receive loop. On first connection, the TV will show an
-// Allow/Deny prompt — the user must accept within the timeout period.
-//
-// The handshake sequence for the art endpoint is:
-//  1. Dial wss://<host>:8002/api/v2/channels/<endpoint>?name=<b64>&token=<tok>
-//  2. Receive ms.channel.connect event → extract and save token
-//  3. Receive ms.channel.ready event → connection is live
-//
-// For the remote control endpoint, only step 1-2 is needed.
+// the background receive loop.
 //
 //nolint:gocyclo,gocognit,nestif,funlen // Connection handshake sequence is inherently complex
 func (c *connection) Open(ctx context.Context) error {
@@ -101,7 +84,6 @@ func (c *connection) Open(ctx context.Context) error {
 		defer func() { _ = httpResp.Body.Close() }()
 	}
 
-	// Read the first message — expect ms.channel.connect.
 	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
 		_ = conn.Close()
 		return fmt.Errorf("set read deadline: %w", err)
@@ -134,7 +116,6 @@ func (c *connection) Open(ctx context.Context) error {
 		return fmt.Errorf("%w: unexpected event %q", ErrConnectionFailure, resp.Event)
 	}
 
-	// For the art endpoint, also wait for ms.channel.ready.
 	if c.endpoint == "com.samsung.art-app" {
 		if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
 			_ = conn.Close()
@@ -159,7 +140,6 @@ func (c *connection) Open(ctx context.Context) error {
 		}
 	}
 
-	// Clear the read deadline for the recv loop.
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
 		_ = conn.Close()
 		return fmt.Errorf("clear read deadline: %w", err)
@@ -187,7 +167,6 @@ func (c *connection) Close() error {
 	err := c.conn.Close()
 	c.conn = nil
 
-	// Wait for recv loop to finish with a timeout.
 	if c.recvDone != nil {
 		select {
 		case <-c.recvDone:
@@ -196,7 +175,6 @@ func (c *connection) Close() error {
 		}
 	}
 
-	// Cancel all pending requests.
 	c.pendingMu.Lock()
 	for id, ch := range c.pending {
 		close(ch)
@@ -268,86 +246,6 @@ func (c *connection) Send(payload []byte) error {
 	return c.conn.WriteMessage(websocket.TextMessage, payload)
 }
 
-// --- internal ---
-
-// recvLoop reads messages from the WebSocket and routes them to pending
-// request channels based on request_id or event name.
-func (c *connection) recvLoop() {
-	defer close(c.recvDone)
-
-	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-
-	if conn == nil {
-		return
-	}
-
-	for {
-		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			if !c.closed.Load() {
-				c.logger.Debug("recv loop error", "error", err)
-			}
-			return
-		}
-
-		c.logger.Debug("WS RECV", "payload", string(msg))
-
-		var resp wsResponse
-		if err := json.Unmarshal(msg, &resp); err != nil {
-			c.logger.Debug("recv: unparseable message", "error", err)
-			continue
-		}
-
-		// Route d2d service messages to pending requests.
-		// Support both dot-notation and underscore-notation used by different models.
-		if resp.Event == EventD2DServiceMessageEvent || resp.Event == EventD2DServiceMessage {
-			c.routeD2DEvent(resp.Data)
-		}
-	}
-}
-
-func (c *connection) routeD2DEvent(dataRaw json.RawMessage) {
-	// Some TVs (like the 2024 model) send 'data' as a JSON-encoded string.
-	// Others send it as a raw JSON object. We try to handle both.
-	var dataToParse []byte = dataRaw
-
-	var dataStr string
-	if err := json.Unmarshal(dataRaw, &dataStr); err == nil {
-		// It was a string! Use the unwrapped string content for parsing.
-		dataToParse = []byte(dataStr)
-	}
-
-	var inner struct {
-		RequestID string `json:"request_id"`
-		ID        string `json:"id"`
-		Event     string `json:"event"`
-	}
-	if err := json.Unmarshal(dataToParse, &inner); err != nil {
-		c.logger.Debug("d2d event: parse failed", "error", err, "raw", string(dataRaw))
-		return
-	}
-
-	c.pendingMu.Lock()
-	defer c.pendingMu.Unlock()
-
-	// Try matching by request_id first, then event name.
-	keys := []string{inner.RequestID, inner.ID, inner.Event}
-	for _, key := range keys {
-		if key == "" {
-			continue
-		}
-		if ch, ok := c.pending[key]; ok {
-			select {
-			case ch <- dataToParse:
-			default:
-			}
-			return
-		}
-	}
-}
-
 // formatURL builds the WebSocket URL for the specified endpoint.
 func (c *connection) formatURL(token string) string {
 	b64Name := base64.StdEncoding.EncodeToString([]byte(c.name))
@@ -366,7 +264,6 @@ func (c *connection) formatURL(token string) string {
 }
 
 // readToken reads the saved auth token from the token file.
-// Returns empty string if the file doesn't exist yet.
 func (c *connection) readToken() string {
 	data, err := os.ReadFile(c.tokenFile)
 	if err != nil {
@@ -394,44 +291,4 @@ func (c *connection) extractAndSaveToken(data json.RawMessage) {
 	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0o600); err != nil {
 		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
 	}
-}
-
-// wsResponse is the top-level WebSocket message envelope from the TV.
-type wsResponse struct {
-	Event string          `json:"event"`
-	Data  json.RawMessage `json:"data"`
-}
-
-// artAppRequest builds the outer WebSocket message for an art API request.
-const (
-	keyMethod = "method"
-	keyParams = "params"
-	keyEvent  = "event"
-	keyData   = "data"
-)
-
-func artAppRequest(data map[string]any) ([]byte, error) {
-	inner, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	outer := map[string]any{
-		keyMethod: "ms.channel.emit",
-		keyParams: map[string]any{
-			keyEvent: "art_app_request",
-			"to":     "host",
-			keyData:  string(inner),
-		},
-	}
-	return json.Marshal(outer)
-}
-
-// newRequestID generates a new UUID string for art API request correlation.
-func newRequestID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }

@@ -98,7 +98,7 @@ linters:
             - 3
         - name: file-length-limit
           arguments:
-            - max: 1000
+            - max: 300
         - name: empty-block
         - name: superfluous-else
         - name: early-return
@@ -117,6 +117,10 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      - linters:
+          - revive
+        text: "file-length-limit"
+        path: "(plan_collection_test\\.go|clients_test\\.go|engine_test\\.go|loader_test\\.go|session_test\\.go|client_test\\.go)"
       - linters:
           - dupl
           - funlen
