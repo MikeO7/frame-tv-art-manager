@@ -1,14 +1,14 @@
 package sources
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Sync reads the sources file and downloads any new images. Returns the
@@ -110,7 +110,7 @@ func (l *Loader) syncLine(ctx context.Context, line string, globalIndex *int32) 
 	return count, nil
 }
 
-// loadSources reads the sources file (TXT) and returns a list of source strings.
+// loadSources reads the sources file (YAML) and returns a list of source strings.
 func (l *Loader) loadSources() ([]string, error) {
 	info, statErr := os.Stat(l.sourcesFile)
 	if statErr == nil {
@@ -120,33 +120,50 @@ func (l *Loader) loadSources() ([]string, error) {
 		l.lastSourcesModTime = info.ModTime()
 	}
 
-	urls, err := l.loadTxtSources()
+	urls, err := l.loadYamlSources()
 	if err == nil {
 		l.cachedUrls = urls
 	}
 	return urls, err
 }
 
-func (l *Loader) loadTxtSources() ([]string, error) {
-	f, err := os.Open(l.sourcesFile)
+func (l *Loader) loadYamlSources() ([]string, error) {
+	data, err := os.ReadFile(l.sourcesFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
 
 	var urls []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		urls = append(urls, line)
+
+	// Try structured format with "providers" map (DRY)
+	var dry struct {
+		Providers map[string][]string `yaml:"providers"`
 	}
-	return urls, scanner.Err()
+	if err := yaml.Unmarshal(data, &dry); err == nil && len(dry.Providers) > 0 {
+		for provider, commands := range dry.Providers {
+			for _, cmd := range commands {
+				urls = append(urls, fmt.Sprintf("%s:%s", provider, cmd))
+			}
+		}
+		return urls, nil
+	}
+
+	// Try to parse as a structured map with a "sources" key (classic list)
+	var structured struct {
+		Sources []string `yaml:"sources"`
+	}
+	if err := yaml.Unmarshal(data, &structured); err == nil && len(structured.Sources) > 0 {
+		return structured.Sources, nil
+	}
+
+	// Try to parse as a simple list first
+	var list []string
+	if err := yaml.Unmarshal(data, &list); err == nil && len(list) > 0 {
+		return list, nil
+	}
+
+	l.logger.Error("invalid YAML sources format: must contain 'providers:' map, 'sources:' list, or a direct list", "file", l.sourcesFile)
+	return nil, fmt.Errorf("invalid YAML sources format (expected 'providers:' map or 'sources:' list)")
 }
 
 // deduplicateStrings returns a new slice containing only unique strings from the input.

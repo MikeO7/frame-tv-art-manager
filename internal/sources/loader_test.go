@@ -42,7 +42,7 @@ func setMockProviderURLs(l *Loader, baseURL string) {
 
 func TestLoader_Sync_Direct(t *testing.T) {
 	artworkDir := t.TempDir()
-	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
+	sourcesFile := filepath.Join(t.TempDir(), "sources.yaml")
 
 	// Mock server for direct downloads
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +53,7 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	}))
 	defer server.Close()
 
-	content := fmt.Sprintf("# comment\n%s\n", server.URL)
+	content := fmt.Sprintf("sources:\n  - direct:%s\n", server.URL)
 	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
 	l := newTestLoader(&config.Config{
@@ -119,21 +119,28 @@ func TestExtensionFromResponse(t *testing.T) {
 	}
 }
 
-func TestLoadSources_Txt(t *testing.T) {
+func TestLoadSources_Yaml(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "sources.txt")
+	path := filepath.Join(dir, "sources.yaml")
 
-	txtContent := "direct:http://a.com/1.jpg\n# comment\nhttp://b.com/2.jpg\n"
-	_ = os.WriteFile(path, []byte(txtContent), 0o600)
+	yamlContent := `
+providers:
+  unsplash:
+    - photo:123
+    - collection:abc
+  nasa:
+    - apod
+`
+	_ = os.WriteFile(path, []byte(yamlContent), 0o600)
 
 	l := &Loader{sourcesFile: path}
 	urls, err := l.loadSources()
 	if err != nil {
-		t.Fatalf("loadSources TXT failed: %v", err)
+		t.Fatalf("loadSources YAML failed: %v", err)
 	}
 
-	if len(urls) != 2 {
-		t.Errorf("expected 2 URLs, got %d", len(urls))
+	if len(urls) != 3 {
+		t.Errorf("expected 3 URLs, got %d", len(urls))
 	}
 }
 
@@ -170,7 +177,7 @@ func TestLoader_InternalMethods(t *testing.T) {
 
 func TestLoader_Sync_Failures(t *testing.T) {
 	artworkDir := t.TempDir()
-	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
+	sourcesFile := filepath.Join(t.TempDir(), "sources.yaml")
 
 	// Mock server that returns 404
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +187,7 @@ func TestLoader_Sync_Failures(t *testing.T) {
 	}))
 	defer server.Close()
 
-	content := server.URL + "\n"
+	content := fmt.Sprintf("sources:\n  - direct:%s\n", server.URL)
 	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
 	l := newTestLoader(&config.Config{
@@ -232,13 +239,25 @@ func mockProviderHandler(w http.ResponseWriter, r *http.Request) {
 
 func TestLoader_Sync_Providers(t *testing.T) {
 	artworkDir := t.TempDir()
-	sourcesFile := filepath.Join(t.TempDir(), "sources_providers.txt")
+	sourcesFile := filepath.Join(t.TempDir(), "sources_providers.yaml")
 
 	// Mock server for all providers
 	server := httptest.NewServer(http.HandlerFunc(mockProviderHandler))
 	defer server.Close()
 
-	content := "unsplash:photo:123\nunsplash:collection:456\nnasa:apod\nnasa:search:mars\nartic:photo:456\npexels:curated\npexels:collection:789\npixabay:editors_choice\npixabay:search:nature\npixabay:user:mike\n"
+	content := `
+sources:
+  - unsplash:photo:123
+  - unsplash:collection:456
+  - nasa:apod
+  - nasa:search:mars
+  - artic:photo:456
+  - pexels:curated
+  - pexels:collection:789
+  - pixabay:editors_choice
+  - pixabay:search:nature
+  - pixabay:user:mike
+`
 	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
 
 	l := newTestLoader(&config.Config{
@@ -257,6 +276,46 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sync with providers failed: %v", err)
 	}
+}
+
+func TestLoader_Sync_Yaml(t *testing.T) {
+	artworkDir := t.TempDir()
+	sourcesFile := filepath.Join(t.TempDir(), "sources.yaml")
+
+	content := `
+sources:
+  - unsplash:photo:123
+  - nasa:apod
+`
+	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
+
+	l := newTestLoader(&config.Config{
+		SourcesFile:       sourcesFile,
+		ArtworkDir:        artworkDir,
+		UnsplashAppID:     "app",
+		UnsplashAccessKey: "key",
+		UnsplashSecretKey: "secret",
+		NasaAPIKey:        providerNASA,
+		PexelsAPIKey:      providerPexels,
+		PixabayAPIKey:     providerPixabay,
+	}, slog.Default())
+
+	// Mock server for downloads
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = w
+		_ = r
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/photos") {
+			_, _ = w.Write([]byte(`{"id": "u1", "links": {"download_location": "http://example.com/download"}}`))
+		} else {
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write([]byte("fake-image-data"))
+		}
+	}))
+	defer server.Close()
+	setMockProviderURLs(l, server.URL)
+
+	_, _ = l.Sync()
 }
 
 func TestLoader_UtilityMethods(t *testing.T) {
@@ -365,5 +424,18 @@ func TestLoader_downloadWithIdentity_MaxReached(t *testing.T) {
 	}
 	if downloaded {
 		t.Error("expected skip when max reached")
+	}
+}
+
+func TestLoader_loadYamlSources_Invalid(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sources.yaml")
+	if err := os.WriteFile(path, []byte("not: valid: yaml: ["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+	l.sourcesFile = path
+	_, err := l.loadYamlSources()
+	if err == nil {
+		t.Error("expected error for invalid yaml format")
 	}
 }

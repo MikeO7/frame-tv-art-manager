@@ -17,7 +17,7 @@ This is where the tool becomes truly set-and-forget. Stop manually downloading i
 
 With the **Unsplash Auto-Curation Engine**, you can turn your living room into an ever-changing art gallery:
 1. **Find or Create a Collection**: Browse Unsplash and find a collection you love (or create a private one on your phone).
-2. **Add the ID to Your Configuration**: Drop the collection's ID into a simple `sources.txt` file.
+2. **Add the ID to Your Configuration**: Drop the collection's ID into a simple `sources.yaml` file.
 3. **Walk Away**: Whenever you add a new photo to that collection on your phone or laptop, the manager automatically catches it, downloads the perfect 4K crop from the Unsplash CDN, applies beautiful physical textures, and pushes it directly onto your wall.
 
 It is completely hands-free. You curating a list of photos while riding the bus is all it takes to refresh your home's decor by the time you walk through the front door.
@@ -116,7 +116,7 @@ services:
       - CLIENT_NAME=Living Room TV
       - LOG_LEVEL=info
       # API Keys & Custom Sources file
-      - ARTWORK_SOURCES_FILE=/data/sources.txt
+      - ARTWORK_SOURCES_FILE=/data/sources.yaml
       - UNSPLASH_ACCESS_KEY=your_real_unsplash_access_key_here
       - UNSPLASH_SECRET_KEY=your_real_unsplash_secret_key_here
       - NASA_API_KEY=DEMO_KEY
@@ -128,8 +128,8 @@ services:
       - ./config:/data
 ```
 
-### 2. Write Your `sources.txt`
-Create a new file named `sources.txt` inside your local `./config` folder:
+### 2. Write Your `sources.yaml`
+Create a new file named `sources.yaml` inside your local `./config` folder:
 ```yaml
 # ==============================================================================
 # Frame TV Art Manager — Custom Art Feed
@@ -173,7 +173,7 @@ You can customize the engine's behavior by adjusting these environment variables
 | `SYNC_INTERVAL_MINUTES` | `5` | How often the script runs in the background to look for new art. |
 | `ARTWORK_DIR` | `/data/artwork` | Where downloaded and processed artwork files live. |
 | `TOKEN_DIR` | `/data/tokens` | Where TV authentication files are saved. |
-| `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your `sources.txt` or custom source list. |
+| `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your `sources.yaml` or custom source list. |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Set to true to automatically delete images on your TV that aren't in your local folder. |
 | `DRY_RUN` | `false` | Process and texture images locally without actually pushing them to the TV. |
 | `LOG_LEVEL` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error`. |
