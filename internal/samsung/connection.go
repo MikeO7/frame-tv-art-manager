@@ -19,13 +19,14 @@ import (
 
 // connection manages a single WSS connection to a Samsung Frame TV endpoint.
 type connection struct {
-	host      string
-	port      int
-	endpoint  string
-	name      string // client identity sent in WebSocket URL
-	tokenFile string
-	timeout   time.Duration
-	logger    *slog.Logger
+	host          string
+	port          int
+	endpoint      string
+	name          string // client identity sent in WebSocket URL
+	tokenFile     string
+	timeout       time.Duration
+	skipTLSVerify bool
+	logger        *slog.Logger
 
 	mu       sync.Mutex
 	conn     *websocket.Conn
@@ -41,16 +42,20 @@ type connection struct {
 // newConnection creates a new WebSocket connection manager.
 //
 //nolint:revive // complexity justified for this domain-specific path
-func newConnection(host string, port int, endpoint, name, tokenFile string, timeout time.Duration, logger *slog.Logger) *connection {
+func newConnection(
+	host string, port int, endpoint, name, tokenFile string,
+	timeout time.Duration, skipTLSVerify bool, logger *slog.Logger,
+) *connection {
 	return &connection{
-		host:      host,
-		port:      port,
-		endpoint:  endpoint,
-		name:      name,
-		tokenFile: tokenFile,
-		timeout:   timeout,
-		logger:    logger,
-		pending:   make(map[string]chan json.RawMessage),
+		host:          host,
+		port:          port,
+		endpoint:      endpoint,
+		name:          name,
+		tokenFile:     tokenFile,
+		timeout:       timeout,
+		skipTLSVerify: skipTLSVerify,
+		logger:        logger,
+		pending:       make(map[string]chan json.RawMessage),
 	}
 }
 
@@ -72,7 +77,7 @@ func (c *connection) Open(ctx context.Context) error {
 
 	dialer := websocket.Dialer{
 		//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
-		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig:  &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
 		HandshakeTimeout: c.timeout,
 	}
 

@@ -60,7 +60,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 	tokenFile := tokenDir + "/token.txt"
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	conn := newConnection(host, port, "com.samsung.art-app", "TestClient", tokenFile, 2*time.Second, logger)
+	conn := newConnection(host, port, "com.samsung.art-app", "TestClient", tokenFile, 2*time.Second, true, logger)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -102,7 +102,7 @@ func TestConnection_Unauthorized(t *testing.T) {
 	host, portStr, _ := net.SplitHostPort(u.Host)
 	port, _ := strconv.Atoi(portStr)
 
-	conn := newConnection(host, port, "test", "TestClient", t.TempDir()+"/token.txt", 1*time.Second, slog.Default())
+	conn := newConnection(host, port, "test", "TestClient", t.TempDir()+"/token.txt", 1*time.Second, true, slog.Default())
 	err := conn.Open(context.Background())
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized, got %v", err)

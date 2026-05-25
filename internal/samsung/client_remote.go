@@ -8,7 +8,11 @@ import (
 )
 
 func (c *Client) turnOffTV(ctx context.Context, port int) error {
-	conn := newConnection(c.IP, port, "samsung.remote.control", c.opts.ClientName, c.tokenFilePath(), c.opts.ConnectionTimeout, c.logger)
+	conn := newConnection(
+		c.IP, port, "samsung.remote.control",
+		c.opts.ClientName, c.tokenFilePath(),
+		c.opts.ConnectionTimeout, c.opts.SkipTLSVerify, c.logger,
+	)
 
 	if err := conn.Open(ctx); err != nil {
 		return fmt.Errorf("open remote control connection: %w", err)

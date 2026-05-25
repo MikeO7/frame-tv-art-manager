@@ -36,6 +36,7 @@ func Load() (*Config, error) {
 		AutoOffGraceHours:   envFloat("AUTO_OFF_GRACE_HOURS", 2),
 		TVMAC:               envStr("TV_MAC", ""),
 		EnableRESTGate:      envBool("ENABLE_REST_GATE"),
+		VerifyTLS:           envBool("VERIFY_TLS") || (os.Getenv("SKIP_TLS_VERIFY") == "false"),
 		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAppID:       envStr("UNSPLASH_APP_ID", ""),
 		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
