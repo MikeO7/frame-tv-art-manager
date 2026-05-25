@@ -7,6 +7,7 @@ import (
 	"sync"
 )
 
+//nolint:gochecknoglobals // global read-only lookup tables for impasto and canvas simulation performance
 var (
 	lutWeave          [400]float64
 	lutVarnishPool    [400]float64

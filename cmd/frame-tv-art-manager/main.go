@@ -13,6 +13,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/sync"
 )
 
+//nolint:gochecknoglobals // these variables are injected at build time via -ldflags
 var (
 	Version   = "dev"
 	Commit    = "unknown"
@@ -66,11 +67,15 @@ func handleCLIArgs() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--help", "-h":
+			//nolint:forbidigo // standard CLI usage output
 			fmt.Println("Usage: frame-tv-art-manager")
+			//nolint:forbidigo // standard CLI usage output
 			fmt.Println("Configuration is provided entirely via environment variables.")
+			//nolint:forbidigo // standard CLI usage output
 			fmt.Println("See README.md for details.")
 			os.Exit(0)
 		case "--version", "-v":
+			//nolint:forbidigo // standard CLI version output
 			fmt.Printf("frame-tv-art-manager version %s (commit %s) built on %s\n", Version, Commit, BuildDate)
 			os.Exit(0)
 		}

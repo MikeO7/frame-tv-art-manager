@@ -86,7 +86,7 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
 
 	// Search range: +/- 2% of the total dimension
-	searchRange := 0
+	var searchRange int
 	if horizontal {
 		searchRange = int(float64(srcW) * 0.02)
 	} else {
@@ -110,7 +110,7 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 		}
 
 		// Quick edge-score of the boundary
-		score := 0.0
+		var score float64
 		if horizontal {
 			score = calculateEdgeScore(src, offset, 0, offset+windowW, srcH)
 		} else {

@@ -17,7 +17,7 @@ func (c *Client) isInArtMode(ctx context.Context) bool {
 
 	id := newRequestID()
 	req := map[string]any{
-		keyRequest:   "get_artmode_status",
+		keyRequest:   keyGetArtModeStatus,
 		"id":         id,
 		keyRequestID: id,
 	}
@@ -55,7 +55,7 @@ func (c *Client) isInArtMode(ctx context.Context) bool {
 func (c *Client) getUploadedImages(ctx context.Context) ([]ArtContent, error) {
 	id := newRequestID()
 	req := map[string]any{
-		keyRequest:    "get_content_list",
+		keyRequest:    keyGetContentList,
 		"id":          id,
 		keyRequestID:  id,
 		"category_id": "MY-C0002",
@@ -105,7 +105,7 @@ func (c *Client) deleteImages(ctx context.Context, ids []string) error {
 
 	contentIDList := make([]map[string]string, len(ids))
 	for i, cid := range ids {
-		contentIDList[i] = map[string]string{"content_id": cid}
+		contentIDList[i] = map[string]string{keyContentID: cid}
 	}
 
 	req := map[string]any{
@@ -145,7 +145,7 @@ func (c *Client) selectImage(ctx context.Context, id string) error {
 		keyRequest:   "select_image",
 		"id":         reqID,
 		keyRequestID: reqID,
-		"content_id": id,
+		keyContentID: id,
 		"show":       true,
 	}
 

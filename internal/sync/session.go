@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	statusBackoff = "backoff"
-	statusError   = "error"
+	statusBackoff           = "backoff"
+	statusError             = "error"
+	statusSkippedNotArtMode = "skipped (not art mode)"
 )
 
 const (
@@ -149,7 +150,7 @@ func (s *TVReconciler) Reconcile(
 	if err != nil || result.Status != "" {
 		if err != nil {
 			transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-			result.Status = "error"
+			result.Status = statusError
 		}
 		return result, err
 	}
@@ -175,7 +176,7 @@ func (s *TVReconciler) Reconcile(
 	execResult, err := s.ExecuteSyncPlan(ctx, plan, transport, s.mapping, policy)
 	if err != nil {
 		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-		execResult.Status = "error"
+		execResult.Status = statusError
 		return execResult, err
 	}
 
@@ -197,7 +198,7 @@ func (s *TVReconciler) connectTV(
 			return nil
 		}
 		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-		result.Status = "error"
+		result.Status = statusError
 		return fmt.Errorf("connect: %w", err)
 	}
 	return nil
@@ -212,7 +213,7 @@ func (s *TVReconciler) getTVContent(
 
 	if !transport.IsInArtMode(ctx) {
 		s.logger.Info("skipping — TV not in art mode")
-		result.Status = "skipped (not art mode)"
+		result.Status = statusSkippedNotArtMode
 		return nil, nil
 	}
 	result.ArtMode = true
