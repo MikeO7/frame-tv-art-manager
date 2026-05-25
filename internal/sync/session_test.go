@@ -135,7 +135,7 @@ func TestDiffSets(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_UploadAndDelete(t *testing.T) {
+func TestTVReconciler_Reconcile_UploadAndDelete(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{
 		artMode: true,
@@ -159,7 +159,7 @@ func TestTVSyncSession_Reconcile_UploadAndDelete(t *testing.T) {
 
 	mc := config.LoadMatteConfig(tmpDir)
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,13 +196,13 @@ func TestTVSyncSession_Reconcile_UploadAndDelete(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_Backoff(t *testing.T) {
+func TestTVReconciler_Reconcile_Backoff(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{skip: true}
 	cfg := &config.Config{TokenDir: tmpDir}
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestTVSyncSession_Reconcile_Backoff(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_RemoveUnknown(t *testing.T) {
+func TestTVReconciler_Reconcile_RemoveUnknown(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{
 		artMode: true,
@@ -232,7 +232,7 @@ func TestTVSyncSession_Reconcile_RemoveUnknown(t *testing.T) {
 	}
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,13 +246,13 @@ func TestTVSyncSession_Reconcile_RemoveUnknown(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_GateFailed(t *testing.T) {
+func TestTVReconciler_Reconcile_GateFailed(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{connectErr: samsung.ErrGateFailed}
 	cfg := &config.Config{TokenDir: tmpDir}
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestTVSyncSession_Reconcile_GateFailed(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_ConnectError(t *testing.T) {
+func TestTVReconciler_Reconcile_ConnectError(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{connectErr: context.DeadlineExceeded}
 	cfg := &config.Config{
@@ -275,7 +275,7 @@ func TestTVSyncSession_Reconcile_ConnectError(t *testing.T) {
 	}
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,13 +289,13 @@ func TestTVSyncSession_Reconcile_ConnectError(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_NotArtMode(t *testing.T) {
+func TestTVReconciler_Reconcile_NotArtMode(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{artMode: false}
 	cfg := &config.Config{TokenDir: tmpDir}
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestTVSyncSession_Reconcile_NotArtMode(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_ListError(t *testing.T) {
+func TestTVReconciler_Reconcile_ListError(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{artMode: true, listErr: context.DeadlineExceeded}
 	cfg := &config.Config{
@@ -318,7 +318,7 @@ func TestTVSyncSession_Reconcile_ListError(t *testing.T) {
 	}
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestTVSyncSession_Reconcile_ListError(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_DryRun(t *testing.T) {
+func TestTVReconciler_Reconcile_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "photo.jpg")
 	if err := os.WriteFile(filePath, []byte("data"), 0o600); err != nil {
@@ -356,7 +356,7 @@ func TestTVSyncSession_Reconcile_DryRun(t *testing.T) {
 
 	mc := &config.MatteConfig{Overrides: map[string]string{"photo.jpg": "modern_apricot"}}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestTVSyncSession_Reconcile_DryRun(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_ShuffleSelection(t *testing.T) {
+func TestTVReconciler_Reconcile_ShuffleSelection(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{
 		artMode: true,
@@ -402,7 +402,7 @@ func TestTVSyncSession_Reconcile_ShuffleSelection(t *testing.T) {
 
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +418,7 @@ func TestTVSyncSession_Reconcile_ShuffleSelection(t *testing.T) {
 	}
 }
 
-func TestTVSyncSession_Reconcile_AutoOff(t *testing.T) {
+func TestTVReconciler_Reconcile_AutoOff(t *testing.T) {
 	tmpDir := t.TempDir()
 	fake := &fakeTVTransport{artMode: true}
 	cfg := &config.Config{
@@ -429,7 +429,7 @@ func TestTVSyncSession_Reconcile_AutoOff(t *testing.T) {
 	}
 	mc := &config.MatteConfig{}
 
-	s, err := NewTVSyncSession("1.2.3.4", cfg, mc, slog.Default())
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,5 +437,133 @@ func TestTVSyncSession_Reconcile_AutoOff(t *testing.T) {
 	_, err = s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestIsWithinAutoOffWindow(t *testing.T) {
+	t.Parallel()
+
+	utc := "UTC"
+	time2200 := "22:00"
+
+	tests := []struct {
+		name    string
+		offTime string
+		grace   float64
+		tz      string
+		now     time.Time
+		want    bool
+	}{
+		{
+			name:    "empty off time",
+			offTime: "",
+			grace:   2,
+			tz:      utc,
+			now:     time.Date(2024, 1, 1, 22, 30, 0, 0, time.UTC),
+			want:    false,
+		},
+		{
+			name:    "within window",
+			offTime: time2200,
+			grace:   2,
+			tz:      utc,
+			now:     time.Date(2024, 1, 1, 22, 30, 0, 0, time.UTC),
+			want:    true,
+		},
+		{
+			name:    "at exact off time",
+			offTime: time2200,
+			grace:   2,
+			tz:      utc,
+			now:     time.Date(2024, 1, 1, 22, 0, 0, 0, time.UTC),
+			want:    true,
+		},
+		{
+			name:    "at exact grace end",
+			offTime: time2200,
+			grace:   2,
+			tz:      utc,
+			now:     time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+			want:    false, // exclusive end
+		},
+		{
+			name:    "before window",
+			offTime: time2200,
+			grace:   2,
+			tz:      utc,
+			now:     time.Date(2024, 1, 1, 21, 59, 0, 0, time.UTC),
+			want:    false,
+		},
+		{
+			name:    "after grace period",
+			offTime: time2200,
+			grace:   2,
+			tz:      utc,
+			now:     time.Date(2024, 1, 2, 0, 30, 0, 0, time.UTC),
+			want:    false,
+		},
+		{
+			name:    "midnight wrap — in yesterday's window",
+			offTime: "23:00",
+			grace:   3,
+			tz:      utc,
+			now:     time.Date(2024, 1, 2, 1, 0, 0, 0, time.UTC),
+			want:    true,
+		},
+		{
+			name:    "midnight wrap — past yesterday's grace",
+			offTime: "23:00",
+			grace:   2,
+			tz:      utc,
+			now:     time.Date(2024, 1, 2, 1, 30, 0, 0, time.UTC),
+			want:    false,
+		},
+		{
+			name:    "fractional grace hours",
+			offTime: time2200,
+			grace:   1.5,
+			tz:      utc,
+			now:     time.Date(2024, 1, 1, 23, 20, 0, 0, time.UTC),
+			want:    true,
+		},
+		{
+			name:    "invalid timezone returns false",
+			offTime: time2200,
+			grace:   2,
+			tz:      "Invalid/Zone",
+			now:     time.Date(2024, 1, 1, 22, 30, 0, 0, time.UTC),
+			want:    false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := isWithinAutoOffWindowAt(tc.offTime, tc.grace, tc.tz, tc.now)
+			if got != tc.want {
+				t.Errorf("isWithinAutoOffWindowAt(%q, %.1f, %q, %v) = %v, want %v",
+					tc.offTime, tc.grace, tc.tz, tc.now, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatGraceDisplay(t *testing.T) {
+	tests := []struct {
+		hours float64
+		want  string
+	}{
+		{2.0, "2"},
+		{1.5, "1.5"},
+		{0.0, "0"},
+		{12.0, "12"},
+		{0.1, "0.1"},
+	}
+
+	for _, tc := range tests {
+		got := formatGraceDisplay(tc.hours)
+		if got != tc.want {
+			t.Errorf("formatGraceDisplay(%.1f) = %q, want %q", tc.hours, got, tc.want)
+		}
 	}
 }

@@ -3,6 +3,7 @@ package sync
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,11 +60,10 @@ func LoadMapping(dir, tvIP string) (*Mapping, error) {
 	return m, nil
 }
 
-// Save writes the mapping to disk as formatted JSON.
-func (m *Mapping) Save() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+func (m *Mapping) saveLocked() error {
+	if m.path == "" {
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(m.path), 0o700); err != nil {
 		return fmt.Errorf("create mapping dir: %w", err)
 	}
@@ -76,11 +76,21 @@ func (m *Mapping) Save() error {
 	return os.WriteFile(m.path, raw, 0o600)
 }
 
+// Save writes the mapping to disk as formatted JSON.
+func (m *Mapping) Save() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.saveLocked()
+}
+
 // Set records a filename→content_id association.
 func (m *Mapping) Set(filename string, contentID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.data[filename] = contentID
+	if err := m.saveLocked(); err != nil {
+		slog.Error("failed to auto-save mapping Set", "file", filename, "error", err)
+	}
 }
 
 // Delete removes a filename from the mapping.
@@ -88,6 +98,9 @@ func (m *Mapping) Delete(filename string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.data, filename)
+	if err := m.saveLocked(); err != nil {
+		slog.Error("failed to auto-save mapping Delete", "file", filename, "error", err)
+	}
 }
 
 // DeleteBatch removes multiple filenames from the mapping under a single lock.
@@ -96,6 +109,9 @@ func (m *Mapping) DeleteBatch(filenames []string) {
 	defer m.mu.Unlock()
 	for _, filename := range filenames {
 		delete(m.data, filename)
+	}
+	if err := m.saveLocked(); err != nil {
+		slog.Error("failed to auto-save mapping DeleteBatch", "error", err)
 	}
 }
 
@@ -110,6 +126,9 @@ func (m *Mapping) renameInternal(oldName, newName string) bool {
 	if id, ok := m.data[oldName]; ok {
 		delete(m.data, oldName)
 		m.data[newName] = id
+		if err := m.saveLocked(); err != nil {
+			slog.Error("failed to auto-save mapping Rename", "old", oldName, "new", newName, "error", err)
+		}
 		return true
 	}
 	return false

@@ -5,38 +5,24 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
-// CycleReporter renders sync cycle summaries for structured logs.
-type CycleReporter struct {
-	cfg      *config.Config
-	logger   *slog.Logger
-	cycleNum int
-}
-
-// NewCycleReporter creates a reporter for sync cycle output.
-func NewCycleReporter(cfg *config.Config, logger *slog.Logger) *CycleReporter {
-	return &CycleReporter{cfg: cfg, logger: logger}
-}
-
-// SetCycleNum updates the current cycle number used in summaries.
-func (r *CycleReporter) SetCycleNum(n int) {
-	r.cycleNum = n
-}
-
-// PrintSummary logs the ASCII sync cycle summary box.
+// LogCycleSummary renders and logs a formatted sync cycle summary box to structured logs.
 //
 //nolint:gocognit,gocyclo,revive,funlen // complexity justified for this domain-specific path
-func (r *CycleReporter) PrintSummary(
+func LogCycleSummary(
+	logger *slog.Logger,
+	cycleNum int,
 	startTime time.Time,
-	totalLocal, fromSources, optimized int,
+	syncIntervalMin int,
+	totalLocal int,
+	fromSources int,
+	optimized int,
 	tvs []TVSyncResult,
 	warnings []string,
 ) {
 	elapsed := time.Since(startTime).Round(time.Millisecond)
-	nextSync := time.Now().Add(time.Duration(r.cfg.SyncIntervalMin) * time.Minute)
+	nextSync := time.Now().Add(time.Duration(syncIntervalMin) * time.Minute)
 
 	const boxWidth = 50
 
@@ -52,7 +38,7 @@ func (r *CycleReporter) PrintSummary(
 	var sb strings.Builder
 	sb.WriteString("\n╔══════════════════════════════════════════════════╗\n")
 
-	header := fmt.Sprintf("  Sync Cycle #%d - %s", r.cycleNum, time.Now().Format("2006-01-02 15:04:05"))
+	header := fmt.Sprintf("  Sync Cycle #%d - %s", cycleNum, time.Now().Format("2006-01-02 15:04:05"))
 	sb.WriteString(padLine(header))
 
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
@@ -115,5 +101,5 @@ func (r *CycleReporter) PrintSummary(
 	sb.WriteString(padLine("  Next:   " + nextSync.Format("15:04:05")))
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
 
-	r.logger.Info(sb.String())
+	logger.Info(sb.String())
 }
