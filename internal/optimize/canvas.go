@@ -92,6 +92,7 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 	dst.Pix[i+2] = b
 }
 
+//nolint:funlen // complexity justified for this domain-specific mathematical path
 func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	stride := src.Stride
 	pix := src.Pix
@@ -116,45 +117,45 @@ func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	idx12 := rowNext + colCurr
 	idx22 := rowNext + colNext
 
-	d20_00_r := int(pix[idx20]) - int(pix[idx00])
-	d20_00_g := int(pix[idx20+1]) - int(pix[idx00+1])
-	d20_00_b := int(pix[idx20+2]) - int(pix[idx00+2])
+	d20x00R := int(pix[idx20]) - int(pix[idx00])
+	d20x00G := int(pix[idx20+1]) - int(pix[idx00+1])
+	d20x00B := int(pix[idx20+2]) - int(pix[idx00+2])
 
-	d21_01_r := int(pix[idx21]) - int(pix[idx01])
-	d21_01_g := int(pix[idx21+1]) - int(pix[idx01+1])
-	d21_01_b := int(pix[idx21+2]) - int(pix[idx01+2])
+	d21x01R := int(pix[idx21]) - int(pix[idx01])
+	d21x01G := int(pix[idx21+1]) - int(pix[idx01+1])
+	d21x01B := int(pix[idx21+2]) - int(pix[idx01+2])
 
-	d22_02_r := int(pix[idx22]) - int(pix[idx02])
-	d22_02_g := int(pix[idx22+1]) - int(pix[idx02+1])
-	d22_02_b := int(pix[idx22+2]) - int(pix[idx02+2])
+	d22x02R := int(pix[idx22]) - int(pix[idx02])
+	d22x02G := int(pix[idx22+1]) - int(pix[idx02+1])
+	d22x02B := int(pix[idx22+2]) - int(pix[idx02+2])
 
-	d02_00_r := int(pix[idx02]) - int(pix[idx00])
-	d02_00_g := int(pix[idx02+1]) - int(pix[idx00+1])
-	d02_00_b := int(pix[idx02+2]) - int(pix[idx00+2])
+	d02x00R := int(pix[idx02]) - int(pix[idx00])
+	d02x00G := int(pix[idx02+1]) - int(pix[idx00+1])
+	d02x00B := int(pix[idx02+2]) - int(pix[idx00+2])
 
-	d12_10_r := int(pix[idx12]) - int(pix[idx10])
-	d12_10_g := int(pix[idx12+1]) - int(pix[idx10+1])
-	d12_10_b := int(pix[idx12+2]) - int(pix[idx10+2])
+	d12x10R := int(pix[idx12]) - int(pix[idx10])
+	d12x10G := int(pix[idx12+1]) - int(pix[idx10+1])
+	d12x10B := int(pix[idx12+2]) - int(pix[idx10+2])
 
-	d22_20_r := int(pix[idx22]) - int(pix[idx20])
-	d22_20_g := int(pix[idx22+1]) - int(pix[idx20+1])
-	d22_20_b := int(pix[idx22+2]) - int(pix[idx20+2])
+	d22x20R := int(pix[idx22]) - int(pix[idx20])
+	d22x20G := int(pix[idx22+1]) - int(pix[idx20+1])
+	d22x20B := int(pix[idx22+2]) - int(pix[idx20+2])
 
-	d_3_r := d20_00_r + d02_00_r + d22_02_r + d22_20_r
-	d_10_r := d21_01_r + d12_10_r
-	g_r := (d_3_r<<1 + d_3_r) + (d_10_r<<3 + d_10_r<<1)
+	d3R := d20x00R + d02x00R + d22x02R + d22x20R
+	d10R := d21x01R + d12x10R
+	gR := (d3R<<1 + d3R) + (d10R<<3 + d10R<<1)
 
-	d_3_g := d20_00_g + d02_00_g + d22_02_g + d22_20_g
-	d_10_g := d21_01_g + d12_10_g
-	g_g := (d_3_g<<1 + d_3_g) + (d_10_g<<3 + d_10_g<<1)
+	d3G := d20x00G + d02x00G + d22x02G + d22x20G
+	d10G := d21x01G + d12x10G
+	gG := (d3G<<1 + d3G) + (d10G<<3 + d10G<<1)
 
-	d_3_b := d20_00_b + d02_00_b + d22_02_b + d22_20_b
-	d_10_b := d21_01_b + d12_10_b
-	g_b := (d_3_b<<1 + d_3_b) + (d_10_b<<3 + d_10_b<<1)
+	d3B := d20x00B + d02x00B + d22x02B + d22x20B
+	d10B := d21x01B + d12x10B
+	gB := (d3B<<1 + d3B) + (d10B<<3 + d10B<<1)
 
 	// Combine differences weighted by perceived luminosity components: (299*R + 587*G + 114*B)
 	// We aggregate them globally to delay expensive float conversions until the absolute end
-	g := g_r*299 + g_g*587 + g_b*114
+	g := gR*299 + gG*587 + gB*114
 
 	// scale = (-0.707 * 0.3) / (4080.0 * 1000.0) where 1000.0 is from summing 299+587+114
 	const scale = (-0.707 * 0.3) / (4080.0 * 1000.0)
