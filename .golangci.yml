@@ -49,7 +49,6 @@ linters:
             - github.com/MikeO7/frame-tv-art-manager
             - github.com/gorilla/websocket
             - golang.org/x/image
-            - gopkg.in/yaml.v3
     forbidigo:
       forbid:
         - pattern: '^fmt\.Print'

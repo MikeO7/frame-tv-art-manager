@@ -119,31 +119,6 @@ func TestExtensionFromResponse(t *testing.T) {
 	}
 }
 
-func TestLoadSources_Yaml(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "sources.yaml")
-
-	yamlContent := `
-providers:
-  unsplash:
-    - photo:123
-    - collection:abc
-  nasa:
-    - apod
-`
-	_ = os.WriteFile(path, []byte(yamlContent), 0o600)
-
-	l := &Loader{sourcesFile: path}
-	urls, err := l.loadSources()
-	if err != nil {
-		t.Fatalf("loadSources YAML failed: %v", err)
-	}
-
-	if len(urls) != 3 {
-		t.Errorf("expected 3 URLs, got %d", len(urls))
-	}
-}
-
 func TestLoadSources_Txt(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sources.txt")
@@ -284,46 +259,6 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	}
 }
 
-func TestLoader_Sync_Yaml(t *testing.T) {
-	artworkDir := t.TempDir()
-	sourcesFile := filepath.Join(t.TempDir(), "sources.yaml")
-
-	content := `
-sources:
-  - unsplash:photo:123
-  - nasa:apod
-`
-	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
-
-	l := newTestLoader(&config.Config{
-		SourcesFile:       sourcesFile,
-		ArtworkDir:        artworkDir,
-		UnsplashAppID:     "app",
-		UnsplashAccessKey: "key",
-		UnsplashSecretKey: "secret",
-		NasaAPIKey:        providerNASA,
-		PexelsAPIKey:      providerPexels,
-		PixabayAPIKey:     providerPixabay,
-	}, slog.Default())
-
-	// Mock server for downloads
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "/photos") {
-			_, _ = w.Write([]byte(`{"id": "u1", "links": {"download_location": "http://example.com/download"}}`))
-		} else {
-			w.Header().Set("Content-Type", "image/jpeg")
-			_, _ = w.Write([]byte("fake-image-data"))
-		}
-	}))
-	defer server.Close()
-	setMockProviderURLs(l, server.URL)
-
-	_, _ = l.Sync()
-}
-
 func TestLoader_UtilityMethods(t *testing.T) {
 	// truncateURL
 	u := "https://example.com/very/long/path/to/image.jpg?query=param"
@@ -430,18 +365,5 @@ func TestLoader_downloadWithIdentity_MaxReached(t *testing.T) {
 	}
 	if downloaded {
 		t.Error("expected skip when max reached")
-	}
-}
-
-func TestLoader_loadYamlSources_Invalid(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sources.yaml")
-	if err := os.WriteFile(path, []byte("not: valid: yaml: ["), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	l := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
-	l.sourcesFile = path
-	_, err := l.loadYamlSources()
-	if err == nil {
-		t.Error("expected error for invalid yaml format")
 	}
 }

@@ -1,3 +1,3 @@
-**Target**: Removed the unreferenced `GetStage()` method from the `Status` struct in `internal/health/server.go`. This method was identified as dead code using `deadcode -test ./...`.
-**Drop**: Deleted 7 lines of code, reducing structural footprint in the health tracking package.
-**Proof**: Clean execution of `go test ./...` and `go build ./cmd/frame-tv-art-manager` confirms that this method was completely unreferenced and safe to drop.
+🎯 **Target**: Removed `gopkg.in/yaml.v3` dependency and the associated YAML parsing logic (`loadYamlSources`) from `internal/sources/loader_sync.go`.
+📉 **Drop**: Deleted `gopkg.in/yaml.v3` module from `go.mod` reducing binary bloat. Removed 129 lines of code. Replaced `sources.yaml` functionality strictly with simpler natively-handled `.txt` line-by-line configuration logic for fetching sources.
+🔬 **Proof**: `go test ./...` and compilation succeed completely on `loader_test.go` using text fallback logic. Deadcode and Linter passing.
