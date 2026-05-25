@@ -112,6 +112,10 @@ type Config struct {
 	// Default false because not all firmware versions support this endpoint.
 	EnableRESTGate bool
 
+	// VerifyTLS enables TLS/SSL certificate verification when connecting to the TV.
+	// Default is false since Frame TVs use self-signed certificates.
+	VerifyTLS bool
+
 	// --- Image Sources ---
 
 	// SourcesFile is the path to a text file containing image URLs to download.

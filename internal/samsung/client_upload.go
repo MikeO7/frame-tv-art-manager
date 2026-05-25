@@ -112,7 +112,7 @@ func (c *Client) upload(ctx context.Context, filePath, fileType, matte string) (
 	c.logger.Debug("send_image parsed conn_info", "ip", ci.IP, "port", ci.Port)
 
 	// Step 2: Transfer the file over D2D socket.
-	if err := uploadImageD2D(ctx, ci, filePath, fileType, c.opts.ConnectionTimeout); err != nil {
+	if err := uploadImageD2D(ctx, ci, filePath, fileType, c.opts.ConnectionTimeout, c.opts.SkipTLSVerify); err != nil {
 		return "", fmt.Errorf("d2d transfer: %w", err)
 	}
 

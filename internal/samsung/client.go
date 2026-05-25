@@ -96,7 +96,7 @@ func (c *Client) connect(ctx context.Context) error {
 	c.artConn = newConnection(
 		c.IP, 8002, "com.samsung.art-app",
 		c.opts.ClientName, tokenFile,
-		c.opts.ConnectionTimeout, c.logger,
+		c.opts.ConnectionTimeout, c.opts.SkipTLSVerify, c.logger,
 	)
 
 	if err := c.artConn.Open(ctx); err != nil {
@@ -211,7 +211,7 @@ func (c *Client) tokenFilePath() string {
 }
 
 func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
-	conn := newConnection(c.IP, port, "samsung.remote.control", c.opts.ClientName, tokenFile, c.opts.ConnectionTimeout, c.logger)
+	conn := newConnection(c.IP, port, "samsung.remote.control", c.opts.ClientName, tokenFile, c.opts.ConnectionTimeout, c.opts.SkipTLSVerify, c.logger)
 	if err := conn.Open(ctx); err != nil {
 		return err
 	}

@@ -29,8 +29,8 @@ const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
 // The caller must separately wait for the "image_added" event on the
 // WebSocket to confirm the upload succeeded and get the content_id.
 //
-//nolint:gocognit,gocyclo,funlen // D2D upload follows a fixed multi-step TV protocol
-func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileType string, timeout time.Duration) error {
+//nolint:gocognit,gocyclo,funlen,revive // D2D upload follows a fixed multi-step TV protocol
+func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileType string, timeout time.Duration, skipTLSVerify bool) error {
 	// Open the image file.
 	f, err := os.Open(filepath.Clean(filePath))
 	if err != nil {
@@ -66,7 +66,7 @@ func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileTyp
 
 	var conn net.Conn
 	if info.Secured {
-		tlsConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Samsung self-signed cert
+		tlsConf := &tls.Config{InsecureSkipVerify: skipTLSVerify} //nolint:gosec // Samsung self-signed cert
 		tlsDialer := &tls.Dialer{
 			NetDialer: &dialer,
 			Config:    tlsConf,

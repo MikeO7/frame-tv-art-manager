@@ -355,7 +355,7 @@ func TestClientWrapperMethods(t *testing.T) {
 	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
 
 	// Create art connection directly to test wrappers
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
 	if err := c.artConn.Open(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +498,7 @@ func TestClientUpload(t *testing.T) {
 	port, _ := strconv.Atoi(u.Port())
 
 	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
 	if err := c.artConn.Open(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +546,7 @@ func TestSaveMetadata_NoDir(t *testing.T) {
 	host := u.Hostname()
 	port, _ := strconv.Atoi(u.Port())
 
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
 	_ = c.artConn.Open(context.Background())
 	defer func() { _ = c.Close() }()
 
@@ -672,7 +672,7 @@ func TestClient_PublicTransportMethods(t *testing.T) {
 		APITimeout:        2 * time.Second,
 	}).TVConnectOptions(), slog.Default())
 
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, slog.Default())
+	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
 	if err := c.artConn.Open(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -16,7 +16,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 		Timeout: c.opts.APITimeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, //nolint:gosec // lgtm[go/insecure-tls]
+				InsecureSkipVerify: c.opts.SkipTLSVerify, //nolint:gosec // configurable TLS verification
 			},
 		},
 	}

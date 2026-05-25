@@ -40,6 +40,7 @@ func (c *Config) SyncPolicy() SyncPolicy {
 type TVConnectOptions struct {
 	TVMAC             string
 	EnableRESTGate    bool
+	SkipTLSVerify     bool
 	ClientName        string
 	TokenDir          string
 	ConnectionTimeout time.Duration
@@ -53,6 +54,7 @@ func (c *Config) TVConnectOptions() TVConnectOptions {
 	return TVConnectOptions{
 		TVMAC:             c.TVMAC,
 		EnableRESTGate:    c.EnableRESTGate,
+		SkipTLSVerify:     !c.VerifyTLS,
 		ClientName:        c.ClientName,
 		TokenDir:          c.TokenDir,
 		ConnectionTimeout: c.ConnectionTimeout,
