@@ -92,7 +92,7 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 	dst.Pix[i+2] = b
 }
 
-//nolint:funlen,gocognit // complexity justified for this domain-specific mathematical path
+//nolint:funlen // complexity justified for this domain-specific mathematical path
 func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	stride := src.Stride
 	pix := src.Pix
