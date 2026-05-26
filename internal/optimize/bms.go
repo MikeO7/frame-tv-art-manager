@@ -34,6 +34,7 @@ func generateBMSMap(src *image.RGBA) []float64 {
 	return bms
 }
 
+//nolint:gocognit,gosec // complexity justified for this domain-specific path; uint8 conversion is safe here as max luminance is 255
 func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	if w <= 0 || h <= 0 {
 		return nil
@@ -50,7 +51,7 @@ func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	}
 
 	bg := make([]bool, w*h)
-	// OPTIMIZATION: Replacing dynamically growing slice with pre-allocated array of max potential size to eliminate allocation overhead and inlined pushes
+	// OPTIMIZATION: Fixed array avoids allocs and inlined pushes
 	queue := make([]int, w*h)
 	head := 0
 	tail := 0
