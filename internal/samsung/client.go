@@ -42,6 +42,22 @@ type Client struct {
 
 // NewClient creates a new TV client. Call Connect() to establish the
 // WebSocket connection.
+//
+// Parameters:
+//   - ip:     The IPv4 address of the target Frame TV.
+//   - opts:   Configuration options for the connection, including timeouts and client identity.
+//   - logger: A structured logger for emitting connection state and errors.
+//
+// Returns:
+//   - *Client: An instantiated client ready to connect.
+//
+// Example:
+//
+//	tv := samsung.NewClient("192.168.1.150", opts, logger)
+//	if err := tv.Connect(ctx); err != nil {
+//	    log.Fatal("Could not connect to TV:", err)
+//	}
+//	defer tv.Close()
 func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Client {
 	return &Client{
 		IP:     ip,
