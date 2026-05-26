@@ -26,7 +26,7 @@ func TestNASAClient_FetchAPOD(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newNASAClient("key", slog.Default())
+	c := newNASAClient("test_key_1", slog.Default())
 	c.BaseURL = server.URL
 
 	apod, err := c.FetchAPOD(context.Background())
@@ -62,7 +62,7 @@ func TestNASAClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newNASAClient("key", slog.Default())
+	c := newNASAClient("some_other_key", slog.Default())
 	c.SearchURL = server.URL
 
 	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")
@@ -341,7 +341,7 @@ func TestNASAClient_FetchNASAAssetManifest_Errors(t *testing.T) {
 	}))
 	defer server500.Close()
 
-	c := newNASAClient("key", slog.Default())
+	c := newNASAClient("some_other_key", slog.Default())
 	_, err := c.fetchNASAAssetManifest(context.Background(), server500.URL)
 	if err == nil || !strings.Contains(err.Error(), "nasa asset manifest api error") {
 		t.Errorf("expected 500 error, got %v", err)
@@ -349,7 +349,7 @@ func TestNASAClient_FetchNASAAssetManifest_Errors(t *testing.T) {
 
 	// Test Malformed JSON
 	serverBadJSON := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("{bad-json}"))
+		_, _ = w.Write([]byte("{bad-json}"))
 	}))
 	defer serverBadJSON.Close()
 
@@ -380,19 +380,19 @@ func TestNASAClient_FetchNASAAssetManifest_Errors(t *testing.T) {
 		t.Error("expected client do error, got nil")
 	}
 
-    // Test request context error
-    ctx, cancel := context.WithCancel(context.Background())
-    cancel()
-    _, err = c.fetchNASAAssetManifest(ctx, serverLarge.URL)
+	// Test request context error
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = c.fetchNASAAssetManifest(ctx, serverLarge.URL)
 	if err == nil {
 		t.Error("expected context canceled error, got nil")
 	}
 
-    // Test bad URL error
-    _, err = c.fetchNASAAssetManifest(context.Background(), "://foo")
-    if err == nil {
-        t.Error("expected new request error, got nil")
-    }
+	// Test bad URL error
+	_, err = c.fetchNASAAssetManifest(context.Background(), "://foo")
+	if err == nil {
+		t.Error("expected new request error, got nil")
+	}
 }
 
 func TestNASAClient_SearchNASAImageLibrary_Errors(t *testing.T) {
@@ -411,7 +411,7 @@ func TestNASAClient_SearchNASAImageLibrary_Errors(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newNASAClient("key", slog.Default())
+	c := newNASAClient("some_other_key", slog.Default())
 	c.SearchURL = server.URL
 
 	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")
