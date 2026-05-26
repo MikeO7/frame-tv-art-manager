@@ -27,3 +27,11 @@ func BenchmarkRgbToLab(b *testing.B) {
 		rgbToLab(100, 150, 200)
 	}
 }
+
+func BenchmarkGenerateBMSMap(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		generateBMSMap(img)
+	}
+}
