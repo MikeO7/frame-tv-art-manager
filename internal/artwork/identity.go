@@ -67,7 +67,7 @@ func ParseIdentity(filename string) (identity, cleanIdentity, hash string) {
 
 // StripDimensionSuffix removes a trailing _WxH dimension segment from a stem.
 //
-//nolint:nestif // dimension suffix parsing needs nested bounds checks
+
 func StripDimensionSuffix(stem string) string {
 	if lastUnderscore := strings.LastIndex(stem, "_"); lastUnderscore != -1 {
 		suffix := stem[lastUnderscore+1:]

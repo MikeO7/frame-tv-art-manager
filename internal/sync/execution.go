@@ -97,7 +97,6 @@ func (s *TVReconciler) ExecuteSyncPlan(
 	return result, nil
 }
 
-//nolint:revive // justified argument count for retry logic
 func (s *TVReconciler) uploadWithRetry(
 	ctx context.Context,
 	transport TVTransport,
@@ -123,7 +122,6 @@ func (s *TVReconciler) uploadWithRetry(
 	return "", lastErr
 }
 
-//nolint:gocyclo // complexity justified for this domain-specific path
 func (s *TVReconciler) applySelectionAndSlideshowPlan(
 	ctx context.Context,
 	plan *SyncPlan,

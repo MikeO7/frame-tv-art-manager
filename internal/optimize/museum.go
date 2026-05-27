@@ -136,7 +136,6 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	return lutSrgb[idxR], lutSrgb[idxG], lutSrgb[idxB]
 }
 
-//nolint:gocognit // complexity justified for this domain-specific path
 func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()

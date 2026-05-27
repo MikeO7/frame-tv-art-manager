@@ -2,7 +2,6 @@ package sources
 
 import (
 	"bytes"
-
 	"log/slog"
 )
 

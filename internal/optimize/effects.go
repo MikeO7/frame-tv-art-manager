@@ -24,7 +24,7 @@ func toRGBA(img image.Image) *image.RGBA {
 // centerCrop performs a content-aware crop and high-fidelity scale to target dimensions.
 // It uses the Director's Cut Saliency Engine to identify subjects and optimize composition.
 //
-//nolint:nestif // complexity justified for this domain-specific path
+
 func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()

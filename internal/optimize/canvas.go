@@ -55,7 +55,6 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	return dst
 }
 
-//nolint:revive // complexity justified for this domain-specific path
 func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
 	impasto := calculateScharrImpasto(src, x, y)
 	weave, varnishPool := calculateWeave(x, y)

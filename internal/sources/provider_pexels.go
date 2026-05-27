@@ -75,7 +75,7 @@ func (p *pexelsProvider) Curated(ctx context.Context) ([]string, error) {
 
 // FetchCollection retrieves all photos from a specific Pexels collection using pagination.
 //
-//nolint:gocognit // complexity justified for this domain-specific path
+
 func (p *pexelsProvider) FetchCollection(ctx context.Context, collectionID string) ([]string, error) {
 	var allUrls []string
 	page := 1
