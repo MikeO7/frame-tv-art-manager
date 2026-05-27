@@ -36,6 +36,21 @@ func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVTran
 }
 
 // NewEngine creates a sync engine with the given configuration.
+//
+// Parameters:
+//   - cfg:          The configuration settings for the engine.
+//   - logger:       A structured logger for recording events and errors.
+//   - healthStatus: A pointer to a Health status tracker for monitoring sync state.
+//
+// Returns:
+//   - *Engine: A new initialized Engine ready to run synchronization loops.
+//
+// Example:
+//
+//	engine := sync.NewEngine(cfg, logger, healthStatus)
+//	if err := engine.RunOnce(ctx); err != nil {
+//	    log.Fatal("Sync failed:", err)
+//	}
 func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Status) *Engine {
 	catalog := sources.NewArtworkCatalog(cfg.ArtworkDir, logger)
 	return &Engine{
