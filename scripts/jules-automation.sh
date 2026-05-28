@@ -145,25 +145,25 @@ echo "  Failed or cancelled: $failed_count"
 # 9. Handle Decisions
 if [ "$failed_count" -gt 0 ]; then
     echo "🚨 Some checks failed! Fetching precise failure logs..."
-    
+
     clean_logs=""
-    
+
     # Loop over failed checks and aggregate log files
     if [ "$checks_json" != "[]" ] && [ -n "$checks_json" ]; then
         failed_checks=$(echo "$checks_json" | jq -c '.[] | select(.bucket == "fail" or .bucket == "cancel")')
-        
+
         while read -r check; do
             if [ -z "$check" ]; then continue; fi
             check_name=$(echo "$check" | jq -r '.name')
             check_workflow=$(echo "$check" | jq -r '.workflow')
             check_link=$(echo "$check" | jq -r '.link')
             check_state=$(echo "$check" | jq -r '.state')
-            
+
             echo "🔍 Fetching logs for failed check: $check_name ($check_workflow)..."
-            
+
             # Extract run ID from the check link
             check_run_id=$(echo "$check_link" | grep -oE 'runs/[0-9]+' | cut -d'/' -f2 || true)
-            
+
             # Fallback to current triggering RUN_ID if run_id extraction is empty or is not a GH run URL
             if [ -z "$check_run_id" ] || [[ "$check_link" != *github.com* ]]; then
                 # Only use the triggering run ID if the failed check belongs to the current workflow
@@ -173,14 +173,14 @@ if [ "$failed_count" -gt 0 ]; then
                     check_run_id=""
                 fi
             fi
-            
+
             if [ -n "$check_run_id" ]; then
                 check_raw_logs=$(gh run view "$check_run_id" --log-failed 2>/dev/null || echo "No failed log details available.")
                 check_clean_logs=$(echo "$check_raw_logs" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | head -n 120)
             else
                 check_clean_logs="External/unsupported status check failure. Logs are not viewable via GHA. Please see: $check_link"
             fi
-            
+
             clean_logs="${clean_logs}### ❌ $check_name (Workflow: $check_workflow)
 [View full logs on GitHub]($check_link)
 
@@ -191,7 +191,7 @@ ${check_clean_logs}
 "
         done <<< "$failed_checks"
     fi
-    
+
     # Fallback to standard logging if we couldn't fetch specific check details
     if [ -z "$clean_logs" ]; then
         raw_logs=$(gh run view "$RUN_ID" --log-failed 2>/dev/null || echo "No failed log details available.")

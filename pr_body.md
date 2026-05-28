@@ -1,3 +1,5 @@
-🔍 Gap: Complex orchestration functions (`OptimizeCatalog` and `NewEngine`) lacked explicit parameter definitions, return types, and real-world execution contexts.
-📝 Update: Added detailed, idiomatic GoDoc headers wrapping parameter definitions and concrete code usage examples to both functions.
-🎯 Audience: Future human engineers or AI agents trying to orchestrate the internal pipeline who need context on orchestration capabilities without deciphering internal logic paths.
+🔍 **Gap**: The `.env.example` file lacked documentation for `VERIFY_TLS` and did not provide clear annotations that `LOCATION_LATITUDE` and `LOCATION_LONGITUDE` are required when `SOLAR_BRIGHTNESS_ENABLED` is enabled. The manual brightness setting also lacked explicit value range boundaries.
+
+📝 **Update**: Added `VERIFY_TLS` to the "Advanced System Settings" section with a default of `false` matching Frame TV self-signed certificate constraints. Updated the "Brightness" section to explicitly denote the 0-50 range for manual brightness and annotated required dependencies for solar brightness.
+
+🎯 **Audience**: Future human engineers and AI agents configuring local setups or deployment pipelines, preventing confusing initialization crashes.
