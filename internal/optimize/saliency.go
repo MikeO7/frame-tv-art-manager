@@ -203,7 +203,6 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	return mapData
 }
 
-//nolint:funlen // optimized fast path requires manually unrolled code
 func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
 	bounds := src.Bounds()
 	minX, maxX, minY, maxY := bounds.Min.X, bounds.Max.X-1, bounds.Min.Y, bounds.Max.Y-1
