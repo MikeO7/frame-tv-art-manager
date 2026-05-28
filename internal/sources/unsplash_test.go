@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -111,5 +112,52 @@ func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
 	}
 	if pages != 2 {
 		t.Errorf("expected 2 pages fetched, got %d", pages)
+	}
+}
+
+func TestUnsplashClient_TrackDownload_Errors(t *testing.T) {
+	logger, buf := newTestLogger()
+	c := newUnsplashClient("app", "key", "secret", logger)
+	c.BaseURL = "https://api.unsplash.com"
+
+	// 1. Test invalid URL format
+	c.TrackDownload(context.Background(), "://invalid-url")
+	if !bytes.Contains(buf.Bytes(), []byte("invalid unsplash download location URL format")) {
+		t.Error("expected invalid URL format warning in logs")
+	}
+	buf.Reset()
+
+	// 2. Test invalid host
+	c.TrackDownload(context.Background(), "https://example.com/track")
+	if !bytes.Contains(buf.Bytes(), []byte("invalid unsplash download location host")) {
+		t.Error("expected invalid host warning in logs")
+	}
+	buf.Reset()
+
+	// 3. Test request creation error
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c.TrackDownload(ctx, "https://api.unsplash.com/track")
+	if bytes.Contains(buf.Bytes(), []byte("unsplash download tracked")) {
+		t.Error("expected track request not to succeed on bad context")
+	}
+	buf.Reset()
+
+	// 4. Test client execution error
+	c.BaseURL = "invalid-scheme://api.unsplash.com"
+	c.TrackDownload(context.Background(), "invalid-scheme://api.unsplash.com/track")
+	if bytes.Contains(buf.Bytes(), []byte("unsplash download tracked")) {
+		t.Error("expected track request not to succeed on bad client request")
+	}
+}
+
+func TestUnsplashClient_TrackDownload_InvalidBaseURL(t *testing.T) {
+	logger, buf := newTestLogger()
+	c := newUnsplashClient("app", "key", "secret", logger)
+	c.BaseURL = "://invalid-base-url"
+
+	c.TrackDownload(context.Background(), "https://api.unsplash.com/track")
+	if !bytes.Contains(buf.Bytes(), []byte("invalid unsplash download location host")) {
+		t.Error("expected invalid host warning in logs due to bad BaseURL")
 	}
 }
