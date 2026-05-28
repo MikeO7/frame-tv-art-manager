@@ -28,6 +28,28 @@ type optContext struct {
 
 // OptimizeCatalog performs parallel image resizing/validation across the catalog files.
 //
+// Parameters:
+//   - ctx:        Context for cancellation.
+//   - artworkDir: Directory containing the artwork files.
+//   - catalog:    The artwork catalog index that provides supported files and tracks renames.
+//   - cfg:        Optimization configuration defining max dimensions, quality, and active modes.
+//   - onRename:   A callback function invoked when a file is renamed during optimization.
+//   - logger:     Structured logger for emitting processing events and errors.
+//
+// Returns:
+//   - int:   The number of successfully optimized and updated image files.
+//   - error: Any critical failure encountered during processing.
+//
+// Example:
+//
+//	count, err := optimize.OptimizeCatalog(ctx, "/data/artwork", catalog, cfg, func(old, new string) {
+//	    fmt.Printf("Renamed %s to %s\n", old, new)
+//	}, logger)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("Successfully optimized %d images\n", count)
+//
 //nolint:gocognit,revive,funlen // complexity, length, and argument count justified for parallel task processing
 func OptimizeCatalog(
 	ctx context.Context,
