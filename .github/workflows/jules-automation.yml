@@ -2,7 +2,7 @@ name: Jules PR Automation
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Docker Build and Push"]
     types:
       - completed
 
