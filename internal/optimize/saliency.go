@@ -204,8 +204,49 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 }
 
 func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
+	bounds := src.Bounds()
+	minX, maxX, minY, maxY := bounds.Min.X, bounds.Max.X-1, bounds.Min.Y, bounds.Max.Y-1
+
+	// FAST PATH: If the pixel is strictly inside the boundaries, skip all bounds checking
+	// and perform fast inline integer arithmetic for luminosity.
+	if x > minX && x < maxX && y > minY && y < maxY {
+		stride := src.Stride
+		pix := src.Pix
+		yMinYStride := (y - minY) * stride
+		xMinX4 := (x - minX) * 4
+
+		i00 := yMinYStride - stride + xMinX4 - 4
+		i10 := i00 + 4
+		i20 := i10 + 4
+
+		i01 := yMinYStride + xMinX4 - 4
+		i21 := i01 + 8
+
+		i02 := yMinYStride + stride + xMinX4 - 4
+		i12 := i02 + 4
+		i22 := i12 + 4
+
+		l00 := int(pix[i00])*299 + int(pix[i00+1])*587 + int(pix[i00+2])*114
+		l10 := int(pix[i10])*299 + int(pix[i10+1])*587 + int(pix[i10+2])*114
+		l20 := int(pix[i20])*299 + int(pix[i20+1])*587 + int(pix[i20+2])*114
+
+		l01 := int(pix[i01])*299 + int(pix[i01+1])*587 + int(pix[i01+2])*114
+		l21 := int(pix[i21])*299 + int(pix[i21+1])*587 + int(pix[i21+2])*114
+
+		l02 := int(pix[i02])*299 + int(pix[i02+1])*587 + int(pix[i02+2])*114
+		l12 := int(pix[i12])*299 + int(pix[i12+1])*587 + int(pix[i12+2])*114
+		l22 := int(pix[i22])*299 + int(pix[i22+1])*587 + int(pix[i22+2])*114
+
+		gx := -l00 - (l01 << 1) - l02 + l20 + (l21 << 1) + l22
+		gy := -l00 - (l10 << 1) - l20 + l02 + (l12 << 1) + l22
+
+		// Cast gx and gy to float64 before squaring to prevent 32-bit integer overflow on 32-bit architectures
+		// Divide by 255000.0 instead of 255.0 because we scaled our RGB values by 1000
+		return math.Sqrt(float64(gx)*float64(gx)+float64(gy)*float64(gy)) / 255000.0
+	}
+
+	// SLOW PATH: Edges requiring boundary enforcement
 	lum := func(xx, yy int) float64 {
-		bounds := src.Bounds()
 		if xx < bounds.Min.X {
 			xx = bounds.Min.X
 		}
@@ -221,6 +262,7 @@ func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
 		i := (yy-bounds.Min.Y)*src.Stride + (xx-bounds.Min.X)*4
 		return 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
 	}
+
 	gx := -lum(x-1, y-1) - 2*lum(x-1, y) - lum(x-1, y+1) + lum(x+1, y-1) + 2*lum(x+1, y) + lum(x+1, y+1)
 	gy := -lum(x-1, y-1) - 2*lum(x, y-1) - lum(x+1, y-1) + lum(x-1, y+1) + 2*lum(x, y+1) + lum(x+1, y+1)
 	return math.Sqrt(gx*gx+gy*gy) / 255.0
