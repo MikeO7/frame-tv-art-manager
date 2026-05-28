@@ -16,3 +16,6 @@
 ## 2024-05-23 - Optimize math.Pow in CIEDE2000 calculations
 **Learning:** Using `math.Pow` with small integer exponents (like 2, 4, or 7) is surprisingly heavy inside deep execution loops due to IEEE float handling. Direct explicit multiplication is drastically faster.
 **Action:** Replace `math.Pow(x, 2)` with `x * x` and `math.Pow(x, 7)` with `x2 := x * x; x4 := x2 * x2; x7 := x4 * x2 * x`. This single fix on a high-frequency function cuts execution time drastically in the `ciede2000` execution path without loss of precision. Always include inline comments explaining the unrolled math optimization.
+## 2026-05-28 - Fast-Path Inline Integer Arithmetic for Tight Convolution Loops
+**Learning:** In highly repetitive image convolution loops (like Sobel Edge Detection or Saliency Map generation), executing a closure function with floating point math and boundary checks on every neighbor pixel incurs massive CPU overhead.
+**Action:** Implement a dual-path structure. Create a "fast path" that completely skips boundary checking for pixels strictly inside the image edges and replaces float multiplication (`R*0.299 + G*0.587 + B*0.114`) with bit-shifted integer math (`R*299 + G*587 + B*114` scaled later). This halves execution time in critical tight loop areas.
