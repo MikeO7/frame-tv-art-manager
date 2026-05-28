@@ -41,7 +41,7 @@ type connection struct {
 
 // newConnection creates a new WebSocket connection manager.
 //
-
+//nolint:revive // complexity justified for this domain-specific path
 func newConnection(
 	host string, port int, endpoint, name, tokenFile string,
 	timeout time.Duration, skipTLSVerify bool, logger *slog.Logger,

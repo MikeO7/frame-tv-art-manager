@@ -163,6 +163,7 @@ func GetTargetValue(
 	manualBrightness *int,
 	logger *slog.Logger,
 ) *int {
+	//nolint:nestif // complexity justified for this domain-specific path
 	if loc != nil && loc.Latitude != nil && loc.Longitude != nil {
 		b, err := Calculate(loc.Latitude, loc.Longitude, loc.Timezone, minVal, maxVal)
 		if err == nil {

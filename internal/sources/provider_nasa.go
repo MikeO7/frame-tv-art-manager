@@ -25,7 +25,6 @@ type nasaProvider struct {
 type nasaClient = nasaProvider
 
 // newNASAClient creates a new NASA API client/provider.
-//
 func newNASAClient(apiKey string, logger *slog.Logger) *nasaClient {
 	return newNasaProvider(apiKey, logger)
 }

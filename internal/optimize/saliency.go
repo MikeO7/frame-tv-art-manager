@@ -12,7 +12,7 @@ import (
 // 1. Global BMS analysis at 256px to find the primary Region of Interest.
 // 2. High-res Micro-Refinement at the focal point to optimize for edge alignment.
 //
-
+//nolint:nestif // complexity justified for this domain-specific path
 func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool) int {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
@@ -272,6 +272,7 @@ func calculateIntegralImage(saliencyMap []float64, w, h int) []float64 {
 	return integral
 }
 
+//nolint:revive // complexity justified for this domain-specific path
 func getRectSum(integral []float64, x1, y1, x2, y2, w int) float64 {
 	res := integral[y2*w+x2]
 	if x1 > 0 {

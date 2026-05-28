@@ -14,6 +14,7 @@ var (
 	lutCraquelureOnce sync.Once
 )
 
+//nolint:gocognit // complexity justified for this domain-specific path
 func initializeCraquelure() {
 	type pt struct {
 		x, y float64

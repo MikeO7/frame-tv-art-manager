@@ -103,6 +103,7 @@ func runHealthCheck() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
+	//nolint:gosec // strictly local request to health port
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/health", port), nil)
 	if err != nil {
 		cancel()
@@ -110,6 +111,7 @@ func runHealthCheck() {
 		os.Exit(1)
 	}
 
+	//nolint:gosec // strictly local request to health port
 	resp, err := client.Do(req)
 	if err != nil {
 		cancel()
