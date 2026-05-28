@@ -246,6 +246,10 @@ func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
 		return math.Sqrt(float64(gx)*float64(gx)+float64(gy)*float64(gy)) / 255000.0
 	}
 
+	return calculateSobelEdgeSlow(src, x, y, bounds)
+}
+
+func calculateSobelEdgeSlow(src *image.RGBA, x, y int, bounds image.Rectangle) float64 {
 	// SLOW PATH: Edges requiring boundary enforcement
 	lum := func(xx, yy int) float64 {
 		if xx < bounds.Min.X {
