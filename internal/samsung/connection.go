@@ -41,7 +41,6 @@ type connection struct {
 
 // newConnection creates a new WebSocket connection manager.
 //
-
 //nolint:revive // complexity justified for this domain-specific path
 func newConnection(
 	host string, port int, endpoint, name, tokenFile string,
@@ -101,7 +100,7 @@ func (c *connection) readHandshake(conn *websocket.Conn) error {
 	case "ms.channel.timeOut":
 		return ErrTimeout
 	default:
-		return fmt.Errorf("%w: unexpected event %q", ErrConnectionFailure, resp.Event)
+		return fmt.Errorf("unexpected event %q: %w", resp.Event, ErrConnectionFailure)
 	}
 	return nil
 }
@@ -122,7 +121,7 @@ func (c *connection) waitForChannelReady(conn *websocket.Conn) error {
 	}
 
 	if readyResp.Event != EventChannelReady {
-		return fmt.Errorf("%w: expected ms.channel.ready, got %q", ErrConnectionFailure, readyResp.Event)
+		return fmt.Errorf("expected ms.channel.ready, got %q: %w", readyResp.Event, ErrConnectionFailure)
 	}
 	return nil
 }
