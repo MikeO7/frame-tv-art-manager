@@ -52,3 +52,7 @@
 **Vulnerability:** Denial of Service (DoS) and memory exhaustion vectors caused by decoding JSON payloads from external HTTP API responses without memory bounds using `json.NewDecoder(resp.Body)`.
 **Learning:** The application architecture lacked centralized boundary limits when integrating with third-party APIs (NASA, Pixabay, Unsplash, Artic, Pexels). While timeouts existed, large or infinite payload injections from compromised or malfunctioning endpoints could exhaust local system memory before completion.
 **Prevention:** Always wrap `resp.Body` with `http.MaxBytesReader` configured with a generous but firm upper limit (e.g., 5MB) before passing the stream to `json.NewDecoder`. This terminates malicious/oversized reads defensively without interrupting legitimate traffic.
+## $(date +%Y-%m-%d) - [High] Prevent SSRF and Scheme Downgrade in Download Tracking
+**Vulnerability:** The Unsplash client's `TrackDownload` method validated the hostname of a dynamically supplied URL (`downloadLocation`) against the base URL, but failed to validate the scheme. This allowed potential scheme downgrade attacks (e.g., forcing `http` instead of `https`) or other protocol smuggling.
+**Learning:** Validating only the host of an external, untrusted URL is insufficient to prevent Server-Side Request Forgery (SSRF) or secure connection downgrade attacks. The scheme must also be strictly enforced.
+**Prevention:** Always parse untrusted URLs using `url.Parse` and explicitly validate both the `Host` and `Scheme` properties against a trusted, configured baseline.
