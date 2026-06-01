@@ -10,8 +10,6 @@ import (
 )
 
 // ExecuteSyncPlan applies the computed planning rules onto the target transport.
-//
-//nolint:gocognit,nestif,gocyclo,funlen // execution flow is inherently complex
 func (s *TVReconciler) ExecuteSyncPlan(
 	ctx context.Context,
 	plan *SyncPlan,
@@ -28,12 +26,31 @@ func (s *TVReconciler) ExecuteSyncPlan(
 		DeletedFiles: plan.StaleFiles,
 	}
 
+	if err := s.processUploads(ctx, plan, transport, mapping, policy, &result); err != nil {
+		return result, err
+	}
+
+	s.processDeletions(ctx, plan, transport, mapping, policy, &result)
+	s.finalizePlan(ctx, plan, transport, mapping, &result)
+
+	result.TotalImages = plan.TrackedFilesCount + result.Uploaded - result.Deleted
+	return result, nil
+}
+
+func (s *TVReconciler) processUploads(
+	ctx context.Context,
+	plan *SyncPlan,
+	transport TVTransport,
+	mapping *Mapping,
+	policy config.SyncPolicy,
+	result *TVSyncResult,
+) error {
 	uploadsDone := 0
 	for _, job := range plan.ToUpload {
 		if uploadsDone > 0 && policy.UploadDelay > 0 && !policy.DryRun {
 			select {
 			case <-ctx.Done():
-				return result, ctx.Err()
+				return ctx.Err()
 			case <-time.After(policy.UploadDelay):
 			}
 		}
@@ -56,7 +73,17 @@ func (s *TVReconciler) ExecuteSyncPlan(
 		result.Uploaded++
 		uploadsDone++
 	}
+	return nil
+}
 
+func (s *TVReconciler) processDeletions(
+	ctx context.Context,
+	plan *SyncPlan,
+	transport TVTransport,
+	mapping *Mapping,
+	policy config.SyncPolicy,
+	result *TVSyncResult,
+) {
 	if len(plan.ToDeleteIDs) > 0 {
 		if policy.DryRun {
 			s.logger.Info("[DRY RUN] would delete tracked images", "count", len(plan.ToDeleteIDs))
@@ -85,19 +112,23 @@ func (s *TVReconciler) ExecuteSyncPlan(
 			}
 		}
 	}
+}
 
+func (s *TVReconciler) finalizePlan(
+	ctx context.Context,
+	plan *SyncPlan,
+	transport TVTransport,
+	mapping *Mapping,
+	result *TVSyncResult,
+) {
 	finalMapping := mapping.AllContentIDs()
 	s.applySelectionAndSlideshowPlan(ctx, plan, transport, finalMapping)
 
 	s.updateSlideshowPlan(ctx, plan, transport)
-	s.updateBrightnessPlan(ctx, plan, transport, &result)
+	s.updateBrightnessPlan(ctx, plan, transport, result)
 	s.handleAutoOffPlan(ctx, plan, transport)
-
-	result.TotalImages = plan.TrackedFilesCount + result.Uploaded - result.Deleted
-	return result, nil
 }
 
-//nolint:revive // justified argument count for retry logic
 func (s *TVReconciler) uploadWithRetry(
 	ctx context.Context,
 	transport TVTransport,
@@ -123,7 +154,6 @@ func (s *TVReconciler) uploadWithRetry(
 	return "", lastErr
 }
 
-//nolint:gocyclo // complexity justified for this domain-specific path
 func (s *TVReconciler) applySelectionAndSlideshowPlan(
 	ctx context.Context,
 	plan *SyncPlan,
