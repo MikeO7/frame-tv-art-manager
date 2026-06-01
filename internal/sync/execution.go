@@ -76,6 +76,7 @@ func (s *TVReconciler) processUploads(
 	return nil
 }
 
+//nolint:nestif // nestif justified
 func (s *TVReconciler) processDeletions(
 	ctx context.Context,
 	plan *SyncPlan,
