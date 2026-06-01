@@ -73,20 +73,7 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		wg.Add(1)
 		go func(workerIdx, sy, ey int) {
 			defer wg.Done()
-			var localSum, localSumSq float64
-			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
-				for x := 0; x < width; x++ {
-					idx := offset + x*4
-					// using integer math drastically improves per-pixel execution speed over float multiplication
-					lumInt := 299*int(src.Pix[idx]) + 587*int(src.Pix[idx+1]) + 114*int(src.Pix[idx+2])
-					lumF := float64(lumInt)
-					localSum += lumF
-					localSumSq += lumF * lumF
-				}
-			}
-			sums[workerIdx] = localSum
-			sumSqs[workerIdx] = localSumSq
+			sums[workerIdx], sumSqs[workerIdx] = accumulateLuminance(src, width, sy, ey)
 		}(i, startY, endY)
 	}
 	wg.Wait()
@@ -101,8 +88,28 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	sumSq /= 1000000.0
 
 	mean := sum / float64(width*height)
-	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
+	valSq := sumSq/float64(width*height) - mean*mean
+	if valSq < 0 {
+		valSq = 0
+	}
+	rms := math.Sqrt(valSq)
 	return mean, rms
+}
+
+func accumulateLuminance(src *image.RGBA, width, sy, ey int) (float64, float64) {
+	var localSum, localSumSq uint64
+	for y := sy; y < ey; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			idx := offset + x*4
+			// using pure integer math drastically improves per-pixel execution speed over float multiplication.
+			// max uint64 safely handles resolutions up to ~280 Megapixels before localSumSq overflow.
+			lumInt := uint64(299*uint32(src.Pix[idx]) + 587*uint32(src.Pix[idx+1]) + 114*uint32(src.Pix[idx+2]))
+			localSum += lumInt
+			localSumSq += lumInt * lumInt
+		}
+	}
+	return float64(localSum), float64(localSumSq)
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
