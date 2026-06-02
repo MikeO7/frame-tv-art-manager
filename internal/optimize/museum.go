@@ -73,7 +73,9 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		wg.Add(1)
 		go func(workerIdx, sy, ey int) {
 			defer wg.Done()
-			calculateWorkerChunk(src, width, sy, ey, workerIdx, sums, sumSqs)
+			localSum, localSumSq := calculateWorkerChunk(src, width, sy, ey)
+			sums[workerIdx] = float64(localSum)
+			sumSqs[workerIdx] = float64(localSumSq)
 		}(i, startY, endY)
 	}
 	wg.Wait()
@@ -90,7 +92,7 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	return mean, rms
 }
 
-func calculateWorkerChunk(src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []float64) {
+func calculateWorkerChunk(src *image.RGBA, width, sy, ey int) (uint64, uint64) {
 	var localSum, localSumSq uint64
 	for y := sy; y < ey; y++ {
 		offset := y * src.Stride
@@ -103,8 +105,7 @@ func calculateWorkerChunk(src *image.RGBA, width, sy, ey, workerIdx int, sums, s
 			localSumSq += lumInt * lumInt
 		}
 	}
-	sums[workerIdx] = float64(localSum)
-	sumSqs[workerIdx] = float64(localSumSq)
+	return localSum, localSumSq
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
