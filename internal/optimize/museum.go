@@ -71,23 +71,7 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		}
 
 		wg.Add(1)
-		go func(workerIdx, sy, ey int) {
-			defer wg.Done()
-			var localSum, localSumSq uint64
-			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
-				for x := 0; x < width; x++ {
-					idx := offset + x*4
-					// Use integer math for inner loop calculations to drastically reduce per-pixel execution overhead.
-					// We defer the final floating-point scaling (division) to outside the loop.
-					lumInt := uint64(src.Pix[idx])*299 + uint64(src.Pix[idx+1])*587 + uint64(src.Pix[idx+2])*114
-					localSum += lumInt
-					localSumSq += lumInt * lumInt
-				}
-			}
-			sums[workerIdx] = float64(localSum)
-			sumSqs[workerIdx] = float64(localSumSq)
-		}(i, startY, endY)
+		go calculateWorkerChunk(src, width, startY, endY, i, sums, sumSqs, &wg)
 	}
 	wg.Wait()
 
@@ -101,6 +85,24 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 	return mean, rms
+}
+
+func calculateWorkerChunk(src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []float64, wg *sync.WaitGroup) {
+	defer wg.Done()
+	var localSum, localSumSq uint64
+	for y := sy; y < ey; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			idx := offset + x*4
+			// Use integer math for inner loop calculations to drastically reduce per-pixel execution overhead.
+			// We defer the final floating-point scaling (division) to outside the loop.
+			lumInt := uint64(src.Pix[idx])*299 + uint64(src.Pix[idx+1])*587 + uint64(src.Pix[idx+2])*114
+			localSum += lumInt
+			localSumSq += lumInt * lumInt
+		}
+	}
+	sums[workerIdx] = float64(localSum)
+	sumSqs[workerIdx] = float64(localSumSq)
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
