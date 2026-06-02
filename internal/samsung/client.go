@@ -77,8 +77,8 @@ func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Cl
 //  2. Silent REST Gate (if enabled) → abort if TV is not in art mode
 //  3. Open WSS connection to art endpoint on port 8002
 //  4. Fetch device info via REST API
+
 //
-//nolint:gocognit,nestif // complexity justified for this domain-specific path
 
 func (c *Client) connect(ctx context.Context) error {
 	if c.opts.TVMAC != "" {

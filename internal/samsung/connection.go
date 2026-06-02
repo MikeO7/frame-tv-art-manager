@@ -41,7 +41,7 @@ type connection struct {
 
 // newConnection creates a new WebSocket connection manager.
 //
-//nolint:revive // complexity justified for this domain-specific path
+
 func newConnection(
 	host string, port int, endpoint, name, tokenFile string,
 	timeout time.Duration, skipTLSVerify bool, logger *slog.Logger,
@@ -62,7 +62,7 @@ func newConnection(
 // Open establishes the WSS connection, performs the handshake, and starts
 // the background receive loop.
 //
-//nolint:gocyclo,gocognit,nestif,funlen // Connection handshake sequence is inherently complex
+//nolint:funlen // Connection handshake sequence is inherently complex
 func (c *connection) Open(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
