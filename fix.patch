@@ -1,0 +1,12 @@
+--- internal/optimize/museum.go
++++ internal/optimize/museum.go
+@@ -88,7 +88,7 @@
+	return mean, rms
+ }
+
+-func calculateWorkerChunk(src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []float64, wg *sync.WaitGroup) {
++func calculateWorkerChunk(src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []float64) {
+-	defer wg.Done()
+	var localSum, localSumSq uint64
+	for y := sy; y < ey; y++ {
+		offset := y * src.Stride
