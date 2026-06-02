@@ -3,7 +3,6 @@ package sync
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -23,13 +22,13 @@ type mockTVTransportExecution struct {
 	deleteErr        error
 
 	// Trackers for assertions
-	selectImageCalled bool
-	selectedImageId string
-	setSlideshowCalled bool
-	setSlideshowVal samsung.SlideshowStatus
+	selectImageCalled   bool
+	selectedImageId     string
+	setSlideshowCalled  bool
+	setSlideshowVal     samsung.SlideshowStatus
 	setBrightnessCalled bool
-	setBrightnessVal int
-	turnOffCalled bool
+	setBrightnessVal    int
+	turnOffCalled       bool
 }
 
 func (m *mockTVTransportExecution) Model() string {
@@ -72,7 +71,7 @@ func (m *mockTVTransportExecution) DeleteImages(ctx context.Context, ids []strin
 }
 
 func TestTVReconciler_updateBrightnessPlan(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	reconciler := &TVReconciler{logger: logger}
 
 	ctx := context.Background()
@@ -105,7 +104,7 @@ func TestTVReconciler_updateBrightnessPlan(t *testing.T) {
 }
 
 func TestTVReconciler_updateSlideshowPlan(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	reconciler := &TVReconciler{logger: logger}
 
 	ctx := context.Background()
@@ -145,7 +144,7 @@ func TestTVReconciler_updateSlideshowPlan(t *testing.T) {
 }
 
 func TestTVReconciler_handleAutoOffPlan(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	reconciler := &TVReconciler{logger: logger}
 
 	ctx := context.Background()
@@ -176,7 +175,7 @@ func TestTVReconciler_handleAutoOffPlan(t *testing.T) {
 }
 
 func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	reconciler := &TVReconciler{logger: logger, cfg: &config.Config{}}
 
 	ctx := context.Background()
@@ -207,7 +206,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 
 	// 4. Shuffle selection
 	planShuffle := &SyncPlan{
-		HasChanges: true,
+		HasChanges:        true,
 		LocalFiles:        map[string]struct{}{"test.jpg": {}},
 		PreserveSlideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffle"},
 	}
@@ -220,7 +219,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 
 	// 5. Normal selection (first image)
 	planNormal := &SyncPlan{
-		HasChanges: true,
+		HasChanges:        true,
 		LocalFiles:        map[string]struct{}{"test.jpg": {}},
 		PreserveSlideshow: &samsung.SlideshowStatus{Value: "15", Type: "normal"},
 	}
@@ -249,7 +248,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 }
 
 func TestTVReconciler_uploadWithRetry(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	reconciler := &TVReconciler{logger: logger, cfg: &config.Config{}}
 	ctx := context.Background()
 
@@ -271,7 +270,7 @@ func TestTVReconciler_uploadWithRetry(t *testing.T) {
 }
 
 func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	reconciler := &TVReconciler{logger: logger, cfg: &config.Config{}}
 	ctx := context.Background()
 
