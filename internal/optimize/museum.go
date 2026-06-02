@@ -73,18 +73,20 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		wg.Add(1)
 		go func(workerIdx, sy, ey int) {
 			defer wg.Done()
-			var localSum, localSumSq float64
+			var localSum, localSumSq uint64
 			for y := sy; y < ey; y++ {
 				offset := y * src.Stride
 				for x := 0; x < width; x++ {
 					idx := offset + x*4
-					lum := 0.299*float64(src.Pix[idx]) + 0.587*float64(src.Pix[idx+1]) + 0.114*float64(src.Pix[idx+2])
-					localSum += lum
-					localSumSq += lum * lum
+					// Use integer math for inner loop calculations to drastically reduce per-pixel execution overhead.
+					// We defer the final floating-point scaling (division) to outside the loop.
+					lumInt := uint64(src.Pix[idx])*299 + uint64(src.Pix[idx+1])*587 + uint64(src.Pix[idx+2])*114
+					localSum += lumInt
+					localSumSq += lumInt * lumInt
 				}
 			}
-			sums[workerIdx] = localSum
-			sumSqs[workerIdx] = localSumSq
+			sums[workerIdx] = float64(localSum)
+			sumSqs[workerIdx] = float64(localSumSq)
 		}(i, startY, endY)
 	}
 	wg.Wait()
@@ -93,6 +95,9 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		sum += sums[i]
 		sumSq += sumSqs[i]
 	}
+	sum /= 1000.0
+	sumSq /= 1000000.0
+
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 	return mean, rms
