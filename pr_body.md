@@ -1,5 +1,12 @@
-🔍 **Gap**: The `.env.example` file lacked documentation for `VERIFY_TLS` and did not provide clear annotations that `LOCATION_LATITUDE` and `LOCATION_LONGITUDE` are required when `SOLAR_BRIGHTNESS_ENABLED` is enabled. The manual brightness setting also lacked explicit value range boundaries.
+📏 Architectural Shift
+Before this change, the `internal/samsung` package suffered from internal fragmentation, with several tiny, shallow wrappers (`client_network.go`) existing solely to provide networking logic strictly bound to the `Client` struct in `client.go`. This created an unnecessary cognitive burden and exposed internal abstraction boundaries that did not align with the overarching architecture. By folding these components directly into the primary `Client` module, we established a deep module pattern, effectively encapsulating all TV network operations within a single, cohesive file.
 
-📝 **Update**: Added `VERIFY_TLS` to the "Advanced System Settings" section with a default of `false` matching Frame TV self-signed certificate constraints. Updated the "Brightness" section to explicitly denote the 0-50 range for manual brightness and annotated required dependencies for solar brightness.
+🛠️ Changes
+- Relocated `fetchDeviceInfo`, `sendWOL`, and `turnOffTV` directly into `client.go`.
+- Relocated the `checkArtModeGate` method from `client_art.go` into `client.go` to centralize basic HTTP REST gate operations.
+- Deleted `client_network.go`, eliminating the artificial internal file coupling.
+- Cleaned up imports and unused code block linting directives.
 
-🎯 **Audience**: Future human engineers and AI agents configuring local setups or deployment pipelines, preventing confusing initialization crashes.
+🔬 Verification
+- `make check` passes, confirming all format, linter (`golangci-lint`), and codebase metrics are satisfied.
+- The `go test ./...` test suite passed successfully without disruption to downstream dependents.

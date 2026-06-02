@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 )
 
 // isInArtMode checks if the TV is currently in art mode by querying
@@ -201,23 +200,4 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	}
 
 	return raw, nil
-}
-
-func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
-	url := fmt.Sprintf("http://%s:8001/ms/art", c.IP)
-
-	client := &http.Client{Timeout: c.opts.GateTimeout}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return false, nil
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	return resp.StatusCode == http.StatusOK, nil
 }
