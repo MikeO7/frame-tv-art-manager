@@ -1,5 +1,9 @@
-🔍 **Gap**: The `.env.example` file lacked documentation for `VERIFY_TLS` and did not provide clear annotations that `LOCATION_LATITUDE` and `LOCATION_LONGITUDE` are required when `SOLAR_BRIGHTNESS_ENABLED` is enabled. The manual brightness setting also lacked explicit value range boundaries.
+💡 **Before:**
+The `ExecuteSyncPlan` function in `internal/sync/execution.go` was overly complex and suffered from high cognitive load. It was responsible for orchestrating the entire execution pipeline, including nested retry logic for multiple uploads, processing complex batch deletions (for tracked and unknown images), and finalizing the TV's state. This made the function long, hard to read, and difficult to test in isolation.
 
-📝 **Update**: Added `VERIFY_TLS` to the "Advanced System Settings" section with a default of `false` matching Frame TV self-signed certificate constraints. Updated the "Brightness" section to explicitly denote the 0-50 range for manual brightness and annotated required dependencies for solar brightness.
+✨ **After:**
+The logic has been structurally simplified by extracting the upload and deletion loops into two distinct, private helper methods (`processUploads` and `processDeletions`). `ExecuteSyncPlan` now reads as a clear, high-level orchestrator that sequentially delegates tasks to these targeted helpers.
 
-🎯 **Audience**: Future human engineers and AI agents configuring local setups or deployment pipelines, preventing confusing initialization crashes.
+📉 **Reductions:**
+- Abstracted over 60 lines of complex control flow and nested conditions from the main execution path.
+- Removed obsolete `//nolint:gocognit,nestif,gocyclo,funlen` directives, as the top-level function is now clean enough to pass the team's standard cyclomatic complexity and function length linting rules.
