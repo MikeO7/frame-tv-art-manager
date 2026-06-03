@@ -1,5 +1,5 @@
-🔍 **Gap**: The `.env.example` file lacked documentation for `VERIFY_TLS` and did not provide clear annotations that `LOCATION_LATITUDE` and `LOCATION_LONGITUDE` are required when `SOLAR_BRIGHTNESS_ENABLED` is enabled. The manual brightness setting also lacked explicit value range boundaries.
-
-📝 **Update**: Added `VERIFY_TLS` to the "Advanced System Settings" section with a default of `false` matching Frame TV self-signed certificate constraints. Updated the "Brightness" section to explicitly denote the 0-50 range for manual brightness and annotated required dependencies for solar brightness.
-
-🎯 **Audience**: Future human engineers and AI agents configuring local setups or deployment pipelines, preventing confusing initialization crashes.
+🚨 Severity: HIGH
+💡 Vulnerability: Scheme Downgrade Attack Vector. The Unsplash image provider's `TrackDownload` method validated the `Host` of an external tracking URL but failed to validate the `Scheme`. An attacker or compromised network could intercept the Unsplash tracking URL resolution and return a valid domain prefix using the `http://` scheme. The application would then silently append and transmit its `Authorization: Client-ID ...` header over plaintext.
+🎯 Impact: Complete compromise of the user's Unsplash API keys, leading to rate limit exhaustion, billing impact, or unauthorized access via leaked credentials.
+🔧 Fix: Surgically updated `TrackDownload` inside `internal/sources/provider_unsplash.go` to explicitly enforce `parsedURL.Scheme == baseURL.Scheme` before appending authentication headers and proceeding with the request.
+✅ Verification: Ran `go test ./...` with 0 failures to ensure logic integrity. Tested full codebase compilation via `make check`. Logged the structural learning in the `.jules/sentinel.md` journal.

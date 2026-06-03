@@ -52,3 +52,8 @@
 **Vulnerability:** Denial of Service (DoS) and memory exhaustion vectors caused by decoding JSON payloads from external HTTP API responses without memory bounds using `json.NewDecoder(resp.Body)`.
 **Learning:** The application architecture lacked centralized boundary limits when integrating with third-party APIs (NASA, Pixabay, Unsplash, Artic, Pexels). While timeouts existed, large or infinite payload injections from compromised or malfunctioning endpoints could exhaust local system memory before completion.
 **Prevention:** Always wrap `resp.Body` with `http.MaxBytesReader` configured with a generous but firm upper limit (e.g., 5MB) before passing the stream to `json.NewDecoder`. This terminates malicious/oversized reads defensively without interrupting legitimate traffic.
+
+## 2025-05-18 - [High] Prevent Scheme Downgrade and Credential Leakage
+**Vulnerability:** The Unsplash client's `TrackDownload` method validated the `Host` of an external tracking URL but failed to validate the `Scheme`. An attacker could manipulate the external API response to return a `http://` URL with the correct host, forcing the application to send its `Authorization` header in plaintext.
+**Learning:** Checking only the `Host` of a URL is insufficient. Without explicitly asserting the protocol (e.g., `https`), applications are vulnerable to scheme downgrade attacks that can leak credentials over unencrypted channels.
+**Prevention:** Always fully parse the input using `url.Parse` and explicitly match both the `Host` and `Scheme` properties before attaching sensitive authentication headers.
