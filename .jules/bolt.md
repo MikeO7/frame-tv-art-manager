@@ -19,3 +19,6 @@
 ## 2026-05-28 - Fast-Path Inline Integer Arithmetic for Tight Convolution Loops
 **Learning:** In highly repetitive image convolution loops (like Sobel Edge Detection or Saliency Map generation), executing a closure function with floating point math and boundary checks on every neighbor pixel incurs massive CPU overhead.
 **Action:** Implement a dual-path structure. Create a "fast path" that completely skips boundary checking for pixels strictly inside the image edges and replaces float multiplication (`R*0.299 + G*0.587 + B*0.114`) with bit-shifted integer math (`R*299 + G*587 + B*114` scaled later). This halves execution time in critical tight loop areas.
+## 2026-05-29 - Floating-point Scaling in Image Accumulation Loops
+**Learning:** In tight image processing loops that accumulate large sums (like calculating RMS contrast across millions of pixels), repeatedly performing small floating-point multiplications (e.g., `0.299*float64(R)`) causes significant CPU overhead.
+**Action:** When accumulating values across an entire image frame, multiply coefficients by an integer scale (e.g., 1000), perform all per-pixel multiplication and addition using `uint64` (to prevent overflow on large images), and divide the final sum outside the loop by the scaling factor. This reduces loop execution time substantially without losing precision.
