@@ -49,6 +49,17 @@ func unifyCollection(src *image.RGBA) *image.RGBA {
 	return src
 }
 
+type contrastWorkerState struct {
+	wg        *sync.WaitGroup
+	src       *image.RGBA
+	width     int
+	sy        int
+	ey        int
+	workerIdx int
+	sums      []uint64
+	sumSqs    []uint64
+}
+
 func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -70,7 +81,18 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		}
 
 		wg.Add(1)
-		go processContrastChunk(&wg, src, width, startY, endY, i, sums, sumSqs)
+
+		state := &contrastWorkerState{
+			wg:        &wg,
+			src:       src,
+			width:     width,
+			sy:        startY,
+			ey:        endY,
+			workerIdx: i,
+			sums:      sums,
+			sumSqs:    sumSqs,
+		}
+		go processContrastChunk(state)
 	}
 	wg.Wait()
 
@@ -88,21 +110,21 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	return mean, rms
 }
 
-func processContrastChunk(wg *sync.WaitGroup, src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []uint64) {
-	defer wg.Done()
+func processContrastChunk(state *contrastWorkerState) {
+	defer state.wg.Done()
 	var localSum, localSumSq uint64
-	for y := sy; y < ey; y++ {
-		offset := y * src.Stride
-		for x := 0; x < width; x++ {
+	for y := state.sy; y < state.ey; y++ {
+		offset := y * state.src.Stride
+		for x := 0; x < state.width; x++ {
 			idx := offset + x*4
 			// Use integer math to avoid floating point overhead in hot path
-			lumInt := 299*uint64(src.Pix[idx]) + 587*uint64(src.Pix[idx+1]) + 114*uint64(src.Pix[idx+2])
+			lumInt := 299*uint64(state.src.Pix[idx]) + 587*uint64(state.src.Pix[idx+1]) + 114*uint64(state.src.Pix[idx+2])
 			localSum += lumInt
 			localSumSq += lumInt * lumInt
 		}
 	}
-	sums[workerIdx] = localSum
-	sumSqs[workerIdx] = localSumSq
+	state.sums[state.workerIdx] = localSum
+	state.sumSqs[state.workerIdx] = localSumSq
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
