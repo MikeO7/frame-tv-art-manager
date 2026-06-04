@@ -1,12 +1,5 @@
-💡 Before
-The `ExecuteSyncPlan` function inside `internal/sync/execution.go` was a massive, 80+ line monolith that directly handled upload retries, sleep cycles, batch deletion loops, mapping synchronization, and error handling. This deep nesting, mixed with heavy pointer manipulation and complex control flow (`select`, channels, loops), resulted in an extremely high cognitive load that made the sync lifecycle hard to read.
+🔍 **Gap**: The `.env.example` file lacked documentation for `VERIFY_TLS` and did not provide clear annotations that `LOCATION_LATITUDE` and `LOCATION_LONGITUDE` are required when `SOLAR_BRIGHTNESS_ENABLED` is enabled. The manual brightness setting also lacked explicit value range boundaries.
 
-✨ After
-The heavy loop logic has been neatly extracted out of the main orchestrator.
-1. `executeUploads()` cleanly handles the upload retry, rate-limiting, dry-run evaluation, and mapping storage.
-2. `executeDeletes()` isolates the batch deletion of both tracked and unknown files.
-The main `ExecuteSyncPlan` is now a crisp, highly readable top-down orchestration method that clearly defines the stages of synchronization.
+📝 **Update**: Added `VERIFY_TLS` to the "Advanced System Settings" section with a default of `false` matching Frame TV self-signed certificate constraints. Updated the "Brightness" section to explicitly denote the 0-50 range for manual brightness and annotated required dependencies for solar brightness.
 
-📉 Reductions
-- Pulled 60+ lines of raw execution logic out of the core orchestrator.
-- Dropped the cyclomatic complexity of `ExecuteSyncPlan` significantly, allowing the removal of its broad `//nolint:gocognit,nestif,gocyclo,funlen` directive.
+🎯 **Audience**: Future human engineers and AI agents configuring local setups or deployment pipelines, preventing confusing initialization crashes.

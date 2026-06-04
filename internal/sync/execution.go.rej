@@ -1,6 +1,18 @@
 --- execution.go
 +++ execution.go
-@@ -213,2 +213,3 @@
- ) {
-+	//nolint:nestif // complexity justified for this domain-specific path
-	if len(plan.ToDeleteIDs) > 0 {
+@@ -43,2 +43,3 @@
+
++//nolint:revive // justified argument count for retry logic
+ func (s *TVReconciler) uploadWithRetry(
+@@ -69,2 +70,3 @@
+
++//nolint:gocyclo // complexity justified for this domain-specific path
+ func (s *TVReconciler) applySelectionAndSlideshowPlan(
+@@ -169,2 +171,3 @@
+
++//nolint:revive // justified argument count for pure execution logic
+ func (s *TVReconciler) executeUploads(
+@@ -209,2 +212,3 @@
+
++//nolint:revive // justified argument count for pure execution logic
+ func (s *TVReconciler) executeDeletes(
