@@ -1,0 +1,6 @@
+--- internal/sync/execution.go
++++ internal/sync/execution.go
+@@ -12,3 +12,2 @@
+ //
+-//nolint:gocognit,nestif,gocyclo,funlen // execution flow is inherently complex
+ func (s *TVReconciler) ExecuteSyncPlan(

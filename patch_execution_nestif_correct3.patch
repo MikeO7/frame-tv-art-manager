@@ -1,0 +1,6 @@
+--- internal/sync/execution.go
++++ internal/sync/execution.go
+@@ -218,3 +218,2 @@
+	if len(plan.ToDeleteIDs) > 0 {
+-		//nolint:nestif // complexity justified for this domain-specific path
+		if policy.DryRun {

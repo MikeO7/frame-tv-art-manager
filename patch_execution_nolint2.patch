@@ -1,0 +1,6 @@
+--- internal/sync/execution.go
++++ internal/sync/execution.go
+@@ -11,3 +11,2 @@
+ // ExecuteSyncPlan applies the computed planning rules onto the target transport.
+-//
+ func (s *TVReconciler) ExecuteSyncPlan(
