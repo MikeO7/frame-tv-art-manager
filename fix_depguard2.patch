@@ -1,0 +1,6 @@
+--- .golangci.yml
++++ .golangci.yml
+@@ -29,3 +29,2 @@
+     - nakedret
+-              desc: "avoid cyclic dependencies"
+     - nestif

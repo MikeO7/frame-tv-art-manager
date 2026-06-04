@@ -215,6 +215,7 @@ func (s *TVReconciler) executeDeletes(
 	policy config.SyncPolicy,
 	result *TVSyncResult,
 ) {
+	//nolint:nestif // complexity justified for this domain-specific path
 	if len(plan.ToDeleteIDs) > 0 {
 		if policy.DryRun {
 			s.logger.Info("[DRY RUN] would delete tracked images", "count", len(plan.ToDeleteIDs))

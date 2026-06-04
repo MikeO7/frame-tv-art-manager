@@ -1,0 +1,7 @@
+--- .golangci.yml
++++ .golangci.yml
+@@ -28,3 +28,4 @@
+           deny:
+             - pkg: "github.com/MikeO7/frame-tv-art-manager/internal/config"
++              desc: "avoid cyclic dependencies"
+             - pkg: "github.com/MikeO7/frame-tv-art-manager/internal/health"

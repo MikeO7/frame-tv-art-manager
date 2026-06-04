@@ -1,0 +1,162 @@
+version: "2"
+run:
+  tests: true
+linters:
+  enable:
+    - asciicheck
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - depguard
+    - dupl
+    - dupword
+    - errname
+    - errorlint
+    - forbidigo
+    - funlen
+    - gochecknoinits
+    - gochecknoglobals
+    - gocognit
+    - gocritic
+    - gocyclo
+    - godox
+    - goprintffuncname
+    - gosec
+    - interfacebloat
+    - lll
+    - loggercheck
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - wastedassign
+    - goconst
+    - sloglint
+    - fatcontext
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - whitespace
+  settings:
+    depguard:
+      rules:
+        main:
+          allow:
+            - $gostd
+            - github.com/MikeO7/frame-tv-art-manager
+            - github.com/gorilla/websocket
+            - golang.org/x/image
+            - gopkg.in/yaml.v3
+    forbidigo:
+      forbid:
+        - pattern: '^fmt\.Print'
+          msg: use slog, not fmt.Print
+        - pattern: '^log\.'
+          msg: use slog, not log
+        - pattern: '^panic\('
+          msg: return errors, don't panic
+    funlen:
+      lines: 60
+      statements: 35
+    gocognit:
+      min-complexity: 15
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocyclo:
+      min-complexity: 12
+    godox:
+      keywords:
+        - TODO
+        - FIXME
+        - HACK
+        - XXX
+        - BUG
+    interfacebloat:
+      max: 5
+    lll:
+      line-length: 150
+    loggercheck:
+      slog: true
+    nestif:
+      min-complexity: 3
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: argument-limit
+          arguments:
+            - 5
+        - name: function-result-limit
+          arguments:
+            - 3
+        - name: file-length-limit
+          arguments:
+            - max: 300
+        - name: empty-block
+        - name: superfluous-else
+        - name: early-return
+        - name: indent-error-flow
+        - name: confusing-naming
+          disabled: true
+        - name: unused-receiver
+          disabled: true
+        - name: unhandled-error
+          disabled: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - revive
+        text: "file-length-limit"
+        path: "(plan_collection_test\\.go|clients_test\\.go|engine_test\\.go|loader_test\\.go|session_test\\.go|client_test\\.go)"
+      - linters:
+          - dupl
+          - funlen
+          - gocognit
+          - gocyclo
+          - gochecknoglobals
+          - lll
+          - revive
+          - goconst
+          - gosec
+          - nilnil
+        path: _test\.go
+      - linters:
+          - noctx
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

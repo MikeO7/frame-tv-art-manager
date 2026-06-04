@@ -1,7 +1,6 @@
 --- execution.go
 +++ execution.go
-@@ -217,3 +217,3 @@
+@@ -213,2 +213,3 @@
  ) {
--	//nolint:nestif // complexity justified for this domain-specific path
 +	//nolint:nestif // complexity justified for this domain-specific path
 	if len(plan.ToDeleteIDs) > 0 {
