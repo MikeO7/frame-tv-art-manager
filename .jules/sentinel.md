@@ -52,3 +52,8 @@
 **Vulnerability:** Denial of Service (DoS) and memory exhaustion vectors caused by decoding JSON payloads from external HTTP API responses without memory bounds using `json.NewDecoder(resp.Body)`.
 **Learning:** The application architecture lacked centralized boundary limits when integrating with third-party APIs (NASA, Pixabay, Unsplash, Artic, Pexels). While timeouts existed, large or infinite payload injections from compromised or malfunctioning endpoints could exhaust local system memory before completion.
 **Prevention:** Always wrap `resp.Body` with `http.MaxBytesReader` configured with a generous but firm upper limit (e.g., 5MB) before passing the stream to `json.NewDecoder`. This terminates malicious/oversized reads defensively without interrupting legitimate traffic.
+
+## 2026-06-04 - Fix Standard Library Vulnerabilities
+**Vulnerability:** The application was using an older version of Go (`1.26.3`) which contained standard library vulnerabilities in `net/textproto` (GO-2026-5039) and `crypto/x509` (GO-2026-5037). These vulnerabilities were flagged during `govulncheck` execution.
+**Learning:** Standard library vulnerabilities can be detected by `govulncheck`, even if no third-party module vulnerabilities are present.
+**Prevention:** Always bump the Go compiler version uniformly across `go.mod`, GitHub Actions workflows (`.github/workflows/*.yml`), and `Dockerfile` to the latest patch release (e.g., `1.26.4`) when standard library vulnerabilities are disclosed.
