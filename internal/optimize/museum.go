@@ -70,22 +70,7 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		}
 
 		wg.Add(1)
-		go func(workerIdx, sy, ey int) {
-			defer wg.Done()
-			var localSum, localSumSq uint64
-			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
-				for x := 0; x < width; x++ {
-					idx := offset + x*4
-					// Use integer math to avoid floating point overhead in hot path
-					lumInt := 299*uint64(src.Pix[idx]) + 587*uint64(src.Pix[idx+1]) + 114*uint64(src.Pix[idx+2])
-					localSum += lumInt
-					localSumSq += lumInt * lumInt
-				}
-			}
-			sums[workerIdx] = localSum
-			sumSqs[workerIdx] = localSumSq
-		}(i, startY, endY)
+		go processContrastChunk(&wg, src, width, startY, endY, i, sums, sumSqs)
 	}
 	wg.Wait()
 
@@ -101,6 +86,23 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	mean := floatSum / float64(width*height)
 	rms := math.Sqrt(floatSumSq/float64(width*height) - mean*mean)
 	return mean, rms
+}
+
+func processContrastChunk(wg *sync.WaitGroup, src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []uint64) {
+	defer wg.Done()
+	var localSum, localSumSq uint64
+	for y := sy; y < ey; y++ {
+		offset := y * src.Stride
+		for x := 0; x < width; x++ {
+			idx := offset + x*4
+			// Use integer math to avoid floating point overhead in hot path
+			lumInt := 299*uint64(src.Pix[idx]) + 587*uint64(src.Pix[idx+1]) + 114*uint64(src.Pix[idx+2])
+			localSum += lumInt
+			localSumSq += lumInt * lumInt
+		}
+	}
+	sums[workerIdx] = localSum
+	sumSqs[workerIdx] = localSumSq
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
