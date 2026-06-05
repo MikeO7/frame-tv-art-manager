@@ -177,6 +177,21 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 }
 
 // ValidateImage performs a low-cost check to ensure an image file is not corrupt.
+// It opens the file and attempts to decode its configuration header without fully loading
+// the pixel data into memory.
+//
+// Parameters:
+//   - path: The absolute or relative file path to the image to validate.
+//
+// Returns:
+//   - error: Returns an error if the file cannot be opened or if the image header is corrupt.
+//
+// Example:
+//
+//	if err := optimize.ValidateImage("/data/artwork/download.jpg"); err != nil {
+//	    log.Printf("Invalid image format: %v", err)
+//	    os.Remove("/data/artwork/download.jpg")
+//	}
 func ValidateImage(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
