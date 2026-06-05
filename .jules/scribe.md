@@ -8,3 +8,6 @@
 ## 2026-06-05 - Clean Up Temporary Scripts Before Committing
 **Learning:** Using temporary Python or Bash scripts to procedurally edit large markdown files is effective, but leaving them behind pollutes the workspace and gets flagged during code review.
 **Action:** Always append a cleanup step (`rm patch_readme.py`) when running workspace modification scripts to prevent tracked workspace pollution.
+## 2026-06-05 - CI Security Workflow Fix for Standard Library Vulnerabilities
+**Learning:** During the automated GitHub workflow execution (`govulncheck`), the security scanner identified two vulnerabilities `GO-2026-5039` and `GO-2026-5037` inherently tied to the Go 1.26.3 standard library, forcing a bump.
+**Action:** Bumping the Go toolchain version across `go.mod`, `.github/workflows/*.yml`, and `Dockerfile` successfully eliminated standard library vulnerability false flags during CI validation.
