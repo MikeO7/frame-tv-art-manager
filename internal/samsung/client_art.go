@@ -80,12 +80,13 @@ func (c *Client) getUploadedImages(ctx context.Context) ([]ArtContent, error) {
 		return nil, fmt.Errorf("get_content_list error: %w", err)
 	}
 
-	if resp.ContentList == "" {
+	contentListStr := resp.ContentList()
+	if contentListStr == "" {
 		return nil, nil
 	}
 
 	var items []ArtContent
-	if err := json.Unmarshal([]byte(resp.ContentList), &items); err != nil {
+	if err := json.Unmarshal([]byte(contentListStr), &items); err != nil {
 		return nil, fmt.Errorf("parse content_list: %w", err)
 	}
 
