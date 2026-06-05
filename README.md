@@ -205,6 +205,22 @@ You can customize the engine's behavior by adjusting these environment variables
 | `AUTO_OFF_TIME` | *(empty)* | Time to automatically shut down Art Mode at night (e.g. `23:30`). |
 | `AUTO_OFF_GRACE_HOURS` | `2` | Retry window in hours to keep checking in case the TV was manually powered back on. |
 
+### ⚙️ Advanced System Settings
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `VERIFY_TLS` | `false` | Enable TLS/SSL certificate verification when connecting to the TV. Frame TVs use self-signed certificates, so this is disabled by default. |
+| `MAX_ARTWORK_IMAGES` | `100` | Maximum number of images to sync. Increase if your collection is larger. |
+| `MAX_DOWNLOAD_SIZE_MB` | `20` | Maximum download size per image in megabytes. |
+| `HEALTH_PORT` | `8080` | Port for HTTP `/health` and `/status` endpoints (`0` disables the health server). |
+| `CONNECTION_TIMEOUT_SECONDS` | `60` | Connection timeout for WSS handshake. |
+| `API_TIMEOUT_SECONDS` | `60` | API timeout for art API responses. |
+| `UPLOAD_DELAY_MS` | `3000` | Pause between consecutive image uploads in milliseconds. |
+| `UPLOAD_ATTEMPTS` | `3` | Number of times to retry a failed upload. |
+| `GATE_TIMEOUT_MS` | `10000` | HTTP timeout for the REST gate probe in milliseconds. |
+| `PUID` | `0` | Process User ID for Docker permissions. |
+| `PGID` | `0` | Process Group ID for Docker permissions. |
+
 ---
 
 ## Local Compilation & Development
