@@ -73,18 +73,19 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		wg.Add(1)
 		go func(workerIdx, sy, ey int) {
 			defer wg.Done()
-			var localSum, localSumSq float64
+			var localSum, localSumSq uint64
 			for y := sy; y < ey; y++ {
 				offset := y * src.Stride
 				for x := 0; x < width; x++ {
 					idx := offset + x*4
-					lum := 0.299*float64(src.Pix[idx]) + 0.587*float64(src.Pix[idx+1]) + 0.114*float64(src.Pix[idx+2])
-					localSum += lum
-					localSumSq += lum * lum
+					// OPTIMIZATION: Use integer math to eliminate floating-point overhead in hot path
+					lumInt := uint64(src.Pix[idx])*299 + uint64(src.Pix[idx+1])*587 + uint64(src.Pix[idx+2])*114
+					localSum += lumInt
+					localSumSq += lumInt * lumInt
 				}
 			}
-			sums[workerIdx] = localSum
-			sumSqs[workerIdx] = localSumSq
+			sums[workerIdx] = float64(localSum) / 1000.0
+			sumSqs[workerIdx] = float64(localSumSq) / 1000000.0
 		}(i, startY, endY)
 	}
 	wg.Wait()

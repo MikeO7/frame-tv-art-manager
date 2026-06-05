@@ -1,10 +1,14 @@
 package health
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -132,5 +136,77 @@ func TestShutdown_NilServer(t *testing.T) {
 	srv := NewServer(0, NewStatus(), silentLogger())
 	if err := srv.Shutdown(t.Context()); err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRecordSync_WithError(t *testing.T) {
+	status := NewStatus()
+
+	testErr := errors.New("sync failed")
+	status.RecordSync(false, testErr)
+
+	status.mu.RLock()
+	errMsg := status.LastErrorMessage
+	status.mu.RUnlock()
+
+	if errMsg != testErr.Error() {
+		t.Errorf("expected LastErrorMessage %q, got %q", testErr.Error(), errMsg)
+	}
+}
+
+// safeBuffer is a thread-safe wrapper around bytes.Buffer to prevent data races during testing.
+type safeBuffer struct {
+	b  bytes.Buffer
+	mu sync.Mutex
+}
+
+func (s *safeBuffer) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *safeBuffer) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Bytes()
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+func TestServer_StartAndServe(t *testing.T) {
+	status := NewStatus()
+
+	// Use a thread-safe buffer for slog to prevent data races between the logger goroutine and the test poller.
+	var buf safeBuffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	// Port -1 is invalid and will cause ListenAndServe to fail immediately.
+	srv := NewServer(-1, status, logger)
+	srv.Start()
+
+	// Wait for the goroutine to log the error, with a timeout
+	timeout := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for server error log")
+		case <-ticker.C:
+			if bytes.Contains(buf.Bytes(), []byte("health server error")) {
+				// We found the error log, the goroutine executed the failure path successfully.
+				// Assert that the specific error we expect is present.
+				if !bytes.Contains(buf.Bytes(), []byte("invalid port")) {
+					t.Errorf("expected 'invalid port' in log output, got: %s", buf.String())
+				}
+				return
+			}
+		}
 	}
 }
