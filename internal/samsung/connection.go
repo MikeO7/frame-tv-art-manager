@@ -59,10 +59,75 @@ func newConnection(
 	}
 }
 
+func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, error) {
+	dialer := websocket.Dialer{
+		//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
+		TLSClientConfig:  &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
+		HandshakeTimeout: c.timeout,
+	}
+
+	conn, httpResp, err := dialer.DialContext(ctx, wsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("websocket dial: %w", err)
+	}
+	if httpResp != nil && httpResp.Body != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
+	return conn, nil
+}
+
+func (c *connection) readHandshake(conn *websocket.Conn) error {
+	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+		return fmt.Errorf("set read deadline: %w", err)
+	}
+
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		return fmt.Errorf("read handshake: %w", err)
+	}
+
+	c.logger.Debug("handshake message received", "msg", string(msg))
+	var resp wsResponse
+	if err := json.Unmarshal(msg, &resp); err != nil {
+		return fmt.Errorf("parse handshake: %w", err)
+	}
+
+	switch resp.Event {
+	case EventChannelConnect:
+		c.extractAndSaveToken(resp.Data)
+	case "ms.channel.unauthorized":
+		return ErrUnauthorized
+	case "ms.channel.timeOut":
+		return ErrTimeout
+	default:
+		return fmt.Errorf("unexpected event %q: %w", resp.Event, ErrConnectionFailure)
+	}
+	return nil
+}
+
+func (c *connection) waitForChannelReady(conn *websocket.Conn) error {
+	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+		return fmt.Errorf("set read deadline: %w", err)
+	}
+
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		return fmt.Errorf("read channel ready: %w", err)
+	}
+
+	var readyResp wsResponse
+	if err := json.Unmarshal(msg, &readyResp); err != nil {
+		return fmt.Errorf("parse channel ready: %w", err)
+	}
+
+	if readyResp.Event != EventChannelReady {
+		return fmt.Errorf("expected ms.channel.ready, got %q: %w", readyResp.Event, ErrConnectionFailure)
+	}
+	return nil
+}
+
 // Open establishes the WSS connection, performs the handshake, and starts
 // the background receive loop.
-//
-//nolint:gocyclo,gocognit,nestif,funlen // Connection handshake sequence is inherently complex
 func (c *connection) Open(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -75,73 +140,20 @@ func (c *connection) Open(ctx context.Context) error {
 	wsURL := c.formatURL(token)
 	c.logger.Debug("dialing WebSocket", "url", wsURL)
 
-	dialer := websocket.Dialer{
-		//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
-		TLSClientConfig:  &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
-		HandshakeTimeout: c.timeout,
-	}
-
-	conn, httpResp, err := dialer.DialContext(ctx, wsURL, nil)
+	conn, err := c.dial(ctx, wsURL)
 	if err != nil {
-		return fmt.Errorf("websocket dial: %w", err)
-	}
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
+		return err
 	}
 
-	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+	if err := c.readHandshake(conn); err != nil {
 		_ = conn.Close()
-		return fmt.Errorf("set read deadline: %w", err)
-	}
-
-	_, msg, err := conn.ReadMessage()
-	if err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("read handshake: %w", err)
-	}
-
-	c.logger.Debug("handshake message received", "msg", string(msg))
-	var resp wsResponse
-	if err := json.Unmarshal(msg, &resp); err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("parse handshake: %w", err)
-	}
-
-	switch resp.Event {
-	case EventChannelConnect:
-		c.extractAndSaveToken(resp.Data)
-	case "ms.channel.unauthorized":
-		_ = conn.Close()
-		return ErrUnauthorized
-	case "ms.channel.timeOut":
-		_ = conn.Close()
-		return ErrTimeout
-	default:
-		_ = conn.Close()
-		return fmt.Errorf("%w: unexpected event %q", ErrConnectionFailure, resp.Event)
+		return err
 	}
 
 	if c.endpoint == "com.samsung.art-app" {
-		if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+		if err := c.waitForChannelReady(conn); err != nil {
 			_ = conn.Close()
-			return fmt.Errorf("set read deadline: %w", err)
-		}
-
-		_, msg, err = conn.ReadMessage()
-		if err != nil {
-			_ = conn.Close()
-			return fmt.Errorf("read channel ready: %w", err)
-		}
-
-		var readyResp wsResponse
-		if err := json.Unmarshal(msg, &readyResp); err != nil {
-			_ = conn.Close()
-			return fmt.Errorf("parse channel ready: %w", err)
-		}
-
-		if readyResp.Event != EventChannelReady {
-			_ = conn.Close()
-			return fmt.Errorf("%w: expected ms.channel.ready, got %q", ErrConnectionFailure, readyResp.Event)
+			return err
 		}
 	}
 
