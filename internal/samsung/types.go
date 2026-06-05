@@ -76,10 +76,38 @@ type artResponse struct {
 	ErrorCode int    `json:"error_code,omitempty"`
 
 	// Fields vary by request type — parsed individually per command.
-	ContentList string `json:"content_list,omitempty"`
-	ContentID   string `json:"content_id,omitempty"`
-	Value       string `json:"value,omitempty"`
-	ConnInfo    string `json:"conn_info,omitempty"`
-	Status      string `json:"status,omitempty"`
-	RequestData string `json:"request_data,omitempty"`
+	// We use json.RawMessage because older Samsung TVs return these fields
+	// as escaped JSON strings (e.g. "{\"ip\":\"...\"}"), while newer 2024 models
+	// return them as raw JSON objects/arrays directly inside the payload.
+	ContentListRaw json.RawMessage `json:"content_list,omitempty"`
+	ContentID      string          `json:"content_id,omitempty"`
+	Value          string          `json:"value,omitempty"`
+	ConnInfoRaw    json.RawMessage `json:"conn_info,omitempty"`
+	Status         string          `json:"status,omitempty"`
+	RequestData    string          `json:"request_data,omitempty"`
+}
+
+// ContentList safely unwraps the content_list field whether it is a string or an array.
+func (a *artResponse) ContentList() string {
+	return parsePolyString(a.ContentListRaw)
+}
+
+// ConnInfo safely unwraps the conn_info field whether it is a string or an object.
+func (a *artResponse) ConnInfo() string {
+	return parsePolyString(a.ConnInfoRaw)
+}
+
+// parsePolyString extracts a JSON string if the raw bytes are an escaped JSON string.
+// If the bytes are already an object or array, it returns them as a raw JSON string.
+func parsePolyString(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	// It might be a regular JSON string
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	// It might be an object/array, return the raw JSON bytes as a string
+	return string(raw)
 }
