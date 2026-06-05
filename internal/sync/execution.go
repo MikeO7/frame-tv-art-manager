@@ -10,8 +10,6 @@ import (
 )
 
 // ExecuteSyncPlan applies the computed planning rules onto the target transport.
-//
-//nolint:gocognit,nestif,gocyclo,funlen // execution flow is inherently complex
 func (s *TVReconciler) ExecuteSyncPlan(
 	ctx context.Context,
 	plan *SyncPlan,
@@ -28,63 +26,20 @@ func (s *TVReconciler) ExecuteSyncPlan(
 		DeletedFiles: plan.StaleFiles,
 	}
 
-	uploadsDone := 0
-	for _, job := range plan.ToUpload {
-		if uploadsDone > 0 && policy.UploadDelay > 0 && !policy.DryRun {
-			select {
-			case <-ctx.Done():
-				return result, ctx.Err()
-			case <-time.After(policy.UploadDelay):
-			}
-		}
-
-		if policy.DryRun {
-			s.logger.Info("[DRY RUN] would upload", "file", job.Filename)
-			result.Uploaded++
-			continue
-		}
-
-		contentID, uploadErr := s.uploadWithRetry(ctx, transport, job.FilePath, job.FileType, job.Matte, policy)
-		if uploadErr != nil {
-			s.logger.Error("upload failed", "file", job.Filename, "error", uploadErr)
-			continue
-		}
-
-		mapping.Set(job.Filename, contentID)
-		result.NewUploads[job.Filename] = contentID
-		s.logger.Info("uploaded", "file", job.Filename, "content_id", contentID, "matte", job.Matte)
-		result.Uploaded++
-		uploadsDone++
+	eCtx := &executionContext{
+		ctx:       ctx,
+		plan:      plan,
+		transport: transport,
+		mapping:   mapping,
+		policy:    policy,
+		result:    &result,
 	}
 
-	if len(plan.ToDeleteIDs) > 0 {
-		if policy.DryRun {
-			s.logger.Info("[DRY RUN] would delete tracked images", "count", len(plan.ToDeleteIDs))
-			result.Deleted = len(plan.ToDeleteIDs)
-		} else {
-			s.logger.Info("deleting tracked images", "count", len(plan.ToDeleteIDs))
-			if err := transport.DeleteImages(ctx, plan.ToDeleteIDs); err != nil {
-				s.logger.Error("batch delete failed", "error", err)
-				result.Deleted = len(plan.ToDeleteIDs)
-			} else {
-				result.DeletedFiles = append(result.DeletedFiles, plan.ToDeleteFiles...)
-				mapping.DeleteBatch(plan.ToDeleteFiles)
-				s.logger.Info("deleted tracked images", "count", len(plan.ToDeleteIDs))
-				result.Deleted = len(plan.ToDeleteIDs)
-			}
-		}
+	if err := s.processUploads(eCtx); err != nil {
+		return result, err
 	}
 
-	if len(plan.ToDeleteUnknownIDs) > 0 {
-		if policy.DryRun {
-			s.logger.Info("[DRY RUN] would delete unknown images", "count", len(plan.ToDeleteUnknownIDs))
-		} else {
-			s.logger.Info("deleting unknown images", "count", len(plan.ToDeleteUnknownIDs))
-			if err := transport.DeleteImages(ctx, plan.ToDeleteUnknownIDs); err != nil {
-				s.logger.Error("delete unknown images failed", "error", err)
-			}
-		}
-	}
+	s.processDeletions(eCtx)
 
 	finalMapping := mapping.AllContentIDs()
 	s.applySelectionAndSlideshowPlan(ctx, plan, transport, finalMapping)
@@ -95,6 +50,79 @@ func (s *TVReconciler) ExecuteSyncPlan(
 
 	result.TotalImages = plan.TrackedFilesCount + result.Uploaded - result.Deleted
 	return result, nil
+}
+
+type executionContext struct {
+	ctx       context.Context
+	plan      *SyncPlan
+	transport TVTransport
+	mapping   *Mapping
+	policy    config.SyncPolicy
+	result    *TVSyncResult
+}
+
+func (s *TVReconciler) processUploads(eCtx *executionContext) error {
+	uploadsDone := 0
+	for _, job := range eCtx.plan.ToUpload {
+		if uploadsDone > 0 && eCtx.policy.UploadDelay > 0 && !eCtx.policy.DryRun {
+			select {
+			case <-eCtx.ctx.Done():
+				return eCtx.ctx.Err()
+			case <-time.After(eCtx.policy.UploadDelay):
+			}
+		}
+
+		if eCtx.policy.DryRun {
+			s.logger.Info("[DRY RUN] would upload", "file", job.Filename)
+			eCtx.result.Uploaded++
+			continue
+		}
+
+		contentID, uploadErr := s.uploadWithRetry(eCtx.ctx, eCtx.transport, job.FilePath, job.FileType, job.Matte, eCtx.policy)
+		if uploadErr != nil {
+			s.logger.Error("upload failed", "file", job.Filename, "error", uploadErr)
+			continue
+		}
+
+		eCtx.mapping.Set(job.Filename, contentID)
+		eCtx.result.NewUploads[job.Filename] = contentID
+		s.logger.Info("uploaded", "file", job.Filename, "content_id", contentID, "matte", job.Matte)
+		eCtx.result.Uploaded++
+		uploadsDone++
+	}
+	return nil
+}
+
+//nolint:nestif // justified complexity for deletion logic
+func (s *TVReconciler) processDeletions(eCtx *executionContext) {
+	if len(eCtx.plan.ToDeleteIDs) > 0 {
+		if eCtx.policy.DryRun {
+			s.logger.Info("[DRY RUN] would delete tracked images", "count", len(eCtx.plan.ToDeleteIDs))
+			eCtx.result.Deleted = len(eCtx.plan.ToDeleteIDs)
+		} else {
+			s.logger.Info("deleting tracked images", "count", len(eCtx.plan.ToDeleteIDs))
+			if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteIDs); err != nil {
+				s.logger.Error("batch delete failed", "error", err)
+				eCtx.result.Deleted = len(eCtx.plan.ToDeleteIDs)
+			} else {
+				eCtx.result.DeletedFiles = append(eCtx.result.DeletedFiles, eCtx.plan.ToDeleteFiles...)
+				eCtx.mapping.DeleteBatch(eCtx.plan.ToDeleteFiles)
+				s.logger.Info("deleted tracked images", "count", len(eCtx.plan.ToDeleteIDs))
+				eCtx.result.Deleted = len(eCtx.plan.ToDeleteIDs)
+			}
+		}
+	}
+
+	if len(eCtx.plan.ToDeleteUnknownIDs) > 0 {
+		if eCtx.policy.DryRun {
+			s.logger.Info("[DRY RUN] would delete unknown images", "count", len(eCtx.plan.ToDeleteUnknownIDs))
+		} else {
+			s.logger.Info("deleting unknown images", "count", len(eCtx.plan.ToDeleteUnknownIDs))
+			if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteUnknownIDs); err != nil {
+				s.logger.Error("delete unknown images failed", "error", err)
+			}
+		}
+	}
 }
 
 //nolint:revive // justified argument count for retry logic
