@@ -29,7 +29,7 @@ const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
 // The caller must separately wait for the "image_added" event on the
 // WebSocket to confirm the upload succeeded and get the content_id.
 //
-//nolint:gocognit,gocyclo,funlen,revive // D2D upload follows a fixed multi-step TV protocol
+//nolint:funlen // D2D upload follows a fixed multi-step TV protocol
 func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileType string, timeout time.Duration, skipTLSVerify bool) error {
 	// Open the image file.
 	f, err := os.Open(filepath.Clean(filePath))
