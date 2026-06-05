@@ -22,3 +22,6 @@
 ## 2026-06-05 - Avoid floating-point math in tight image processing loops
 **Learning:** Performing multiple floating-point conversions and multiplications in a high-frequency execution path (like calculating pixel luminosity for millions of pixels) introduces a significant CPU bottleneck due to float evaluation overhead.
 **Action:** Extract float mathematical operations out of the per-pixel inner loop. Perform inner loop accumulations using `uint64` with integer weights (e.g., 299, 587, 114) and defer the final float conversion and division (scaling) until after the loop completes.
+## 2026-06-05 - Avoid standard library vulnerabilities
+**Learning:** Security vulnerability scanners (`govulncheck`) flag standard library issues. `net/textproto` and `crypto/x509` in Go 1.26.3 had unhandled security risks.
+**Action:** Kept Go version cleanly synchronized across `go.mod`, GitHub action workflows, and the `Dockerfile` to the latest patch (1.26.4).
