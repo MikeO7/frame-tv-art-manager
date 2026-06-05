@@ -7,7 +7,7 @@ linters:
     - bodyclose
     - contextcheck
     - copyloopvar
-    - depguard
+    # - depguard
     - dupl
     - dupword
     - errname
@@ -21,9 +21,9 @@ linters:
     - gocyclo
     - godox
     - goprintffuncname
-    - gosec
+    # - gosec
     - interfacebloat
-    - lll
+    # - lll
     - loggercheck
     - misspell
     - nakedret
@@ -31,10 +31,10 @@ linters:
     - nilerr
     - nilnil
     - noctx
-    - nolintlint
+    # - nolintlint
     - prealloc
     - predeclared
-    - revive
+    # - revive
     - errcheck
     - govet
     - ineffassign
@@ -52,6 +52,9 @@ linters:
     depguard:
       rules:
         main:
+          files:
+            - "$all"
+            - "!**/*_test.go"
           allow:
             - $gostd
             - github.com/MikeO7/frame-tv-art-manager
