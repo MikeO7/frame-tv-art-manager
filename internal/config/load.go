@@ -12,6 +12,18 @@ import (
 // and validates the result. Returns an error if required values are missing
 // or constraints are violated.
 //
+// Returns:
+//   - *Config: A complete configuration struct populated from environment variables.
+//   - error:   An error if validation constraints (like missing required IPs) fail.
+//
+// Example:
+//
+//	cfg, err := config.Load()
+//	if err != nil {
+//	    log.Fatal("Invalid configuration:", err)
+//	}
+//	fmt.Println("Artwork directory:", cfg.ArtworkDir)
+//
 //nolint:gocyclo,gocognit,funlen // Config loading is naturally complex due to many fields
 func Load() (*Config, error) {
 	cfg := &Config{

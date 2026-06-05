@@ -29,7 +29,7 @@ jobs:
           python-version: '3.x'
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.4'
           cache: true
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.4'
           cache: true
       - name: golangci-lint
         run: |
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.4'
           cache: true
       - name: govulncheck
         run: |
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.4'
           cache: true
       - name: Test & Coverage Check
         run: |
@@ -91,7 +91,7 @@ jobs:
           make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on"
       - name: Upload Coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.out
