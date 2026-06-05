@@ -4,3 +4,6 @@
 ## 2026-05-21 - Prevent Silent Failures in Samsung Art API
 **Learning:** Samsung Art API WebSocket responses include an `error_code` field within the JSON envelope. Previously, operations like `GetContentList` or `SendImage` only validated the WebSocket transport success, completely ignoring application-level API errors returned by the TV. This allowed invalid requests to silently fail while the client falsely reported success, breaking state synchronization.
 **Action:** Always parse the base `artResponse` envelope and explicitly validate the `ErrorCode` field (e.g., using a `checkArtError` helper) before processing specific endpoint data or assuming the API request succeeded.
+## 2026-06-05 - Polymorphic JSON parsing in Samsung Art API
+**Learning:** Samsung TVs return polymorphic JSON types for fields like `conn_info` and `content_list` within the `d2d.service.message.event` websocket payload. Older TVs return escaped strings (`"{\"ip\":\"...\"}"`), while 2024+ TVs return raw JSON objects (`{"ip":"..."}`). Using strongly-typed structs (like `string`) causes `json.Unmarshal` to crash.
+**Action:** When interacting with the Samsung Art API, always unmarshal polymorphic fields as `json.RawMessage` and resolve them defensively using string extraction fallbacks to prevent runtime decoding panics across different TV generations.

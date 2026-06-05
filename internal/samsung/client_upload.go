@@ -100,13 +100,14 @@ func (c *Client) upload(ctx context.Context, filePath, fileType, matte string) (
 		return "", fmt.Errorf("send_image error: %w", err)
 	}
 
-	if resp.ConnInfo == "" {
+	connInfoStr := resp.ConnInfo()
+	if connInfoStr == "" {
 		return "", fmt.Errorf("send_image: no conn_info in response")
 	}
 
-	c.logger.Debug("send_image conn_info string", "conn_info", resp.ConnInfo)
+	c.logger.Debug("send_image conn_info string", "conn_info", connInfoStr)
 	var ci connInfo
-	if err := json.Unmarshal([]byte(resp.ConnInfo), &ci); err != nil {
+	if err := json.Unmarshal([]byte(connInfoStr), &ci); err != nil {
 		return "", fmt.Errorf("parse conn_info: %w", err)
 	}
 	c.logger.Debug("send_image parsed conn_info", "ip", ci.IP, "port", ci.Port)
