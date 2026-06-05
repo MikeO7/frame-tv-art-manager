@@ -91,7 +91,7 @@ jobs:
           make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on"
       - name: Upload Coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.out
