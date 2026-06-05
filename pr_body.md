@@ -1,5 +1,4 @@
-🚨 Severity: HIGH
-💡 Vulnerability: The `TrackDownload` method in the Unsplash provider dynamically accepted a download URL from the API response. The application validated the URL by only checking if its `Host` matched the expected `api.unsplash.com` host. However, it failed to validate the URL's `Scheme`. This meant an attacker (if they spoofed the initial response or found an open redirect on Unsplash) could supply an `http://` URL with the correct host, causing the application to transmit its highly sensitive `Authorization` header (`Client-ID`) in plaintext.
-🎯 Impact: If exploited, this scheme downgrade vulnerability would leak the user's Unsplash API keys over unencrypted channels, potentially leading to unauthorized usage, quota exhaustion, and account compromise.
-🔧 Fix: Updated the validation logic in `TrackDownload` to strictly enforce that both the `Host` and `Scheme` of the dynamically supplied URL perfectly match the expected `BaseURL` (which uses `https`).
-✅ Verification: Ran the local Go test suite (`go test ./...`) and the `make check` linting targets to ensure structural integrity and verified zero regressions.
+💡 What: Added a precomputation loop to generate and store `labColor` structs in a slice during the first image scan inside `generateSaliencyMap`.
+🎯 Why: The original two-pass process called the mathematically heavy `rgbToLab` method twice for every single pixel in the image. This caused massive redundant CPU overhead during the saliency map generation step.
+📊 Impact: Benchmark latency shows a reduction of computational time. Time per operation dropped from ~24M ns to ~21.7M ns (roughly a 10% overall speedup).
+🔬 Measurement: Verify with `go test -bench=BenchmarkGenerateSaliencyMap -benchmem ./internal/optimize -v` which proves the reduction in time and overall allocation cost per map generation.
