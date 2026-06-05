@@ -57,3 +57,8 @@
 **Vulnerability:** The application was using an older version of Go (`1.26.3`) which contained standard library vulnerabilities in `net/textproto` (GO-2026-5039) and `crypto/x509` (GO-2026-5037). These vulnerabilities were flagged during `govulncheck` execution.
 **Learning:** Standard library vulnerabilities can be detected by `govulncheck`, even if no third-party module vulnerabilities are present.
 **Prevention:** Always bump the Go compiler version uniformly across `go.mod`, GitHub Actions workflows (`.github/workflows/*.yml`), and `Dockerfile` to the latest patch release (e.g., `1.26.4`) when standard library vulnerabilities are disclosed.
+
+## 2026-06-01 - [High] Prevent SSRF and Scheme Downgrade in URL Validation
+**Vulnerability:** The application was validating a dynamically provided download URL by only comparing the `Host` portion to a trusted base URL. This allowed an attacker to bypass the validation by supplying a matching host but with an unintended scheme (e.g., changing `https://` to `http://` or `ftp://`), leading to potential credential leakage in plain text or SSRF scheme confusion.
+**Learning:** Checking only the `Host` property of a parsed URL is insufficient when validating redirect or tracking URLs before appending sensitive authentication headers. Scheme downgrades can silently expose API keys.
+**Prevention:** Always validate both the `Host` and `Scheme` properties when ensuring an externally supplied URL belongs to a trusted destination.
