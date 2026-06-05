@@ -160,8 +160,8 @@ func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation s
 		return
 	}
 	baseURL, err := url.Parse(p.BaseURL)
-	if err != nil || parsedURL.Host != baseURL.Host {
-		p.logger.Warn("invalid unsplash download location host", "url", downloadLocation)
+	if err != nil || parsedURL.Host != baseURL.Host || parsedURL.Scheme != baseURL.Scheme {
+		p.logger.Warn("invalid unsplash download location host or scheme", "url", downloadLocation)
 		return
 	}
 

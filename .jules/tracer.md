@@ -7,3 +7,7 @@
 ## 2026-05-31 - Safe Goroutine Log Assertions
 **Learning:** Testing asynchronous logging behaviors in background goroutines by capturing `slog` output into a standard `bytes.Buffer` causes data race failures (`go test -race`).
 **Action:** Always wrap the buffer in a thread-safe struct with a `sync.Mutex`, or use channels to safely verify log execution paths. Avoid hardcoded `time.Sleep()` synchronization to prevent flaky tests.
+
+## 2026-06-02 - Testing sync.TVReconciler using stub structs to bypass cycle imports
+**Learning:** When trying to test components like `sync.TVReconciler` that depend heavily on complex struct boundaries from other packages (like `samsung.SlideshowStatus`) but also suffer from circular dependency loops (if testing inside `sync_test.go` and using actual structures vs dummy packages), it's easiest to define a local mock of the interface directly inside `execution_test.go` and add explicit boolean or value trackers to make solid AAA-pattern assertions.
+**Action:** When adding missing coverage for side-effect-heavy utility classes, always add explicit boolean tracker properties (`somethingCalled bool`) to your local mock structs. This avoids ghost assertions and ensures you don't over-mock.
