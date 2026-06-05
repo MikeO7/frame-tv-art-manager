@@ -80,40 +80,61 @@ func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Cl
 
 //
 
-func (c *Client) connect(ctx context.Context) error {
-	if c.opts.TVMAC != "" {
-		c.logger.Info("sending Wake-on-LAN", "mac", c.opts.TVMAC)
-		if err := c.sendWOL(ctx, c.opts.TVMAC); err != nil {
-			c.logger.Warn("WoL failed", "error", err)
-		} else {
-			time.Sleep(2 * time.Second)
-		}
+func (c *Client) wakeTV(ctx context.Context) {
+	if c.opts.TVMAC == "" {
+		return
 	}
+	c.logger.Info("sending Wake-on-LAN", "mac", c.opts.TVMAC)
+	if err := c.sendWOL(ctx, c.opts.TVMAC); err != nil {
+		c.logger.Warn("WoL failed", "error", err)
+	} else {
+		time.Sleep(2 * time.Second)
+	}
+}
 
-	if c.opts.EnableRESTGate {
-		c.logger.Debug("checking REST gate")
-		inArtMode, err := c.checkArtModeGate(ctx)
-		if err != nil {
-			c.logger.Warn("REST gate error", "error", err)
-		}
-		if !inArtMode {
-			c.logger.Info("REST gate: TV not in art mode, skipping to prevent popup")
-			return ErrGateFailed
-		}
-		c.logger.Debug("REST gate: TV is in art mode")
+func (c *Client) checkGate(ctx context.Context) error {
+	if !c.opts.EnableRESTGate {
+		return nil
+	}
+	c.logger.Debug("checking REST gate")
+	inArtMode, err := c.checkArtModeGate(ctx)
+	if err != nil {
+		c.logger.Warn("REST gate error", "error", err)
+	}
+	if !inArtMode {
+		c.logger.Info("REST gate: TV not in art mode, skipping to prevent popup")
+		return ErrGateFailed
+	}
+	c.logger.Debug("REST gate: TV is in art mode")
+	return nil
+}
+
+func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
+	if _, err := os.Stat(tokenFile); !os.IsNotExist(err) {
+		return nil
+	}
+	c.logger.Info("no token found, performing one-time remote handshake")
+	if err := os.MkdirAll(filepath.Dir(tokenFile), 0o700); err != nil {
+		return fmt.Errorf("create token dir: %w", err)
+	}
+	if err := c.ensureToken(ctx, tokenFile, 8002); err != nil {
+		c.logger.Warn("remote handshake failed (TV might be off or busy)", "error", err)
+	} else {
+		time.Sleep(2 * time.Second)
+	}
+	return nil
+}
+
+func (c *Client) connect(ctx context.Context) error {
+	c.wakeTV(ctx)
+
+	if err := c.checkGate(ctx); err != nil {
+		return err
 	}
 
 	tokenFile := c.tokenFilePath()
-	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
-		c.logger.Info("no token found, performing one-time remote handshake")
-		if err := os.MkdirAll(filepath.Dir(tokenFile), 0o700); err != nil {
-			return fmt.Errorf("create token dir: %w", err)
-		}
-		if err := c.ensureToken(ctx, tokenFile, 8002); err != nil {
-			c.logger.Warn("remote handshake failed (TV might be off or busy)", "error", err)
-		} else {
-			time.Sleep(2 * time.Second)
-		}
+	if err := c.setupToken(ctx, tokenFile); err != nil {
+		return err
 	}
 
 	c.artConn = newConnection(

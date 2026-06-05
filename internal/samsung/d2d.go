@@ -30,6 +30,44 @@ const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
 // WebSocket to confirm the upload succeeded and get the content_id.
 //
 //nolint:funlen // D2D upload follows a fixed multi-step TV protocol
+func dialD2D(ctx context.Context, info connInfo, dialer *net.Dialer, skipTLSVerify bool) (net.Conn, error) {
+	addr := fmt.Sprintf("%s:%s", info.IP, info.Port)
+	if info.Secured {
+		tlsConf := &tls.Config{InsecureSkipVerify: skipTLSVerify} //nolint:gosec // Samsung self-signed cert
+		tlsDialer := &tls.Dialer{
+			NetDialer: dialer,
+			Config:    tlsConf,
+		}
+		return tlsDialer.DialContext(ctx, "tcp", addr)
+	}
+	return dialer.DialContext(ctx, "tcp", addr)
+}
+
+func streamFile(f io.Reader, conn io.Writer, fileSize int64) error {
+	buf := make([]byte, d2dChunkSize)
+	var totalWritten int64
+	for {
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			if _, writeErr := conn.Write(buf[:n]); writeErr != nil {
+				return fmt.Errorf("write image data at offset %d: %w", totalWritten, writeErr)
+			}
+			totalWritten += int64(n)
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return fmt.Errorf("read image file: %w", readErr)
+		}
+	}
+
+	if totalWritten != fileSize {
+		return fmt.Errorf("incomplete transfer: wrote %d of %d bytes", totalWritten, fileSize)
+	}
+	return nil
+}
+
 func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileType string, timeout time.Duration, skipTLSVerify bool) error {
 	// Open the image file.
 	f, err := os.Open(filepath.Clean(filePath))
@@ -61,22 +99,10 @@ func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileTyp
 	}
 
 	// Connect to the TV's D2D socket.
-	addr := fmt.Sprintf("%s:%s", info.IP, info.Port)
 	dialer := net.Dialer{Timeout: timeout}
-
-	var conn net.Conn
-	if info.Secured {
-		tlsConf := &tls.Config{InsecureSkipVerify: skipTLSVerify} //nolint:gosec // Samsung self-signed cert
-		tlsDialer := &tls.Dialer{
-			NetDialer: &dialer,
-			Config:    tlsConf,
-		}
-		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
-	} else {
-		conn, err = dialer.DialContext(ctx, "tcp", addr)
-	}
+	conn, err := dialD2D(ctx, info, &dialer, skipTLSVerify)
 	if err != nil {
-		return fmt.Errorf("dial d2d socket %s: %w", addr, err)
+		return fmt.Errorf("dial d2d socket %s:%s: %w", info.IP, info.Port, err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -97,28 +123,5 @@ func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileTyp
 		return fmt.Errorf("write header: %w", err)
 	}
 
-	// Stream file in chunks.
-	buf := make([]byte, d2dChunkSize)
-	var totalWritten int64
-	for {
-		n, readErr := f.Read(buf)
-		if n > 0 {
-			if _, writeErr := conn.Write(buf[:n]); writeErr != nil {
-				return fmt.Errorf("write image data at offset %d: %w", totalWritten, writeErr)
-			}
-			totalWritten += int64(n)
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return fmt.Errorf("read image file: %w", readErr)
-		}
-	}
-
-	if totalWritten != fileSize {
-		return fmt.Errorf("incomplete transfer: wrote %d of %d bytes", totalWritten, fileSize)
-	}
-
-	return nil
+	return streamFile(f, conn, fileSize)
 }
