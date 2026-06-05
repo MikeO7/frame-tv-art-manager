@@ -37,6 +37,14 @@ type TVStatus struct {
 }
 
 // NewStatus creates a new health status tracker.
+//
+// Returns:
+//   - *Status: An instantiated, thread-safe health status tracker struct.
+//
+// Example:
+//
+//	status := health.NewStatus()
+//	status.SetStage("initialization")
 func NewStatus() *Status {
 	return &Status{
 		StartedAt:  time.Now(),
@@ -82,6 +90,20 @@ type Server struct {
 
 // NewServer creates a health check server. If port is 0, the server
 // is effectively disabled (Start will be a no-op).
+//
+// Parameters:
+//   - port:   The port number for the HTTP server to listen on.
+//   - status: A reference to the application's global health status tracker.
+//   - logger: A structured logger for recording server startup and shutdown.
+//
+// Returns:
+//   - *Server: An instantiated server struct ready to be started.
+//
+// Example:
+//
+//	server := health.NewServer(8080, status, logger)
+//	server.Start()
+//	defer server.Shutdown(ctx)
 func NewServer(port int, status *Status, logger *slog.Logger) *Server {
 	return &Server{
 		status: status,

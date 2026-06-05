@@ -155,11 +155,15 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	// 2. Precompute Mean Lab Color of the entire image to measure color distance
 	var sumL, sumA, sumB float64
 	totalPixels := float64((w - 2) * (h - 2))
+
+	// OPTIMIZATION: Precompute Lab colors to avoid recalculating per-pixel later
+	labMap := make([]labColor, w*h)
 	for y := 1; y < h-1; y++ {
 		for x := 1; x < w-1; x++ {
 			idx := y*src.Stride + x*4
 			r, g, b := src.Pix[idx], src.Pix[idx+1], src.Pix[idx+2]
 			l, aVal, bVal := rgbToLab(r, g, b)
+			labMap[y*w+x] = labColor{l: l, a: aVal, b: bVal}
 			sumL += l
 			sumA += aVal
 			sumB += bVal
@@ -185,8 +189,8 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 
 			// 6. Perceptual Lab Saliency (Color Contrast using CIEDE2000 color difference)
 			// Measures true perceptual distance from the average image background color
-			lLab, aLab, bLab := rgbToLab(r, g, b)
-			colorWeight := ciede2000(labColor{l: lLab, a: aLab, b: bLab}, labColor{l: meanL, a: meanA, b: meanB}) / 100.0
+			c := labMap[y*w+x]
+			colorWeight := ciede2000(c, labColor{l: meanL, a: meanA, b: meanB}) / 100.0
 			if colorWeight > 1.0 {
 				colorWeight = 1.0
 			}

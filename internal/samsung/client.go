@@ -152,8 +152,6 @@ func (c *Client) Close() error {
 // ShouldSkip returns true if the TV is in a backoff window due to failures.
 func (c *Client) ShouldSkip() bool {
 	c.mu.Lock()
-	c.mu.Unlock() //nolint:staticcheck // intended unlock pattern
-	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if time.Now().Before(c.backoffUntil) {
