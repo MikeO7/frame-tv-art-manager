@@ -109,8 +109,7 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 }
 
 // RunOnce performs a single sync cycle for all configured TVs.
-//
-//nolint:gocognit,nestif,gocyclo,funlen // complexity justified for this path
+// Structural simplifications have been made to extract optimization and parallel TV synchronization logic into distinct, readable methods.
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
 	var cycleWarnings []string
@@ -140,21 +139,9 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 
 	srcDownloaded, cycleWarnings := e.downloadSources(cycleLog)
 
-	optCfg := e.cfg.OptimizeOptions()
-	optimized, optErr := optimize.OptimizeCatalog(ctx, e.cfg.ArtworkDir, e.catalog, optCfg, func(oldName, newName string) {
-		for _, ip := range e.cfg.TVIPs {
-			m, err := LoadMapping(e.cfg.TokenDir, ip)
-			if err != nil {
-				continue
-			}
-			_ = m.Rename(oldName, newName)
-		}
-	}, e.logger)
+	optimized, optErr := e.optimizeCatalog(ctx)
 	if optErr != nil {
 		return optErr
-	}
-	if optimized > 0 {
-		e.catalog.InvalidateCache()
 	}
 
 	localFiles, err := e.catalog.SupportedFiles()
@@ -166,63 +153,14 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	if e.health != nil {
 		e.health.SetStage("syncing TVs")
 	}
-	tvSummaries := make([]TVSyncResult, 0, len(e.cfg.TVIPs))
-	var summariesMu sync.Mutex
-	var wg sync.WaitGroup
 
 	matteConfig := config.LoadMatteConfig(e.cfg.ArtworkDir)
 
-	for _, ip := range e.cfg.TVIPs {
-		select {
-		case <-ctx.Done():
-			e.logger.Info("sync cycle cancelled due to shutdown")
-			return ctx.Err()
-		default:
-		}
-
-		wg.Add(1)
-		go func(tvIP string) {
-			defer wg.Done()
-
-			summary, err := e.syncTV(ctx, tvIP, localFiles, matteConfig, cycleLog)
-
-			summariesMu.Lock()
-			defer summariesMu.Unlock()
-
-			if err != nil {
-				e.logger.Error("TV sync failed", "tv", tvIP, "error", err)
-				syncErrors = append(syncErrors, fmt.Errorf("tv %s: %w", tvIP, err))
-				if e.health != nil {
-					e.health.SetTVStatus(tvIP, health.TVStatus{
-						IP:     tvIP,
-						Status: "unreachable",
-					})
-				}
-				tvSummaries = append(tvSummaries, TVSyncResult{
-					IP:           tvIP,
-					Status:       "failed",
-					ErrorMessage: err.Error(),
-				})
-			} else {
-				if summary.Status == statusBackoff {
-					tvSummaries = append(tvSummaries, summary)
-					return
-				}
-				if e.health != nil {
-					e.health.SetTVStatus(tvIP, health.TVStatus{
-						IP:         tvIP,
-						LastSeen:   time.Now().Format(time.RFC3339),
-						ImageCount: summary.TotalImages,
-						ArtMode:    summary.ArtMode,
-						Status:     "ok",
-					})
-				}
-				tvSummaries = append(tvSummaries, summary)
-			}
-		}(ip)
+	tvSummaries, tvSyncErrors := e.syncAllTVs(ctx, localFiles, matteConfig, cycleLog)
+	if len(tvSyncErrors) == 1 && errors.Is(tvSyncErrors[0], ctx.Err()) {
+		return ctx.Err()
 	}
-
-	wg.Wait()
+	syncErrors = append(syncErrors, tvSyncErrors...)
 
 	LogCycleSummary(e.logger, e.cycleNum, startTime, e.cfg.SyncIntervalMin, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
 
@@ -260,4 +198,87 @@ func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {
 		cycleWarnings = append(cycleWarnings, fmt.Sprintf("Source download issue: %v", srcErr))
 	}
 	return srcDownloaded, cycleWarnings
+}
+
+func (e *Engine) optimizeCatalog(ctx context.Context) (int, error) {
+	optCfg := e.cfg.OptimizeOptions()
+	optimized, optErr := optimize.OptimizeCatalog(ctx, e.cfg.ArtworkDir, e.catalog, optCfg, func(oldName, newName string) {
+		for _, ip := range e.cfg.TVIPs {
+			m, err := LoadMapping(e.cfg.TokenDir, ip)
+			if err != nil {
+				continue
+			}
+			_ = m.Rename(oldName, newName)
+		}
+	}, e.logger)
+	if optErr != nil {
+		return 0, optErr
+	}
+	if optimized > 0 {
+		e.catalog.InvalidateCache()
+	}
+	return optimized, nil
+}
+
+// syncAllTVs orchestrates concurrent sync cycles for all provided TVs.
+// Extracted from RunOnce to reduce cognitive load and nested loop complexity.
+func (e *Engine) syncAllTVs(
+	ctx context.Context,
+	localFiles map[string]struct{},
+	matteConfig *config.MatteConfig,
+	cycleLog *slog.Logger,
+) ([]TVSyncResult, []error) {
+	var syncErrors []error
+	tvSummaries := make([]TVSyncResult, 0, len(e.cfg.TVIPs))
+	var summariesMu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, ip := range e.cfg.TVIPs {
+		select {
+		case <-ctx.Done():
+			e.logger.Info("sync cycle cancelled due to shutdown")
+			return nil, []error{ctx.Err()}
+		default:
+		}
+
+		wg.Add(1)
+		go func(tvIP string) {
+			defer wg.Done()
+			summary, err := e.syncTV(ctx, tvIP, localFiles, matteConfig, cycleLog)
+
+			summariesMu.Lock()
+			defer summariesMu.Unlock()
+
+			if err != nil {
+				e.handleSyncError(tvIP, err, &syncErrors, &tvSummaries)
+			} else {
+				if summary.Status == statusBackoff {
+					tvSummaries = append(tvSummaries, summary)
+					return
+				}
+				if e.health != nil {
+					e.health.SetTVStatus(tvIP, health.TVStatus{
+						IP:         tvIP,
+						LastSeen:   time.Now().Format(time.RFC3339),
+						ImageCount: summary.TotalImages,
+						ArtMode:    summary.ArtMode,
+						Status:     "ok",
+					})
+				}
+				tvSummaries = append(tvSummaries, summary)
+			}
+		}(ip)
+	}
+
+	wg.Wait()
+	return tvSummaries, syncErrors
+}
+
+func (e *Engine) handleSyncError(tvIP string, err error, syncErrors *[]error, tvSummaries *[]TVSyncResult) {
+	e.logger.Error("TV sync failed", "tv", tvIP, "error", err)
+	*syncErrors = append(*syncErrors, fmt.Errorf("tv %s: %w", tvIP, err))
+	if e.health != nil {
+		e.health.SetTVStatus(tvIP, health.TVStatus{IP: tvIP, Status: "unreachable"})
+	}
+	*tvSummaries = append(*tvSummaries, TVSyncResult{IP: tvIP, Status: "failed", ErrorMessage: err.Error()})
 }
