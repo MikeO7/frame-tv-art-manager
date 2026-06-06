@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
+const defaultUnsplashBaseURL = "https://api.unsplash.com"
+
 // unsplashProvider handles communication with the Unsplash API and resolves artwork sources.
+
 type unsplashProvider struct {
 	appID     string
 	accessKey string
@@ -42,7 +45,7 @@ func newUnsplashProvider(appID, accessKey, secretKey string, logger *slog.Logger
 			Timeout: 30 * time.Second,
 		},
 		logger:  logger,
-		BaseURL: "https://api.unsplash.com",
+		BaseURL: defaultUnsplashBaseURL,
 	}
 }
 
