@@ -25,3 +25,6 @@
 ## 2026-06-05 - Avoid standard library vulnerabilities
 **Learning:** Security vulnerability scanners (`govulncheck`) flag standard library issues. `net/textproto` and `crypto/x509` in Go 1.26.3 had unhandled security risks.
 **Action:** Kept Go version cleanly synchronized across `go.mod`, GitHub action workflows, and the `Dockerfile` to the latest patch (1.26.4).
+## 2026-06-07 - Avoid Parent-Frame Dereferencing in High-Frequency Closures
+**Learning:** When executing tight per-pixel closures in Go (e.g., `calculateSobelEdgeSlow` in image processing), capturing parent struct properties directly (like `bounds.Min.X`, `src.Stride`, `src.Pix`) causes significant execution overhead. The compiler often cannot optimize away the repeated pointer dereferencing back to the parent frame on every iteration of a multi-million execution loop.
+**Action:** Always extract struct properties into local variables outside the closure block (e.g., `minX := bounds.Min.X`, `stride := src.Stride`) and capture those local variables instead. This simple memory access optimization yields substantial execution time decreases in tight mathematical paths.
