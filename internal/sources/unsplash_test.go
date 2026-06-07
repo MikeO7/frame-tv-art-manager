@@ -118,7 +118,7 @@ func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
 func TestUnsplashClient_TrackDownload_Errors(t *testing.T) {
 	logger, buf := newTestLogger()
 	c := newUnsplashClient("app", "key", "secret", logger)
-	c.BaseURL = "https://api.unsplash.com"
+	c.BaseURL = defaultUnsplashBaseURL
 
 	// 1. Test invalid URL format
 	c.TrackDownload(context.Background(), "://invalid-url")
