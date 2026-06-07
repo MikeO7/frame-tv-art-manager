@@ -174,6 +174,12 @@ You can customize the engine's behavior by adjusting these environment variables
 | `ARTWORK_DIR` | `/data/artwork` | Where downloaded and processed artwork files live. |
 | `TOKEN_DIR` | `/data/tokens` | Where TV authentication files are saved. |
 | `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your `sources.yaml` or custom source list. |
+| `UNSPLASH_APP_ID` | *(empty)* | Your Unsplash API App ID. |
+| `UNSPLASH_ACCESS_KEY` | *(empty)* | Your Unsplash API Access Key. |
+| `UNSPLASH_SECRET_KEY` | *(empty)* | Your Unsplash API Secret Key. |
+| `NASA_API_KEY` | `DEMO_KEY` | Your NASA API Key. |
+| `PEXELS_API_KEY` | *(empty)* | Your Pexels API Key. |
+| `PIXABAY_API_KEY` | *(empty)* | Your Pixabay API Key. |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Set to true to automatically delete images on your TV that aren't in your local folder. |
 | `DRY_RUN` | `false` | Process and texture images locally without actually pushing them to the TV. |
 | `LOG_LEVEL` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error`. |
@@ -202,6 +208,7 @@ You can customize the engine's behavior by adjusting these environment variables
 | `LOCATION_TIMEZONE` | *(empty)* | Your local timezone matching the [IANA database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`). |
 | `BRIGHTNESS_MIN` | `2` | Panel brightness level in pitch darkness (scale `1-10`). |
 | `BRIGHTNESS_MAX` | `10` | Panel brightness level at absolute noon. |
+| `BRIGHTNESS` | *(empty)* | Manual brightness override (fixed value `0-50`). |
 | `AUTO_OFF_TIME` | *(empty)* | Time to automatically shut down Art Mode at night (e.g. `23:30`). |
 | `AUTO_OFF_GRACE_HOURS` | `2` | Retry window in hours to keep checking in case the TV was manually powered back on. |
 
@@ -209,7 +216,13 @@ You can customize the engine's behavior by adjusting these environment variables
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
+| `TV_MAC` | *(empty)* | MAC address for Wake-on-LAN (optional, wakes sleeping TVs). |
+| `ENABLE_REST_GATE` | `false` | Enable the Silent REST Gate to probe port 8001 /ms/art before connecting. |
+| `SLIDESHOW_ENABLED` | *(empty)* | Set to `true` to override TV's current slideshow settings. |
+| `SLIDESHOW_INTERVAL` | `15` | Minutes between slideshow image changes. |
+| `SLIDESHOW_TYPE` | `shuffle` | Slideshow type: `shuffle` or `sequential`. |
 | `VERIFY_TLS` | `false` | Enable TLS/SSL certificate verification when connecting to the TV. Frame TVs use self-signed certificates, so this is disabled by default. |
+| `SKIP_TLS_VERIFY` | `false` | Skip TLS verification regardless of VERIFY_TLS setting (useful for strictly local setups). |
 | `MAX_ARTWORK_IMAGES` | `100` | Maximum number of images to sync. Increase if your collection is larger. |
 | `MAX_DOWNLOAD_SIZE_MB` | `20` | Maximum download size per image in megabytes. |
 | `HEALTH_PORT` | `8080` | Port for HTTP `/health` and `/status` endpoints (`0` disables the health server). |
