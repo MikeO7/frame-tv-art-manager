@@ -160,7 +160,6 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	if len(tvSyncErrors) == 1 && errors.Is(tvSyncErrors[0], ctx.Err()) {
 		return ctx.Err()
 	}
-	syncErrors = make([]error, 0, len(tvSyncErrors))
 	syncErrors = append(syncErrors, tvSyncErrors...)
 
 	LogCycleSummary(e.logger, e.cycleNum, startTime, e.cfg.SyncIntervalMin, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
@@ -252,24 +251,22 @@ func (e *Engine) syncAllTVs(
 
 			if err != nil {
 				e.handleSyncError(tvIP, err, &syncErrors, &tvSummaries)
-				return
-			}
-
-			if summary.Status == statusBackoff {
+			} else {
+				if summary.Status == statusBackoff {
+					tvSummaries = append(tvSummaries, summary)
+					return
+				}
+				if e.health != nil {
+					e.health.SetTVStatus(tvIP, health.TVStatus{
+						IP:         tvIP,
+						LastSeen:   time.Now().Format(time.RFC3339),
+						ImageCount: summary.TotalImages,
+						ArtMode:    summary.ArtMode,
+						Status:     "ok",
+					})
+				}
 				tvSummaries = append(tvSummaries, summary)
-				return
 			}
-
-			if e.health != nil {
-				e.health.SetTVStatus(tvIP, health.TVStatus{
-					IP:         tvIP,
-					LastSeen:   time.Now().Format(time.RFC3339),
-					ImageCount: summary.TotalImages,
-					ArtMode:    summary.ArtMode,
-					Status:     "ok",
-				})
-			}
-			tvSummaries = append(tvSummaries, summary)
 		}(ip)
 	}
 
