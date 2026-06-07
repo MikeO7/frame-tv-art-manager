@@ -254,26 +254,45 @@ func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
 
 func calculateSobelEdgeSlow(src *image.RGBA, x, y int, bounds image.Rectangle) float64 {
 	// SLOW PATH: Edges requiring boundary enforcement
-	lum := func(xx, yy int) float64 {
-		if xx < bounds.Min.X {
-			xx = bounds.Min.X
+	minX := bounds.Min.X
+	maxX := bounds.Max.X - 1
+	minY := bounds.Min.Y
+	maxY := bounds.Max.Y - 1
+	stride := src.Stride
+	pix := src.Pix
+
+	lum := func(xx, yy int) int {
+		if xx < minX {
+			xx = minX
+		} else if xx > maxX {
+			xx = maxX
 		}
-		if xx >= bounds.Max.X {
-			xx = bounds.Max.X - 1
+		if yy < minY {
+			yy = minY
+		} else if yy > maxY {
+			yy = maxY
 		}
-		if yy < bounds.Min.Y {
-			yy = bounds.Min.Y
-		}
-		if yy >= bounds.Max.Y {
-			yy = bounds.Max.Y - 1
-		}
-		i := (yy-bounds.Min.Y)*src.Stride + (xx-bounds.Min.X)*4
-		return 0.299*float64(src.Pix[i]) + 0.587*float64(src.Pix[i+1]) + 0.114*float64(src.Pix[i+2])
+		i := (yy-minY)*stride + (xx-minX)*4
+		// OPTIMIZATION: Replacing floating point multiplication with integer math for much faster luminance calculation
+		return int(pix[i])*299 + int(pix[i+1])*587 + int(pix[i+2])*114
 	}
 
-	gx := -lum(x-1, y-1) - 2*lum(x-1, y) - lum(x-1, y+1) + lum(x+1, y-1) + 2*lum(x+1, y) + lum(x+1, y+1)
-	gy := -lum(x-1, y-1) - 2*lum(x, y-1) - lum(x+1, y-1) + lum(x-1, y+1) + 2*lum(x, y+1) + lum(x+1, y+1)
-	return math.Sqrt(gx*gx+gy*gy) / 255.0
+	lum00 := lum(x-1, y-1)
+	lum10 := lum(x, y-1)
+	lum20 := lum(x+1, y-1)
+	lum01 := lum(x-1, y)
+	lum21 := lum(x+1, y)
+	lum02 := lum(x-1, y+1)
+	lum12 := lum(x, y+1)
+	lum22 := lum(x+1, y+1)
+
+	gx := -lum00 - (lum01 << 1) - lum02 + lum20 + (lum21 << 1) + lum22
+	gy := -lum00 - (lum10 << 1) - lum20 + lum02 + (lum12 << 1) + lum22
+
+	gxFloat := float64(gx)
+	gyFloat := float64(gy)
+
+	return math.Sqrt(gxFloat*gxFloat+gyFloat*gyFloat) / 255000.0
 }
 
 func calculateSkinProbability(r, g, b uint8) float64 {

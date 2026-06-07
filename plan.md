@@ -1,11 +1,11 @@
-1. **Increase test coverage in `internal/sync/execution.go`**
-   - Implement comprehensive tests for `updateBrightnessPlan`, `updateSlideshowPlan`, `handleAutoOffPlan`, `applySelectionAndSlideshowPlan`, `uploadWithRetry`, and `ExecuteSyncPlan` functions to hit the remaining untested paths.
-   - Using the `mockTVTransportExecution` helper I will inject the correct failure modes, empty states, and expected results to cover all missing paths.
+1. **Optimize `calculateSobelEdgeSlow` in `internal/optimize/saliency.go`**
+   - In `calculateSobelEdgeSlow`, we calculate pixel luminance by doing float multiplication (`0.299`, `0.587`, `0.114`).
+   - We will replace this with integer multiplication (`299`, `587`, `114`) inside the closure to avoid floating point math per pixel on the edges.
+   - We will shift the output float conversion out to the return of the function `calculateSobelEdgeSlow`.
+   - Also, we'll extract constants like `minX`, `maxX`, `minY`, `maxY`, `stride` and `pix` out of the closure to avoid referencing from the parent function bounds.
 
-2. **Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.**
-   - Run `make coverage-check` and `make test` to ensure coverage is strictly maintained and there are no regressions.
-   - Run formatting and linters.
-   - Document any critical learnings in the `.jules/tracer.md` file.
+2. **Complete pre-commit steps**
+   - Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
 
-3. **Submit the PR**
-   - Create the pull request using `gh pr create` with the 'Tracer' persona, summarizing the coverage boost.
+3. **Submit the change**
+   - Once all tests pass, I will submit the change with the Bolt persona format.
