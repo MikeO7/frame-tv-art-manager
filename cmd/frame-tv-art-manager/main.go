@@ -129,7 +129,10 @@ func runHealthCheck() {
 	var status struct {
 		Status string `json:"status"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&status)
+
+	// Enforce a hard limit on memory allocation to prevent DoS via excessively large payloads.
+	reader := http.MaxBytesReader(nil, resp.Body, 1*1024*1024)
+	err = json.NewDecoder(reader).Decode(&status)
 	_ = resp.Body.Close()
 	cancel()
 	if err != nil {
