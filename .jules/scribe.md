@@ -14,3 +14,6 @@
 ## 2026-06-05 - CI Security Workflow Fix for Standard Library Vulnerabilities
 **Learning:** During the automated GitHub workflow execution (`govulncheck`), the security scanner identified two vulnerabilities `GO-2026-5039` and `GO-2026-5037` inherently tied to the Go 1.26.3 standard library, forcing a bump.
 **Action:** Bumping the Go toolchain version across `go.mod`, `.github/workflows/*.yml`, and `Dockerfile` successfully eliminated standard library vulnerability false flags during CI validation.
+## 2026-06-07 - Sync Environment Configurations in README.md
+**Learning:** The `README.md` file was missing several environment variables documented in `internal/config/load.go` (e.g. `UNSPLASH_APP_ID`, `ENABLE_REST_GATE`, `SLIDESHOW_ENABLED`, `TV_MAC`, `PEXELS_API_KEY`, etc.), leading to undocumented configuration options.
+**Action:** Always verify `README.md` against the actual code values defined in `internal/config/load.go`.
