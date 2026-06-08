@@ -41,10 +41,12 @@ func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	}
 	res := make([]float64, w*h)
 	boolMap := make([]bool, w*h)
+	pix := src.Pix
 	for i := 0; i < w*h; i++ {
 		idx := i * 4
 		// OPTIMIZATION: Replacing floating point multiplication with integer math for much faster luminance calculation
-		lum := (int(src.Pix[idx])*299 + int(src.Pix[idx+1])*587 + int(src.Pix[idx+2])*114) / 1000
+		// Extract src.Pix to a local variable to prevent pointer indirection in hot path
+		lum := (int(pix[idx])*299 + int(pix[idx+1])*587 + int(pix[idx+2])*114) / 1000
 		if uint8(lum) > t {
 			boolMap[i] = true
 		}
