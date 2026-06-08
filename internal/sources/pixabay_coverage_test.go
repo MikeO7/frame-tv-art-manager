@@ -100,9 +100,9 @@ func TestPixabayProvider_fetchPhotoList_ErrorsAndParsing(t *testing.T) {
 		t.Error("expected error from bad URL, got nil")
 	}
 
-    // 3. Bad request format (NewRequest error)
-    _, err = c.fetchPhotoList(context.Background(), "://example")
-    if err == nil {
+	// 3. Bad request format (NewRequest error)
+	_, err = c.fetchPhotoList(context.Background(), "://example")
+	if err == nil {
 		t.Error("expected error from bad URL, got nil")
 	}
 
