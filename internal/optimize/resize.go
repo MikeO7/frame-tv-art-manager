@@ -166,6 +166,18 @@ func ValidateImage(path string) error {
 	return err
 }
 
+// fitDimensions calculates the best width/height to fit within max bounds while preserving aspect ratio.
+func fitDimensions(w, h, maxW, maxH int) (int, int) {
+	scale := math.Min(float64(maxW)/float64(w), float64(maxH)/float64(h))
+	// Always upscale to at least fill the 4K canvas (3840x2160)
+	if scale < 1.0 {
+		return int(float64(w) * scale), int(float64(h) * scale)
+	}
+	// For Frame TV, we actually want to fill the native 4K resolution
+	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
+	return int(float64(w) * scale), int(float64(h) * scale)
+}
+
 // rewriteImage handles the actual decoding, pixel modifications (cropping, sharpening, dithering),
 // and re-encoding of the image back to disk.
 func rewriteImage(f *os.File, path, filename string, width, height int, needsAdjustment bool, cfg Config, logger *slog.Logger) (int, int, error) {
@@ -208,16 +220,4 @@ func rewriteImage(f *os.File, path, filename string, width, height int, needsAdj
 
 	newBounds := rgba.Bounds()
 	return newBounds.Dx(), newBounds.Dy(), nil
-}
-
-// fitDimensions calculates the best width/height to fit within max bounds while preserving aspect ratio.
-func fitDimensions(w, h, maxW, maxH int) (int, int) {
-	scale := math.Min(float64(maxW)/float64(w), float64(maxH)/float64(h))
-	// Always upscale to at least fill the 4K canvas (3840x2160)
-	if scale < 1.0 {
-		return int(float64(w) * scale), int(float64(h) * scale)
-	}
-	// For Frame TV, we actually want to fill the native 4K resolution
-	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
-	return int(float64(w) * scale), int(float64(h) * scale)
 }
