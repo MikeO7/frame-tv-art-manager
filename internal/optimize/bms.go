@@ -42,7 +42,7 @@ func enqueueBMS(idx int, boolMap, bg []bool, queue []int, tail *int) {
 	}
 }
 
-//nolint:gocognit,gosec,funlen // complexity justified for this domain-specific path; uint8 conversion is safe here as max luminance is 255
+//nolint:gocognit,gocyclo,gosec,funlen // complexity justified for this domain-specific path; uint8 conversion is safe here as max luminance is 255
 func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	if w <= 0 || h <= 0 {
 		return nil
