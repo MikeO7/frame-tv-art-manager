@@ -80,13 +80,8 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 		return filename, false, nil
 	}
 
-	// Fast path check: if filename is already optimized with matching dimensions, skip!
-	if strings.Contains(filename, "_opt.h_") {
-		w, h, ok := artwork.ParseDimensions(filename)
-		if ok && w <= cfg.MaxWidth && h <= cfg.MaxHeight {
-			logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
-			return filename, false, nil
-		}
+	if checkFastPath(filename, cfg, logger) {
+		return filename, false, nil
 	}
 
 	f, err := os.Open(path)
@@ -117,7 +112,24 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 		modified = true
 	}
 
-	// Rename the file using the naming policy if needed.
+	return handleRename(path, filename, dir, modified, finalW, finalH, logger)
+}
+
+// checkFastPath returns true if the file is already optimized with matching dimensions.
+func checkFastPath(filename string, cfg Config, logger *slog.Logger) bool {
+	if !strings.Contains(filename, "_opt.h_") {
+		return false
+	}
+	w, h, ok := artwork.ParseDimensions(filename)
+	if ok && w <= cfg.MaxWidth && h <= cfg.MaxHeight {
+		logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
+		return true
+	}
+	return false
+}
+
+// handleRename renames the file according to optimized names if needed.
+func handleRename(path, filename, dir string, modified bool, finalW, finalH int, logger *slog.Logger) (string, bool, error) {
 	currentW, currentH, _ := artwork.ParseDimensions(filename)
 	isOpt := strings.Contains(filename, "_opt.h_")
 
