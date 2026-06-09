@@ -72,24 +72,7 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 
 		wg.Add(1)
 		go func(workerIdx, sy, ey int) {
-			defer wg.Done()
-			var localSum, localSumSq uint64
-
-			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
-			pix := src.Pix
-			stride := src.Stride
-			for y := sy; y < ey; y++ {
-				offset := y * stride
-				for x := 0; x < width; x++ {
-					idx := offset + x*4
-					// OPTIMIZATION: Use integer math to eliminate floating-point overhead in hot path
-					lumInt := uint64(pix[idx])*299 + uint64(pix[idx+1])*587 + uint64(pix[idx+2])*114
-					localSum += lumInt
-					localSumSq += lumInt * lumInt
-				}
-			}
-			sums[workerIdx] = float64(localSum) / 1000.0
-			sumSqs[workerIdx] = float64(localSumSq) / 1000000.0
+			calculateRMSWorker(src, width, sy, ey, workerIdx, sums, sumSqs, &wg)
 		}(i, startY, endY)
 	}
 	wg.Wait()
@@ -101,6 +84,27 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 	return mean, rms
+}
+
+func calculateRMSWorker(src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []float64, wg *sync.WaitGroup) {
+	defer wg.Done()
+	var localSum, localSumSq uint64
+
+	// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
+	pix := src.Pix
+	stride := src.Stride
+	for y := sy; y < ey; y++ {
+		offset := y * stride
+		for x := 0; x < width; x++ {
+			idx := offset + x*4
+			// OPTIMIZATION: Use integer math to eliminate floating-point overhead in hot path
+			lumInt := uint64(pix[idx])*299 + uint64(pix[idx+1])*587 + uint64(pix[idx+2])*114
+			localSum += lumInt
+			localSumSq += lumInt * lumInt
+		}
+	}
+	sums[workerIdx] = float64(localSum) / 1000.0
+	sumSqs[workerIdx] = float64(localSumSq) / 1000000.0
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
