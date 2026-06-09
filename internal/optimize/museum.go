@@ -74,12 +74,16 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 		go func(workerIdx, sy, ey int) {
 			defer wg.Done()
 			var localSum, localSumSq uint64
+
+			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
+			pix := src.Pix
+			stride := src.Stride
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * stride
 				for x := 0; x < width; x++ {
 					idx := offset + x*4
 					// OPTIMIZATION: Use integer math to eliminate floating-point overhead in hot path
-					lumInt := uint64(src.Pix[idx])*299 + uint64(src.Pix[idx+1])*587 + uint64(src.Pix[idx+2])*114
+					lumInt := uint64(pix[idx])*299 + uint64(pix[idx+1])*587 + uint64(pix[idx+2])*114
 					localSum += lumInt
 					localSumSq += lumInt * lumInt
 				}
@@ -178,14 +182,18 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 		wg.Add(1)
 		go func(sy, ey int) {
 			defer wg.Done()
+
+			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
+			pix := src.Pix
+			stride := src.Stride
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * stride
 				for x := 0; x < width; x++ {
 					i := offset + x*4
-					outR, outG, outB := processGamutPixel(src.Pix[i], src.Pix[i+1], src.Pix[i+2], &lutLin)
-					src.Pix[i] = outR
-					src.Pix[i+1] = outG
-					src.Pix[i+2] = outB
+					outR, outG, outB := processGamutPixel(pix[i], pix[i+1], pix[i+2], &lutLin)
+					pix[i] = outR
+					pix[i+1] = outG
+					pix[i+2] = outB
 				}
 			}
 		}(startY, endY)
@@ -278,14 +286,18 @@ func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 			//nolint:gosec // sy is a positive chunk offset, conversion is mathematically safe
 			state := uint32(sy + 1) // Seed based on row
 
+			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
+			pix := src.Pix
+			stride := src.Stride
+
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * stride
 				for x := 0; x < width; x++ {
 					i := offset + x*4
-					outR, outG, outB := polishPixel(float32(src.Pix[i]), float32(src.Pix[i+1]), float32(src.Pix[i+2]), &state)
-					src.Pix[i] = outR
-					src.Pix[i+1] = outG
-					src.Pix[i+2] = outB
+					outR, outG, outB := polishPixel(float32(pix[i]), float32(pix[i+1]), float32(pix[i+2]), &state)
+					pix[i] = outR
+					pix[i+1] = outG
+					pix[i+2] = outB
 				}
 			}
 		}(startY, endY)
