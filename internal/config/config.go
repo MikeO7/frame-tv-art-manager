@@ -4,10 +4,15 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
 // Config holds all application settings. It is populated by Load() and then
@@ -244,4 +249,128 @@ func envFloat(key string, def float64) float64 {
 		return def
 	}
 	return f
+}
+
+// SyncPolicy holds operational settings for a TV sync reconciliation run.
+type SyncPolicy struct {
+	DryRun              bool
+	RemoveUnknownImages bool
+	SlideshowOverride   bool
+	ArtworkDir          string
+	UploadDelay         time.Duration
+	UploadAttempts      int
+	SyncIntervalMin     int
+	MatteStyle          string
+}
+
+// SyncPolicy returns sync reconciliation settings derived from config.
+func (c *Config) SyncPolicy() SyncPolicy {
+	attempts := c.UploadAttempts
+	if attempts < 1 {
+		attempts = 1
+	}
+	return SyncPolicy{
+		DryRun:              c.DryRun,
+		RemoveUnknownImages: c.RemoveUnknownImages,
+		SlideshowOverride:   c.SlideshowOverride,
+		ArtworkDir:          c.ArtworkDir,
+		UploadDelay:         c.UploadDelay,
+		UploadAttempts:      attempts,
+		SyncIntervalMin:     c.SyncIntervalMin,
+		MatteStyle:          c.MatteStyle,
+	}
+}
+
+// TVConnectOptions holds settings used when opening a TV connection.
+type TVConnectOptions struct {
+	TVMAC             string
+	EnableRESTGate    bool
+	SkipTLSVerify     bool
+	ClientName        string
+	TokenDir          string
+	ConnectionTimeout time.Duration
+	APITimeout        time.Duration
+	GateTimeout       time.Duration
+	MatteStyle        string
+}
+
+// TVConnectOptions returns TV connection settings derived from config.
+func (c *Config) TVConnectOptions() TVConnectOptions {
+	return TVConnectOptions{
+		TVMAC:             c.TVMAC,
+		EnableRESTGate:    c.EnableRESTGate,
+		SkipTLSVerify:     !c.VerifyTLS,
+		ClientName:        c.ClientName,
+		TokenDir:          c.TokenDir,
+		ConnectionTimeout: c.ConnectionTimeout,
+		APITimeout:        c.APITimeout,
+		GateTimeout:       c.GateTimeout,
+		MatteStyle:        c.MatteStyle,
+	}
+}
+
+// OptimizeOptions returns image optimization settings derived from config.
+func (c *Config) OptimizeOptions() optimize.Config {
+	return optimize.Config{
+		Enabled:             c.OptimizeEnabled,
+		SmartCropEnabled:    c.SmartCropEnabled,
+		MaxWidth:            c.OptimizeMaxWidth,
+		MaxHeight:           c.OptimizeMaxHeight,
+		OptimizeJPEGQuality: c.OptimizeJPEGQuality,
+		MuseumModeEnabled:   c.MuseumModeEnabled,
+		MuseumModeIntensity: c.MuseumModeIntensity,
+	}
+}
+
+// MatteConfig holds per-image matte overrides loaded from a mattes.json file.
+type MatteConfig struct {
+	Overrides    map[string]string
+	DefaultMatte string
+}
+
+// LoadMatteConfig reads a mattes.json file from the artwork directory.
+func LoadMatteConfig(artworkDir string) *MatteConfig {
+	mc := &MatteConfig{
+		Overrides: make(map[string]string),
+	}
+
+	path := filepath.Join(artworkDir, "mattes.json")
+	raw, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return mc
+	}
+
+	var data map[string]string
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return mc
+	}
+
+	for k, v := range data {
+		if k == "_default" {
+			mc.DefaultMatte = v
+		} else {
+			mc.Overrides[k] = v
+		}
+	}
+
+	return mc
+}
+
+// GetMatte returns the matte style for a specific filename.
+func (mc *MatteConfig) GetMatte(filename, globalMatte string) string {
+	if matte, ok := mc.Overrides[filename]; ok {
+		return matte
+	}
+	if mc.DefaultMatte != "" {
+		return mc.DefaultMatte
+	}
+	return globalMatte
+}
+
+// String returns a summary of the matte configuration for logging.
+func (mc *MatteConfig) String() string {
+	if len(mc.Overrides) == 0 && mc.DefaultMatte == "" {
+		return "global (no per-file overrides)"
+	}
+	return fmt.Sprintf("%d per-file overrides, default=%q", len(mc.Overrides), mc.DefaultMatte)
 }
