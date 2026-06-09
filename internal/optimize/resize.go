@@ -66,7 +66,7 @@ func DefaultConfig() Config {
 //	    fmt.Printf("Optimized file into %s\n", finalName)
 //	}
 //
-//nolint:gocognit,funlen,gocyclo,nestif // image optimization pipeline
+//nolint:funlen // image optimization pipeline
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
@@ -80,13 +80,8 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 		return filename, false, nil
 	}
 
-	// Fast path check: if filename is already optimized with matching dimensions, skip!
-	if strings.Contains(filename, "_opt.h_") {
-		w, h, ok := artwork.ParseDimensions(filename)
-		if ok && w <= cfg.MaxWidth && h <= cfg.MaxHeight {
-			logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
-			return filename, false, nil
-		}
+	if checkFastPath(filename, cfg, logger) {
+		return filename, false, nil
 	}
 
 	f, err := os.Open(path)
@@ -110,51 +105,31 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 		finalW, finalH = width, height
 		modified = false
 	} else {
-		// Full decode required.
-		if _, err := f.Seek(0, 0); err != nil {
-			return filename, false, fmt.Errorf("seek to start: %w", err)
-		}
-
-		img, _, err := image.Decode(f)
+		finalW, finalH, err = rewriteImage(f, path, filename, width, height, needsAdjustment, cfg, logger)
 		if err != nil {
-			return filename, false, fmt.Errorf("decode image: %w", err)
+			return filename, false, err
 		}
-
-		logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", width, height))
-
-		rgba := toRGBA(img)
-		if needsAdjustment {
-			rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
-		}
-		rgba = sharpen(rgba)
-		if cfg.MuseumModeEnabled {
-			rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
-		}
-		rgba = dither(rgba)
-
-		// Close original file so we can overwrite or rename it.
-		_ = f.Close()
-
-		// Save back to disk.
-
-		out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-		if err != nil {
-			return filename, false, fmt.Errorf("create optimized file: %w", err)
-		}
-		defer func() { _ = out.Close() }()
-
-		err = jpeg.Encode(out, rgba, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
-		if err != nil {
-			return filename, false, fmt.Errorf("encode jpeg: %w", err)
-		}
-		_ = out.Close()
-
-		newBounds := rgba.Bounds()
-		finalW, finalH = newBounds.Dx(), newBounds.Dy()
 		modified = true
 	}
 
-	// Rename the file using the naming policy if needed.
+	return handleRename(path, filename, dir, modified, finalW, finalH, logger)
+}
+
+// checkFastPath returns true if the file is already optimized with matching dimensions.
+func checkFastPath(filename string, cfg Config, logger *slog.Logger) bool {
+	if !strings.Contains(filename, "_opt.h_") {
+		return false
+	}
+	w, h, ok := artwork.ParseDimensions(filename)
+	if ok && w <= cfg.MaxWidth && h <= cfg.MaxHeight {
+		logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
+		return true
+	}
+	return false
+}
+
+// handleRename renames the file according to optimized names if needed.
+func handleRename(path, filename, dir string, modified bool, finalW, finalH int, logger *slog.Logger) (string, bool, error) {
 	currentW, currentH, _ := artwork.ParseDimensions(filename)
 	isOpt := strings.Contains(filename, "_opt.h_")
 
@@ -213,4 +188,48 @@ func fitDimensions(w, h, maxW, maxH int) (int, int) {
 	// For Frame TV, we actually want to fill the native 4K resolution
 	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
 	return int(float64(w) * scale), int(float64(h) * scale)
+}
+
+// rewriteImage handles the actual decoding, pixel modifications (cropping, sharpening, dithering),
+// and re-encoding of the image back to disk.
+func rewriteImage(f *os.File, path, filename string, width, height int, needsAdjustment bool, cfg Config, logger *slog.Logger) (int, int, error) {
+	if _, err := f.Seek(0, 0); err != nil {
+		return 0, 0, fmt.Errorf("seek to start: %w", err)
+	}
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return 0, 0, fmt.Errorf("decode image: %w", err)
+	}
+
+	logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", width, height))
+
+	rgba := toRGBA(img)
+	if needsAdjustment {
+		rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
+	}
+	rgba = sharpen(rgba)
+	if cfg.MuseumModeEnabled {
+		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
+	}
+	rgba = dither(rgba)
+
+	// Close original file so we can overwrite or rename it.
+	_ = f.Close()
+
+	// Save back to disk.
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return 0, 0, fmt.Errorf("create optimized file: %w", err)
+	}
+	defer func() { _ = out.Close() }()
+
+	err = jpeg.Encode(out, rgba, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+	if err != nil {
+		return 0, 0, fmt.Errorf("encode jpeg: %w", err)
+	}
+	_ = out.Close()
+
+	newBounds := rgba.Bounds()
+	return newBounds.Dx(), newBounds.Dy(), nil
 }
