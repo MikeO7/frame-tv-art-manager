@@ -1,3 +1,7 @@
-## 2024-06-07 - Consolidating Samsung Art Client
-**Learning:** The `internal/samsung` package splits its WebSocket client API across multiple shallow files (`client_art.go`, `client_metadata.go`, `client_slideshow.go`, `client_upload.go`) that only contain standard API request methods. This fragmentation does not hide complexity, but instead spreads identical `artConn.SendAndWait` patterns across many files, increasing interface surface area.
-**Action:** Consolidate these shallow client files into `client_art.go` (or directly into `client.go` if they are all just methods on `Client`). Memory mentions that basic REST, WoL, and remote control are in `client.go`, while WebSocket-specific interactions are maintained in separate files (e.g., `client_art.go`). So I should consolidate the WebSocket-specific API methods into `client_art.go`.
+## 2025-05-20 - Consolidating Samsung network utilities
+**Learning:** The samsung package has several tiny files (rest.go, gate.go, remote.go, wol.go) that are only used by the main Client struct in client.go. These are perfect candidates for structural consolidation into a deep module to eliminate shallow wrappers and reduce internal fragmentation.
+**Action:** Move the contents of rest.go, gate.go, remote.go, and wol.go into client.go as private methods on the Client struct to encapsulate all TV network operations within a single deep module.
+
+## 2026-06-08 - Consolidating config module files
+**Learning:** The `config` module had several fragmented files like `options.go` and `matte.go` that merely added methods and small structs to the main `Config` type. This fragmentation increased cognitive load and spread configuration logic across too many files without adding meaningful domain boundaries.
+**Action:** Consolidate tiny helper files like `options.go` and `matte.go` into the primary `config.go` file (and merge their tests into `config_test.go`) to create a deeper, more unified module interface and reduce file fragmentation.
