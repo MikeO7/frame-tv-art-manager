@@ -125,7 +125,8 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	return nil
 }
 
-func (c *Client) connect(ctx context.Context) error {
+// Connect establishes a connection to the TV.
+func (c *Client) Connect(ctx context.Context) error {
 	c.wakeTV(ctx)
 
 	if err := c.checkGate(ctx); err != nil {
@@ -241,6 +242,14 @@ func checkArtError(resp *artResponse) error {
 	return nil
 }
 
+// Model returns the connected TV model name, if known.
+func (c *Client) Model() string {
+	if c.info != nil {
+		return c.info.ModelName
+	}
+	return ""
+}
+
 // DeviceInfo returns the cached device info, or nil if not fetched.
 func (c *Client) DeviceInfo() *DeviceInfo {
 	return c.info
@@ -260,7 +269,8 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 	return conn.Close()
 }
 
-func (c *Client) turnOff(ctx context.Context) error {
+// TurnOff powers off the TV via the remote control API.
+func (c *Client) TurnOff(ctx context.Context) error {
 	return c.turnOffTV(ctx, 8002)
 }
 
