@@ -60,6 +60,9 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	sums := make([]float64, workers)
 	sumSqs := make([]float64, workers)
 
+	stride := src.Stride
+	pix := src.Pix
+
 	for i := 0; i < workers; i++ {
 		startY := i * chunk
 		endY := startY + chunk
@@ -75,11 +78,12 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 			defer wg.Done()
 			var localSum, localSumSq uint64
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * stride
 				for x := 0; x < width; x++ {
 					idx := offset + x*4
 					// OPTIMIZATION: Use integer math to eliminate floating-point overhead in hot path
-					lumInt := uint64(src.Pix[idx])*299 + uint64(src.Pix[idx+1])*587 + uint64(src.Pix[idx+2])*114
+					// Extracted struct properties outside closure to prevent pointer dereferencing overhead
+					lumInt := uint64(pix[idx])*299 + uint64(pix[idx+1])*587 + uint64(pix[idx+2])*114
 					localSum += lumInt
 					localSumSq += lumInt * lumInt
 				}
@@ -164,6 +168,8 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	var wg sync.WaitGroup
 	workers := 8
 	chunk := (height + workers - 1) / workers
+	stride := src.Stride
+	pix := src.Pix
 
 	for j := 0; j < workers; j++ {
 		startY := j * chunk
@@ -179,13 +185,14 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 		go func(sy, ey int) {
 			defer wg.Done()
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * stride
 				for x := 0; x < width; x++ {
 					i := offset + x*4
-					outR, outG, outB := processGamutPixel(src.Pix[i], src.Pix[i+1], src.Pix[i+2], &lutLin)
-					src.Pix[i] = outR
-					src.Pix[i+1] = outG
-					src.Pix[i+2] = outB
+					// Extracted struct properties outside closure to prevent pointer dereferencing overhead
+					outR, outG, outB := processGamutPixel(pix[i], pix[i+1], pix[i+2], &lutLin)
+					pix[i] = outR
+					pix[i+1] = outG
+					pix[i+2] = outB
 				}
 			}
 		}(startY, endY)
@@ -256,6 +263,8 @@ func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
+	stride := src.Stride
+	pix := src.Pix
 
 	var wg sync.WaitGroup
 	workers := 8
@@ -279,13 +288,14 @@ func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 			state := uint32(sy + 1) // Seed based on row
 
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * stride
 				for x := 0; x < width; x++ {
 					i := offset + x*4
-					outR, outG, outB := polishPixel(float32(src.Pix[i]), float32(src.Pix[i+1]), float32(src.Pix[i+2]), &state)
-					src.Pix[i] = outR
-					src.Pix[i+1] = outG
-					src.Pix[i+2] = outB
+					// Extracted struct properties outside closure to prevent pointer dereferencing overhead
+					outR, outG, outB := polishPixel(float32(pix[i]), float32(pix[i+1]), float32(pix[i+2]), &state)
+					pix[i] = outR
+					pix[i+1] = outG
+					pix[i+2] = outB
 				}
 			}
 		}(startY, endY)
