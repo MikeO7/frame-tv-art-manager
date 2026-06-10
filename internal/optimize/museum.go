@@ -49,6 +49,7 @@ func unifyCollection(src *image.RGBA) *image.RGBA {
 	return src
 }
 
+//nolint:funlen // complexity justified for this domain-specific path
 func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()

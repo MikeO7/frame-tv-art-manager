@@ -158,10 +158,12 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 
 	// OPTIMIZATION: Precompute Lab colors to avoid recalculating per-pixel later
 	labMap := make([]labColor, w*h)
+	srcStride := src.Stride
+	srcPix := src.Pix
 	for y := 1; y < h-1; y++ {
 		for x := 1; x < w-1; x++ {
-			idx := y*src.Stride + x*4
-			r, g, b := src.Pix[idx], src.Pix[idx+1], src.Pix[idx+2]
+			idx := y*srcStride + x*4
+			r, g, b := srcPix[idx], srcPix[idx+1], srcPix[idx+2]
 			l, aVal, bVal := rgbToLab(r, g, b)
 			labMap[y*w+x] = labColor{l: l, a: aVal, b: bVal}
 			sumL += l
@@ -175,8 +177,8 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 
 	for y := 1; y < h-1; y++ {
 		for x := 1; x < w-1; x++ {
-			idx := y*src.Stride + x*4
-			r, g, b := src.Pix[idx], src.Pix[idx+1], src.Pix[idx+2]
+			idx := y*srcStride + x*4
+			r, g, b := srcPix[idx], srcPix[idx+1], srcPix[idx+2]
 
 			// 3. Structural Saliency (Edge Detection via 3x3 Sobel)
 			edge := calculateSobelEdge(src, x, y)
