@@ -34,15 +34,57 @@ func generateBMSMap(src *image.RGBA) []float64 {
 	return bms
 }
 
-func enqueueBMS(idx int, boolMap, bg []bool, queue []int, tail *int) {
-	if !boolMap[idx] && !bg[idx] {
-		bg[idx] = true
-		queue[*tail] = idx
-		*tail++
+type bmsState struct {
+	queue   []int
+	head    int
+	tail    int
+	boolMap []bool
+	bg      []bool
+	w       int
+	h       int
+}
+
+func (s *bmsState) tryEnqueue(idx int) {
+	if !s.boolMap[idx] && !s.bg[idx] {
+		s.bg[idx] = true
+		s.queue[s.tail] = idx
+		s.tail++
 	}
 }
 
-//nolint:gocognit,gocyclo,gosec,funlen // complexity justified for this domain-specific path; uint8 conversion is safe here as max luminance is 255
+func (s *bmsState) seedBorders() {
+	for x := 0; x < s.w; x++ {
+		s.tryEnqueue(x)
+		s.tryEnqueue((s.h-1)*s.w + x)
+	}
+	for y := 0; y < s.h; y++ {
+		s.tryEnqueue(y * s.w)
+		s.tryEnqueue(y*s.w + s.w - 1)
+	}
+}
+
+func (s *bmsState) floodFill() {
+	for s.head < s.tail {
+		curr := s.queue[s.head]
+		s.head++
+		cx, cy := curr%s.w, curr/s.w
+
+		if cx-1 >= 0 {
+			s.tryEnqueue(cy*s.w + cx - 1)
+		}
+		if cx+1 < s.w {
+			s.tryEnqueue(cy*s.w + cx + 1)
+		}
+		if cy-1 >= 0 {
+			s.tryEnqueue((cy-1)*s.w + cx)
+		}
+		if cy+1 < s.h {
+			s.tryEnqueue((cy+1)*s.w + cx)
+		}
+	}
+}
+
+//nolint:gosec // uint8 conversion is safe here as max luminance is 255
 func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	if w <= 0 || h <= 0 {
 		return nil
@@ -60,42 +102,19 @@ func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 		}
 	}
 
-	bg := make([]bool, w*h)
-	// OPTIMIZATION: Fixed array avoids allocs and inlined pushes
-	queue := make([]int, w*h)
-	head := 0
-	tail := 0
-
-	for x := 0; x < w; x++ {
-		enqueueBMS(x, boolMap, bg, queue, &tail)
-		enqueueBMS((h-1)*w+x, boolMap, bg, queue, &tail)
-	}
-	for y := 0; y < h; y++ {
-		enqueueBMS(y*w, boolMap, bg, queue, &tail)
-		enqueueBMS(y*w+w-1, boolMap, bg, queue, &tail)
+	state := bmsState{
+		queue:   make([]int, w*h),
+		boolMap: boolMap,
+		bg:      make([]bool, w*h),
+		w:       w,
+		h:       h,
 	}
 
-	for head < tail {
-		curr := queue[head]
-		head++
-		cx, cy := curr%w, curr/w
-
-		if cx-1 >= 0 {
-			enqueueBMS(cy*w+cx-1, boolMap, bg, queue, &tail)
-		}
-		if cx+1 < w {
-			enqueueBMS(cy*w+cx+1, boolMap, bg, queue, &tail)
-		}
-		if cy-1 >= 0 {
-			enqueueBMS((cy-1)*w+cx, boolMap, bg, queue, &tail)
-		}
-		if cy+1 < h {
-			enqueueBMS((cy+1)*w+cx, boolMap, bg, queue, &tail)
-		}
-	}
+	state.seedBorders()
+	state.floodFill()
 
 	for i := 0; i < w*h; i++ {
-		if boolMap[i] && !bg[i] {
+		if state.boolMap[i] && !state.bg[i] {
 			res[i] = 1.0
 		}
 	}
