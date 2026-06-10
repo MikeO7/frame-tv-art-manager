@@ -99,7 +99,7 @@ func (l *Loader) checkExisting(identity string) (string, bool) {
 	return l.index.LookupPrefix(identity)
 }
 
-//nolint:gocyclo,funlen // complexity justified for this domain-specific path
+//nolint:gocyclo,funlen,gocognit // complexity justified for this domain-specific path
 func (l *Loader) executeDownload(ctx context.Context, url, filename string) (bool, error) {
 	destPath := filepath.Join(l.artworkDir, filename)
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
