@@ -61,9 +61,6 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	sums := make([]float64, workers)
 	sumSqs := make([]float64, workers)
 
-	stride := src.Stride
-	pix := src.Pix
-
 	for i := 0; i < workers; i++ {
 		startY := i * chunk
 		endY := startY + chunk
@@ -76,21 +73,7 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 
 		wg.Add(1)
 		go func(workerIdx, sy, ey int) {
-			defer wg.Done()
-			var localSum, localSumSq uint64
-			for y := sy; y < ey; y++ {
-				offset := y * stride
-				for x := 0; x < width; x++ {
-					idx := offset + x*4
-					// OPTIMIZATION: Use integer math to eliminate floating-point overhead in hot path
-					// Extracted struct properties outside closure to prevent pointer dereferencing overhead
-					lumInt := uint64(pix[idx])*299 + uint64(pix[idx+1])*587 + uint64(pix[idx+2])*114
-					localSum += lumInt
-					localSumSq += lumInt * lumInt
-				}
-			}
-			sums[workerIdx] = float64(localSum) / 1000.0
-			sumSqs[workerIdx] = float64(localSumSq) / 1000000.0
+			calculateRMSWorker(src, width, sy, ey, workerIdx, sums, sumSqs, &wg)
 		}(i, startY, endY)
 	}
 	wg.Wait()
@@ -102,6 +85,27 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
 	return mean, rms
+}
+
+func calculateRMSWorker(src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []float64, wg *sync.WaitGroup) {
+	defer wg.Done()
+	var localSum, localSumSq uint64
+
+	// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
+	pix := src.Pix
+	stride := src.Stride
+	for y := sy; y < ey; y++ {
+		offset := y * stride
+		for x := 0; x < width; x++ {
+			idx := offset + x*4
+			// OPTIMIZATION: Use integer math to eliminate floating-point overhead in hot path
+			lumInt := uint64(pix[idx])*299 + uint64(pix[idx+1])*587 + uint64(pix[idx+2])*114
+			localSum += lumInt
+			localSumSq += lumInt * lumInt
+		}
+	}
+	sums[workerIdx] = float64(localSum) / 1000.0
+	sumSqs[workerIdx] = float64(localSumSq) / 1000000.0
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
@@ -169,8 +173,6 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	var wg sync.WaitGroup
 	workers := 8
 	chunk := (height + workers - 1) / workers
-	stride := src.Stride
-	pix := src.Pix
 
 	for j := 0; j < workers; j++ {
 		startY := j * chunk
@@ -185,11 +187,14 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 		wg.Add(1)
 		go func(sy, ey int) {
 			defer wg.Done()
+
+			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
+			pix := src.Pix
+			stride := src.Stride
 			for y := sy; y < ey; y++ {
 				offset := y * stride
 				for x := 0; x < width; x++ {
 					i := offset + x*4
-					// Extracted struct properties outside closure to prevent pointer dereferencing overhead
 					outR, outG, outB := processGamutPixel(pix[i], pix[i+1], pix[i+2], &lutLin)
 					pix[i] = outR
 					pix[i+1] = outG
@@ -264,8 +269,6 @@ func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	stride := src.Stride
-	pix := src.Pix
 
 	var wg sync.WaitGroup
 	workers := 8
@@ -288,11 +291,14 @@ func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 			//nolint:gosec // sy is a positive chunk offset, conversion is mathematically safe
 			state := uint32(sy + 1) // Seed based on row
 
+			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
+			pix := src.Pix
+			stride := src.Stride
+
 			for y := sy; y < ey; y++ {
 				offset := y * stride
 				for x := 0; x < width; x++ {
 					i := offset + x*4
-					// Extracted struct properties outside closure to prevent pointer dereferencing overhead
 					outR, outG, outB := polishPixel(float32(pix[i]), float32(pix[i+1]), float32(pix[i+2]), &state)
 					pix[i] = outR
 					pix[i+1] = outG

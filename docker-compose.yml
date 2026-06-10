@@ -55,7 +55,7 @@ services:
       # UNSPLASH_ACCESS_KEY: "your_key_here"
       # NASA_API_KEY: "DEMO_KEY"  # Default is DEMO_KEY if unset
 
-      # --- Optional: Health Check Port (Default 8080) ---
+      # --- Optional: Health Check Port (Default 8080. Note: Setting this to 0 completely disables the health server) ---
       # HEALTH_PORT: "8080"
     volumes:
       # Mount a single data directory. The app will automatically create
