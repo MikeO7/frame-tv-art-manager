@@ -34,6 +34,14 @@ func generateBMSMap(src *image.RGBA) []float64 {
 	return bms
 }
 
+func enqueueBMS(idx int, boolMap, bg []bool, queue []int, tail *int) {
+	if !boolMap[idx] && !bg[idx] {
+		bg[idx] = true
+		queue[*tail] = idx
+		*tail++
+	}
+}
+
 //nolint:gocognit,gocyclo,gosec,funlen // complexity justified for this domain-specific path; uint8 conversion is safe here as max luminance is 255
 func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	if w <= 0 || h <= 0 {
@@ -57,33 +65,14 @@ func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 	queue := make([]int, w*h)
 	head := 0
 	tail := 0
+
 	for x := 0; x < w; x++ {
-		idx := x
-		if !boolMap[idx] && !bg[idx] {
-			bg[idx] = true
-			queue[tail] = idx
-			tail++
-		}
-		idx = (h-1)*w + x
-		if !boolMap[idx] && !bg[idx] {
-			bg[idx] = true
-			queue[tail] = idx
-			tail++
-		}
+		enqueueBMS(x, boolMap, bg, queue, &tail)
+		enqueueBMS((h-1)*w+x, boolMap, bg, queue, &tail)
 	}
 	for y := 0; y < h; y++ {
-		idx := y * w
-		if !boolMap[idx] && !bg[idx] {
-			bg[idx] = true
-			queue[tail] = idx
-			tail++
-		}
-		idx = y*w + w - 1
-		if !boolMap[idx] && !bg[idx] {
-			bg[idx] = true
-			queue[tail] = idx
-			tail++
-		}
+		enqueueBMS(y*w, boolMap, bg, queue, &tail)
+		enqueueBMS(y*w+w-1, boolMap, bg, queue, &tail)
 	}
 
 	for head < tail {
@@ -92,36 +81,16 @@ func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
 		cx, cy := curr%w, curr/w
 
 		if cx-1 >= 0 {
-			idx := cy*w + cx - 1
-			if !boolMap[idx] && !bg[idx] {
-				bg[idx] = true
-				queue[tail] = idx
-				tail++
-			}
+			enqueueBMS(cy*w+cx-1, boolMap, bg, queue, &tail)
 		}
 		if cx+1 < w {
-			idx := cy*w + cx + 1
-			if !boolMap[idx] && !bg[idx] {
-				bg[idx] = true
-				queue[tail] = idx
-				tail++
-			}
+			enqueueBMS(cy*w+cx+1, boolMap, bg, queue, &tail)
 		}
 		if cy-1 >= 0 {
-			idx := (cy-1)*w + cx
-			if !boolMap[idx] && !bg[idx] {
-				bg[idx] = true
-				queue[tail] = idx
-				tail++
-			}
+			enqueueBMS((cy-1)*w+cx, boolMap, bg, queue, &tail)
 		}
 		if cy+1 < h {
-			idx := (cy+1)*w + cx
-			if !boolMap[idx] && !bg[idx] {
-				bg[idx] = true
-				queue[tail] = idx
-				tail++
-			}
+			enqueueBMS((cy+1)*w+cx, boolMap, bg, queue, &tail)
 		}
 	}
 
