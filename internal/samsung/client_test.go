@@ -364,11 +364,11 @@ func TestClientWrapperMethods(t *testing.T) {
 	// Device info test
 	c.info = &DeviceInfo{PowerState: "on", ModelName: "TEST"}
 
-	if !c.isInArtMode(context.Background()) {
+	if !c.IsInArtMode(context.Background()) {
 		t.Errorf("expected IsInArtMode to be true")
 	}
 
-	imgs, err := c.getUploadedImages(context.Background())
+	imgs, err := c.ListUploaded(context.Background())
 	if err != nil {
 		t.Errorf("GetUploadedImages err: %v", err)
 	}
@@ -376,17 +376,17 @@ func TestClientWrapperMethods(t *testing.T) {
 		t.Errorf("expected 1 image")
 	}
 
-	err = c.deleteImages(context.Background(), []string{"id1"})
+	err = c.DeleteImages(context.Background(), []string{"id1"})
 	if err != nil {
 		t.Errorf("DeleteImages err: %v", err)
 	}
 
-	err = c.selectImage(context.Background(), "id1")
+	err = c.SelectImage(context.Background(), "id1")
 	if err != nil {
 		t.Errorf("SelectImage err: %v", err)
 	}
 
-	ss, err := c.slideshowStatus(context.Background())
+	ss, err := c.SlideshowStatus(context.Background())
 	if err != nil {
 		t.Errorf("SlideshowStatus err: %v", err)
 	}
@@ -394,12 +394,12 @@ func TestClientWrapperMethods(t *testing.T) {
 		t.Errorf("expected 10")
 	}
 
-	err = c.setSlideshow(context.Background(), SlideshowStatus{Value: "15"})
+	err = c.SetSlideshow(context.Background(), SlideshowStatus{Value: "15"})
 	if err != nil {
 		t.Errorf("SetSlideshow err: %v", err)
 	}
 
-	err = c.setBrightness(context.Background(), 5)
+	err = c.SetBrightness(context.Background(), 5)
 	if err != nil {
 		t.Errorf("SetBrightness err: %v", err)
 	}
@@ -409,12 +409,12 @@ func TestClientWrapperMethods(t *testing.T) {
 		t.Errorf("expected TEST model")
 	}
 
-	err = c.saveMetadata(context.Background())
+	err = c.SaveMetadata(context.Background())
 	if err != nil {
 		t.Errorf("SaveMetadata err: %v", err)
 	}
 
-	err = c.turnOff(context.Background())
+	err = c.TurnOff(context.Background())
 	// Expected context deadline exceeded because mock remote server sleeps / isn't connected exactly,
 	// actually `TurnOff` initiates its own connection to port 8002 via `turnOffTV` so this fails in `conn.Open`
 	if err == nil {
@@ -508,7 +508,7 @@ func TestClientUpload(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "dummy.jpg")
 	_ = os.WriteFile(tmpFile, []byte("data"), 0o600)
 
-	id, err := c.upload(context.Background(), tmpFile, "jpg", "shadowbox_polar")
+	id, err := c.Upload(context.Background(), tmpFile, "jpg", "shadowbox_polar")
 	if err != nil {
 		t.Fatalf("Upload failed: %v", err)
 	}
@@ -520,7 +520,7 @@ func TestClientUpload(t *testing.T) {
 func TestIsInArtMode_Branches(t *testing.T) {
 	c := NewClient("127.0.0.1", (&config.Config{}).TVConnectOptions(), slog.Default())
 	c.info = &DeviceInfo{PowerState: "standby"}
-	if c.isInArtMode(context.Background()) {
+	if c.IsInArtMode(context.Background()) {
 		t.Errorf("expected false when TV is off")
 	}
 
@@ -529,7 +529,7 @@ func TestIsInArtMode_Branches(t *testing.T) {
 
 func TestClientUpload_FileStatError(t *testing.T) {
 	c := NewClient("127.0.0.1", (&config.Config{}).TVConnectOptions(), slog.Default())
-	_, err := c.upload(context.Background(), "/does/not/exist.jpg", "jpg", "none")
+	_, err := c.Upload(context.Background(), "/does/not/exist.jpg", "jpg", "none")
 	if err == nil {
 		t.Errorf("expected error on non-existent file")
 	}
@@ -550,7 +550,7 @@ func TestSaveMetadata_NoDir(t *testing.T) {
 	_ = c.artConn.Open(context.Background())
 	defer func() { _ = c.Close() }()
 
-	err := c.saveMetadata(context.Background())
+	err := c.SaveMetadata(context.Background())
 	if err == nil {
 		t.Errorf("expected error when saving to forbidden path")
 	}

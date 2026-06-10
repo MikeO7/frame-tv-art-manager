@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,10 +99,18 @@ func (l *Loader) checkExisting(identity string) (string, bool) {
 	return l.index.LookupPrefix(identity)
 }
 
-//nolint:gocyclo,funlen // complexity justified for this domain-specific path
+//nolint:gocyclo,funlen,gocognit // complexity justified for this domain-specific path
 func (l *Loader) executeDownload(ctx context.Context, url, filename string) (bool, error) {
 	destPath := filepath.Join(l.artworkDir, filename)
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
+
+	parsedURL, err := neturl.Parse(url)
+	if err != nil {
+		return false, fmt.Errorf("invalid url format: %w", err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return false, fmt.Errorf("unsupported url scheme: %s", parsedURL.Scheme)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
