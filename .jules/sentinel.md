@@ -62,3 +62,8 @@
 **Vulnerability:** The application was validating a dynamically provided download URL by only comparing the `Host` portion to a trusted base URL. This allowed an attacker to bypass the validation by supplying a matching host but with an unintended scheme (e.g., changing `https://` to `http://` or `ftp://`), leading to potential credential leakage in plain text or SSRF scheme confusion.
 **Learning:** Checking only the `Host` property of a parsed URL is insufficient when validating redirect or tracking URLs before appending sensitive authentication headers. Scheme downgrades can silently expose API keys.
 **Prevention:** Always validate both the `Host` and `Scheme` properties when ensuring an externally supplied URL belongs to a trusted destination.
+
+## 2026-06-10 - Strict URL Scheme Validation for Direct Providers
+**Vulnerability:** Server-Side Request Forgery (SSRF) and localized path traversal via unbounded URL inputs.
+**Learning:** The `direct` custom source provider accepted raw URL strings and directly initialized an `http.NewRequest` with them. Because Go's standard library can sometimes be tricked by exotic schemes, failing to explicitly lock the URL scheme at the ingestion boundary could allow local file access (`file://`), loopback requests (`http://localhost`), or internal network enumerations if the application logic evolves to use custom transports.
+**Prevention:** Always validate external URL boundaries explicitly using `url.Parse` and verify the `Scheme` is precisely restricted to `"http"` or `"https"` before allocating an `http.Request`.
