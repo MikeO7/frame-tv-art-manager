@@ -67,6 +67,8 @@ func dither(src *image.RGBA) *image.RGBA {
 	var wg sync.WaitGroup
 	workers := 8
 	chunk := (height + workers - 1) / workers
+	stride := src.Stride
+	pix := src.Pix
 
 	for i := 0; i < workers; i++ {
 		startY := i * chunk
@@ -86,7 +88,7 @@ func dither(src *image.RGBA) *image.RGBA {
 			state := uint32(sy + 1) //nolint:gosec // Seed based on row
 
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * stride
 				for x := 0; x < width; x++ {
 					i := offset + x*4
 
@@ -99,31 +101,31 @@ func dither(src *image.RGBA) *image.RGBA {
 					jitter := int((state % 3)) - 1
 
 					// R
-					valR := int(src.Pix[i]) + jitter
+					valR := int(pix[i]) + jitter
 					if valR < 0 {
 						valR = 0
 					} else if valR > 255 {
 						valR = 255
 					}
-					src.Pix[i] = uint8(valR)
+					pix[i] = uint8(valR)
 
 					// G
-					valG := int(src.Pix[i+1]) + jitter
+					valG := int(pix[i+1]) + jitter
 					if valG < 0 {
 						valG = 0
 					} else if valG > 255 {
 						valG = 255
 					}
-					src.Pix[i+1] = uint8(valG)
+					pix[i+1] = uint8(valG)
 
 					// B
-					valB := int(src.Pix[i+2]) + jitter
+					valB := int(pix[i+2]) + jitter
 					if valB < 0 {
 						valB = 0
 					} else if valB > 255 {
 						valB = 255
 					}
-					src.Pix[i+2] = uint8(valB)
+					pix[i+2] = uint8(valB)
 				}
 			}
 		}(startY, endY)
@@ -152,6 +154,11 @@ func sharpen(src *image.RGBA) *image.RGBA {
 		chunk = 1
 	}
 
+	srcStride := src.Stride
+	srcPix := src.Pix
+	dstStride := dst.Stride
+	dstPix := dst.Pix
+
 	for i := 0; i < workers; i++ {
 		startY := 1 + i*chunk
 		endY := startY + chunk
@@ -166,10 +173,10 @@ func sharpen(src *image.RGBA) *image.RGBA {
 		go func(sy, ey int) {
 			defer wg.Done()
 			for y := sy; y < ey; y++ {
-				srcOffset := y * src.Stride
-				dstOffset := y * dst.Stride
-				srcTopOffset := (y - 1) * src.Stride
-				srcBottomOffset := (y + 1) * src.Stride
+				srcOffset := y * srcStride
+				dstOffset := y * dstStride
+				srcTopOffset := (y - 1) * srcStride
+				srcBottomOffset := (y + 1) * srcStride
 
 				for x := 1; x < width-1; x++ {
 					iDst := dstOffset + x*4
@@ -180,34 +187,34 @@ func sharpen(src *image.RGBA) *image.RGBA {
 					iRight := iSrc + 4
 
 					// R
-					valR := (int(src.Pix[iSrc]) * 5) - int(src.Pix[iTop]) - int(src.Pix[iBottom]) - int(src.Pix[iLeft]) - int(src.Pix[iRight])
+					valR := (int(srcPix[iSrc]) * 5) - int(srcPix[iTop]) - int(srcPix[iBottom]) - int(srcPix[iLeft]) - int(srcPix[iRight])
 					if valR < 0 {
 						valR = 0
 					} else if valR > 255 {
 						valR = 255
 					}
-					dst.Pix[iDst] = uint8(valR)
+					dstPix[iDst] = uint8(valR)
 
 					// G
-					valG := (int(src.Pix[iSrc+1]) * 5) - int(src.Pix[iTop+1]) - int(src.Pix[iBottom+1]) - int(src.Pix[iLeft+1]) - int(src.Pix[iRight+1])
+					valG := (int(srcPix[iSrc+1]) * 5) - int(srcPix[iTop+1]) - int(srcPix[iBottom+1]) - int(srcPix[iLeft+1]) - int(srcPix[iRight+1])
 					if valG < 0 {
 						valG = 0
 					} else if valG > 255 {
 						valG = 255
 					}
-					dst.Pix[iDst+1] = uint8(valG)
+					dstPix[iDst+1] = uint8(valG)
 
 					// B
-					valB := (int(src.Pix[iSrc+2]) * 5) - int(src.Pix[iTop+2]) - int(src.Pix[iBottom+2]) - int(src.Pix[iLeft+2]) - int(src.Pix[iRight+2])
+					valB := (int(srcPix[iSrc+2]) * 5) - int(srcPix[iTop+2]) - int(srcPix[iBottom+2]) - int(srcPix[iLeft+2]) - int(srcPix[iRight+2])
 					if valB < 0 {
 						valB = 0
 					} else if valB > 255 {
 						valB = 255
 					}
-					dst.Pix[iDst+2] = uint8(valB)
+					dstPix[iDst+2] = uint8(valB)
 
 					// A
-					dst.Pix[iDst+3] = src.Pix[iSrc+3]
+					dstPix[iDst+3] = srcPix[iSrc+3]
 				}
 			}
 		}(startY, endY)

@@ -25,6 +25,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	workers := 8
 	chunk := (height - 2 + workers - 1) / workers
 
+	srcStride := src.Stride
 	for j := 0; j < workers; j++ {
 		startY := 1 + j*chunk
 		endY := startY + chunk
@@ -43,7 +44,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 			state := uint32(sy + 42) // Seed based on row
 
 			for y := sy; y < ey; y++ {
-				offset := y * src.Stride
+				offset := y * srcStride
 				for x := 1; x < width-1; x++ {
 					processCanvasPixel(src, dst, offset+x*4, x, y, &state, opacity)
 				}
@@ -70,18 +71,20 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 	weave += lookupCraquelure(x, y)
 	weave += impasto
 
-	aR := float64(src.Pix[i]) / 255.0 * 1.01
+	srcPix := src.Pix
+	aR := float64(srcPix[i]) / 255.0 * 1.01
 	r := applySoftLight(aR, weave, opacity)
 
-	aG := float64(src.Pix[i+1]) / 255.0
+	aG := float64(srcPix[i+1]) / 255.0
 	g := applySoftLight(aG, weave, opacity)
 
-	aB := float64(src.Pix[i+2]) / 255.0 * (varnishPool * 0.99)
+	aB := float64(srcPix[i+2]) / 255.0 * (varnishPool * 0.99)
 	b := applySoftLight(aB, weave, opacity)
 
-	dst.Pix[i] = r
-	dst.Pix[i+1] = g
-	dst.Pix[i+2] = b
+	dstPix := dst.Pix
+	dstPix[i] = r
+	dstPix[i+1] = g
+	dstPix[i+2] = b
 }
 
 //nolint:funlen // complexity justified for this domain-specific mathematical path
