@@ -12,7 +12,8 @@ import (
 
 // isInArtMode checks if the TV is currently in art mode by querying
 // the art API over the active WebSocket connection.
-func (c *Client) isInArtMode(ctx context.Context) bool {
+// IsInArtMode reports whether the TV is currently in art mode.
+func (c *Client) IsInArtMode(ctx context.Context) bool {
 	if c.info != nil && !c.info.IsOn() {
 		c.logger.Debug("TV is powered off")
 		return false
@@ -55,7 +56,8 @@ func (c *Client) isInArtMode(ctx context.Context) bool {
 
 // getUploadedImages returns the list of user-uploaded images on the TV
 // (category MY-C0002 = "My Photos").
-func (c *Client) getUploadedImages(ctx context.Context) ([]ArtContent, error) {
+// ListUploaded returns user-uploaded artwork on the TV.
+func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 	id := newRequestID()
 	req := map[string]any{
 		keyRequest:    keyGetContentList,
@@ -104,7 +106,8 @@ func (c *Client) getUploadedImages(ctx context.Context) ([]ArtContent, error) {
 }
 
 // deleteImages removes artwork from the TV by content IDs.
-func (c *Client) deleteImages(ctx context.Context, ids []string) error {
+// DeleteImages removes artwork from the TV by content IDs.
+func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 	id := newRequestID()
 
 	contentIDList := make([]map[string]string, len(ids))
@@ -142,7 +145,8 @@ func (c *Client) deleteImages(ctx context.Context, ids []string) error {
 }
 
 // selectImage sets the currently displayed artwork.
-func (c *Client) selectImage(ctx context.Context, id string) error {
+// SelectImage sets the currently displayed artwork.
+func (c *Client) SelectImage(ctx context.Context, id string) error {
 	reqID := newRequestID()
 
 	req := map[string]any{
@@ -209,7 +213,8 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 
 // saveMetadata fetches all available system information and artwork categories,
 // saving them to a JSON file in the tokens directory for auditing.
-func (c *Client) saveMetadata(ctx context.Context) error {
+// SaveMetadata exports TV metadata to disk for auditing.
+func (c *Client) SaveMetadata(ctx context.Context) error {
 	metadata := make(map[string]any)
 	metadata["timestamp"] = time.Now().Format(time.RFC3339)
 
@@ -219,7 +224,7 @@ func (c *Client) saveMetadata(ctx context.Context) error {
 	}
 
 	// 2. Slideshow Status.
-	if ss, err := c.slideshowStatus(ctx); err == nil {
+	if ss, err := c.SlideshowStatus(ctx); err == nil {
 		metadata["slideshow"] = ss
 	}
 
@@ -251,7 +256,8 @@ func (c *Client) saveMetadata(ctx context.Context) error {
 }
 
 // slideshowStatus returns the current slideshow configuration.
-func (c *Client) slideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
+// SlideshowStatus returns the current slideshow configuration.
+func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -296,7 +302,8 @@ func (c *Client) slideshowStatus(ctx context.Context) (*SlideshowStatus, error) 
 }
 
 // setSlideshow updates the slideshow configuration.
-func (c *Client) setSlideshow(ctx context.Context, s SlideshowStatus) error {
+// SetSlideshow updates the slideshow configuration.
+func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -331,7 +338,8 @@ func (c *Client) setSlideshow(ctx context.Context, s SlideshowStatus) error {
 }
 
 // setBrightness sets the art mode brightness.
-func (c *Client) setBrightness(ctx context.Context, val int) error {
+// SetBrightness sets the art mode brightness.
+func (c *Client) SetBrightness(ctx context.Context, val int) error {
 	id := newRequestID()
 
 	req := map[string]any{
@@ -402,8 +410,10 @@ func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, 
 
 // upload sends an image to the TV via the art API + D2D socket transfer.
 //
+// Upload sends an image to the TV with the given matte style.
+//
 //nolint:funlen // complexity justified for this domain-specific path
-func (c *Client) upload(ctx context.Context, filePath, fileType, matte string) (string, error) {
+func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (string, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
 		return "", fmt.Errorf("stat %s: %w", filePath, err)
