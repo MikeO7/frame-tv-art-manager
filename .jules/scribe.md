@@ -17,3 +17,6 @@
 ## 2026-06-07 - Sync Environment Configurations in README.md
 **Learning:** The `README.md` file was missing several environment variables documented in `internal/config/load.go` (e.g. `UNSPLASH_APP_ID`, `ENABLE_REST_GATE`, `SLIDESHOW_ENABLED`, `TV_MAC`, `PEXELS_API_KEY`, etc.), leading to undocumented configuration options.
 **Action:** Always verify `README.md` against the actual code values defined in `internal/config/load.go`.
+## 2026-06-11 - Context alignment for Samsung Art Client Methods
+**Learning:** Public API methods in high-level components like the Samsung Frame TV client (`internal/samsung/client_art.go`) often suffer from context decay, lacking parameter and return breakdowns, especially during rapid internal refactors or unexporting/exporting of methods.
+**Action:** When auditing core facades, ensure JSDoc/GoDoc headers clearly break down parameters (like `ctx`, `id`, `matte`) and return types. Use exact matching and temporary scripting to apply uniform docblocks across multiple exported receiver methods without introducing whitespace errors or orphaned `nolint` comments. Always run the linter to verify `nolintlint` rules aren't broken by documentation spacing.
