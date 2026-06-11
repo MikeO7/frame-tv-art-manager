@@ -93,35 +93,50 @@ func (s *TVReconciler) processUploads(eCtx *executionContext) error {
 	return nil
 }
 
-//nolint:nestif // justified complexity for deletion logic
 func (s *TVReconciler) processDeletions(eCtx *executionContext) {
-	if len(eCtx.plan.ToDeleteIDs) > 0 {
-		if eCtx.policy.DryRun {
-			s.logger.Info("[DRY RUN] would delete tracked images", "count", len(eCtx.plan.ToDeleteIDs))
-			eCtx.result.Deleted = len(eCtx.plan.ToDeleteIDs)
-		} else {
-			s.logger.Info("deleting tracked images", "count", len(eCtx.plan.ToDeleteIDs))
-			if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteIDs); err != nil {
-				s.logger.Error("batch delete failed", "error", err)
-				eCtx.result.Deleted = len(eCtx.plan.ToDeleteIDs)
-			} else {
-				eCtx.result.DeletedFiles = append(eCtx.result.DeletedFiles, eCtx.plan.ToDeleteFiles...)
-				eCtx.mapping.DeleteBatch(eCtx.plan.ToDeleteFiles)
-				s.logger.Info("deleted tracked images", "count", len(eCtx.plan.ToDeleteIDs))
-				eCtx.result.Deleted = len(eCtx.plan.ToDeleteIDs)
-			}
-		}
+	s.deleteTrackedImages(eCtx)
+	s.deleteUnknownImages(eCtx)
+}
+
+func (s *TVReconciler) deleteTrackedImages(eCtx *executionContext) {
+	count := len(eCtx.plan.ToDeleteIDs)
+	if count == 0 {
+		return
 	}
 
-	if len(eCtx.plan.ToDeleteUnknownIDs) > 0 {
-		if eCtx.policy.DryRun {
-			s.logger.Info("[DRY RUN] would delete unknown images", "count", len(eCtx.plan.ToDeleteUnknownIDs))
-		} else {
-			s.logger.Info("deleting unknown images", "count", len(eCtx.plan.ToDeleteUnknownIDs))
-			if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteUnknownIDs); err != nil {
-				s.logger.Error("delete unknown images failed", "error", err)
-			}
-		}
+	if eCtx.policy.DryRun {
+		s.logger.Info("[DRY RUN] would delete tracked images", "count", count)
+		eCtx.result.Deleted = count
+		return
+	}
+
+	s.logger.Info("deleting tracked images", "count", count)
+	if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteIDs); err != nil {
+		s.logger.Error("batch delete failed", "error", err)
+		eCtx.result.Deleted = count
+		return
+	}
+
+	eCtx.result.DeletedFiles = append(eCtx.result.DeletedFiles, eCtx.plan.ToDeleteFiles...)
+	eCtx.mapping.DeleteBatch(eCtx.plan.ToDeleteFiles)
+	s.logger.Info("deleted tracked images", "count", count)
+	eCtx.result.Deleted = count
+}
+
+func (s *TVReconciler) deleteUnknownImages(eCtx *executionContext) {
+	count := len(eCtx.plan.ToDeleteUnknownIDs)
+	if count == 0 {
+		return
+	}
+
+	if eCtx.policy.DryRun {
+		s.logger.Info("[DRY RUN] would delete unknown images", "count", count)
+		return
+	}
+
+	s.logger.Info("deleting unknown images", "count", count)
+	if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteUnknownIDs); err != nil {
+		s.logger.Error("delete unknown images failed", "error", err)
 	}
 }
 
