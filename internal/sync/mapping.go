@@ -142,18 +142,6 @@ func (m *Mapping) GetContentID(filename string) (string, bool) {
 	return id, ok
 }
 
-// GetFilename returns the filename for a content_id, and whether it exists.
-func (m *Mapping) GetFilename(contentID string) (string, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for f, id := range m.data {
-		if id == contentID {
-			return f, true
-		}
-	}
-	return "", false
-}
-
 // AllContentIDs returns a copy of the full filename→content_id map.
 func (m *Mapping) AllContentIDs() map[string]string {
 	m.mu.RLock()
