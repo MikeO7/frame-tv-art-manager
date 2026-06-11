@@ -10,9 +10,14 @@ import (
 	"time"
 )
 
-// isInArtMode checks if the TV is currently in art mode by querying
+// IsInArtMode reports whether the TV is currently in art mode by querying
 // the art API over the active WebSocket connection.
-// IsInArtMode reports whether the TV is currently in art mode.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - bool: True if the TV is powered on and currently in art mode, false otherwise.
 func (c *Client) IsInArtMode(ctx context.Context) bool {
 	if c.info != nil && !c.info.IsOn() {
 		c.logger.Debug("TV is powered off")
@@ -54,9 +59,14 @@ func (c *Client) IsInArtMode(ctx context.Context) bool {
 	return isArt
 }
 
-// getUploadedImages returns the list of user-uploaded images on the TV
-// (category MY-C0002 = "My Photos").
-// ListUploaded returns user-uploaded artwork on the TV.
+// ListUploaded returns user-uploaded artwork on the TV (category MY-C0002 = "My Photos").
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - []ArtContent: A list of user-uploaded artwork items currently stored on the TV.
+//   - error: Any network or API error encountered during the fetch operation.
 func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 	id := newRequestID()
 	req := map[string]any{
@@ -105,8 +115,14 @@ func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 	return filtered, nil
 }
 
-// deleteImages removes artwork from the TV by content IDs.
 // DeleteImages removes artwork from the TV by content IDs.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - ids: A slice of content IDs representing the artwork to be deleted from the TV.
+//
+// Returns:
+//   - error: Any network or API error encountered during the deletion.
 func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 	id := newRequestID()
 
@@ -144,8 +160,14 @@ func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 	return nil
 }
 
-// selectImage sets the currently displayed artwork.
 // SelectImage sets the currently displayed artwork.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - id: The content ID of the artwork to be displayed on the TV screen.
+//
+// Returns:
+//   - error: Any network or API error encountered during the selection.
 func (c *Client) SelectImage(ctx context.Context, id string) error {
 	reqID := newRequestID()
 
@@ -255,8 +277,14 @@ func (c *Client) SaveMetadata(ctx context.Context) error {
 	return nil
 }
 
-// slideshowStatus returns the current slideshow configuration.
 // SlideshowStatus returns the current slideshow configuration.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - *SlideshowStatus: A struct detailing the current slideshow state on the TV.
+//   - error: Any network or API error encountered during the fetch operation.
 func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
 	id := newRequestID()
 
@@ -301,8 +329,14 @@ func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) 
 	}, nil
 }
 
-// setSlideshow updates the slideshow configuration.
 // SetSlideshow updates the slideshow configuration.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - s: The desired slideshow configuration to apply.
+//
+// Returns:
+//   - error: Any network or API error encountered during the update.
 func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
 	id := newRequestID()
 
@@ -337,8 +371,14 @@ func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
 	return nil
 }
 
-// setBrightness sets the art mode brightness.
 // SetBrightness sets the art mode brightness.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - val: The brightness value to set on the TV.
+//
+// Returns:
+//   - error: Any network or API error encountered during the update.
 func (c *Client) SetBrightness(ctx context.Context, val int) error {
 	id := newRequestID()
 
@@ -408,9 +448,17 @@ func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, 
 	}
 }
 
-// upload sends an image to the TV via the art API + D2D socket transfer.
+// Upload sends an image to the TV via the art API + D2D socket transfer with the given matte style.
 //
-// Upload sends an image to the TV with the given matte style.
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - filePath: The local filesystem path to the optimized image to upload.
+//   - fileType: The MIME type or file extension format of the image.
+//   - matte: The requested matte style ID string to apply to the artwork.
+//
+// Returns:
+//   - string: The TV-assigned content ID for the newly uploaded artwork.
+//   - error: Any network or API error encountered during the upload transfer.
 //
 //nolint:funlen // complexity justified for this domain-specific path
 func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (string, error) {
