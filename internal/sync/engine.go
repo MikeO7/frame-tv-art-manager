@@ -235,11 +235,9 @@ func (e *Engine) syncAllTVs(
 	var wg sync.WaitGroup
 
 	for _, ip := range e.cfg.TVIPs {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			e.logger.Info("sync cycle cancelled due to shutdown")
-			return nil, []error{ctx.Err()}
-		default:
+			break
 		}
 
 		wg.Add(1)
@@ -274,6 +272,11 @@ func (e *Engine) syncAllTVs(
 	}
 
 	wg.Wait()
+
+	if ctx.Err() != nil {
+		syncErrors = append(syncErrors, ctx.Err())
+	}
+
 	return tvSummaries, syncErrors
 }
 
