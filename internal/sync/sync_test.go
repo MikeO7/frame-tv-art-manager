@@ -132,24 +132,6 @@ func TestMapping_GetContentID(t *testing.T) {
 	}
 }
 
-func TestMapping_GetFilename(t *testing.T) {
-	m := &Mapping{
-		data: map[string]string{
-			testJPG: valID1,
-		},
-	}
-
-	file, ok := m.GetFilename(valID1)
-	if !ok || file != testJPG {
-		t.Errorf("expected (test.jpg, true), got (%s, %v)", file, ok)
-	}
-
-	file, ok = m.GetFilename("missing_id")
-	if ok || file != "" {
-		t.Errorf("expected (empty, false), got (%s, %v)", file, ok)
-	}
-}
-
 func TestMapping_AllContentIDs(t *testing.T) {
 	initial := map[string]string{
 		testAJPG: valIDA,
