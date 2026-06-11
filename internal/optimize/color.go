@@ -19,19 +19,21 @@ type labColor struct {
 
 // ciede2000 calculates the exact CIE 2000 color-difference standard between two CIELAB colors.
 //
-//nolint:funlen // mathematical formula requiring monolithic execution flow for performance and readability
+//nolint:funlen,gocognit,gocyclo // mathematical formula requiring monolithic execution flow for performance and readability
 func ciede2000(color1, color2 labColor) float64 {
+	const degToRad = math.Pi / 180.0
+	const e7 = 6103515625.0 // 25^7
+
 	l1, a1, b1 := color1.l, color1.a, color1.b
 	l2, a2, b2 := color2.l, color2.a, color2.b
-	c1 := math.Sqrt(a1*a1 + b1*b1)
-	c2 := math.Sqrt(a2*a2 + b2*b2)
-	meanC := (c1 + c2) / 2.0
+	c1c := math.Sqrt(a1*a1 + b1*b1)
+	c2c := math.Sqrt(a2*a2 + b2*b2)
+	meanC := (c1c + c2c) * 0.5
 
 	// explicit multiplication is significantly faster than math.Pow(x, 7)
 	meanC2 := meanC * meanC
 	meanC4 := meanC2 * meanC2
 	meanC7 := meanC4 * meanC2 * meanC
-	const e7 = 6103515625.0 // 25^7
 	g := 0.5 * (1.0 - math.Sqrt(meanC7/(meanC7+e7)))
 
 	aPrime1 := (1.0 + g) * a1
@@ -40,36 +42,58 @@ func ciede2000(color1, color2 labColor) float64 {
 	cPrime1 := math.Sqrt(aPrime1*aPrime1 + b1*b1)
 	cPrime2 := math.Sqrt(aPrime2*aPrime2 + b2*b2)
 
-	radToDeg := func(r float64) float64 {
-		d := r * 180.0 / math.Pi
-		if d < 0 {
-			d += 360.0
-		}
-		return d
-	}
-
+	// Calculate hues in radians directly to avoid repeated deg/rad conversions
 	var hPrime1, hPrime2 float64
 	if aPrime1 != 0 || b1 != 0 {
-		hPrime1 = radToDeg(math.Atan2(b1, aPrime1))
+		hPrime1 = math.Atan2(b1, aPrime1)
+		if hPrime1 < 0 {
+			hPrime1 += 2 * math.Pi
+		}
 	}
 	if aPrime2 != 0 || b2 != 0 {
-		hPrime2 = radToDeg(math.Atan2(b2, aPrime2))
+		hPrime2 = math.Atan2(b2, aPrime2)
+		if hPrime2 < 0 {
+			hPrime2 += 2 * math.Pi
+		}
 	}
 
 	deltaLPrime := l2 - l1
 	deltaCPrime := cPrime2 - cPrime1
-	deltaHPrime := calculateDeltaHPrime(cPrime1, cPrime2, hPrime1, hPrime2)
 
-	meanL := (l1 + l2) / 2.0
-	meanCPrime := (cPrime1 + cPrime2) / 2.0
-	meanHPrime := calculateMeanHPrime(cPrime1, cPrime2, hPrime1, hPrime2)
+	deltaHPrime := 0.0
+	if cPrime1*cPrime2 != 0 {
+		deltahPrime := hPrime2 - hPrime1
+		if deltahPrime > math.Pi {
+			deltahPrime -= 2 * math.Pi
+		} else if deltahPrime < -math.Pi {
+			deltahPrime += 2 * math.Pi
+		}
+		deltaHPrime = 2.0 * math.Sqrt(cPrime1*cPrime2) * math.Sin(deltahPrime*0.5)
+	}
 
-	t := 1.0 - 0.17*math.Cos((meanHPrime-30.0)*math.Pi/180.0) +
-		0.24*math.Cos(2.0*meanHPrime*math.Pi/180.0) +
-		0.32*math.Cos((3.0*meanHPrime+6.0)*math.Pi/180.0) -
-		0.20*math.Cos((4.0*meanHPrime-63.0)*math.Pi/180.0)
+	meanL := (l1 + l2) * 0.5
+	meanCPrime := (cPrime1 + cPrime2) * 0.5
 
-	dtCalc := (meanHPrime - 275.0) / 25.0
+	var meanHPrime float64
+	switch {
+	case cPrime1*cPrime2 == 0:
+		meanHPrime = hPrime1 + hPrime2
+	case math.Abs(hPrime1-hPrime2) <= math.Pi:
+		meanHPrime = (hPrime1 + hPrime2) * 0.5
+	case hPrime1+hPrime2 < 2*math.Pi:
+		meanHPrime = (hPrime1 + hPrime2 + 2*math.Pi) * 0.5
+	default:
+		meanHPrime = (hPrime1 + hPrime2 - 2*math.Pi) * 0.5
+	}
+
+	hRad := meanHPrime
+	t := 1.0 - 0.17*math.Cos(hRad-30.0*degToRad) +
+		0.24*math.Cos(2.0*hRad) +
+		0.32*math.Cos(3.0*hRad+6.0*degToRad) -
+		0.20*math.Cos(4.0*hRad-63.0*degToRad)
+
+	// The formula constants here are defined in degrees, so convert meanHPrime for the calc
+	dtCalc := (meanHPrime/degToRad - 275.0) / 25.0
 	deltaTheta := 30.0 * math.Exp(-(dtCalc * dtCalc)) // replaced math.Pow(..., 2) with dtCalc*dtCalc for speed
 
 	// explicit multiplication is significantly faster than math.Pow(x, 7)
@@ -78,7 +102,7 @@ func ciede2000(color1, color2 labColor) float64 {
 	meanCPrime7 := meanCP4 * meanCP2 * meanCPrime
 	rc := 2.0 * math.Sqrt(meanCPrime7/(meanCPrime7+e7))
 
-	rt := -rc * math.Sin(2.0*deltaTheta*math.Pi/180.0)
+	rt := -rc * math.Sin(2.0*deltaTheta*degToRad)
 
 	// replaced math.Pow(..., 2) with explicit multiplication for speed
 	mL50 := meanL - 50.0
@@ -100,36 +124,6 @@ func ciede2000(color1, color2 labColor) float64 {
 		return 0
 	}
 	return math.Sqrt(valSq)
-}
-
-// calculateDeltaHPrime computes delta H prime for CIEDE2000 color difference.
-func calculateDeltaHPrime(cPrime1, cPrime2, hPrime1, hPrime2 float64) float64 {
-	if cPrime1*cPrime2 == 0 {
-		return 0
-	}
-	deltahPrime := hPrime2 - hPrime1
-	if math.Abs(deltahPrime) > 180.0 {
-		if hPrime2 > hPrime1 {
-			deltahPrime -= 360.0
-		} else {
-			deltahPrime += 360.0
-		}
-	}
-	return 2.0 * math.Sqrt(cPrime1*cPrime2) * math.Sin(deltahPrime*math.Pi/360.0)
-}
-
-// calculateMeanHPrime computes mean H prime for CIEDE2000 color difference.
-func calculateMeanHPrime(cPrime1, cPrime2, hPrime1, hPrime2 float64) float64 {
-	if cPrime1*cPrime2 == 0 {
-		return hPrime1 + hPrime2
-	}
-	if math.Abs(hPrime1-hPrime2) <= 180.0 {
-		return (hPrime1 + hPrime2) / 2.0
-	}
-	if hPrime1+hPrime2 < 360.0 {
-		return (hPrime1 + hPrime2 + 360.0) / 2.0
-	}
-	return (hPrime1 + hPrime2 - 360.0) / 2.0
 }
 
 // rgbToLab performs a fast, simplified conversion from RGB to CIE Lab space.
