@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"strings"
 	"sync/atomic"
 )
@@ -25,6 +26,15 @@ func (p *directProvider) CanHandle(line string) bool {
 
 func (p *directProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
 	urlStr := strings.TrimPrefix(line, "direct:")
+
+	u, err := neturl.Parse(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid direct URL format: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported direct URL scheme: %s", u.Scheme)
+	}
+
 	idx := atomic.AddInt32(globalIndex, 1) - 1
 	identity := fmt.Sprintf("%03d__direct__%s", idx, URLToSlug(urlStr))
 
