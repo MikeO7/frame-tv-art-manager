@@ -11,3 +11,6 @@
 ## 2026-06-05 - Polymorphic JSON parsing in Samsung Art API
 **Learning:** Samsung TVs return polymorphic JSON types for fields like `conn_info` and `content_list` within the `d2d.service.message.event` websocket payload. Older TVs return escaped strings (`"{\"ip\":\"...\"}"`), while 2024+ TVs return raw JSON objects (`{"ip":"..."}`). Using strongly-typed structs (like `string`) causes `json.Unmarshal` to crash.
 **Action:** When interacting with the Samsung Art API, always unmarshal polymorphic fields as `json.RawMessage` and resolve them defensively using string extraction fallbacks to prevent runtime decoding panics across different TV generations.
+## 2026-06-11 - Goroutine Leaks from select loop returns
+**Learning:** Using `return` directly inside a `select` loop handling concurrent `go` functions causes any previously launched goroutines to leak because it skips the `wg.Wait()` step. This can also lead to subsequent data races or logic flaws as the leaked goroutines continue processing shared structures unpredictably.
+**Action:** When iterating over inputs to spawn goroutines with a top-level cancellation check (`ctx.Done()`), always `break` out of the loop and call `wg.Wait()` before returning to ensure all active goroutines finish correctly.
