@@ -63,12 +63,10 @@ func ciede2000(color1, color2 labColor) float64 {
 	deltaHPrime := 0.0
 	if cPrime1*cPrime2 != 0 {
 		deltahPrime := hPrime2 - hPrime1
-		if math.Abs(deltahPrime) > math.Pi {
-			if hPrime2 > hPrime1 {
-				deltahPrime -= 2 * math.Pi
-			} else {
-				deltahPrime += 2 * math.Pi
-			}
+		if deltahPrime > math.Pi {
+			deltahPrime -= 2 * math.Pi
+		} else if deltahPrime < -math.Pi {
+			deltahPrime += 2 * math.Pi
 		}
 		deltaHPrime = 2.0 * math.Sqrt(cPrime1*cPrime2) * math.Sin(deltahPrime*0.5)
 	}
