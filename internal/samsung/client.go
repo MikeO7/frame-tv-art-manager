@@ -126,6 +126,12 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 }
 
 // Connect establishes a connection to the TV.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the connection.
+//
+// Returns:
+//   - error: Any network or authentication error encountered during handshake.
 func (c *Client) Connect(ctx context.Context) error {
 	c.wakeTV(ctx)
 
@@ -164,6 +170,9 @@ func (c *Client) Connect(ctx context.Context) error {
 }
 
 // Close shuts down the WebSocket connection.
+//
+// Returns:
+//   - error: Any network error encountered during disconnection.
 func (c *Client) Close() error {
 	if c.artConn != nil {
 		return c.artConn.Close()
@@ -172,6 +181,9 @@ func (c *Client) Close() error {
 }
 
 // ShouldSkip returns true if the TV is in a backoff window due to failures.
+//
+// Returns:
+//   - bool: True if the client is still waiting out a failure timeout period.
 func (c *Client) ShouldSkip() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -188,6 +200,9 @@ func (c *Client) ShouldSkip() bool {
 }
 
 // RecordFailure tracks a connection failure and calculates exponential backoff.
+//
+// Parameters:
+//   - baseInterval: The initial time duration to wait before the next retry.
 func (c *Client) RecordFailure(baseInterval time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -222,6 +237,8 @@ func (c *Client) RecordFailure(baseInterval time.Duration) {
 }
 
 // RecordSuccess resets failure count.
+//
+// Calling this method clears the backoff window completely.
 func (c *Client) RecordSuccess() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -243,6 +260,9 @@ func checkArtError(resp *artResponse) error {
 }
 
 // Model returns the connected TV model name, if known.
+//
+// Returns:
+//   - string: The model string (e.g., "QN65LS03AAFXZA"), or an empty string if unknown.
 func (c *Client) Model() string {
 	if c.info != nil {
 		return c.info.ModelName
@@ -251,6 +271,9 @@ func (c *Client) Model() string {
 }
 
 // DeviceInfo returns the cached device info, or nil if not fetched.
+//
+// Returns:
+//   - *DeviceInfo: The system capabilities and hardware identifiers of the TV.
 func (c *Client) DeviceInfo() *DeviceInfo {
 	return c.info
 }
@@ -270,6 +293,12 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 }
 
 // TurnOff powers off the TV via the remote control API.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the power command.
+//
+// Returns:
+//   - error: Any network or API error encountered while sending the off signal.
 func (c *Client) TurnOff(ctx context.Context) error {
 	return c.turnOffTV(ctx, 8002)
 }
