@@ -117,10 +117,6 @@ func (m *Mapping) DeleteBatch(filenames []string) {
 
 // Rename updates a filename in the mapping while preserving its content_id.
 func (m *Mapping) Rename(oldName, newName string) bool {
-	return m.renameInternal(oldName, newName)
-}
-
-func (m *Mapping) renameInternal(oldName, newName string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if id, ok := m.data[oldName]; ok {
