@@ -235,7 +235,12 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 
 // saveMetadata fetches all available system information and artwork categories,
 // saving them to a JSON file in the tokens directory for auditing.
-// SaveMetadata exports TV metadata to disk for auditing.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - error: Any file I/O or network error encountered during export.
 func (c *Client) SaveMetadata(ctx context.Context) error {
 	metadata := make(map[string]any)
 	metadata["timestamp"] = time.Now().Format(time.RFC3339)
