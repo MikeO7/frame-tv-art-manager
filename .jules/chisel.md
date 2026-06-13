@@ -1,1 +1,5 @@
 ## 2024-05-23 - TV Sync Reconciler Simplification\n**Learning:** The `Run` method in `internal/sync/reconciler.go` is deeply nested and monolithic (196 lines), responsible for everything from connection and initialization to uploading, deleting, updating slideshows, and auto-off. This causes extremely high cognitive load and violates Single Responsibility.\n**Action:** Extract large blocks of logic (setup, upload loop, delete loop, finalization) into descriptive helper methods on the `Reconciler` struct to dramatically reduce complexity without changing the functional behavior or public contracts.
+
+## 2026-06-13 - PlanSync Method Simplification
+**Learning:** The `PlanSync` method in `internal/sync/plan.go` is complex, handling the creation of the entire sync plan. Breaking the logic into `buildUploadJobs`, `buildDeleteJobs`, and `determineSelectedID` dramatically reduced cyclomatic and cognitive complexity without altering behavior.
+**Action:** Extract specific mapping logic and conditionals into small helper methods that deal with isolated map processing, instead of leaving it embedded within large declarative setups.
