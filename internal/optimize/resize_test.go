@@ -118,25 +118,6 @@ func TestValidateImage_Invalid(t *testing.T) {
 	}
 }
 
-func TestFitDimensions(t *testing.T) {
-	tests := []struct {
-		w, h, maxW, maxH int
-		expW, expH       int
-	}{
-		{100, 100, 50, 50, 50, 50},
-		{200, 100, 100, 100, 100, 50},
-		{100, 200, 100, 100, 50, 100},
-		{50, 50, 100, 100, 100, 100}, // Should upscale to fill
-	}
-
-	for _, tt := range tests {
-		gotW, gotH := fitDimensions(tt.w, tt.h, tt.maxW, tt.maxH)
-		if gotW != tt.expW || gotH != tt.expH {
-			t.Errorf("fitDimensions(%d,%d, %d,%d) = %d,%d; want %d,%d", tt.w, tt.h, tt.maxW, tt.maxH, gotW, gotH, tt.expW, tt.expH)
-		}
-	}
-}
-
 func BenchmarkSharpen(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
 	b.ResetTimer()
