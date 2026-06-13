@@ -20,3 +20,6 @@
 ## 2026-06-11 - Context alignment for Samsung Art Client Methods
 **Learning:** Public API methods in high-level components like the Samsung Frame TV client (`internal/samsung/client_art.go`) often suffer from context decay, lacking parameter and return breakdowns, especially during rapid internal refactors or unexporting/exporting of methods.
 **Action:** When auditing core facades, ensure JSDoc/GoDoc headers clearly break down parameters (like `ctx`, `id`, `matte`) and return types. Use exact matching and temporary scripting to apply uniform docblocks across multiple exported receiver methods without introducing whitespace errors or orphaned `nolint` comments. Always run the linter to verify `nolintlint` rules aren't broken by documentation spacing.
+## 2026-06-13 - Context alignment for Samsung Art Client Methods
+**Learning:** The documentation for the `Connect` and `wakeTV` methods in `internal/samsung/client.go` was disjointed, with the multi-step `Connect` execution sequence misplaced entirely above the `wakeTV` method block. Additionally, `SaveMetadata` had minor casing issues.
+**Action:** Always verify that multi-step procedural comments physically precede the correct parent function definition, and ensure exported methods adhere to Go's capitalization rules in their docstrings.
