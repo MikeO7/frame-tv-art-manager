@@ -72,14 +72,10 @@ func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Cl
 	}
 }
 
-// connect establishes a connection to the TV with the following sequence:
-//  1. Wake-on-LAN (if MAC configured)
-//  2. Silent REST Gate (if enabled) → abort if TV is not in art mode
-//  3. Open WSS connection to art endpoint on port 8002
-//  4. Fetch device info via REST API
-
+// wakeTV sends a Wake-on-LAN magic packet to the TV to wake it up if it's sleeping.
 //
-
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
 func (c *Client) wakeTV(ctx context.Context) {
 	if c.opts.TVMAC == "" {
 		return
@@ -125,7 +121,11 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	return nil
 }
 
-// Connect establishes a connection to the TV.
+// Connect establishes a connection to the TV with the following sequence:
+//  1. Wake-on-LAN (if MAC configured)
+//  2. Silent REST Gate (if enabled) -> abort if TV is not in art mode
+//  3. Open WSS connection to art endpoint on port 8002
+//  4. Fetch device info via REST API
 //
 // Parameters:
 //   - ctx: Context to control the timeout and cancellation of the connection.

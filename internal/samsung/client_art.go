@@ -233,7 +233,7 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	return raw, nil
 }
 
-// saveMetadata fetches all available system information and artwork categories,
+// SaveMetadata fetches all available system information and artwork categories,
 // saving them to a JSON file in the tokens directory for auditing.
 //
 // Parameters:
