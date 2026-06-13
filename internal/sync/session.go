@@ -246,3 +246,5 @@ func (s *TVReconciler) logPlan(plan *SyncPlan, policy config.SyncPolicy) {
 		"unknown_to_delete", len(plan.ToDeleteUnknownIDs),
 	)
 }
+
+var _ TVTransport = (*samsung.Client)(nil)
