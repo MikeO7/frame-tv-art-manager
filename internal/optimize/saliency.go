@@ -145,6 +145,8 @@ func calculateEdgeScore(src *image.RGBA, x1, y1, x2, y2 int) float64 {
 
 // generateSaliencyMap creates a 2D map where each pixel represents a saliency score.
 // It combines structural edges (Sobel), skin tone detection, and Boolean Map Saliency (BMS).
+//
+//nolint:funlen // complexity justified for this domain-specific path
 func generateSaliencyMap(src *image.RGBA) []float64 {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	mapData := make([]float64, w*h)
@@ -175,6 +177,30 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	meanA := sumA / totalPixels
 	meanB := sumB / totalPixels
 
+	// OPTIMIZATION: Precalculate coordinate-dependent aesthetic factors to avoid heavy math in inner loop
+	thirdX := make([]float64, w)
+	dxSq := make([]float64, w)
+	balanceX := make([]float64, w)
+	for x := 1; x < w-1; x++ {
+		nx := float64(x) / float64(w)
+		dx := nx - 0.5
+		dxSq[x] = dx * dx
+		tx1, tx2 := nx-0.33, nx-0.66
+		thirdX[x] = math.Exp(-(tx1*tx1)/0.02) + math.Exp(-(tx2*tx2)/0.02)
+		if math.Abs(dx) > 0.4 {
+			balanceX[x] = -0.05
+		}
+	}
+	thirdY := make([]float64, h)
+	dySq := make([]float64, h)
+	for y := 1; y < h-1; y++ {
+		ny := float64(y) / float64(h)
+		dy := ny - 0.5
+		dySq[y] = dy * dy
+		ty1, ty2 := ny-0.33, ny-0.66
+		thirdY[y] = math.Exp(-(ty1*ty1)/0.02) + math.Exp(-(ty2*ty2)/0.02)
+	}
+
 	for y := 1; y < h-1; y++ {
 		for x := 1; x < w-1; x++ {
 			idx := y*srcStride + x*4
@@ -198,7 +224,8 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			}
 
 			// 7. Aesthetic/Compositional Weight (Rule of Thirds + Balance)
-			aesthetic := calculateAestheticScore(x, y, w, h)
+			centerBias := 0.1 * (1.0 - math.Sqrt(dxSq[x]+dySq[y]))
+			aesthetic := centerBias + ((thirdX[x] + thirdY[y]) * 0.25) + balanceX[x]
 
 			// Weighted Fusion v4.1
 			// BMS is the core, with perceptual CIEDE2000 color distance as the color contrast weight.
@@ -305,26 +332,6 @@ func calculateSkinProbability(r, g, b uint8) float64 {
 		return 1.0
 	}
 	return 0.0
-}
-
-func calculateAestheticScore(x, y, w, h int) float64 {
-	nx, ny := float64(x)/float64(w), float64(y)/float64(h)
-	dx, dy := nx-0.5, ny-0.5
-	centerBias := 0.1 * (1.0 - math.Sqrt(dx*dx+dy*dy))
-
-	// 1. Rule of Thirds (Gaussian weight around 0.33 and 0.66)
-	tx1, tx2 := nx-0.33, nx-0.66
-	ty1, ty2 := ny-0.33, ny-0.66
-	thirdX := math.Exp(-(tx1*tx1)/0.02) + math.Exp(-(tx2*tx2)/0.02)
-	thirdY := math.Exp(-(ty1*ty1)/0.02) + math.Exp(-(ty2*ty2)/0.02)
-
-	// 2. Visual Mass Balance
-	balanceBias := 0.0
-	if math.Abs(dx) > 0.4 {
-		balanceBias = -0.05
-	}
-
-	return centerBias + ((thirdX + thirdY) * 0.25) + balanceBias
 }
 
 func calculateIntegralImage(saliencyMap []float64, w, h int) []float64 {
