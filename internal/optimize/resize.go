@@ -9,7 +9,6 @@ import (
 	"image/jpeg"
 	_ "image/png" // Needed for decoding PNG images
 	"log/slog"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,18 +175,6 @@ func ValidateImage(path string) error {
 
 	_, _, err = image.DecodeConfig(f)
 	return err
-}
-
-// fitDimensions calculates the best width/height to fit within max bounds while preserving aspect ratio.
-func fitDimensions(w, h, maxW, maxH int) (int, int) {
-	scale := math.Min(float64(maxW)/float64(w), float64(maxH)/float64(h))
-	// Always upscale to at least fill the 4K canvas (3840x2160)
-	if scale < 1.0 {
-		return int(float64(w) * scale), int(float64(h) * scale)
-	}
-	// For Frame TV, we actually want to fill the native 4K resolution
-	scale = math.Max(float64(maxW)/float64(w), float64(maxH)/float64(h))
-	return int(float64(w) * scale), int(float64(h) * scale)
 }
 
 // rewriteImage handles the actual decoding, pixel modifications (cropping, sharpening, dithering),
