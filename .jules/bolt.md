@@ -4,3 +4,6 @@
 ## 2026-06-11 - Math Function Overheads in Tight Loops
 **Learning:** Functions like `ciede2000` that perform heavy math inside tight image pixel processing loops suffer heavily from repetitive degree-to-radian conversions (`* math.Pi / 180.0`). Additionally, `math.Pow(x, 7)` is significantly slower than explicit multiplication (`x*x*x*x*x*x*x`).
 **Action:** When optimizing tight inner loops involving math functions, always structure code to use radians natively to avoid conversions and replace small integer powers with explicit multiplication.
+## 2026-06-13 - Extracting Math from 2D Loops
+**Learning:** In tight O(W*H) nested image processing loops, floating-point calculations like `math.Exp` or `math.Sqrt` that depend on only one coordinate (e.g., `x` or `y` individually) create massive overhead when computed repeatedly.
+**Action:** Always pre-calculate coordinate-dependent aesthetic or mathematical factors into 1D arrays outside the loop, replacing expensive function calls with simple slice lookups in the hot path.
