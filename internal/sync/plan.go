@@ -14,7 +14,7 @@ import (
 
 // PlanSync evaluates current states and plans synchronization purely in memory.
 //
-//nolint:gocognit,nestif,funlen,gocyclo,revive // justified complexity and argument count for pure planning
+//nolint:revive // justified argument count for pure planning
 func PlanSync(
 	ip string,
 	cfg *config.Config,
@@ -31,30 +31,8 @@ func PlanSync(
 	toUploadSet := diffSets(localFiles, trackedFiles)
 	toDeleteSet := diffSets(trackedFiles, localFiles)
 
-	toUpload := make([]UploadJob, 0, len(toUploadSet))
-	for filename := range toUploadSet {
-		filePath := filepath.Join(policy.ArtworkDir, filename)
-		fileType := artwork.FileTypeFromExt(filename)
-		matte := policy.MatteStyle
-		if matteConfig != nil {
-			matte = matteConfig.GetMatte(filename, matte)
-		}
-		toUpload = append(toUpload, UploadJob{
-			Filename: filename,
-			FilePath: filePath,
-			FileType: fileType,
-			Matte:    matte,
-		})
-	}
-
-	var toDeleteIDs []string
-	var toDeleteFiles []string
-	for filename := range toDeleteSet {
-		if cid, ok := mappingData[filename]; ok {
-			toDeleteIDs = append(toDeleteIDs, cid)
-			toDeleteFiles = append(toDeleteFiles, filename)
-		}
-	}
+	toUpload := buildUploadJobs(policy, matteConfig, toUploadSet)
+	toDeleteIDs, toDeleteFiles := buildDeleteJobs(mappingData, toDeleteSet)
 
 	var toDeleteUnknownIDs []string
 	if policy.RemoveUnknownImages && len(unknownIDs) > 0 {
@@ -63,13 +41,81 @@ func PlanSync(
 
 	hasChanges := len(toUpload) > 0 || len(toDeleteIDs) > 0 || len(toDeleteUnknownIDs) > 0
 
-	var selectedID string
 	slideshow := determineSlideshowSettings(cfg, logger)
 	settingsForMode := slideshow
 	if settingsForMode == nil {
 		settingsForMode = preserveSlideshow
 	}
 
+	var selectedID string
+	if hasChanges && len(localFiles) > 0 {
+		selectedID = determineSelectedID(mappingData, toUpload, toDeleteFiles, settingsForMode)
+	}
+
+	var targetSlideshow *samsung.SlideshowStatus
+	if slideshow != nil {
+		targetSlideshow = slideshow
+	}
+
+	return &SyncPlan{
+		IP:                 ip,
+		ToUpload:           toUpload,
+		ToDeleteIDs:        toDeleteIDs,
+		ToDeleteFiles:      toDeleteFiles,
+		ToDeleteUnknownIDs: toDeleteUnknownIDs,
+		SelectedID:         selectedID,
+		Slideshow:          targetSlideshow,
+		Brightness:         determineBrightness(cfg, logger),
+		TurnOff:            isWithinAutoOffWindow(cfg.AutoOffTime, cfg.AutoOffGraceHours, cfg.Timezone),
+		TrackedFilesCount:  len(trackedFiles),
+		StaleFiles:         staleFiles,
+		PreserveSlideshow:  preserveSlideshow,
+		HasChanges:         hasChanges,
+		LocalFiles:         localFiles,
+	}
+}
+
+func buildUploadJobs(
+	policy config.SyncPolicy,
+	matteConfig *config.MatteConfig,
+	toUploadSet map[string]struct{},
+) []UploadJob {
+	toUpload := make([]UploadJob, 0, len(toUploadSet))
+	for filename := range toUploadSet {
+		filePath := filepath.Join(policy.ArtworkDir, filename)
+		matte := policy.MatteStyle
+		if matteConfig != nil {
+			matte = matteConfig.GetMatte(filename, matte)
+		}
+		toUpload = append(toUpload, UploadJob{
+			Filename: filename,
+			FilePath: filePath,
+			FileType: artwork.FileTypeFromExt(filename),
+			Matte:    matte,
+		})
+	}
+	return toUpload
+}
+
+func buildDeleteJobs(
+	mappingData map[string]string,
+	toDeleteSet map[string]struct{},
+) (ids []string, files []string) {
+	for filename := range toDeleteSet {
+		if cid, ok := mappingData[filename]; ok {
+			ids = append(ids, cid)
+			files = append(files, filename)
+		}
+	}
+	return ids, files
+}
+
+func determineSelectedID(
+	mappingData map[string]string,
+	toUpload []UploadJob,
+	toDeleteFiles []string,
+	settingsForMode *samsung.SlideshowStatus,
+) string {
 	finalMapping := make(map[string]string)
 	for k, v := range mappingData {
 		finalMapping[k] = v
@@ -81,45 +127,22 @@ func PlanSync(
 		delete(finalMapping, f)
 	}
 
-	if hasChanges && len(localFiles) > 0 && len(finalMapping) > 0 {
-		if settingsForMode != nil && settingsForMode.Type == ssTypeShuffle {
-			values := mapValues(finalMapping)
-			if len(values) > 0 {
-				//nolint:gosec // weak random number generator is fine for selecting artwork shuffle order
-				selectedID = values[rand.IntN(len(values))]
-			}
-		} else {
-			for _, id := range finalMapping {
-				selectedID = id
-				break
-			}
+	if len(finalMapping) == 0 {
+		return ""
+	}
+
+	if settingsForMode != nil && settingsForMode.Type == ssTypeShuffle {
+		values := mapValues(finalMapping)
+		if len(values) > 0 {
+			//nolint:gosec // weak random number generator is fine for selecting artwork shuffle order
+			return values[rand.IntN(len(values))]
 		}
 	}
 
-	var targetSlideshow *samsung.SlideshowStatus
-	if slideshow != nil {
-		targetSlideshow = slideshow
+	for _, id := range finalMapping {
+		return id
 	}
-
-	brightnessVal := determineBrightness(cfg, logger)
-	turnOff := isWithinAutoOffWindow(cfg.AutoOffTime, cfg.AutoOffGraceHours, cfg.Timezone)
-
-	return &SyncPlan{
-		IP:                 ip,
-		ToUpload:           toUpload,
-		ToDeleteIDs:        toDeleteIDs,
-		ToDeleteFiles:      toDeleteFiles,
-		ToDeleteUnknownIDs: toDeleteUnknownIDs,
-		SelectedID:         selectedID,
-		Slideshow:          targetSlideshow,
-		Brightness:         brightnessVal,
-		TurnOff:            turnOff,
-		TrackedFilesCount:  len(trackedFiles),
-		StaleFiles:         staleFiles,
-		PreserveSlideshow:  preserveSlideshow,
-		HasChanges:         hasChanges,
-		LocalFiles:         localFiles,
-	}
+	return ""
 }
 
 func determineSlideshowSettings(cfg *config.Config, logger *slog.Logger) *samsung.SlideshowStatus {
