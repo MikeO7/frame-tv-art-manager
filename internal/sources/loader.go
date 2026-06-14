@@ -148,7 +148,7 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename string) (boo
 	}
 
 	tmpPath := destPath + ".tmp"
-	out, err := os.OpenFile(filepath.Clean(tmpPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+	out, err := os.OpenFile(filepath.Clean(tmpPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return false, fmt.Errorf("create temp file: %w", err)
 	}
@@ -177,7 +177,6 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename string) (boo
 	}
 
 	l.index.MarkVisited(finalName)
-	_ = os.Chmod(filepath.Join(l.artworkDir, finalName), 0o600)
 
 	l.logger.Info("downloaded source image", "file", finalName, "size_bytes", written)
 	return true, nil
