@@ -57,7 +57,7 @@ type optContext struct {
 //	}
 //	fmt.Printf("Successfully optimized %d images\n", count)
 //
-//nolint:gocognit,revive,funlen,gocyclo,nestif // complexity, length, and argument count justified for parallel task processing
+//nolint:revive,funlen,gocyclo // length, and argument count justified for parallel task processing
 func OptimizeCatalog(
 	ctx context.Context,
 	artworkDir string,
@@ -80,44 +80,7 @@ func OptimizeCatalog(
 	//
 	// Remote source images (Unsplash, NASA, etc.) default to crop mode and are
 	// excluded from auto-collage unless PORTRAIT_MODE=collage is set.
-	wantsCollageAll := cfg.PortraitMode == "collage"
-	{
-		var rawPortraits []string
-		for filename := range localFiles {
-			if strings.HasPrefix(filename, "._") {
-				delete(localFiles, filename)
-				continue
-			}
-			isUpload := strings.HasPrefix(filename, "upload__")
-			if !wantsCollageAll && !isUpload {
-				continue
-			}
-			if !strings.Contains(filename, "_opt.h_") {
-				path := filepath.Join(artworkDir, filename)
-				if isPortrait, err := isPortraitFile(path); err == nil && isPortrait {
-					rawPortraits = append(rawPortraits, filename)
-				}
-			}
-		}
-
-		for i := 0; i < len(rawPortraits)-1; i += 2 {
-			f1 := rawPortraits[i]
-			f2 := rawPortraits[i+1]
-
-			logger.Info("pairing portrait images into collage", "file1", f1, "file2", f2)
-			collageFilename, err := processCollagePair(artworkDir, f1, f2, cfg, catalog, onRename, logger)
-			if err != nil {
-				logger.Error("failed to create collage pair", "file1", f1, "file2", f2, "error", err)
-				continue
-			}
-
-			// Update localFiles map
-			delete(localFiles, f1)
-			delete(localFiles, f2)
-			localFiles[collageFilename] = struct{}{}
-			atomic.AddInt64(&optimizedCount, 1)
-		}
-	}
+	processCollages(artworkDir, localFiles, cfg, catalog, onRename, logger, &optimizedCount)
 
 	type job struct {
 		filename string
@@ -332,4 +295,51 @@ func processCollagePair(
 	catalog.NoteFileRename(f2, "")
 
 	return collageName, nil
+}
+
+func processCollages(
+	artworkDir string,
+	localFiles map[string]struct{},
+	cfg Config,
+	catalog Catalog,
+	onRename func(oldName, newName string),
+	logger *slog.Logger,
+	optimizedCount *int64,
+) {
+	wantsCollageAll := cfg.PortraitMode == "collage"
+	var rawPortraits []string
+	for filename := range localFiles {
+		if strings.HasPrefix(filename, "._") {
+			delete(localFiles, filename)
+			continue
+		}
+		isUpload := strings.HasPrefix(filename, "upload__")
+		if !wantsCollageAll && !isUpload {
+			continue
+		}
+		if !strings.Contains(filename, "_opt.h_") {
+			path := filepath.Join(artworkDir, filename)
+			if isPortrait, err := isPortraitFile(path); err == nil && isPortrait {
+				rawPortraits = append(rawPortraits, filename)
+			}
+		}
+	}
+
+	for i := 0; i < len(rawPortraits)-1; i += 2 {
+		f1 := rawPortraits[i]
+		f2 := rawPortraits[i+1]
+
+		logger.Info("pairing portrait images into collage", "file1", f1, "file2", f2)
+		collageFilename, err := processCollagePair(artworkDir, f1, f2, cfg, catalog, onRename, logger)
+		if err != nil {
+			logger.Error("failed to create collage pair", "file1", f1, "file2", f2, "error", err)
+			continue
+		}
+
+		// Update localFiles map
+		delete(localFiles, f1)
+		delete(localFiles, f2)
+		localFiles[collageFilename] = struct{}{}
+		atomic.AddInt64(optimizedCount, 1)
+	}
 }
