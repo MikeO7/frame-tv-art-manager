@@ -2,11 +2,13 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
+	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
 // ExecuteSyncPlan applies the computed planning rules onto the target transport.
@@ -80,8 +82,12 @@ func (s *TVReconciler) processUploads(eCtx *executionContext) error {
 
 		contentID, uploadErr := s.uploadWithRetry(eCtx.ctx, eCtx.transport, job.FilePath, job.FileType, job.Matte, eCtx.policy)
 		if uploadErr != nil {
+			if errors.Is(uploadErr, samsung.ErrStorageFull) {
+				eCtx.result.StorageFull = true
+			}
 			s.logger.Error("upload failed", "file", job.Filename, "error", uploadErr)
-			continue
+			eCtx.result.ErrorMessage = uploadErr.Error()
+			return nil
 		}
 
 		eCtx.mapping.Set(job.Filename, contentID)

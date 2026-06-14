@@ -335,9 +335,22 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 			{Filename: "file.jpg", FilePath: "file.jpg", FileType: "jpeg", Matte: "none"},
 		},
 	}
-	_, err = reconciler.ExecuteSyncPlan(ctx, planUploadErr, transportFail, mapping, policy)
+	res, err := reconciler.ExecuteSyncPlan(ctx, planUploadErr, transportFail, mapping, policy)
 	if err != nil {
 		t.Errorf("expected no error from execution itself when upload fails, got: %v", err)
+	}
+	if res.StorageFull {
+		t.Errorf("did not expect StorageFull to be true on general error")
+	}
+
+	// Test storage full upload error
+	transportStorageFull := &mockTVTransportExecution{uploadErr: samsung.ErrStorageFull}
+	res, err = reconciler.ExecuteSyncPlan(ctx, planUploadErr, transportStorageFull, mapping, policy)
+	if err != nil {
+		t.Errorf("expected no error from execution itself when upload fails, got: %v", err)
+	}
+	if !res.StorageFull {
+		t.Errorf("expected StorageFull to be true when upload returns ErrStorageFull")
 	}
 
 	// Test delete error

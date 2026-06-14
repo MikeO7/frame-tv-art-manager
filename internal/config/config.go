@@ -25,7 +25,7 @@ type Config struct {
 	ArtworkDir string
 
 	// MaxArtworkImages is the maximum number of images allowed in ArtworkDir.
-	// 0 means no limit.
+	// 0 means no local limit (fills to the TV's maximum available storage capacity).
 	MaxArtworkImages int
 
 	// MaxDownloadSizeMB is the maximum allowed size for a single download.

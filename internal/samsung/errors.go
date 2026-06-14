@@ -28,4 +28,8 @@ var (
 	// ErrArtAPIError is returned when the TV's art endpoint responds with an
 	// application-level error code (e.g. invalid category or bad payload).
 	ErrArtAPIError = errors.New("samsung: art api returned an error")
+
+	// ErrStorageFull is returned when the TV rejects an upload because its
+	// internal storage partition has no remaining space.
+	ErrStorageFull = errors.New("samsung: TV storage is full")
 )
