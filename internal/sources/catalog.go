@@ -51,15 +51,25 @@ func (c *ArtworkCatalog) NoteFileRename(oldName, newName string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.catalog, oldName)
-	c.catalog[newName] = struct{}{}
+	if newName != "" {
+		c.catalog[newName] = struct{}{}
+	}
 	for identity, filename := range c.prefixMap {
 		if filename == oldName {
-			c.prefixMap[identity] = newName
+			if newName != "" {
+				c.prefixMap[identity] = newName
+			} else {
+				delete(c.prefixMap, identity)
+			}
 		}
 	}
 	for hash, filename := range c.hashIndex {
 		if filename == oldName {
-			c.hashIndex[hash] = newName
+			if newName != "" {
+				c.hashIndex[hash] = newName
+			} else {
+				delete(c.hashIndex, hash)
+			}
 		}
 	}
 }

@@ -72,6 +72,7 @@ func Load() (*Config, error) {
 		GateTimeout:         time.Duration(envInt("GATE_TIMEOUT_MS", 10000)) * time.Millisecond,
 		PUID:                envInt("PUID", 0),
 		PGID:                envInt("PGID", 0),
+		PortraitMode:        strings.ToLower(envStr("PORTRAIT_MODE", "collage")),
 	}
 
 	// Parse TV IPs (required).
@@ -148,6 +149,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf(
 			"LOG_LEVEL must be one of debug, info, warn, error; got %q",
 			cfg.LogLevel,
+		)
+	}
+
+	validPortraitModes := map[string]bool{"collage": true, "pad": true, "crop": true}
+	if !validPortraitModes[cfg.PortraitMode] {
+		return nil, fmt.Errorf(
+			"PORTRAIT_MODE must be one of collage, pad, crop; got %q",
+			cfg.PortraitMode,
 		)
 	}
 

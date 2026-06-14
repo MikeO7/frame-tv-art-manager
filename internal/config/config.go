@@ -196,10 +196,13 @@ type Config struct {
 	GateTimeout time.Duration
 
 	// --- Ownership ---
-
 	// PUID and PGID for directory ownership (optional).
 	PUID int
 	PGID int
+
+	// --- Portrait Mode Handling ---
+	// PortraitMode controls how vertical photos are resized: "collage", "pad", "crop" (default "collage").
+	PortraitMode string
 }
 
 // --- helpers ---
@@ -322,6 +325,7 @@ func (c *Config) OptimizeOptions() optimize.Config {
 		OptimizeJPEGQuality: c.OptimizeJPEGQuality,
 		MuseumModeEnabled:   c.MuseumModeEnabled,
 		MuseumModeIntensity: c.MuseumModeIntensity,
+		PortraitMode:        c.PortraitMode,
 	}
 }
 

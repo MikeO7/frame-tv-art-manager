@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/jpeg"
 	_ "image/png" // Needed for decoding PNG images
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ type Config struct {
 	NormalizeLuminance  bool
 	MuseumModeEnabled   bool
 	MuseumModeIntensity int
+	PortraitMode        string
 }
 
 // DefaultConfig returns sensible defaults for Frame TV display.
@@ -38,6 +40,7 @@ func DefaultConfig() Config {
 		NormalizeLuminance:  true,
 		MuseumModeEnabled:   false,
 		MuseumModeIntensity: 1,
+		PortraitMode:        "collage",
 	}
 }
 
@@ -65,7 +68,7 @@ func DefaultConfig() Config {
 //	    fmt.Printf("Optimized file into %s\n", finalName)
 //	}
 //
-//nolint:funlen // image optimization pipeline
+//nolint:funlen,goconst // image optimization pipeline; extension constant is local
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
@@ -180,10 +183,16 @@ func ValidateImage(path string) error {
 // rewriteImage handles the actual decoding, pixel modifications (cropping, sharpening, dithering),
 // and re-encoding of the image back to disk.
 func rewriteImage(f *os.File, path, filename string, width, height int, needsAdjustment bool, cfg Config, logger *slog.Logger) (int, int, error) {
+	_ = needsAdjustment // recalculated after rotation
+
 	if _, err := f.Seek(0, 0); err != nil {
 		return 0, 0, fmt.Errorf("seek to start: %w", err)
 	}
+	orientation, _ := ReadOrientation(f)
 
+	if _, err := f.Seek(0, 0); err != nil {
+		return 0, 0, fmt.Errorf("seek to start: %w", err)
+	}
 	img, _, err := image.Decode(f)
 	if err != nil {
 		return 0, 0, fmt.Errorf("decode image: %w", err)
@@ -191,10 +200,18 @@ func rewriteImage(f *os.File, path, filename string, width, height int, needsAdj
 
 	logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", width, height))
 
+	img = RotateImage(img, orientation)
 	rgba := toRGBA(img)
-	if needsAdjustment {
-		rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
+
+	newW, newH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
+	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
+		if newH > newW && cfg.PortraitMode != "crop" {
+			rgba = padPortrait(rgba, cfg.MaxWidth, cfg.MaxHeight)
+		} else {
+			rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
+		}
 	}
+
 	rgba = sharpen(rgba)
 	if cfg.MuseumModeEnabled {
 		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
@@ -219,4 +236,176 @@ func rewriteImage(f *os.File, path, filename string, width, height int, needsAdj
 
 	newBounds := rgba.Bounds()
 	return newBounds.Dx(), newBounds.Dy(), nil
+}
+
+// ReadOrientation reads the EXIF orientation tag from an image file if available.
+//
+//nolint:gocognit,goconst,gocyclo // custom EXIF parser logic needs to handle raw JPEG marker bounds checks; constant is local
+func ReadOrientation(r io.Reader) (int, error) {
+	var buf [4]byte
+	if _, err := io.ReadFull(r, buf[:2]); err != nil {
+		return 1, err
+	}
+	if buf[0] != 0xFF || buf[1] != 0xD8 {
+		return 1, fmt.Errorf("not a JPEG (SOI missing)")
+	}
+
+	for {
+		if _, err := io.ReadFull(r, buf[:2]); err != nil {
+			return 1, err
+		}
+		for buf[0] == 0xFF && buf[1] == 0xFF {
+			if _, err := io.ReadFull(r, buf[1:2]); err != nil {
+				return 1, err
+			}
+		}
+		if buf[0] != 0xFF {
+			return 1, fmt.Errorf("invalid marker prefix")
+		}
+
+		marker := buf[1]
+		if marker == 0xD9 || marker == 0xDA { // EOI or SOS
+			break
+		}
+
+		if _, err := io.ReadFull(r, buf[:2]); err != nil {
+			return 1, err
+		}
+		length := int(buf[0])<<8 | int(buf[1])
+		if length < 2 {
+			return 1, fmt.Errorf("invalid marker length")
+		}
+
+		if marker == 0xE1 {
+			payload := make([]byte, length-2)
+			if _, err := io.ReadFull(r, payload); err != nil {
+				return 1, err
+			}
+			if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
+				return parseExif(payload[6:])
+			}
+			continue
+		}
+
+		discardBytes := int64(length - 2)
+		if _, err := io.CopyN(io.Discard, r, discardBytes); err != nil {
+			return 1, err
+		}
+	}
+	return 1, nil
+}
+
+//nolint:gocognit,gocritic,gocyclo,funlen // byte order check structure, switch simplification, parse loops, and length
+func parseExif(tiff []byte) (int, error) {
+	if len(tiff) < 8 {
+		return 1, fmt.Errorf("tiff header too short")
+	}
+
+	var isLittleEndian bool
+	switch {
+	case tiff[0] == 'I' && tiff[1] == 'I':
+		isLittleEndian = true
+	case tiff[0] == 'M' && tiff[1] == 'M':
+		isLittleEndian = false
+	default:
+		return 1, fmt.Errorf("invalid byte order")
+	}
+
+	readUint16 := func(b []byte, offset int) uint16 {
+		if isLittleEndian {
+			return uint16(b[offset]) | uint16(b[offset+1])<<8
+		}
+		return uint16(b[offset])<<8 | uint16(b[offset+1])
+	}
+
+	readUint32 := func(b []byte, offset int) uint32 {
+		if isLittleEndian {
+			return uint32(b[offset]) | uint32(b[offset+1])<<8 | uint32(b[offset+2])<<16 | uint32(b[offset+3])<<24
+		}
+		return uint32(b[offset])<<24 | uint32(b[offset+1])<<16 | uint32(b[offset+2])<<8 | uint32(b[offset+3])
+	}
+
+	magic := readUint16(tiff, 2)
+	if magic != 0x002A {
+		return 1, fmt.Errorf("invalid tiff magic number")
+	}
+
+	ifdOffset := int(readUint32(tiff, 4))
+	if ifdOffset < 8 || ifdOffset >= len(tiff) {
+		return 1, fmt.Errorf("invalid ifd offset")
+	}
+
+	if len(tiff) < ifdOffset+2 {
+		return 1, fmt.Errorf("tiff too short for IFD count")
+	}
+	numEntries := int(readUint16(tiff, ifdOffset))
+	entryOffset := ifdOffset + 2
+
+	for i := 0; i < numEntries; i++ {
+		if len(tiff) < entryOffset+12 {
+			break
+		}
+		tag := readUint16(tiff, entryOffset)
+		if tag == 0x0112 {
+			valType := readUint16(tiff, entryOffset+2)
+			switch valType {
+			case 3:
+				return int(readUint16(tiff, entryOffset+8)), nil
+			case 4:
+				return int(readUint32(tiff, entryOffset+8)), nil
+			default:
+				return 1, fmt.Errorf("unexpected orientation tag type: %d", valType)
+			}
+		}
+		entryOffset += 12
+	}
+
+	return 1, nil
+}
+
+// RotateImage rotates the image according to the EXIF orientation tag (values 1-8).
+func RotateImage(img image.Image, orientation int) image.Image {
+	switch orientation {
+	case 3: // 180 degrees
+		return rotate180(img)
+	case 6: // 90 degrees CW
+		return rotate90(img)
+	case 8: // 270 degrees CW (90 CCW)
+		return rotate270(img)
+	default:
+		return img
+	}
+}
+
+func rotate90(img image.Image) *image.RGBA {
+	bounds := img.Bounds()
+	dest := image.NewRGBA(image.Rect(0, 0, bounds.Dy(), bounds.Dx()))
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			dest.Set(bounds.Max.Y-1-y, x, img.At(x, y))
+		}
+	}
+	return dest
+}
+
+func rotate180(img image.Image) *image.RGBA {
+	bounds := img.Bounds()
+	dest := image.NewRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			dest.Set(bounds.Max.X-1-x, bounds.Max.Y-1-y, img.At(x, y))
+		}
+	}
+	return dest
+}
+
+func rotate270(img image.Image) *image.RGBA {
+	bounds := img.Bounds()
+	dest := image.NewRGBA(image.Rect(0, 0, bounds.Dy(), bounds.Dx()))
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			dest.Set(y, bounds.Max.X-1-x, img.At(x, y))
+		}
+	}
+	return dest
 }
