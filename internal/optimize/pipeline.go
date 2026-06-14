@@ -294,6 +294,8 @@ func processCollagePair(
 	collageName := artwork.BuildOptimizedName(combinedStem, cfg.MaxWidth, cfg.MaxHeight, combinedHash, ext)
 	collagePath := filepath.Join(artworkDir, collageName)
 
+	// 0o644 is intentional — artwork files must be world-readable so they
+	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
 	out, err := os.OpenFile(collagePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return "", fmt.Errorf("create collage output: %w", err)

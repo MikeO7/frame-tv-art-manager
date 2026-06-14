@@ -222,6 +222,8 @@ func rewriteImage(f *os.File, path, filename string, width, height int, needsAdj
 	_ = f.Close()
 
 	// Save back to disk.
+	// 0o644 is intentional — artwork files must be world-readable so they
+	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
 	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return 0, 0, fmt.Errorf("create optimized file: %w", err)

@@ -148,6 +148,8 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename string) (boo
 	}
 
 	tmpPath := destPath + ".tmp"
+	// 0o644 is intentional — artwork files must be world-readable so they
+	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
 	out, err := os.OpenFile(filepath.Clean(tmpPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return false, fmt.Errorf("create temp file: %w", err)
