@@ -1,16 +1,27 @@
 // Package health provides a lightweight HTTP health check server
 // for monitoring the sync service from Docker healthchecks,
 // Uptime Kuma, Home Assistant, or similar systems.
+//
+//nolint:goconst // string literals are used for JSON key and values in health check endpoints
 package health
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 // Status holds the current service health state.
@@ -82,17 +93,17 @@ func (s *Status) SetTVStatus(ip string, status TVStatus) {
 
 // Server runs a lightweight HTTP health check endpoint.
 type Server struct {
+	cfg    *config.Config
 	status *Status
-	port   int
 	logger *slog.Logger
 	server *http.Server
 }
 
-// NewServer creates a health check server. If port is 0, the server
+// NewServer creates a health check server. If cfg is nil or HealthPort is 0, the server
 // is effectively disabled (Start will be a no-op).
 //
 // Parameters:
-//   - port:   The port number for the HTTP server to listen on.
+//   - cfg:    The application configuration struct.
 //   - status: A reference to the application's global health status tracker.
 //   - logger: A structured logger for recording server startup and shutdown.
 //
@@ -101,13 +112,13 @@ type Server struct {
 //
 // Example:
 //
-//	server := health.NewServer(8080, status, logger)
+//	server := health.NewServer(cfg, status, logger)
 //	server.Start()
 //	defer server.Shutdown(ctx)
-func NewServer(port int, status *Status, logger *slog.Logger) *Server {
+func NewServer(cfg *config.Config, status *Status, logger *slog.Logger) *Server {
 	return &Server{
+		cfg:    cfg,
 		status: status,
-		port:   port,
 		logger: logger,
 	}
 }
@@ -115,16 +126,17 @@ func NewServer(port int, status *Status, logger *slog.Logger) *Server {
 // Start begins serving health check endpoints in a goroutine.
 // Returns immediately. Call Shutdown to stop.
 func (s *Server) Start() {
-	if s.port == 0 {
+	if s.cfg == nil || s.cfg.HealthPort == 0 {
 		return
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
+	mux.HandleFunc("/upload", s.handleUpload)
 
 	s.server = &http.Server{
-		Addr:              fmt.Sprintf(":%d", s.port),
+		Addr:              fmt.Sprintf(":%d", s.cfg.HealthPort),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
@@ -133,7 +145,7 @@ func (s *Server) Start() {
 	}
 
 	go func() {
-		s.logger.Info("health server started", "port", s.port)
+		s.logger.Info("health server started", "port", s.cfg.HealthPort)
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			s.logger.Error("health server error", "error", err)
 		}
@@ -188,4 +200,118 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// handleUpload processes HTTP multipart file uploads for artwork.
+//
+//nolint:gocyclo,funlen // complexity and length are due to sequential validation of multipart file parameters
+func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	if s.cfg == nil || !s.cfg.UploadEnabled {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"error","error":"Upload endpoint is disabled"}`))
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_, _ = w.Write([]byte(`{"status":"error","error":"Method not allowed"}`))
+		return
+	}
+
+	maxSize := int64(s.cfg.MaxDownloadSizeMB) * 1024 * 1024
+	if maxSize <= 0 {
+		maxSize = 20 * 1024 * 1024
+	}
+
+	// Limit request body size to prevent DoS attacks
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
+
+	err := r.ParseMultipartForm(maxSize)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"status":"error","error":"File too large or invalid request"}`))
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"status":"error","error":"Missing 'file' parameter"}`))
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	// Read header bytes to check file signature
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"status":"error","error":"Failed to read upload stream"}`))
+		return
+	}
+
+	contentType := http.DetectContentType(buf[:n])
+	var ext string
+	switch contentType {
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/png":
+		ext = ".png"
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"status":"error","error":"Unsupported file type (only JPEG and PNG are allowed)"}`))
+		return
+	}
+
+	// Buffer the entire file to compute hash and write to disk
+	var bodyBytes bytes.Buffer
+	bodyBytes.Write(buf[:n])
+	_, err = io.Copy(&bodyBytes, file)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"status":"error","error":"Failed to read upload payload"}`))
+		return
+	}
+
+	hasher := sha256.New()
+	hasher.Write(bodyBytes.Bytes())
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))
+	hashPrefix := hash[:12]
+
+	filename := artwork.BuildHashName("upload", hashPrefix, ext)
+	destPath := filepath.Join(s.cfg.ArtworkDir, filename)
+
+	if _, err := os.Stat(destPath); err == nil {
+		// File already exists - deduplicated!
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":   "ok",
+			"message":  "File already exists (deduplicated)",
+			"filename": filename,
+		})
+		return
+	}
+
+	err = os.WriteFile(destPath, bodyBytes.Bytes(), 0o644)
+	if err != nil {
+		s.logger.Error("Failed to write uploaded file", "path", destPath, "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"status":"error","error":"Failed to save uploaded file"}`))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":   "ok",
+		"message":  "File uploaded successfully",
+		"filename": filename,
+	})
 }

@@ -3,6 +3,8 @@ services:
     image: mikeo/frame-tv-art-manager
     build: .
     restart: unless-stopped
+    ports:
+      - "8080:8080" # Exposed for LAN uploads and external health checks
     environment:
       # Comma-separated list of TV IP addresses (REQUIRED)
       TV_IPS: "192.168.1.100"
@@ -57,6 +59,7 @@ services:
 
       # --- Optional: Health Check Port (Default 8080. Note: Setting this to 0 completely disables the health server) ---
       # HEALTH_PORT: "8080"
+      # UPLOAD_ENABLED: "false" # Set to true to enable HTTP POST /upload endpoint for photo sync
     volumes:
       # Mount a single data directory. The app will automatically create
       # frame-tv-art-manager/artwork and frame-tv-art-manager/tokens subfolders.

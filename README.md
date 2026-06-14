@@ -160,6 +160,134 @@ docker compose down && docker compose up -d
 ```
 The manager will download your custom feed, run smart crops, generate stable hashes to prevent duplicate downloads, and automatically sync everything with your TV in the background!
 
+## 📸 Syncing Apple Photos & Favorites (iOS & macOS)
+
+You can push your **Favorites**, custom photo albums, or any local photos directly to your Frame TV from an iPhone, iPad, or Mac.
+
+The manager hosts a secure local upload endpoint at `POST http://<server-ip>:8080/upload`. Any JPEG/PNG image sent to this endpoint is automatically optimized to 4K, framed with your chosen matte style, and synced to your TV.
+
+### Prerequisites
+1. **Enable Uploads:** Add `UPLOAD_ENABLED=true` to your environment settings.
+2. **Expose Ports:** Ensure port `8080` is mapped in your `docker-compose.yml`:
+   ```yaml
+   ports:
+     - "8080:8080"
+   ```
+
+---
+
+### Method 1: iPhone & iPad (iOS Shortcut)
+
+You can use the built-in **Shortcuts** app to upload your favorites or a specific album over Wi-Fi with a single tap.
+
+[📥 Download Ready-to-Use iOS Shortcut](https://www.icloud.com/shortcuts/YOUR_SHORTCUT_ID_HERE)
+*(After downloading, iOS will prompt you to enter your server's IP address automatically. Alternatively, follow the manual steps below).*
+
+#### 1. Create the Shortcut
+1. Open the **Shortcuts** app on your iPhone or iPad.
+2. Tap the **`+`** icon in the top right to create a new shortcut. Name it **"Sync to Frame TV"**.
+3. Add a **Find Photos** action:
+   - Add filter: **`Favorite is Yes`** (or `Album is [Your Album]`).
+   - Add filter: **`Media Type is Image`** (excludes videos).
+   - Turn on **`Limit`** and set it to **`50`** (recommended to keep syncs fast).
+4. Add a **Repeat with Each** action (passing the found photos).
+5. Inside the loop, add a **Convert Image** action:
+   - Convert **`Repeat Item`** to **`JPEG`** *(Critical: Frame TVs do not support iPhone's default HEIC format)*.
+6. Still inside the loop, add a **Get Contents of URL** action:
+   - Set the URL to: `http://<YOUR_SERVER_IP>:8080/upload` (replace with your server's IP).
+   - Set the method to **`POST`**.
+   - Under **Request Body**, select **`Form`**.
+   - Add a field: **Key** = `file`, **Value** = **`Converted Image`**, **Type** = `File`.
+7. Done! Tap the **Play** button to test the upload.
+
+#### 2. Automate it (Optional)
+You can make this run silently in the background:
+1. Tap the **Automation** tab in the Shortcuts app.
+2. Tap **`+`** → **Create Personal Automation**.
+3. Choose a trigger (e.g. **Time of Day** like `02:00 AM`, or **Wi-Fi** when connecting to your home network).
+4. Set the action to **Run Shortcut** → select **"Sync to Frame TV"**.
+5. Turn off **Ask Before Running** and turn off **Notify When Run**.
+
+---
+
+### Method 2: macOS (Automatic Sync via CLI)
+
+This uses the popular `osxphotos` tool to export your favorites and upload them.
+
+#### 1. Grant Terminal Full Disk Access
+Because macOS secures your local Photos library, you must grant your Terminal app access to read it:
+1. Open **System Settings** → **Privacy & Security** → **Full Disk Access**.
+2. Toggle **Terminal** (or **iTerm**) to **On**.
+
+#### 2. Install osxphotos
+Run this command to install the export CLI:
+```bash
+pip3 install osxphotos
+```
+
+#### 3. Save the Sync Script
+Create a script named `~/frame-tv-sync.sh`:
+```bash
+#!/bin/bash
+SERVER="http://<YOUR_SERVER_IP>:8080"
+TEMP_DIR=$(mktemp -d)
+
+# Add Homebrew and pip bin paths for launchd environment
+export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/Library/Python/3.9/bin:$PATH"
+
+# Export favorites as JPEGs
+osxphotos export "$TEMP_DIR" \
+  --favorite \
+  --convert-to-jpeg \
+  --jpeg-quality 0.95 \
+  --skip-edited \
+  --skip-live \
+  --skip-raw \
+  --update \
+  --cleanup \
+  2>/dev/null
+
+# Upload each exported photo
+for f in "$TEMP_DIR"/*.jpeg "$TEMP_DIR"/*.jpg; do
+  [ -f "$f" ] || continue
+  curl -s -X POST -F "file=@$f" "$SERVER/upload"
+done
+
+rm -rf "$TEMP_DIR"
+```
+Make it executable:
+```bash
+chmod +x ~/frame-tv-sync.sh
+```
+
+#### 4. Automate with Launch Agent (Optional)
+To sync every hour automatically, save the following as `~/Library/LaunchAgents/com.frametv.photosync.plist`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.frametv.photosync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>~/frame-tv-sync.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+```
+Load the agent:
+```bash
+launchctl load ~/Library/LaunchAgents/com.frametv.photosync.plist
+```
+
 ---
 
 ## Configuration Reference
@@ -226,6 +354,7 @@ You can customize the engine's behavior by adjusting these environment variables
 | `MAX_ARTWORK_IMAGES` | `100` | Maximum number of images to sync. Increase if your collection is larger. |
 | `MAX_DOWNLOAD_SIZE_MB` | `20` | Maximum download size per image in megabytes. |
 | `HEALTH_PORT` | `8080` | Port for HTTP `/health` and `/status` endpoints (`0` disables the health server). |
+| `UPLOAD_ENABLED` | `false` | Set to `true` to enable HTTP `POST /upload` endpoint for photo uploads (syncs to TV). |
 | `CONNECTION_TIMEOUT_SECONDS` | `60` | Connection timeout for WSS handshake. |
 | `API_TIMEOUT_SECONDS` | `60` | API timeout for art API responses. |
 | `UPLOAD_DELAY_MS` | `3000` | Pause between consecutive image uploads in milliseconds. |
