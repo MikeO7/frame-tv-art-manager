@@ -380,3 +380,46 @@ func TestUpload_SuccessAndDeduplication(t *testing.T) {
 		t.Errorf("expected duplicate message, got %q", resp2["message"])
 	}
 }
+
+func TestUpload_SuccessRawBinary(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+
+	// Valid JPEG header is FFD8
+	jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
+	for i := 0; i < 500; i++ {
+		jpegContent = append(jpegContent, 0x00)
+	}
+
+	// Create request with raw body and content type
+	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(jpegContent))
+	req.Header.Set("Content-Type", "image/jpeg")
+
+	w := httptest.NewRecorder()
+	srv.handleUpload(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp["status"] != "ok" {
+		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
+
+	filename, ok := resp["filename"].(string)
+	if !ok || filename == "" {
+		t.Fatalf("missing filename in response")
+	}
+
+	// Verify file is saved to disk
+	filePath := filepath.Join(tmpDir, filename)
+	if _, err := os.Stat(filePath); err != nil {
+		t.Errorf("file was not saved: %v", err)
+	}
+}

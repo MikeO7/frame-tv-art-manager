@@ -196,9 +196,10 @@ You can use the built-in **Shortcuts** app to upload your favorites or a specifi
 6. Still inside the loop, add a **Get Contents of URL** action:
    - Set the URL to: `http://<YOUR_SERVER_IP>:8080/upload` (replace with your server's IP).
    - Set the method to **`POST`**.
-   - Under **Request Body**, select **`Form`**.
-   - Add a field: **Key** = `file`, **Value** = **`Converted Image`**, **Type** = `File`.
+   - Set **Request Body** to **`File`** (or **`Converted Image`**).
 7. Done! Tap the **Play** button to test the upload.
+
+> 🔒 **iOS Permissions Troubleshooting:** If Shortcuts reports a permission error when running, open the **Settings** app on your device, select **Shortcuts** → **Advanced**, and turn on the toggles for **Allow Running Scripts** and **Allow Sharing Large Amounts of Data (if visible)**.
 
 #### 2. Automate it (Optional)
 You can make this run silently in the background:
