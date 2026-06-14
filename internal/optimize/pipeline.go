@@ -57,7 +57,7 @@ type optContext struct {
 //	}
 //	fmt.Printf("Successfully optimized %d images\n", count)
 //
-//nolint:revive,funlen,gocyclo // length, and argument count justified for parallel task processing
+//nolint:gocognit,revive,funlen,gocyclo // complexity, length, and argument count justified for parallel task processing
 func OptimizeCatalog(
 	ctx context.Context,
 	artworkDir string,
