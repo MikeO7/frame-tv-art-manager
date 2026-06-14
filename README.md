@@ -331,7 +331,7 @@ You can customize the engine's behavior by adjusting these environment variables
 | `IMAGE_MUSEUM_INTENSITY` | `5` | Canvas weave/paint ridge depth weighting (scale from `1` to `10`). |
 | `MATTE_STYLE` | `none` | Add a cardboard frame style around your art: `none`, `modernthin`, `modern`, `modernwide`, `flexible`, `shadowbox`, `panoramic`, `triptych`, `squares`. |
 | `MATTE_COLOR` | *(empty)* | Color options: `polar`, `sand`, `warm`, `neutral`, `sage`, `burgandy`, `navy`, `apricot`. Format as `MATTE_STYLE=shadowbox_polar`. |
-| `PORTRAIT_MODE` | `collage` | How to handle vertical portrait photos: `collage` (join side-by-side pairs, default), `pad` (pad with blurred background bars), `crop` (legacy center crop). |
+| `PORTRAIT_MODE` | `crop` | How to handle vertical portrait photos: `collage` (join side-by-side pairs), `pad` (pad with blurred background bars), `crop` (legacy center crop, default). |
 
 ### ☀️ Ambient Elevation & Shutdown Control
 
