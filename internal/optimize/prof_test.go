@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func BenchmarkGenerateSaliencyMap_Prof(b *testing.B) {
+func BenchmarkGenerateSaliencyMapProf(b *testing.B) {
 	src := image.NewRGBA(image.Rect(0, 0, 256, 144))
 	for i := 0; i < len(src.Pix); i++ {
 		src.Pix[i] = uint8(i % 256)
