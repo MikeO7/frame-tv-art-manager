@@ -121,7 +121,9 @@ func (m *Mapping) Rename(oldName, newName string) bool {
 	defer m.mu.Unlock()
 	if id, ok := m.data[oldName]; ok {
 		delete(m.data, oldName)
-		m.data[newName] = id
+		if newName != "" {
+			m.data[newName] = id
+		}
 		if err := m.saveLocked(); err != nil {
 			slog.Error("failed to auto-save mapping Rename", "old", oldName, "new", newName, "error", err)
 		}
