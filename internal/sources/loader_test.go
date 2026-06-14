@@ -396,7 +396,7 @@ func TestLoader_executeDownload(t *testing.T) {
 	}))
 	defer server.Close()
 
-	downloaded, err := l.executeDownload(context.Background(), server.URL, "000__direct__test.jpg")
+	downloaded, err := l.executeDownload(context.Background(), server.URL, "000__direct__test.jpg", "000__direct__test")
 	if err != nil {
 		t.Fatalf("executeDownload failed: %v", err)
 	}

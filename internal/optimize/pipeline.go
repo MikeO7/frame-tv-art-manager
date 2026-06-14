@@ -30,7 +30,22 @@ type optContext struct {
 	onRename   func(oldName, newName string)
 	catalog    Catalog
 	logger     *slog.Logger
-	mu         *sync.Mutex
+	mu         sync.Mutex
+}
+
+func (o *optContext) recordDelete(filename string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.localFiles, filename)
+}
+
+func (o *optContext) recordRename(oldName, newName string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.localFiles, oldName)
+	if newName != "" {
+		o.localFiles[newName] = struct{}{}
+	}
 }
 
 // OptimizeCatalog performs parallel image resizing/validation across the catalog files.
@@ -104,7 +119,6 @@ func OptimizeCatalog(
 	}
 
 	var wg sync.WaitGroup
-	var mu sync.Mutex
 	wg.Add(numWorkers)
 
 	o := &optContext{
@@ -114,7 +128,6 @@ func OptimizeCatalog(
 		onRename:   onRename,
 		catalog:    catalog,
 		logger:     logger,
-		mu:         &mu,
 	}
 
 	for w := 0; w < numWorkers; w++ {
@@ -150,9 +163,7 @@ func handleSingleOptimization(filename string, o *optContext) (bool, bool) {
 	if !o.cfg.Enabled {
 		if err := ValidateImage(path); err != nil {
 			o.logger.Warn("skipping corrupt image", "file", filename, "error", err)
-			o.mu.Lock()
-			delete(o.localFiles, filename)
-			o.mu.Unlock()
+			o.recordDelete(filename)
 			return false, false
 		}
 		return false, true
@@ -161,9 +172,7 @@ func handleSingleOptimization(filename string, o *optContext) (bool, bool) {
 	newFilename, modified, err := OptimizeFile(path, o.cfg, o.logger)
 	if err != nil {
 		o.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
-		o.mu.Lock()
-		delete(o.localFiles, filename)
-		o.mu.Unlock()
+		o.recordDelete(filename)
 		return false, false
 	}
 
@@ -172,10 +181,7 @@ func handleSingleOptimization(filename string, o *optContext) (bool, bool) {
 			o.onRename(filename, newFilename)
 		}
 		o.catalog.NoteFileRename(filename, newFilename)
-		o.mu.Lock()
-		delete(o.localFiles, filename)
-		o.localFiles[newFilename] = struct{}{}
-		o.mu.Unlock()
+		o.recordRename(filename, newFilename)
 	}
 
 	return modified, true

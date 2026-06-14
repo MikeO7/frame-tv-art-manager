@@ -38,10 +38,10 @@ func TestArtworkCatalog_InvalidateCacheAndRename(t *testing.T) {
 func TestArtworkCatalog_RegisterHashAndMaxReached(t *testing.T) {
 	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
 
-	if existing, dup := idx.RegisterHash("hash1", "a.jpg"); dup || existing != "" {
+	if existing, dup := idx.registerHash("hash1", "a.jpg"); dup || existing != "" {
 		t.Errorf("first register should not be duplicate: %q %v", existing, dup)
 	}
-	if existing, dup := idx.RegisterHash("hash1", "b.jpg"); !dup || existing != "a.jpg" {
+	if existing, dup := idx.registerHash("hash1", "b.jpg"); !dup || existing != "a.jpg" {
 		t.Errorf("second register should be duplicate: %q %v", existing, dup)
 	}
 
@@ -57,9 +57,9 @@ func TestArtworkCatalog_RegisterHashAndMaxReached(t *testing.T) {
 
 func TestArtworkCatalog_SetHash(t *testing.T) {
 	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
-	idx.SetHash("hash", "file.jpg")
+	idx.setHash("hash", "file.jpg")
 	if idx.hashIndex["hash"] != "file.jpg" {
-		t.Errorf("SetHash failed: %q", idx.hashIndex["hash"])
+		t.Errorf("setHash failed: %q", idx.hashIndex["hash"])
 	}
 }
 
@@ -138,7 +138,7 @@ func TestArtworkCatalog_RebuildCacheHit(t *testing.T) {
 
 func TestArtworkCatalog_LookupAndRegisterPrefix(t *testing.T) {
 	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
-	idx.RegisterPrefix("001__nasa__apod", "001__nasa__apod.h_abc.jpg")
+	idx.registerPrefix("001__nasa__apod", "001__nasa__apod.h_abc.jpg")
 
 	got, ok := idx.LookupPrefix("001__nasa__apod")
 	if !ok || got != "001__nasa__apod.h_abc.jpg" {
@@ -148,6 +148,44 @@ func TestArtworkCatalog_LookupAndRegisterPrefix(t *testing.T) {
 	got, ok = idx.LookupPrefix("nasa__apod")
 	if !ok || got != "001__nasa__apod.h_abc.jpg" {
 		t.Errorf("LookupPrefix with stripped index = %q %v", got, ok)
+	}
+}
+
+func TestArtworkCatalog_RegisterDownload(t *testing.T) {
+	dir := t.TempDir()
+	idx := NewArtworkCatalog(dir, slog.Default())
+
+	tempPath := filepath.Join(dir, "temp.jpg")
+	if err := os.WriteFile(tempPath, []byte("image-data-1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// First download
+	name, isNew, err := idx.RegisterDownload(tempPath, "image.jpg", "image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isNew {
+		t.Error("expected first register to be new")
+	}
+	if !idx.visited[name] {
+		t.Error("expected final filename to be visited")
+	}
+
+	// Duplicate download
+	tempPath2 := filepath.Join(dir, "temp2.jpg")
+	if err := os.WriteFile(tempPath2, []byte("image-data-1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	name2, isNew2, err := idx.RegisterDownload(tempPath2, "image2.jpg", "image2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isNew2 {
+		t.Error("expected duplicate to not be new")
+	}
+	if name2 != name {
+		t.Errorf("expected duplicate name %q to equal original %q", name2, name)
 	}
 }
 
