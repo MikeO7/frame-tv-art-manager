@@ -129,3 +129,58 @@ func TestCapacityManager_RecordSuccess(t *testing.T) {
 		t.Errorf("expected recovery trigger, got %+v", state)
 	}
 }
+
+func TestCapacityManager_Errors(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "capacity-err-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Cause load error (e.g. read from a path where a parent directory is actually a file)
+	dummyFile := filepath.Join(tempDir, "dummy_file")
+	if err := os.WriteFile(dummyFile, []byte("xyz"), 0o600); err != nil {
+		t.Fatalf("failed to create dummy file: %v", err)
+	}
+
+	cmBlocked := NewCapacityManager(dummyFile, "1.2.3.4")
+
+	// 1. Load failure
+	_, err = cmBlocked.Load()
+	if err == nil {
+		t.Errorf("expected load error when directory is a file")
+	}
+
+	// 2. Save failure
+	err = cmBlocked.Save(&CapacityState{IsFull: true})
+	if err == nil {
+		t.Errorf("expected save error when directory is a file")
+	}
+
+	// 3. RecordSuccess failure on Load
+	_, err = cmBlocked.RecordSuccess()
+	if err == nil {
+		t.Errorf("expected RecordSuccess to fail when Load fails")
+	}
+
+	// 4. RecordSuccess failure on Save
+	cmWritable := NewCapacityManager(tempDir, "9.9.9.9")
+	state := &CapacityState{IsFull: true, SuccessStreak: 5, MaxImages: 10}
+	if err := cmWritable.Save(state); err != nil {
+		t.Fatalf("failed to save initial state: %v", err)
+	}
+
+	_, err = cmWritable.Load()
+	if err != nil {
+		t.Fatalf("expected load to succeed: %v", err)
+	}
+
+	// Replace the capacity file with a directory to block future writes.
+	filePath := cmWritable.path
+	if err := os.Remove(filePath); err != nil {
+		t.Fatalf("failed to remove capacity file: %v", err)
+	}
+	if err := os.Mkdir(filePath, 0o700); err != nil {
+		t.Fatalf("failed to create directory in place of file: %v", err)
+	}
+}
