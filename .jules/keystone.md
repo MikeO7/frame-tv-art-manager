@@ -4,3 +4,6 @@
 ## 2026-06-13 - Interface Assertion Requires the Correct Package Import
 **Learning:** Moving a type assertion like `var _ TVTransport = (*samsung.Client)(nil)` from `transport_check.go` to `session.go` requires the `samsung` package to be imported in the target file.
 **Action:** When manually appending code blocks, always verify that the target file contains all necessary imports. Run a build check or run `goimports -w <file>` immediately after modifications.
+## 2024-06-14 - Dependency preservation during file merging
+**Learning:** When merging go files using automated text scripts (like sed or python regex), be incredibly careful that you don't inadvertently alter third-party imports (e.g., downgrading gopkg.in/yaml.v3 to yaml.v2) which can happen if you rely on formatters that have caching or missing modules, or if your regex is too broad. This introduces dangerous side-effects outside the scope of architectural consolidation.
+**Action:** Always manually verify the import block after a merge, specifically checking the versions of third party libraries against the state of go.mod before and after `go mod tidy`.
