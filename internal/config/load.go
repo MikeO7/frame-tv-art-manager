@@ -72,7 +72,7 @@ func Load() (*Config, error) {
 		GateTimeout:         time.Duration(envInt("GATE_TIMEOUT_MS", 10000)) * time.Millisecond,
 		PUID:                envInt("PUID", 0),
 		PGID:                envInt("PGID", 0),
-		PortraitMode:        strings.ToLower(envStr("PORTRAIT_MODE", "collage")),
+		PortraitMode:        strings.ToLower(envStr("PORTRAIT_MODE", "crop")),
 	}
 
 	// Parse TV IPs (required).

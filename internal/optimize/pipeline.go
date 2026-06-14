@@ -73,12 +73,23 @@ func OptimizeCatalog(
 
 	var optimizedCount int64
 
-	// If in collage mode, find, pair, and process portrait photos first
-	if cfg.PortraitMode == "collage" {
+	// Collage pairing runs in two cases:
+	//   1. Always for uploaded files (prefixed "upload__"): iPhone/web uploads are
+	//      personal photos and benefit from side-by-side collage layout.
+	//   2. For all portrait files when PORTRAIT_MODE=collage is explicitly set.
+	//
+	// Remote source images (Unsplash, NASA, etc.) default to crop mode and are
+	// excluded from auto-collage unless PORTRAIT_MODE=collage is set.
+	wantsCollageAll := cfg.PortraitMode == "collage"
+	{
 		var rawPortraits []string
 		for filename := range localFiles {
 			if strings.HasPrefix(filename, "._") {
 				delete(localFiles, filename)
+				continue
+			}
+			isUpload := strings.HasPrefix(filename, "upload__")
+			if !wantsCollageAll && !isUpload {
 				continue
 			}
 			if !strings.Contains(filename, "_opt.h_") {
