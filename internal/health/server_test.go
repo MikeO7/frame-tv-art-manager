@@ -256,12 +256,29 @@ func TestUpload_MethodNotAllowed(t *testing.T) {
 	status := NewStatus()
 	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	req := httptest.NewRequest(http.MethodPut, "/upload", nil)
 	w := httptest.NewRecorder()
 	srv.handleUpload(w, req)
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
+	}
+}
+
+func TestUpload_GETHTML(t *testing.T) {
+	status := NewStatus()
+	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	w := httptest.NewRecorder()
+	srv.handleUpload(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+
+	if w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Errorf("expected HTML content-type, got %s", w.Header().Get("Content-Type"))
 	}
 }
 
