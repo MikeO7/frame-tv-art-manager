@@ -1,6 +1,7 @@
 package samsung
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -20,7 +21,7 @@ func (c *connection) recvLoop() {
 	}
 
 	for {
-		_, msg, err := conn.ReadMessage()
+		_, msg, err := conn.Read(context.Background())
 		if err != nil {
 			if !c.closed.Load() {
 				c.logger.Debug("recv loop error", "error", err)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
 
 // connection manages a single WSS connection to a Samsung Frame TV endpoint.
@@ -60,28 +61,33 @@ func newConnection(
 }
 
 func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, error) {
-	dialer := websocket.Dialer{
-		//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
-		TLSClientConfig:  &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
-		HandshakeTimeout: c.timeout,
+	client := &http.Client{
+		Transport: &http.Transport{
+			//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
+		},
 	}
 
-	conn, httpResp, err := dialer.DialContext(ctx, wsURL, nil)
+	dialCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	conn, httpResp, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
+		HTTPClient: client,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("websocket dial: %w", err)
 	}
 	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
+		_ = httpResp.Body.Close()
 	}
 	return conn, nil
 }
 
-func (c *connection) readHandshake(conn *websocket.Conn) error {
-	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-		return fmt.Errorf("set read deadline: %w", err)
-	}
+func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) error {
+	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
-	_, msg, err := conn.ReadMessage()
+	_, msg, err := conn.Read(readCtx)
 	if err != nil {
 		return fmt.Errorf("read handshake: %w", err)
 	}
@@ -105,12 +111,11 @@ func (c *connection) readHandshake(conn *websocket.Conn) error {
 	return nil
 }
 
-func (c *connection) waitForChannelReady(conn *websocket.Conn) error {
-	if err := conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-		return fmt.Errorf("set read deadline: %w", err)
-	}
+func (c *connection) waitForChannelReady(ctx context.Context, conn *websocket.Conn) error {
+	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
-	_, msg, err := conn.ReadMessage()
+	_, msg, err := conn.Read(readCtx)
 	if err != nil {
 		return fmt.Errorf("read channel ready: %w", err)
 	}
@@ -143,26 +148,22 @@ func (c *connection) Open(ctx context.Context) error {
 		return err
 	}
 
-	if err := c.readHandshake(conn); err != nil {
-		_ = conn.Close()
+	if err := c.readHandshake(ctx, conn); err != nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
 		return err
 	}
 
 	if c.endpoint == "com.samsung.art-app" {
-		if err := c.waitForChannelReady(conn); err != nil {
-			_ = conn.Close()
+		if err := c.waitForChannelReady(ctx, conn); err != nil {
+			_ = conn.Close(websocket.StatusNormalClosure, "")
 			return err
 		}
-	}
-
-	if err := conn.SetReadDeadline(time.Time{}); err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("clear read deadline: %w", err)
 	}
 
 	c.conn = conn
 	c.closed.Store(false)
 	c.recvDone = make(chan struct{})
+	//nolint:contextcheck // background reader goroutine does not use Open's transient handshake context
 	go c.recvLoop()
 
 	c.logger.Info("WebSocket connected", "endpoint", c.endpoint, "host", c.host)
@@ -179,7 +180,7 @@ func (c *connection) Close() error {
 	}
 
 	c.closed.Store(true)
-	err := c.conn.Close()
+	err := c.conn.Close(websocket.StatusNormalClosure, "")
 	c.conn = nil
 
 	if c.recvDone != nil {
@@ -222,7 +223,7 @@ func (c *connection) SendAndWait(ctx context.Context, payload []byte, requestID 
 		c.pendingMu.Unlock()
 	}()
 
-	if err := c.Send(payload); err != nil {
+	if err := c.Send(ctx, payload); err != nil {
 		return nil, err
 	}
 
@@ -246,7 +247,7 @@ func (c *connection) SendAndWaitEvent(ctx context.Context, payload []byte, event
 }
 
 // Send writes a JSON text message to the WebSocket.
-func (c *connection) Send(payload []byte) error {
+func (c *connection) Send(ctx context.Context, payload []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -255,10 +256,7 @@ func (c *connection) Send(payload []byte) error {
 	}
 
 	c.logger.Debug("WS SEND", "payload", string(payload))
-	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
-		return fmt.Errorf("set write deadline: %w", err)
-	}
-	return c.conn.WriteMessage(websocket.TextMessage, payload)
+	return c.conn.Write(ctx, websocket.MessageText, payload)
 }
 
 // formatURL builds the WebSocket URL for the specified endpoint.
