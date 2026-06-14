@@ -126,15 +126,15 @@ func (c *ArtworkCatalog) LookupPrefix(identity string) (string, bool) {
 	return filename, ok
 }
 
-// RegisterPrefix associates a source identity with a filename.
-func (c *ArtworkCatalog) RegisterPrefix(identity, filename string) {
+// registerPrefix associates a source identity with a filename.
+func (c *ArtworkCatalog) registerPrefix(identity, filename string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.prefixMap[artwork.StripIndexPrefix(identity)] = filename
 }
 
-// RegisterHash records a content hash. Returns existing filename and whether it was a duplicate.
-func (c *ArtworkCatalog) RegisterHash(hash, filename string) (string, bool) {
+// registerHash records a content hash. Returns existing filename and whether it was a duplicate.
+func (c *ArtworkCatalog) registerHash(hash, filename string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	existing, ok := c.hashIndex[hash]
@@ -145,11 +145,57 @@ func (c *ArtworkCatalog) RegisterHash(hash, filename string) (string, bool) {
 	return "", false
 }
 
-// SetHash associates a hash with a filename, replacing any prior entry.
-func (c *ArtworkCatalog) SetHash(hash, filename string) {
+// setHash associates a hash with a filename, replacing any prior entry.
+func (c *ArtworkCatalog) setHash(hash, filename string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.hashIndex[hash] = filename
+}
+
+// RegisterDownload hashes a downloaded file, checks for duplicates,
+// renames it to a hash-based filename, registers it in index maps, and marks it visited.
+// It returns the final filename, whether it was newly added (not a duplicate), and any error.
+func (c *ArtworkCatalog) RegisterDownload(tempPath, filename, identity string) (string, bool, error) {
+	hash, err := fileHash(tempPath)
+	if err != nil {
+		return "", false, fmt.Errorf("hash file: %w", err)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if this content is already in the catalog
+	if existing, duplicate := c.hashIndex[hash]; duplicate {
+		c.visited[existing] = true
+		_ = os.Remove(tempPath)
+		return existing, false, nil
+	}
+
+	ext := filepath.Ext(filename)
+	cleanIdentity := artwork.StripIndexPrefix(identity)
+
+	// Normalize identity by removing potential .h_ suffix if present
+	if parts := strings.Split(cleanIdentity, ".h_"); len(parts) == 2 {
+		cleanIdentity = parts[0]
+	}
+
+	finalName := artwork.BuildHashName(cleanIdentity, hash[:12], ext)
+	finalPath := filepath.Join(c.artworkDir, finalName)
+
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		c.hashIndex[hash] = filename
+		c.prefixMap[cleanIdentity] = filename
+		c.catalog[filename] = struct{}{}
+		c.visited[filename] = true
+		return filename, true, fmt.Errorf("rename to final hash name: %w", err)
+	}
+
+	c.hashIndex[hash] = finalName
+	c.prefixMap[cleanIdentity] = finalName
+	c.catalog[finalName] = struct{}{}
+	c.visited[finalName] = true
+
+	return finalName, true, nil
 }
 
 // MaxReached reports whether the visited file count hit the configured limit.
@@ -271,7 +317,7 @@ func (c *ArtworkCatalog) Rebuild() {
 		identity := res.identity
 		cleanIdentity := res.cleanIdentity
 
-		c.RegisterPrefix(cleanIdentity, filename)
+		c.registerPrefix(cleanIdentity, filename)
 
 		if !strings.Contains(filename, ".h_"+hash[:12]) && !strings.Contains(filename, "__"+hash[:12]) {
 			ext := filepath.Ext(filename)
@@ -280,7 +326,7 @@ func (c *ArtworkCatalog) Rebuild() {
 			if err := os.Rename(path, newPath); err == nil {
 				filename = newName
 				path = newPath
-				c.RegisterPrefix(cleanIdentity, filename)
+				c.registerPrefix(cleanIdentity, filename)
 			}
 			c.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:12])
 		}

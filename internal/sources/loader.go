@@ -20,7 +20,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"gopkg.in/yaml.v3"
 )
@@ -104,8 +103,7 @@ func (l *Loader) checkExisting(identity string) (string, bool) {
 }
 
 //nolint:gocyclo,funlen,gocognit // complexity justified for this domain-specific path
-func (l *Loader) executeDownload(ctx context.Context, url, filename string) (bool, error) {
-	destPath := filepath.Join(l.artworkDir, filename)
+func (l *Loader) executeDownload(ctx context.Context, url, filename, identity string) (bool, error) {
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
 	parsedURL, err := neturl.Parse(url)
@@ -143,7 +141,6 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename string) (boo
 	ext := extensionFromResponse(resp, url)
 	if ext != "" && !strings.HasSuffix(filename, ext) {
 		filename = strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
-		destPath = filepath.Join(l.artworkDir, filename)
 
 		if existing, ok := l.checkExisting(filename); ok {
 			l.index.MarkVisited(existing)
@@ -151,7 +148,7 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename string) (boo
 		}
 	}
 
-	tmpPath := destPath + ".tmp"
+	tmpPath := filepath.Join(l.artworkDir, filename+".tmp")
 	// 0o644 is intentional — artwork files must be world-readable so they
 	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
 	out, err := os.OpenFile(filepath.Clean(tmpPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
@@ -172,17 +169,15 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename string) (boo
 		return false, fmt.Errorf("download body: %w", err)
 	}
 
-	if err := os.Rename(tmpPath, destPath); err != nil {
+	finalName, isNew, err := l.index.RegisterDownload(tmpPath, filename, identity)
+	if err != nil {
 		_ = os.Remove(tmpPath)
-		return false, fmt.Errorf("rename temp file: %w", err)
+		return false, err
 	}
 
-	finalName, ok := l.finalizeDownload(destPath, filename)
-	if !ok {
+	if !isNew {
 		return false, nil
 	}
-
-	l.index.MarkVisited(finalName)
 
 	l.logger.Info("downloaded source image", "file", finalName, "size_bytes", written)
 	return true, nil
@@ -200,42 +195,7 @@ func (l *Loader) downloadWithIdentity(ctx context.Context, url, identity string)
 	}
 
 	filename := identity + ".jpg"
-	return l.executeDownload(ctx, url, filename)
-}
-
-func (l *Loader) finalizeDownload(path, filename string) (string, bool) {
-	hash, err := fileHash(path)
-	if err != nil {
-		l.logger.Warn("failed to hash downloaded file", "file", filename, "error", err)
-		return filename, true
-	}
-
-	if existing, duplicate := l.index.RegisterHash(hash, filename); duplicate {
-		if existing != filename {
-			l.logger.Info("discarding duplicate content", "file", filename, "matches", existing)
-			_ = os.Remove(path)
-			l.index.MarkVisited(existing)
-			return existing, false
-		}
-	}
-
-	ext := filepath.Ext(filename)
-	identity := strings.TrimSuffix(filename, ext)
-	if parts := strings.Split(identity, ".h_"); len(parts) == 2 {
-		identity = parts[0]
-	}
-
-	finalName := artwork.BuildHashName(identity, hash[:12], ext)
-	finalPath := filepath.Join(l.artworkDir, finalName)
-
-	if err := os.Rename(path, finalPath); err != nil {
-		l.logger.Warn("failed to rename to hash-based name", "file", filename, "error", err)
-		l.index.SetHash(hash, filename)
-		return filename, true
-	}
-
-	l.index.SetHash(hash, finalName)
-	return finalName, true
+	return l.executeDownload(ctx, url, filename, identity)
 }
 
 func (l *Loader) urlToSlug(url string) string {

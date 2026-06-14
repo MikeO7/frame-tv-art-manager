@@ -1,406 +1,240 @@
 # 🎨 Samsung Frame TV Art Manager
 
 [![CI Status](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MikeO7/frame-tv-art-manager/actions)
-[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-orange.svg)](LICENSE)
 
-If you own a Samsung Frame TV, you already know the struggle. Trying to upload your own custom artwork or photos using Samsung's official SmartThings mobile app is incredibly slow, clunky, and frustrating.
+Getting your own photos and artwork onto a Samsung Frame TV with the official SmartThings app is slow and fiddly. **Frame TV Art Manager** is a self-hosted background service that does it for you: it connects to your TV over your local network, processes your images so they look like real framed art, and keeps your gallery in sync — completely hands-free.
 
-To make matters worse, if your TV recently updated to the newer **Tizen 8.0+ OS** firmware, you probably noticed that practically every open-source sync tool or command-line script you found online has completely stopped working. Samsung quietly changed how WebSocket authentication and secure channels behave under the hood.
-
-I built this manager to solve that exact headache. It connects securely to your TV, processes your images so they actually look like real physical canvas prints rather than a giant glowing computer screen, and handles all your scheduling automatically.
+Point it at a folder, drop photos in from your phone, or let it auto-curate fresh artwork from Unsplash, NASA, and museum collections. It runs quietly in Docker and just works.
 
 ---
 
-## 🌟 The Killer Feature: Unsplash Auto-Curation
+## ✨ What It Does
 
-This is where the tool becomes truly set-and-forget. Stop manually downloading images, resizing them, cropping them to 16:9, and copying them over one by one.
+### 📱 Drag-and-drop Web Uploader (+ Apple Photos)
+Put a photo on the TV in seconds, from any device on your network.
+- **Web UI:** open `http://<server-ip>:8080/upload` in any browser and drag in your JPEGs or PNGs. There's a clean, mobile-friendly drop zone with live upload progress.
+- **Apple Photos / iOS Shortcuts:** build a one-tap iOS Shortcut that POSTs your favorite photos to the same `/upload` endpoint — great for sending iPhone photos to the living room automatically. (See [Syncing Apple Photos](#-syncing-apple-photos-from-ios).)
+- **Automatic de-duplication:** uploads are hashed by content, so sending the same picture twice never clutters your gallery.
 
-With the **Unsplash Auto-Curation Engine**, you can turn your living room into an ever-changing art gallery:
-1. **Find or Create a Collection**: Browse Unsplash and find a collection you love (or create a private one on your phone).
-2. **Add the ID to Your Configuration**: Drop the collection's ID into a simple `sources.yaml` file.
-3. **Walk Away**: Whenever you add a new photo to that collection on your phone or laptop, the manager automatically catches it, downloads the perfect 4K crop from the Unsplash CDN, applies beautiful physical textures, and pushes it directly onto your wall.
+> The uploader is opt-in — set `UPLOAD_ENABLED=true` to turn it on.
 
-It is completely hands-free. You curating a list of photos while riding the bus is all it takes to refresh your home's decor by the time you walk through the front door.
+### 🖼️ Auto-Curate from Unsplash, NASA & Museums
+Stop downloading and resizing files by hand. Give the manager a small list of sources and it pulls fresh, high-resolution art on every sync cycle:
+- **Unsplash** — sync an entire collection or a single photo.
+- **NASA** — wake up to the Astronomy Picture of the Day, or search the NASA image library.
+- **Art Institute of Chicago** — rotate through masterpieces by searching for `monet`, `van gogh`, etc., or pull a specific artwork by ID.
+- **Pexels** — search, curated picks, full collections, or a single photo.
+- **Pixabay** — search, editor's choice, a specific photo, or an artist's full gallery.
+- **Direct URLs** — point at any JPEG/PNG link.
 
----
+Images that disappear from your source list are automatically removed from the local collection, so your gallery always matches your config.
 
-## What It Actually Does
+### 🎨 "Museum Mode" & Smart Image Processing
+The manager doesn't just crop — it runs a real image pipeline so a digital screen reads like physical art:
+- **4K optimization:** oversized images are downscaled to crisp 4K (3840×2160) with high-quality resampling. *(On by default.)*
+- **Director's Cut smart crop:** content-aware saliency analysis (edges, faces, color contrast, rule-of-thirds) finds the real subject and crops the 16:9 frame around it instead of blindly cutting the center. *(Opt-in.)*
+- **Museum Mode:** layers canvas weave, impasto brush shading, gentle warming, and paper grain for a tangible, matte gallery look, with adjustable intensity. *(Opt-in.)*
+- **Portrait handling:** choose how vertical phone photos fill the wide screen — `collage` (two portraits side-by-side), `pad` (blurred backdrop bars), or `crop`.
+- **Mattes:** add a Frame-style border in any of Samsung's matte styles and colors (or `none` for full-screen).
 
-### 🔌 Direct API Integrations (Unsplash, NASA, and More)
-*   **Curated Collections**: Sync entire public or private Unsplash folders automatically.
-*   **NASA Daily Astronomy APOD**: Automatically pull today's official Astronomy Picture of the Day.
-*   **Museum Masterpieces**: Pull classical fine art directly from the Art Institute of Chicago archives (by artist name or specific ID).
-*   **Smart Download Tracking**: Automatically credits photographers on Unsplash by sending download telemetry signals, keeping everything above board.
-
-### 🎨 Making Digital Screens Look Like Real Art
-Most TVs displaying photos look like... bright, glowing TVs. To break that digital look, this manager lets you optionally run your artwork through a physical material simulator:
-*   **Tactile Canvas Weave**: Procedurally overlays canvas fabric fibers so the image looks tangible when you stand close to the screen.
-*   **Paint Ridges (3D Impasto)**: Uses image lighting and shadows to generate a 3D normal map, making classical paint brushstrokes look raised and textured.
-*   **Linear Color Spacing**: Handles pigment blending in a mathematically correct 64-bit linear space to prevent digital glows and maintain rich color depth.
-*   **Toned-Down Backlight Adjustments**: Keeps absolute blacks deep and tones down neon bright whites to help the TV blend into the room's actual ambient light.
-
-### ✂️ Smart Cropping (Not Just Center-Cutting)
-If you have a vertical painting or a square photo, typical resizers just stretch it or cut off the sides blindly. This manager runs a visual analyzer to find the actual focal point of the image (whether it is a person, a boat, or a tree) and dynamically crops the 16:9 frame around it so the soul of the composition is never lost.
-
-### ☀️ Auto-Brightness and Smart Power-Off
-*   **Sun-Aware Dimming**: Tracks where the sun is in your local sky based on your city's latitude and longitude. It automatically dims the screen as dusk settles and brightens it during sunny afternoons.
-*   **Gentle Nightly Shutdowns**: You can set a time for Art Mode to turn off at night (like `22:30`) to save power. The manager checks if you are actively watching a movie or playing a video game first, so it never interrupts your evening.
-
-### 🔒 Rock-Solid Tizen 8.0+ Connection Stability
-*   **REST Gate Busy Protection**: Probes the TV's secure REST endpoints before attempting to connect. If your TV is busy running Netflix or YouTube, the manager backs off silently without causing annoying "Allow Access" connection popups to disrupt your screen.
-*   **Cached Remote Tokens**: Saves your TV's authorization token locally on the first handshake. You only have to click "Allow" on your TV remote once.
+### ☀️ Smart Brightness, Auto-Off & Slideshow
+- **Sun-aware brightness:** give it your latitude/longitude and it dims and brightens the TV as the sun moves — or set a fixed brightness instead.
+- **Nightly auto-off:** set a time (e.g. `22:00`) to power down Art Mode and save energy. TVs being used for other content (apps, HDMI) are left untouched.
+- **Slideshow control:** preserve your TV's existing slideshow settings by default, or take over the shuffle/sequential timing yourself.
+- **Wake-on-LAN, multiple TVs & monitoring:** wake sleeping TVs by MAC address, sync several Frames at once from one server, and expose `/health` and `/status` endpoints for Uptime Kuma, Home Assistant, or Docker health checks.
 
 ---
 
-## Quick Start: The 2-Minute Setup
+## 🚀 Quick Start (Docker)
 
-If you have a folder of local JPEG images on a home server or computer and want to sync them directly to your TV, here is the absolute quickest way to do it.
-
-### 1. Create Your Local Directories
-Make two folders on your host computer:
-```bash
-mkdir -p frame-tv-art/artwork
-mkdir -p frame-tv-art/tokens
-```
-
-### 2. Create Your `docker-compose.yml`
-Save this file as `docker-compose.yml` inside the `frame-tv-art` folder:
+### 1. Create a `docker-compose.yml`
 ```yaml
 services:
-  frame-art-manager:
+  frame-tv-art-manager:
     image: ghcr.io/mikeo7/frame-tv-art-manager:latest
     container_name: frame-tv-art-manager
     restart: unless-stopped
+    ports:
+      - "8080:8080" # Web uploader + health checks
     environment:
-      - TV_IPS=192.168.1.150
-      - CLIENT_NAME=Living Room TV
-      - LOG_LEVEL=info
+      TV_IPS: "192.168.1.150"        # REPLACE with your TV's IP
+      CLIENT_NAME: "Home Server"
+      UPLOAD_ENABLED: "true"         # Enable the drag-and-drop uploader
+      SMART_CROP_ENABLED: "true"     # Subject-aware cropping
+      IMAGE_MUSEUM_MODE: "true"      # Canvas/impasto "real art" look
     volumes:
-      - ./artwork:/data/artwork
-      - ./tokens:/data/tokens
+      # One mount is enough — the app creates artwork/ and tokens/ inside it.
+      - ./data:/data
 ```
-> 💡 *Be sure to replace `192.168.1.150` with your Frame TV's actual local IP address (you can find this easily in your TV's Network Settings menu).*
 
-### 3. Spin It Up
-Run this command in your terminal:
+### 2. Spin it up
 ```bash
 docker compose up -d
 ```
 
-### 4. Authenticate
-Drop a `.jpg` file into your local `./artwork` folder. Look at your TV; a prompt will pop up asking you to authorize the connection from **"Living Room TV"**. Press **Allow** with your remote. The manager will save that token inside `./tokens` and run silently in the background from now on!
+### 3. Authenticate (one time)
+With `UPLOAD_ENABLED=true`, open `http://<server-ip>:8080/upload` and upload an image. Look at your TV — a prompt will ask you to authorize **"Home Server"**. Press **Allow** on the remote. The token is saved to `./data/tokens`, and the service runs silently from then on.
+
+> Image optimization is on by default. Set `IMAGE_OPTIMIZE_ENABLED=false` to upload images untouched.
 
 ---
 
-## Going Pro: Setting Up Unsplash & Custom Sources
+## 🌍 Auto-Curating from Unsplash & Feeds
 
-To connect Unsplash, NASA, and other automatic feeds, follow this step-by-step guide.
+Tell the manager where your sources config lives, then list what you want.
 
-### 🔑 Getting Your Unsplash API Keys
-1. Go to the [Unsplash Developer Portal](https://unsplash.com/developers) and create a free developer account.
-2. Click **New Application** and accept their terms (it takes less than a minute).
-3. Give your app a name (like `My Home Frame TV`).
-4. Copy the **Access Key** and **Secret Key** shown on your dashboard.
-5. Browse Unsplash, find a collection you love, and copy its ID from the URL (for example, in `unsplash.com/collections/225444/earth-from-space`, the ID is **`225444`**).
-
-### 1. Update Your `docker-compose.yml`
-Update your environment section to include your API keys and link a sources file:
+### docker-compose.yml
 ```yaml
-services:
-  frame-art-manager:
-    image: ghcr.io/mikeo7/frame-tv-art-manager:latest
-    container_name: frame-tv-art-manager
-    restart: unless-stopped
     environment:
-      - TV_IPS=192.168.1.150
-      - CLIENT_NAME=Living Room TV
-      - LOG_LEVEL=info
-      # API Keys & Custom Sources file
-      - ARTWORK_SOURCES_FILE=/data/sources.yaml
-      - UNSPLASH_ACCESS_KEY=your_real_unsplash_access_key_here
-      - UNSPLASH_SECRET_KEY=your_real_unsplash_secret_key_here
-      - NASA_API_KEY=DEMO_KEY
-      # Turn on Smart Composition
-      - SMART_CROP_ENABLED=true
-    volumes:
-      - ./artwork:/data/artwork
-      - ./tokens:/data/tokens
-      - ./config:/data
+      ARTWORK_SOURCES_FILE: "/data/sources.yaml"
+      UNSPLASH_ACCESS_KEY: "your_unsplash_access_key"   # only the Access Key is needed
+      PEXELS_API_KEY: "your_pexels_key"                 # optional
+      PIXABAY_API_KEY: "your_pixabay_key"               # optional
 ```
 
-### 2. Write Your `sources.yaml`
-Create a new file named `sources.yaml` inside your local `./config` folder:
+### sources.yaml
+Group sources under a `providers:` map. Each entry is a `command` for that provider:
+
 ```yaml
-# ==============================================================================
-# Frame TV Art Manager — Custom Art Feed
-# ==============================================================================
 providers:
-  # --- 📸 Unsplash (Beautiful Photography) ---
+  # 📸 Unsplash — needs UNSPLASH_ACCESS_KEY
   unsplash:
-    - "collection:225444"          # Sync an entire collection by its ID
-    - "photo:L9W_5q57_V8"          # Target a single specific high-res photo
+    - "collection:225444"     # every photo in a collection
+    - "photo:L9W_5q57_V8"     # one specific photo
 
-  # --- 🚀 NASA (Outer Space Photography) ---
+  # 🚀 NASA — works with the built-in DEMO_KEY (set NASA_API_KEY for higher limits)
   nasa:
-    - "apod"                       # Automatically sync today's Astronomy Picture of the Day
-    - "search:james webb"          # Pull the top 10 space telescope pictures
+    - "apod"                  # today's Astronomy Picture of the Day
+    - "search:james webb"     # top results from the NASA image library
 
-  # --- 🎨 Art Institute of Chicago (Masterpieces) ---
+  # 🎨 Art Institute of Chicago — no key required
   art_institute_of_chicago:
-    - "search:monet"               # Sync 10 historic Claude Monet paintings
-    - "photo:16568"                # Pull a specific classical piece by its ID
+    - "search:monet"          # masterpieces matching a query
+    - "photo:20684"           # a specific artwork by ID
 
-  # --- 🔗 Direct URLs ---
+  # 🌿 Pexels — needs PEXELS_API_KEY
+  pexels:
+    - "search:nature"
+    - "curated"
+
+  # 🍃 Pixabay — needs PIXABAY_API_KEY
+  pixabay:
+    - "search:mountains"
+    - "editors_choice"
+
+  # 🔗 Any direct image link
   direct:
-    - "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?q=80&w=3840"
+    - "https://example.com/artwork.jpg"
 ```
-Now restart your container to apply the changes:
-```bash
-docker compose down && docker compose up -d
-```
-The manager will download your custom feed, run smart crops, generate stable hashes to prevent duplicate downloads, and automatically sync everything with your TV in the background!
 
-## 📸 Syncing Apple Photos & Favorites (iOS & macOS)
+If the file doesn't exist yet, the app writes a fully-commented starter `sources.yaml` for you on first run. A plain `.txt` file (one source per line, `#` for comments) also works.
 
-You can push your **Favorites**, custom photo albums, or any local photos directly to your Frame TV from an iPhone, iPad, or Mac.
-
-The manager hosts a secure local upload endpoint at `POST http://<server-ip>:8080/upload`. Any JPEG/PNG image sent to this endpoint is automatically optimized to 4K, framed with your chosen matte style, and synced to your TV.
-
-### Prerequisites
-1. **Enable Uploads:** Add `UPLOAD_ENABLED=true` to your environment settings.
-2. **Expose Ports:** Ensure port `8080` is mapped in your `docker-compose.yml`:
-   ```yaml
-   ports:
-     - "8080:8080"
-   ```
+*Get free Unsplash keys at [unsplash.com/developers](https://unsplash.com/developers), Pexels at [pexels.com/api](https://www.pexels.com/api/), and Pixabay at [pixabay.com/api/docs](https://pixabay.com/api/docs/).*
 
 ---
 
-### Method 1: iPhone & iPad (iOS Shortcut)
+## 📱 Syncing Apple Photos from iOS
 
-You can use the built-in **Shortcuts** app to upload your favorites or a specific album over Wi-Fi with a single tap.
+Use the built-in **Shortcuts** app to send photos to your TV in one tap.
 
-[📥 Download Ready-to-Use iOS Shortcut](https://www.icloud.com/shortcuts/YOUR_SHORTCUT_ID_HERE)
-*(After downloading, iOS will prompt you to enter your server's IP address automatically. Alternatively, follow the manual steps below).*
+1. Make sure `UPLOAD_ENABLED=true` and port `8080` is mapped.
+2. In **Shortcuts**, create a new shortcut.
+3. Add **Find Photos** → filter by `Favorite is Yes` and `Media Type is Image` (limit to a sensible count).
+4. Add **Repeat with Each**.
+5. Inside the loop, add **Convert Image** → `JPEG` (Frame TVs don't support HEIC).
+6. Inside the loop, add **Get Contents of URL**:
+   - URL: `http://<server-ip>:8080/upload`
+   - Method: `POST`
+   - Request Body: `Form`, with a field named **`file`** set to the converted image.
+7. Run it — or attach it to an iOS **Automation** to push photos automatically (e.g. nightly).
 
-#### 1. Create the Shortcut
-1. Open the **Shortcuts** app on your iPhone or iPad.
-2. Tap the **`+`** icon in the top right to create a new shortcut. Name it **"Sync to Frame TV"**.
-3. Add a **Find Photos** action:
-   - Add filter: **`Favorite is Yes`** (or `Album is [Your Album]`).
-   - Add filter: **`Media Type is Image`** (excludes videos).
-   - Turn on **`Limit`** and set it to **`50`** (recommended to keep syncs fast).
-4. Add a **Repeat with Each** action (passing the found photos).
-5. Inside the loop, add a **Convert Image** action:
-   - Convert **`Repeat Item`** to **`JPEG`** *(Critical: Frame TVs do not support iPhone's default HEIC format)*.
-6. Still inside the loop, add a **Get Contents of URL** action:
-   - Set the URL to: `http://<YOUR_SERVER_IP>:8080/upload` (replace with your server's IP).
-   - Set the method to **`POST`**.
-   - Set **Request Body** to **`File`** (or **`Converted Image`**).
-7. Done! Tap the **Play** button to test the upload.
-
-> 🔒 **iOS Permissions Troubleshooting:** If Shortcuts reports a permission error when running, open the **Settings** app on your device, select **Shortcuts** → **Advanced**, and turn on the toggles for **Allow Running Scripts** and **Allow Sharing Large Amounts of Data (if visible)**.
-
-#### 2. Automate it (Optional)
-You can make this run silently in the background:
-1. Tap the **Automation** tab in the Shortcuts app.
-2. Tap the **`+`** icon in the top right corner.
-3. Tap **Time of Day**:
-   - Choose your preferred time (e.g. **`02:00 AM`**).
-   - Set repeat to **`Daily`**.
-   - Under *How to Run*, select **`Run Immediately`** *(critical to run without manual confirmation prompts)*.
-   - Tap **Next**.
-4. Set the action to **Run Shortcut** ➔ select **"Sync to Frame TV"**.
-5. Turn **Off** the toggle for **`Notify When Run`** to prevent nightly notification spam.
-6. Tap **Done**.
+Duplicate photos are detected automatically, so re-running the shortcut is safe.
 
 ---
 
-### Method 2: macOS (Automatic Sync via CLI)
+## ⚙️ Configuration
 
-This uses the popular `osxphotos` tool to export your favorites and upload them.
+Everything is configured through environment variables. **Only `TV_IPS` is required.**
 
-#### 1. Grant Terminal Full Disk Access
-Because macOS secures your local Photos library, you must grant your Terminal app access to read it:
-1. Open **System Settings** → **Privacy & Security** → **Full Disk Access**.
-2. Toggle **Terminal** (or **iTerm**) to **On**.
-
-#### 2. Install osxphotos
-Run this command to install the export CLI:
-```bash
-pip3 install osxphotos
-```
-
-#### 3. Save the Sync Script
-Create a script named `~/frame-tv-sync.sh`:
-```bash
-#!/bin/bash
-SERVER="http://<YOUR_SERVER_IP>:8080"
-TEMP_DIR=$(mktemp -d)
-
-# Add Homebrew and pip bin paths for launchd environment
-export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/Library/Python/3.9/bin:$PATH"
-
-# Export favorites as JPEGs
-osxphotos export "$TEMP_DIR" \
-  --favorite \
-  --convert-to-jpeg \
-  --jpeg-quality 0.95 \
-  --skip-edited \
-  --skip-live \
-  --skip-raw \
-  --update \
-  --cleanup \
-  2>/dev/null
-
-# Upload each exported photo
-for f in "$TEMP_DIR"/*.jpeg "$TEMP_DIR"/*.jpg; do
-  [ -f "$f" ] || continue
-  curl -s -X POST -F "file=@$f" "$SERVER/upload"
-done
-
-rm -rf "$TEMP_DIR"
-```
-Make it executable:
-```bash
-chmod +x ~/frame-tv-sync.sh
-```
-
-#### 4. Automate with Launch Agent (Optional)
-To sync every hour automatically, save the following as `~/Library/LaunchAgents/com.frametv.photosync.plist`:
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.frametv.photosync</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>~/frame-tv-sync.sh</string>
-    </array>
-    <key>StartInterval</key>
-    <integer>3600</integer>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-```
-Load the agent:
-```bash
-launchctl load ~/Library/LaunchAgents/com.frametv.photosync.plist
-```
-
----
-
-## Configuration Reference
-
-You can customize the engine's behavior by adjusting these environment variables:
-
+### Core
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| **`TV_IPS`** | *Required* | Your TV's local IP address (separate with commas for multiple TVs). |
-| `CLIENT_NAME` | `Frame Art Manager` | The connection name passed to the TV (prevents recurring popup warnings). |
-| `SYNC_INTERVAL_MINUTES` | `5` | How often the script runs in the background to look for new art. |
-| `ARTWORK_DIR` | `/data/artwork` | Where downloaded and processed artwork files live. |
-| `TOKEN_DIR` | `/data/tokens` | Where TV authentication files are saved. |
-| `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your `sources.yaml` or custom source list. |
-| `UNSPLASH_APP_ID` | *(empty)* | Your Unsplash API App ID. |
-| `UNSPLASH_ACCESS_KEY` | *(empty)* | Your Unsplash API Access Key. |
-| `UNSPLASH_SECRET_KEY` | *(empty)* | Your Unsplash API Secret Key. |
-| `NASA_API_KEY` | `DEMO_KEY` | Your NASA API Key. |
-| `PEXELS_API_KEY` | *(empty)* | Your Pexels API Key. |
-| `PIXABAY_API_KEY` | *(empty)* | Your Pixabay API Key. |
-| `REMOVE_UNKNOWN_IMAGES` | `false` | Set to true to automatically delete images on your TV that aren't in your local folder. |
-| `DRY_RUN` | `false` | Process and texture images locally without actually pushing them to the TV. |
-| `LOG_LEVEL` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error`. |
+| `TV_IPS` | *required* | TV IP address(es), comma-separated for multiple Frames. |
+| `CLIENT_NAME` | `Frame Art Manager` | Connection name shown by the TV. A stable name avoids repeat Allow/Deny prompts. |
+| `SYNC_INTERVAL_MINUTES` | `5` | Minutes between sync cycles. |
+| `MATTE_STYLE` | `none` | Frame border as `{style}_{color}` (e.g. `shadowbox_polar`). Styles: `modernthin`, `modern`, `modernwide`, `flexible`, `shadowbox`, `panoramic`, `triptych`, `mix`, `squares`. |
+| `REMOVE_UNKNOWN_IMAGES` | `false` | Delete images on the TV that this service doesn't manage. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 
-### 🎨 Texture, Matte, & Crop Settings
-
+### Web Uploader & Sources
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `IMAGE_OPTIMIZE_ENABLED` | `true` | Automatically downscale massive images to crisp 4K templates. |
-| `IMAGE_MAX_WIDTH` | `3840` | The horizontal pixel size target. |
-| `IMAGE_MAX_HEIGHT` | `2160` | The vertical pixel size target. |
-| `IMAGE_JPEG_QUALITY` | `95` | JPEG encoding quality (1-100). |
-| `SMART_CROP_ENABLED` | `false` | Use subject saliency maps to crop images perfectly without cutting off the subject. |
-| `IMAGE_MUSEUM_MODE` | `false` | Apply canvas weave, liquid varnish simulations, and 3D impasto brushstroke ridges. |
-| `IMAGE_MUSEUM_INTENSITY` | `5` | Canvas weave/paint ridge depth weighting (scale from `1` to `10`). |
-| `MATTE_STYLE` | `none` | Add a cardboard frame style around your art: `none`, `modernthin`, `modern`, `modernwide`, `flexible`, `shadowbox`, `panoramic`, `triptych`, `squares`. |
-| `MATTE_COLOR` | *(empty)* | Color options: `polar`, `sand`, `warm`, `neutral`, `sage`, `burgandy`, `navy`, `apricot`. Format as `MATTE_STYLE=shadowbox_polar`. |
-| `PORTRAIT_MODE` | `crop` | How to handle vertical portrait photos: `collage` (join side-by-side pairs), `pad` (pad with blurred background bars), `crop` (legacy center crop, default). |
+| `UPLOAD_ENABLED` | `false` | Enable the drag-and-drop uploader and `POST /upload` on port 8080. |
+| `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your sources list (e.g. `/data/sources.yaml`). |
+| `UNSPLASH_ACCESS_KEY` | *(empty)* | Unsplash API Access Key. |
+| `PEXELS_API_KEY` | *(empty)* | Pexels API key. |
+| `PIXABAY_API_KEY` | *(empty)* | Pixabay API key. |
+| `NASA_API_KEY` | `DEMO_KEY` | NASA API key (the demo key works, with lower rate limits). |
+| `MAX_ARTWORK_IMAGES` | `0` | Cap on synced images (`0` = fill to the TV's storage limit). |
+| `MAX_DOWNLOAD_SIZE_MB` | `20` | Max size per downloaded/uploaded image. |
 
-### ☀️ Ambient Elevation & Shutdown Control
-
+### Image Processing
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `SOLAR_BRIGHTNESS_ENABLED` | `false` | Track where the sun is to automatically dim or brighten the screen. |
-| `LOCATION_LATITUDE` | *(empty)* | Your latitude (e.g. `40.7128` for New York). |
-| `LOCATION_LONGITUDE` | *(empty)* | Your longitude (e.g. `-74.0060`). |
-| `LOCATION_TIMEZONE` | *(empty)* | Your local timezone matching the [IANA database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`). |
-| `BRIGHTNESS_MIN` | `2` | Panel brightness level in pitch darkness (scale `1-10`). |
-| `BRIGHTNESS_MAX` | `10` | Panel brightness level at absolute noon. |
-| `BRIGHTNESS` | *(empty)* | Manual brightness override (fixed value `0-50`). |
-| `AUTO_OFF_TIME` | *(empty)* | Time to automatically shut down Art Mode at night (e.g. `23:30`). |
-| `AUTO_OFF_GRACE_HOURS` | `2` | Retry window in hours to keep checking in case the TV was manually powered back on. |
+| `IMAGE_OPTIMIZE_ENABLED` | `true` | Downscale oversized images to crisp 4K. |
+| `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | `3840` / `2160` | Target resolution. |
+| `IMAGE_JPEG_QUALITY` | `95` | JPEG encode quality (1–100). |
+| `SMART_CROP_ENABLED` | `false` | Subject-aware "Director's Cut" cropping. |
+| `IMAGE_MUSEUM_MODE` | `false` | Canvas texture, impasto, warming, grain. |
+| `IMAGE_MUSEUM_INTENSITY` | `5` | Strength of Museum Mode (1–10). |
+| `PORTRAIT_MODE` | `crop` | Vertical photos: `collage`, `pad`, or `crop`. |
 
-### ⚙️ Advanced System Settings
-
+### Smart Home & Automation
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `TV_MAC` | *(empty)* | MAC address for Wake-on-LAN (optional, wakes sleeping TVs). |
-| `ENABLE_REST_GATE` | `false` | Enable the Silent REST Gate to probe port 8001 /ms/art before connecting. |
-| `SLIDESHOW_ENABLED` | *(empty)* | Set to `true` to override TV's current slideshow settings. |
-| `SLIDESHOW_INTERVAL` | `15` | Minutes between slideshow image changes. |
-| `SLIDESHOW_TYPE` | `shuffle` | Slideshow type: `shuffle` or `sequential`. |
-| `VERIFY_TLS` | `false` | Enable TLS/SSL certificate verification when connecting to the TV. Frame TVs use self-signed certificates, so this is disabled by default. |
-| `SKIP_TLS_VERIFY` | `false` | Skip TLS verification regardless of VERIFY_TLS setting (useful for strictly local setups). |
-| `MAX_ARTWORK_IMAGES` | `100` | Maximum number of images to sync. Increase if your collection is larger. |
-| `MAX_DOWNLOAD_SIZE_MB` | `20` | Maximum download size per image in megabytes. |
-| `HEALTH_PORT` | `8080` | Port for HTTP `/health` and `/status` endpoints (`0` disables the health server). |
-| `UPLOAD_ENABLED` | `false` | Set to `true` to enable HTTP `POST /upload` endpoint for photo uploads (syncs to TV). |
-| `CONNECTION_TIMEOUT_SECONDS` | `60` | Connection timeout for WSS handshake. |
-| `API_TIMEOUT_SECONDS` | `60` | API timeout for art API responses. |
-| `UPLOAD_DELAY_MS` | `3000` | Pause between consecutive image uploads in milliseconds. |
-| `UPLOAD_ATTEMPTS` | `3` | Number of times to retry a failed upload. |
-| `GATE_TIMEOUT_MS` | `10000` | HTTP timeout for the REST gate probe in milliseconds. |
-| `PUID` | `0` | Process User ID for Docker permissions. |
-| `PGID` | `0` | Process Group ID for Docker permissions. |
+| `BRIGHTNESS` | *(empty)* | Fixed brightness (0–50), applied each cycle. |
+| `SOLAR_BRIGHTNESS_ENABLED` | `false` | Auto-adjust brightness by sun elevation (takes precedence over `BRIGHTNESS`). |
+| `LOCATION_LATITUDE` / `LOCATION_LONGITUDE` | *(empty)* | Required when solar brightness is on. |
+| `LOCATION_TIMEZONE` | `UTC` | IANA timezone (e.g. `America/New_York`). Required for auto-off. |
+| `BRIGHTNESS_MIN` / `BRIGHTNESS_MAX` | `2` / `10` | Brightness range for solar mode. |
+| `AUTO_OFF_TIME` | *(empty)* | Power off Art Mode at this 24h time (e.g. `22:00`). |
+| `AUTO_OFF_GRACE_HOURS` | `2` | How long after `AUTO_OFF_TIME` to keep trying. |
+| `SLIDESHOW_ENABLED` / `SLIDESHOW_INTERVAL` / `SLIDESHOW_TYPE` | *(unset)* | Override slideshow (`shuffle`/`sequential`). If unset, the TV's own settings are preserved. |
+| `TV_MAC` | *(empty)* | MAC address for Wake-on-LAN. |
+
+### System
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `HEALTH_PORT` | `8080` | Port for `/health`, `/status`, and `/upload`. `0` disables the server. |
+| `ENABLE_REST_GATE` | `false` | Probe port 8001 to skip TVs busy with other content (firmware-dependent). |
+| `PUID` / `PGID` | `0` | Owner UID/GID for created data directories. |
+| `DRY_RUN` | `false` | Process images locally without touching the TV. |
+
+A full annotated list lives in [`.env.example`](.env.example).
 
 ---
 
-## Local Compilation & Development
+## 📈 Monitoring
 
-If you want to build or compile the manager from source, this repository has everything set up:
+When the health server is running, two JSON endpoints are available:
+- `GET /health` — uptime, last sync result, current stage.
+- `GET /status` — the above plus per-TV details (art mode, image count, reachability).
 
-### What you need:
-*   [Go 1.22+](https://golang.org/)
-*   [Make](https://www.gnu.org/software/make/)
-*   [pre-commit](https://pre-commit.com/)
+The Docker image also ships a built-in `-healthcheck` command used by the container `HEALTHCHECK`, so orchestrators can self-heal automatically.
 
-### Build Commands:
+---
+
+## 🛠️ Development
+
+Built with Go (see [`go.mod`](go.mod)).
+
 ```bash
-# Build the binary locally
-make build
-
-# Run quick format and go mod cleanups
-make tidy fmt
-
-# Run all code tests, linters, security audits, and hooks
-make check
+make build   # Build the binary
+make test    # Run the test suite with coverage
+make check   # Tests, linters, vuln scan, formatting — the full pipeline
+make fix     # Auto-format and auto-fix lint issues
+make docker  # Build the Docker image locally
 ```
 
----
-
-## Contributing
-
-Pull requests are always welcome! Check out [CONTRIBUTING.md](CONTRIBUTING.md) and [AI.md](AI.md) for details on code styles and guidelines.
-
----
-
-## License
-
-Licensed under the **PolyForm Noncommercial License 1.0.0**. Feel free to run this in your home, share it with friends, and tweak it. Commercial distributions or selling integrations requires separate licensing.
+## 📄 License
+Licensed under the **PolyForm Noncommercial License 1.0.0**. Run it at home and modify it freely; commercial use requires separate licensing.
