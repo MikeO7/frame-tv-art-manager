@@ -1,10 +1,15 @@
 package sync
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"image"
+	"image/jpeg"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,13 +71,15 @@ func TestParseDimensions(t *testing.T) {
 }
 
 type mockTVTransport struct {
-	artMode bool
-	skip    bool
+	artMode     bool
+	skip        bool
+	failConnect error
+	uploaded    []samsung.ArtContent
 }
 
 func (m *mockTVTransport) ShouldSkip() bool { return m.skip }
 
-func (m *mockTVTransport) Connect(context.Context) error { return nil }
+func (m *mockTVTransport) Connect(context.Context) error { return m.failConnect }
 
 func (m *mockTVTransport) Close() error { return nil }
 
@@ -83,7 +90,7 @@ func (m *mockTVTransport) IsInArtMode(context.Context) bool { return m.artMode }
 func (m *mockTVTransport) SaveMetadata(context.Context) error { return nil }
 
 func (m *mockTVTransport) ListUploaded(context.Context) ([]samsung.ArtContent, error) {
-	return []samsung.ArtContent{}, nil
+	return m.uploaded, nil
 }
 
 func (m *mockTVTransport) Upload(context.Context, string, string, string) (string, error) {
@@ -111,17 +118,10 @@ func (m *mockTVTransport) RecordFailure(_ time.Duration) { m.skip = true }
 func (m *mockTVTransport) RecordSuccess() { m.skip = false }
 
 func createSmallJPEG() []byte {
-	return []byte{
-		0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
-		0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC2, 0x00, 0x0B, 0x08, 0x00,
-		0x01, 0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x14, 0x10, 0x01, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xDA, 0x00,
-		0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x37, 0xFF, 0xD9,
-	}
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, img, nil)
+	return buf.Bytes()
 }
 
 func TestEngine_RunOnce_Full(t *testing.T) {
@@ -375,5 +375,89 @@ func TestEngine_SyncTV_Success(t *testing.T) {
 	err := e.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("RunOnce failed: %v", err)
+	}
+}
+
+func TestEngine_RunOnce_SyncTVError(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		TVIPs:      []string{"1.2.3.4"},
+		ArtworkDir: tmpDir,
+		TokenDir:   tmpDir,
+	}
+
+	e := NewEngine(cfg, slog.Default(), nil)
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{
+			artMode:     true,
+			failConnect: fmt.Errorf("some connection error"),
+		}
+	}
+
+	err := e.RunOnce(context.Background())
+	if err == nil {
+		t.Errorf("expected error from connection failure")
+	}
+}
+
+func TestEngine_OptimizeCatalog_WithRename(t *testing.T) {
+	tmpDir := t.TempDir()
+	artworkDir := filepath.Join(tmpDir, "artwork")
+	tokenDir := filepath.Join(tmpDir, "tokens")
+	_ = os.MkdirAll(artworkDir, 0o700)
+	_ = os.MkdirAll(tokenDir, 0o700)
+
+	// Create mapping with the expected hashed filename that the catalog builder produces
+	m, _ := LoadMapping(tokenDir, "1.2.3.4")
+	m.Set("unoptimized.h_334182b100c5.jpg", "id1")
+	_ = m.Save()
+
+	// Create a small unoptimized image
+	_ = os.WriteFile(filepath.Join(artworkDir, "unoptimized.jpg"), createSmallJPEG(), 0o600)
+
+	cfg := &config.Config{
+		TVIPs:           []string{"1.2.3.4"},
+		ArtworkDir:      artworkDir,
+		TokenDir:        tokenDir,
+		OptimizeEnabled: true,
+	}
+
+	e := NewEngine(cfg, slog.Default(), nil)
+	e.newClient = func(_ string, _ *config.Config, _ *slog.Logger) TVTransport {
+		return &mockTVTransport{
+			artMode: true,
+			uploaded: []samsung.ArtContent{
+				{ContentID: "id1"},
+			},
+		}
+	}
+
+	err := e.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce failed: %v", err)
+	}
+
+	// Verify that the mapping has been updated with the renamed file
+	m2, _ := LoadMapping(tokenDir, "1.2.3.4")
+	hasUnoptimized := false
+	hasOptimized := false
+	var optimizedVal string
+	for k, v := range m2.AllContentIDs() {
+		if k == "unoptimized.h_334182b100c5.jpg" {
+			hasUnoptimized = true
+		}
+		if strings.Contains(k, "unoptimized_0x0_opt.h_334182b100c5.jpg") {
+			hasOptimized = true
+			optimizedVal = v
+		}
+	}
+	if hasUnoptimized {
+		t.Errorf("expected unoptimized.h_334182b100c5.jpg to be removed from mapping")
+	}
+	if !hasOptimized {
+		t.Errorf("expected optimized filename in mapping, got mapping content: %v", m2.AllContentIDs())
+	}
+	if optimizedVal != "id1" {
+		t.Errorf("expected mapping to preserve content ID 'id1', got '%s'", optimizedVal)
 	}
 }
