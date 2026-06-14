@@ -146,7 +146,7 @@ func calculateEdgeScore(src *image.RGBA, x1, y1, x2, y2 int) float64 {
 // generateSaliencyMap creates a 2D map where each pixel represents a saliency score.
 // It combines structural edges (Sobel), skin tone detection, and Boolean Map Saliency (BMS).
 //
-//nolint:funlen // complexity justified for this domain-specific path
+//nolint:funlen,gocognit // complexity justified for this domain-specific path
 func generateSaliencyMap(src *image.RGBA) []float64 {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	mapData := make([]float64, w*h)
