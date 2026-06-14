@@ -140,8 +140,8 @@ func (s *Server) Start() {
 		Addr:              fmt.Sprintf(":%d", s.cfg.HealthPort),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		WriteTimeout:      5 * time.Minute,
 		IdleTimeout:       120 * time.Second,
 	}
 
