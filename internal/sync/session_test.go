@@ -633,3 +633,95 @@ func TestPlanSync(t *testing.T) {
 		t.Error("expected HasChanges to be true")
 	}
 }
+
+func TestTVReconciler_Reconcile_Capacity(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Case 1: Storage full upload error
+	fake := &fakeTVTransport{
+		artMode:       true,
+		uploadErr:     samsung.ErrStorageFull,
+		listContent:   []samsung.ArtContent{},
+		uploadContent: "",
+	}
+
+	cfg := &config.Config{
+		TokenDir:       tmpDir,
+		ArtworkDir:     tmpDir,
+		MatteStyle:     "none",
+		DryRun:         false,
+		UploadAttempts: 1,
+	}
+
+	mc := &config.MatteConfig{}
+
+	s, err := NewTVReconciler("1.2.3.4", cfg, mc, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	localFiles := map[string]struct{}{
+		"photo.jpg": {},
+	}
+
+	result, err := s.Reconcile(context.Background(), fake, localFiles)
+	if err != nil {
+		t.Fatalf("unexpected Reconcile error: %v", err)
+	}
+
+	if !result.StorageFull {
+		t.Error("expected StorageFull to be true on result")
+	}
+
+	// Verify CapacityState is full
+	capMgr := NewCapacityManager(tmpDir, "1.2.3.4")
+	state, err := capMgr.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.IsFull {
+		t.Error("expected capacity state to be marked full")
+	}
+
+	// Case 2: Success increments success streak
+	fakeSuccess := &fakeTVTransport{
+		artMode:       true,
+		listContent:   []samsung.ArtContent{},
+		uploadContent: "id-success",
+	}
+
+	state.IsFull = true
+	state.MaxImages = 10
+	state.SuccessStreak = 8
+	if err := capMgr.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	// First success sync
+	_, err = s.Reconcile(context.Background(), fakeSuccess, localFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err = capMgr.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.IsFull || state.SuccessStreak != 9 {
+		t.Errorf("expected still full with success streak 9, got %+v", state)
+	}
+
+	// Second success sync triggers recovery
+	_, err = s.Reconcile(context.Background(), fakeSuccess, localFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err = capMgr.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.IsFull || state.SuccessStreak != 0 || state.MaxImages != 15 {
+		t.Errorf("expected recovery triggered, got %+v", state)
+	}
+}

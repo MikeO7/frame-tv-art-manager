@@ -58,6 +58,7 @@ type TVSyncResult struct {
 	Brightness   string
 	Slideshow    string
 	ErrorMessage string
+	StorageFull  bool
 
 	NewUploads   map[string]string
 	DeletedFiles []string
@@ -155,6 +156,35 @@ func (s *TVReconciler) Reconcile(
 		return result, err
 	}
 
+	localFiles, capacityMgr := s.applyCapacityFilter(localFiles)
+
+	plan := s.planSyncCycle(ctx, transport, policy, tvContent, localFiles)
+
+	execResult, err := s.ExecuteSyncPlan(ctx, plan, transport, s.mapping, policy)
+	if err != nil {
+		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
+		execResult.Status = statusError
+		return execResult, err
+	}
+
+	// Handle capacity detection
+	s.handleCapacityError(&execResult, plan, capacityMgr)
+
+	transport.RecordSuccess()
+	if _, capErr := capacityMgr.RecordSuccess(); capErr != nil {
+		s.logger.Warn("failed to update capacity success streak", "error", capErr)
+	}
+	s.logger.Info("sync completed")
+	return execResult, nil
+}
+
+func (s *TVReconciler) planSyncCycle(
+	ctx context.Context,
+	transport TVTransport,
+	policy config.SyncPolicy,
+	tvContent []samsung.ArtContent,
+	localFiles map[string]struct{},
+) *SyncPlan {
 	var preserveSlideshow *samsung.SlideshowStatus
 	if !policy.SlideshowOverride {
 		preserveSlideshow, _ = transport.SlideshowStatus(ctx)
@@ -172,17 +202,38 @@ func (s *TVReconciler) Reconcile(
 	)
 
 	s.logPlan(plan, policy)
+	return plan
+}
 
-	execResult, err := s.ExecuteSyncPlan(ctx, plan, transport, s.mapping, policy)
-	if err != nil {
-		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-		execResult.Status = statusError
-		return execResult, err
+func (s *TVReconciler) applyCapacityFilter(localFiles map[string]struct{}) (map[string]struct{}, *CapacityManager) {
+	capacityMgr := NewCapacityManager(s.cfg.TokenDir, s.ip)
+	capState, capErr := capacityMgr.Load()
+	if capErr != nil {
+		s.logger.Warn("could not load capacity state", "error", capErr)
 	}
 
-	transport.RecordSuccess()
-	s.logger.Info("sync completed")
-	return execResult, nil
+	if capState != nil && capState.IsFull {
+		s.logger.Info("TV is full, filtering local sync collection", "limit", capState.MaxImages)
+		localFiles = FilterLocalFiles(localFiles, capState.MaxImages)
+	}
+	return localFiles, capacityMgr
+}
+
+func (s *TVReconciler) handleCapacityError(execResult *TVSyncResult, plan *SyncPlan, capacityMgr *CapacityManager) {
+	if !execResult.StorageFull {
+		return
+	}
+	currentOnTV := plan.TrackedFilesCount - execResult.Deleted + execResult.Uploaded
+	s.logger.Warn("sync stopped early due to upload failure (storage full); updating capacity limit", "current_images_on_tv", currentOnTV, "error", execResult.ErrorMessage)
+
+	capState := &CapacityState{
+		MaxImages:     currentOnTV,
+		IsFull:        true,
+		SuccessStreak: 0,
+	}
+	if saveErr := capacityMgr.Save(capState); saveErr != nil {
+		s.logger.Error("failed to save capacity state", "error", saveErr)
+	}
 }
 
 func (s *TVReconciler) connectTV(

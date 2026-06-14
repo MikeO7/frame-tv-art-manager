@@ -254,6 +254,9 @@ func (c *Client) RecordSuccess() {
 
 func checkArtError(resp *artResponse) error {
 	if resp.ErrorCode != 0 {
+		if resp.ErrorCode == 403 || resp.ErrorCode == 507 || resp.ErrorCode == 11001 { // 11001 is sometimes returned by Samsung's art app for out-of-storage
+			return fmt.Errorf("%w: code %d", ErrStorageFull, resp.ErrorCode)
+		}
 		return fmt.Errorf("%w: code %d", ErrArtAPIError, resp.ErrorCode)
 	}
 	return nil
