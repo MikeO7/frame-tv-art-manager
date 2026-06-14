@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
 
 const (
@@ -107,17 +107,16 @@ func TestSendWOL_ValidFormat(_ *testing.T) {
 
 func TestEnsureToken(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		upgrader := websocket.Upgrader{}
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"new-token"}`)}
 		b, _ := json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, b)
+		_ = conn.Write(r.Context(), websocket.MessageText, b)
 	}))
 	defer server.Close()
 
@@ -212,25 +211,32 @@ func TestCheckArtModeGate_Timeout(t *testing.T) {
 }
 
 func TestTurnOff(t *testing.T) {
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+		writeJSON := func(ctx context.Context, v any) error {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+			return conn.Write(ctx, websocket.MessageText, b)
+		}
 
 		// Handshake
 		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
-		b, _ := json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, b)
+		_ = writeJSON(r.Context(), resp)
 
 		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
-		bReady, _ := json.Marshal(respReady)
-		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+		_ = writeJSON(r.Context(), respReady)
 
 		// Read KEY_POWER Press
-		_, msg, err := conn.ReadMessage()
+		_, msg, err := conn.Read(r.Context())
 		if err != nil {
 			return
 		}
@@ -241,7 +247,7 @@ func TestTurnOff(t *testing.T) {
 		}
 
 		// Read KEY_POWER Release
-		_, msg, err = conn.ReadMessage()
+		_, msg, err = conn.Read(r.Context())
 		if err != nil {
 			return
 		}
@@ -282,24 +288,32 @@ func TestClientWrapperMethods(t *testing.T) {
 	// means we manually inject the internal fields for testing.
 
 	// Create a mock WS server for ArtAPI so we can test the wrappers.
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+		writeJSON := func(ctx context.Context, v any) error {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+			return conn.Write(ctx, websocket.MessageText, b)
+		}
+
 		// Send initial connects
 		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
-		b, _ := json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, b)
+		_ = writeJSON(r.Context(), resp)
 
 		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
-		bReady, _ := json.Marshal(respReady)
-		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+		_ = writeJSON(r.Context(), respReady)
 
 		for {
-			_, msg, err := conn.ReadMessage()
+			_, msg, err := conn.Read(r.Context())
 			if err != nil {
 				return
 			}
@@ -342,7 +356,7 @@ func TestClientWrapperMethods(t *testing.T) {
 			artRespBytes, _ := json.Marshal(artResp)
 			respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
 			respBytes, _ := json.Marshal(respMsg)
-			_ = conn.WriteMessage(websocket.TextMessage, respBytes)
+			_ = conn.Write(r.Context(), websocket.MessageText, respBytes)
 			time.Sleep(50 * time.Millisecond)
 		}
 	}))
@@ -434,23 +448,30 @@ func TestClientUpload(t *testing.T) {
 	d2dHost := d2dU.Hostname()
 	d2dPort := d2dU.Port()
 
-	upgrader := websocket.Upgrader{}
 	wsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+		writeJSON := func(ctx context.Context, v any) error {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+			return conn.Write(ctx, websocket.MessageText, b)
+		}
 
 		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"test-token"}`)}
-		b, _ := json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, b)
+		_ = writeJSON(r.Context(), resp)
 
 		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
-		bReady, _ := json.Marshal(respReady)
-		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+		_ = writeJSON(r.Context(), respReady)
 
-		_, msg, err := conn.ReadMessage()
+		_, msg, err := conn.Read(r.Context())
 		if err != nil {
 			return
 		}
@@ -477,7 +498,7 @@ func TestClientUpload(t *testing.T) {
 		artRespBytes, _ := json.Marshal(artResp)
 		respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
 		respBytes, _ := json.Marshal(respMsg)
-		_ = conn.WriteMessage(websocket.TextMessage, respBytes)
+		_ = conn.Write(r.Context(), websocket.MessageText, respBytes)
 
 		// Fire image_added immediately
 		time.Sleep(100 * time.Millisecond)
@@ -488,7 +509,7 @@ func TestClientUpload(t *testing.T) {
 		addedRespBytes, _ := json.Marshal(addedResp)
 		respMsgAdded := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(addedRespBytes)}
 		respBytesAdded, _ := json.Marshal(respMsgAdded)
-		_ = conn.WriteMessage(websocket.TextMessage, respBytesAdded)
+		_ = conn.Write(r.Context(), websocket.MessageText, respBytesAdded)
 		time.Sleep(50 * time.Millisecond)
 	}))
 	defer wsServer.Close()
@@ -610,24 +631,31 @@ func TestClient_Model_Empty(t *testing.T) {
 }
 
 func TestClient_PublicTransportMethods(t *testing.T) {
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+		writeJSON := func(ctx context.Context, v any) error {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+			return conn.Write(ctx, websocket.MessageText, b)
+		}
 
 		resp := wsResponse{Event: EventChannelConnect, Data: json.RawMessage(`{"token":"saved-token"}`)}
-		b, _ := json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, b)
+		_ = writeJSON(r.Context(), resp)
 
 		respReady := wsResponse{Event: EventChannelReady, Data: json.RawMessage(`{}`)}
-		bReady, _ := json.Marshal(respReady)
-		_ = conn.WriteMessage(websocket.TextMessage, bReady)
+		_ = writeJSON(r.Context(), respReady)
 
 		for {
-			_, msg, err := conn.ReadMessage()
+			_, msg, err := conn.Read(r.Context())
 			if err != nil {
 				return
 			}
@@ -656,7 +684,7 @@ func TestClient_PublicTransportMethods(t *testing.T) {
 			artRespBytes, _ := json.Marshal(artResp)
 			respMsg := wsResponse{Event: EventD2DServiceMessage, Data: json.RawMessage(artRespBytes)}
 			respBytes, _ := json.Marshal(respMsg)
-			_ = conn.WriteMessage(websocket.TextMessage, respBytes)
+			_ = conn.Write(r.Context(), websocket.MessageText, respBytes)
 			time.Sleep(50 * time.Millisecond)
 		}
 	}))

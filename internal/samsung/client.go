@@ -422,7 +422,7 @@ func (c *Client) turnOffTV(ctx context.Context, port int) error {
 		return fmt.Errorf("marshal press command: %w", err)
 	}
 
-	if err := conn.Send(pressPayload); err != nil {
+	if err := conn.Send(ctx, pressPayload); err != nil {
 		return fmt.Errorf("send press: %w", err)
 	}
 
@@ -449,7 +449,7 @@ func (c *Client) turnOffTV(ctx context.Context, port int) error {
 		return fmt.Errorf("marshal release command: %w", err)
 	}
 
-	if err := conn.Send(releasePayload); err != nil {
+	if err := conn.Send(ctx, releasePayload); err != nil {
 		return fmt.Errorf("send release: %w", err)
 	}
 

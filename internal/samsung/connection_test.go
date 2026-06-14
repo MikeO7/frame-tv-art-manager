@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
 
 func TestArtAppRequest(t *testing.T) {
@@ -66,16 +66,21 @@ func TestConnection_OpenFailure(t *testing.T) {
 
 func TestConnection_SendAndWait(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		upgrader := websocket.Upgrader{
-			CheckOrigin: func(_ *http.Request) bool { return true },
-		}
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+		writeJSON := func(ctx context.Context, v any) error {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+			return conn.Write(ctx, websocket.MessageText, b)
+		}
 
 		// 1. Send Handshake Connect
 		handshakeResp := map[string]any{
@@ -84,17 +89,17 @@ func TestConnection_SendAndWait(t *testing.T) {
 				"token": "test-token",
 			},
 		}
-		_ = conn.WriteJSON(handshakeResp)
+		_ = writeJSON(r.Context(), handshakeResp)
 
 		// 2. Send Handshake Ready (required for com.samsung.art-app)
 		readyResp := map[string]any{
 			keyEvent: "ms.channel.ready",
 		}
-		_ = conn.WriteJSON(readyResp)
+		_ = writeJSON(r.Context(), readyResp)
 		time.Sleep(100 * time.Millisecond)
 
 		// 3. Handle Request
-		_, msg, err := conn.ReadMessage()
+		_, msg, err := conn.Read(r.Context())
 		if err != nil {
 			return
 		}
@@ -117,7 +122,7 @@ func TestConnection_SendAndWait(t *testing.T) {
 				"payload": `{"result":"ok"}`,
 			},
 		}
-		if err := conn.WriteJSON(resp); err != nil {
+		if err := writeJSON(r.Context(), resp); err != nil {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -150,21 +155,30 @@ func TestConnection_SendAndWait(t *testing.T) {
 
 func TestConnection_SendAndWaitEvent(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upgrader := websocket.Upgrader{CheckOrigin: func(_ *http.Request) bool { return true }}
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
-		_ = conn.WriteJSON(map[string]any{
+		writeJSON := func(ctx context.Context, v any) error {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+			return conn.Write(ctx, websocket.MessageText, b)
+		}
+
+		_ = writeJSON(r.Context(), map[string]any{
 			keyEvent: EventChannelConnect,
 			keyData:  map[string]any{"token": "test-token"},
 		})
-		_ = conn.WriteJSON(map[string]any{keyEvent: "ms.channel.ready"})
+		_ = writeJSON(r.Context(), map[string]any{keyEvent: "ms.channel.ready"})
 		time.Sleep(50 * time.Millisecond)
 
-		_, msg, err := conn.ReadMessage()
+		_, msg, err := conn.Read(r.Context())
 		if err != nil {
 			return
 		}
@@ -177,7 +191,7 @@ func TestConnection_SendAndWaitEvent(t *testing.T) {
 				"content_id": "new-id",
 			},
 		}
-		_ = conn.WriteJSON(added)
+		_ = writeJSON(r.Context(), added)
 		time.Sleep(50 * time.Millisecond)
 	}))
 	defer server.Close()
