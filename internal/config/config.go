@@ -175,6 +175,9 @@ type Config struct {
 	// 0 disables the health server.
 	HealthPort int
 
+	// UploadEnabled enables the HTTP upload endpoint on the health server when true.
+	UploadEnabled bool
+
 	// --- Timeouts ---
 
 	// ConnectionTimeout is the max time to wait for a WSS handshake.

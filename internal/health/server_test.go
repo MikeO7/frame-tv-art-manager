@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +27,7 @@ func TestHealthEndpoint(t *testing.T) {
 		Status:     "ok",
 	})
 
-	srv := NewServer(0, status, silentLogger())
+	srv := NewServer(testConfig(0, false, ""), status, silentLogger())
 	// Use httptest directly instead of starting a real listener.
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -53,7 +56,7 @@ func TestHealthEndpoint(t *testing.T) {
 func TestServer_Routes(t *testing.T) {
 	status := NewStatus()
 	logger := silentLogger()
-	server := NewServer(0, status, logger) // Port 0 doesn't actually start, but we can call handlers.
+	server := NewServer(testConfig(0, false, ""), status, logger) // Port 0 doesn't actually start, but we can call handlers.
 
 	// Test handleHealth
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -75,7 +78,7 @@ func TestServer_Routes(t *testing.T) {
 func TestServer_Shutdown(t *testing.T) {
 	status := NewStatus()
 	logger := silentLogger()
-	server := NewServer(12345, status, logger)
+	server := NewServer(testConfig(12345, false, ""), status, logger)
 
 	// Start server in background
 	server.Start()
@@ -92,7 +95,7 @@ func TestStatusEndpoint(t *testing.T) {
 	status := NewStatus()
 	status.RecordSync(false, nil)
 
-	srv := NewServer(0, status, silentLogger())
+	srv := NewServer(testConfig(0, false, ""), status, silentLogger())
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
 	w := httptest.NewRecorder()
 	srv.handleStatus(w, req)
@@ -124,7 +127,7 @@ func TestStatus_SetStage(t *testing.T) {
 
 func TestServer_Start_DisabledPort(t *testing.T) {
 	status := NewStatus()
-	server := NewServer(0, status, silentLogger())
+	server := NewServer(testConfig(0, false, ""), status, silentLogger())
 	server.Start()
 	if server.server != nil {
 		t.Error("expected no http.Server when port is 0")
@@ -133,7 +136,7 @@ func TestServer_Start_DisabledPort(t *testing.T) {
 
 func TestShutdown_NilServer(t *testing.T) {
 	// Shutdown on a server that was never started should not panic.
-	srv := NewServer(0, NewStatus(), silentLogger())
+	srv := NewServer(testConfig(0, false, ""), NewStatus(), silentLogger())
 	if err := srv.Shutdown(t.Context()); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -186,7 +189,7 @@ func TestServer_StartAndServe(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
 	// Port -1 is invalid and will cause ListenAndServe to fail immediately.
-	srv := NewServer(-1, status, logger)
+	srv := NewServer(testConfig(-1, false, ""), status, logger)
 	srv.Start()
 
 	// Wait for the goroutine to log the error, with a timeout
@@ -208,5 +211,155 @@ func TestServer_StartAndServe(t *testing.T) {
 				return
 			}
 		}
+	}
+}
+
+func createMultipartRequest(filename string, content []byte) (*http.Request, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return nil, err
+	}
+	_, err = part.Write(content)
+	if err != nil {
+		return nil, err
+	}
+	err = writer.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req, nil
+}
+
+func TestUpload_Disabled(t *testing.T) {
+	status := NewStatus()
+	srv := NewServer(testConfig(0, false, ""), status, silentLogger())
+
+	req, err := createMultipartRequest("test.jpg", []byte("fake content"))
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	srv.handleUpload(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestUpload_MethodNotAllowed(t *testing.T) {
+	status := NewStatus()
+	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
+	w := httptest.NewRecorder()
+	srv.handleUpload(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", w.Code)
+	}
+}
+
+func TestUpload_InvalidMultipart(t *testing.T) {
+	status := NewStatus()
+	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader([]byte("not multipart")))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+	srv.handleUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpload_UnsupportedType(t *testing.T) {
+	status := NewStatus()
+	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+
+	req, err := createMultipartRequest("test.txt", []byte("plain text content which is not an image"))
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	srv.handleUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpload_SuccessAndDeduplication(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+
+	// Valid JPEG header is FFD8
+	jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
+
+	// Add some padding to make it a mock JPEG image
+	for i := 0; i < 500; i++ {
+		jpegContent = append(jpegContent, 0x00)
+	}
+
+	req, err := createMultipartRequest("photo.jpg", jpegContent)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	srv.handleUpload(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp["status"] != "ok" {
+		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
+
+	filename, ok := resp["filename"].(string)
+	if !ok || filename == "" {
+		t.Fatalf("missing filename in response")
+	}
+
+	// Verify file is saved to disk
+	filePath := filepath.Join(tmpDir, filename)
+	if _, err := os.Stat(filePath); err != nil {
+		t.Errorf("file was not saved: %v", err)
+	}
+
+	// Upload again (should trigger deduplication)
+	req2, err := createMultipartRequest("photo.jpg", jpegContent)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	w2 := httptest.NewRecorder()
+	srv.handleUpload(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Errorf("expected 200 on duplicate, got %d", w2.Code)
+	}
+
+	var resp2 map[string]any
+	if err := json.NewDecoder(w2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("decode duplicate response: %v", err)
+	}
+
+	if resp2["message"] != "File already exists (deduplicated)" {
+		t.Errorf("expected duplicate message, got %q", resp2["message"])
 	}
 }
