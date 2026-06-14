@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -234,26 +235,18 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	// Limit request body size to prevent DoS attacks
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 
-	err := r.ParseMultipartForm(maxSize)
+	fileData, err := parseUploadedFile(r, maxSize)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"status":"error","error":"File too large or invalid request"}`))
+		_, _ = fmt.Fprintf(w, `{"status":"error","error":%q}`, err.Error())
 		return
 	}
-
-	file, _, err := r.FormFile("file")
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"status":"error","error":"Missing 'file' parameter"}`))
-		return
-	}
-	defer func() { _ = file.Close() }()
+	defer func() { _ = fileData.Close() }()
 
 	// Read header bytes to check file signature
 	buf := make([]byte, 512)
-	n, err := file.Read(buf)
+	n, err := fileData.Read(buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -278,7 +271,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	// Buffer the entire file to compute hash and write to disk
 	var bodyBytes bytes.Buffer
 	bodyBytes.Write(buf[:n])
-	_, err = io.Copy(&bodyBytes, file)
+	_, err = io.Copy(&bodyBytes, fileData)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -320,6 +313,24 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		"message":  "File uploaded successfully",
 		"filename": filename,
 	})
+}
+
+// parseUploadedFile extracts the uploaded file payload from either a multipart form or raw request body.
+func parseUploadedFile(r *http.Request, maxSize int64) (io.ReadCloser, error) {
+	contentTypeHeader := r.Header.Get("Content-Type")
+	if strings.Contains(contentTypeHeader, "multipart/form-data") {
+		err := r.ParseMultipartForm(maxSize)
+		if err != nil {
+			return nil, errors.New("file too large or invalid request")
+		}
+
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			return nil, errors.New("missing 'file' parameter")
+		}
+		return file, nil
+	}
+	return r.Body, nil
 }
 
 const uploadHTML = `<!DOCTYPE html>
