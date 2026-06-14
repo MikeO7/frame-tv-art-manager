@@ -201,7 +201,8 @@ type Config struct {
 	PGID int
 
 	// --- Portrait Mode Handling ---
-	// PortraitMode controls how vertical photos are resized: "collage", "pad", "crop" (default "collage").
+	// PortraitMode controls how vertical photos are resized: "collage", "pad", "crop" (default "crop").
+	// Uploaded files (from the /upload endpoint) always use collage mode regardless of this setting.
 	PortraitMode string
 }
 

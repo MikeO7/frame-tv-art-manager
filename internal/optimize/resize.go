@@ -40,7 +40,7 @@ func DefaultConfig() Config {
 		NormalizeLuminance:  true,
 		MuseumModeEnabled:   false,
 		MuseumModeIntensity: 1,
-		PortraitMode:        "collage",
+		PortraitMode:        "crop",
 	}
 }
 
