@@ -204,10 +204,15 @@ You can use the built-in **Shortcuts** app to upload your favorites or a specifi
 #### 2. Automate it (Optional)
 You can make this run silently in the background:
 1. Tap the **Automation** tab in the Shortcuts app.
-2. Tap **`+`** → **Create Personal Automation**.
-3. Choose a trigger (e.g. **Time of Day** like `02:00 AM`, or **Wi-Fi** when connecting to your home network).
-4. Set the action to **Run Shortcut** → select **"Sync to Frame TV"**.
-5. Turn off **Ask Before Running** and turn off **Notify When Run**.
+2. Tap the **`+`** icon in the top right corner.
+3. Tap **Time of Day**:
+   - Choose your preferred time (e.g. **`02:00 AM`**).
+   - Set repeat to **`Daily`**.
+   - Under *How to Run*, select **`Run Immediately`** *(critical to run without manual confirmation prompts)*.
+   - Tap **Next**.
+4. Set the action to **Run Shortcut** ➔ select **"Sync to Frame TV"**.
+5. Turn **Off** the toggle for **`Notify When Run`** to prevent nightly notification spam.
+6. Tap **Done**.
 
 ---
 
