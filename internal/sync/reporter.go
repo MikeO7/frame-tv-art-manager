@@ -9,7 +9,7 @@ import (
 
 // LogCycleSummary renders and logs a formatted sync cycle summary box to structured logs.
 //
-//nolint:gocognit,gocyclo,revive,funlen // complexity justified for this domain-specific path
+//nolint:revive // argument count justified for this domain-specific path
 func LogCycleSummary(
 	logger *slog.Logger,
 	cycleNum int,
@@ -44,35 +44,7 @@ func LogCycleSummary(
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 
 	for _, tv := range tvs {
-		name := tv.IP
-		if tv.Model != "" {
-			name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
-		}
-		sb.WriteString(padLine("  TV: " + name))
-
-		switch tv.Status {
-		case "ok":
-			sb.WriteString(padLine("    Status:     ✔ Art Mode"))
-			sb.WriteString(padLine(fmt.Sprintf("    Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
-			sb.WriteString(padLine(fmt.Sprintf("    Total:      %d images on TV", tv.TotalImages)))
-			if tv.Brightness != "" {
-				sb.WriteString(padLine("    Brightness: " + tv.Brightness))
-			}
-			if tv.Slideshow != "" {
-				sb.WriteString(padLine("    Slideshow:  " + tv.Slideshow))
-			}
-		case statusBackoff:
-			sb.WriteString(padLine("    Status:     ⏸ Backing off (unreachable)"))
-		default:
-			sb.WriteString(padLine("    Status:     ✘ " + tv.Status))
-			if tv.ErrorMessage != "" {
-				errMsg := tv.ErrorMessage
-				if len(errMsg) > 35 {
-					errMsg = errMsg[:32] + "..."
-				}
-				sb.WriteString(padLine("    Error:      " + errMsg))
-			}
-		}
+		writeTVSummary(&sb, tv, padLine)
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
 
@@ -87,13 +59,7 @@ func LogCycleSummary(
 
 	if len(warnings) > 0 {
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
-		sb.WriteString(padLine("  ⚠ Warnings during this cycle:"))
-		for _, w := range warnings {
-			if len(w) > 44 {
-				w = w[:41] + "..."
-			}
-			sb.WriteString(padLine("  - " + w))
-		}
+		writeWarningsSummary(&sb, warnings, padLine)
 	}
 
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
@@ -102,4 +68,46 @@ func LogCycleSummary(
 	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
 
 	logger.Info(sb.String())
+}
+
+func writeTVSummary(sb *strings.Builder, tv TVSyncResult, padLine func(string) string) {
+	name := tv.IP
+	if tv.Model != "" {
+		name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
+	}
+	sb.WriteString(padLine("  TV: " + name))
+
+	switch tv.Status {
+	case "ok":
+		sb.WriteString(padLine("    Status:     ✔ Art Mode"))
+		sb.WriteString(padLine(fmt.Sprintf("    Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
+		sb.WriteString(padLine(fmt.Sprintf("    Total:      %d images on TV", tv.TotalImages)))
+		if tv.Brightness != "" {
+			sb.WriteString(padLine("    Brightness: " + tv.Brightness))
+		}
+		if tv.Slideshow != "" {
+			sb.WriteString(padLine("    Slideshow:  " + tv.Slideshow))
+		}
+	case statusBackoff:
+		sb.WriteString(padLine("    Status:     ⏸ Backing off (unreachable)"))
+	default:
+		sb.WriteString(padLine("    Status:     ✘ " + tv.Status))
+		if tv.ErrorMessage != "" {
+			errMsg := tv.ErrorMessage
+			if len(errMsg) > 35 {
+				errMsg = errMsg[:32] + "..."
+			}
+			sb.WriteString(padLine("    Error:      " + errMsg))
+		}
+	}
+}
+
+func writeWarningsSummary(sb *strings.Builder, warnings []string, padLine func(string) string) {
+	sb.WriteString(padLine("  ⚠ Warnings during this cycle:"))
+	for _, w := range warnings {
+		if len(w) > 44 {
+			w = w[:41] + "..."
+		}
+		sb.WriteString(padLine("  - " + w))
+	}
 }
