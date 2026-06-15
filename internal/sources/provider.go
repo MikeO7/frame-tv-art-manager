@@ -3,6 +3,8 @@ package sources
 import (
 	"context"
 	neturl "net/url"
+	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -79,4 +81,42 @@ func URLToSlug(url string) string {
 		return slug
 	}
 	return slugDirectSource
+}
+
+var (
+	// reSpaces collapses multiple consecutive spaces into one.
+	reSpaces = regexp.MustCompile(` +`)
+	// reUnsafeChars matches unsafe characters (allowing dots, hyphens, underscores).
+	reUnsafeChars = regexp.MustCompile(`[^a-zA-Z0-9 \._\-]`)
+	// reDots matches multiple dots.
+	reDots = regexp.MustCompile(`\.+`)
+)
+
+// Filename sanitizes a filename by stripping special characters from the stem,
+// collapsing spaces, and lowercasing the extension. This prevents issues with
+// the Samsung TV art API which can choke on certain characters.
+//
+// Examples:
+//
+//	"café (1).JPEG" → "caf 1.jpeg"
+//	"...#$%.png"    → "image.png"
+//	"hello.JPG"     → "hello.jpg"
+func Filename(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	stem := strings.TrimSuffix(name, filepath.Ext(name))
+
+	// Remove unsafe characters (allow dots, hyphens, underscores).
+	stem = reUnsafeChars.ReplaceAllString(stem, "")
+
+	// Collapse multiple spaces and trim.
+	stem = reSpaces.ReplaceAllString(strings.TrimSpace(stem), " ")
+
+	// Collapse multiple dots to prevent ".." or similar.
+	stem = reDots.ReplaceAllString(stem, ".")
+
+	if stem == "" || stem == "." {
+		stem = mediaTypeImage
+	}
+
+	return stem + ext
 }
