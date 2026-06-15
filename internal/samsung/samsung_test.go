@@ -15,18 +15,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
 
 func TestConnection_Open_Handshake(t *testing.T) {
 	// Create a mock WebSocket server with TLS.
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 		// Step 1: Send ms.channel.connect.
 		resp := wsResponse{
@@ -34,7 +33,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 			Data:  json.RawMessage(`{"token":"test-token-123"}`),
 		}
 		b, _ := json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, b)
+		_ = conn.Write(r.Context(), websocket.MessageText, b)
 
 		// Step 2: For art-app, send ms.channel.ready.
 		if strings.Contains(r.URL.Path, "com.samsung.art-app") {
@@ -43,7 +42,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 				Data:  json.RawMessage(`{}`),
 			}
 			bReady, _ := json.Marshal(respReady)
-			_ = conn.WriteMessage(websocket.TextMessage, bReady)
+			_ = conn.Write(r.Context(), websocket.MessageText, bReady)
 		}
 
 		// Keep alive for a bit.
@@ -82,19 +81,18 @@ func TestConnection_Open_Handshake(t *testing.T) {
 }
 
 func TestConnection_Unauthorized(t *testing.T) {
-	upgrader := websocket.Upgrader{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 		if err != nil {
 			return
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 		resp := wsResponse{
 			Event: "ms.channel.unauthorized",
 		}
 		b, _ := json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, b)
+		_ = conn.Write(r.Context(), websocket.MessageText, b)
 	}))
 	defer server.Close()
 
