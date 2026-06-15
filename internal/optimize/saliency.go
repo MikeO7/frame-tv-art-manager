@@ -163,11 +163,13 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	srcStride := src.Stride
 	srcPix := src.Pix
 	for y := 1; y < h-1; y++ {
+		yStride := y * srcStride
+		yW := y * w
 		for x := 1; x < w-1; x++ {
-			idx := y*srcStride + x*4
+			idx := yStride + x*4
 			r, g, b := srcPix[idx], srcPix[idx+1], srcPix[idx+2]
 			l, aVal, bVal := rgbToLab(r, g, b)
-			labMap[y*w+x] = labColor{l: l, a: aVal, b: bVal}
+			labMap[yW+x] = labColor{l: l, a: aVal, b: bVal}
 			sumL += l
 			sumA += aVal
 			sumB += bVal
@@ -202,8 +204,12 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	}
 
 	for y := 1; y < h-1; y++ {
+		yStride := y * srcStride
+		yW := y * w
+		dySqY := dySq[y]
+		thirdYY := thirdY[y]
 		for x := 1; x < w-1; x++ {
-			idx := y*srcStride + x*4
+			idx := yStride + x*4
 			r, g, b := srcPix[idx], srcPix[idx+1], srcPix[idx+2]
 
 			// 3. Structural Saliency (Edge Detection via 3x3 Sobel)
@@ -213,24 +219,24 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			skin := calculateSkinProbability(r, g, b)
 
 			// 5. Object Saliency (BMS)
-			object := bmsMap[y*w+x]
+			object := bmsMap[yW+x]
 
 			// 6. Perceptual Lab Saliency (Color Contrast using CIEDE2000 color difference)
 			// Measures true perceptual distance from the average image background color
-			c := labMap[y*w+x]
+			c := labMap[yW+x]
 			colorWeight := ciede2000(c, labColor{l: meanL, a: meanA, b: meanB}) / 100.0
 			if colorWeight > 1.0 {
 				colorWeight = 1.0
 			}
 
 			// 7. Aesthetic/Compositional Weight (Rule of Thirds + Balance)
-			centerBias := 0.1 * (1.0 - math.Sqrt(dxSq[x]+dySq[y]))
-			aesthetic := centerBias + ((thirdX[x] + thirdY[y]) * 0.25) + balanceX[x]
+			centerBias := 0.1 * (1.0 - math.Sqrt(dxSq[x]+dySqY))
+			aesthetic := centerBias + ((thirdX[x] + thirdYY) * 0.25) + balanceX[x]
 
 			// Weighted Fusion v4.1
 			// BMS is the core, with perceptual CIEDE2000 color distance as the color contrast weight.
 			fusion := (object * 0.40) + (edge * 0.20) + (skin * 0.25) + (colorWeight * 0.15)
-			mapData[y*w+x] = fusion * (1.0 + aesthetic)
+			mapData[yW+x] = fusion * (1.0 + aesthetic)
 		}
 	}
 	return mapData
@@ -338,12 +344,14 @@ func calculateIntegralImage(saliencyMap []float64, w, h int) []float64 {
 	integral := make([]float64, w*h)
 	for y := 0; y < h; y++ {
 		rowSum := 0.0
+		yW := y * w
+		prevYW := (y - 1) * w
 		for x := 0; x < w; x++ {
-			rowSum += saliencyMap[y*w+x]
+			rowSum += saliencyMap[yW+x]
 			if y == 0 {
-				integral[y*w+x] = rowSum
+				integral[yW+x] = rowSum
 			} else {
-				integral[y*w+x] = integral[(y-1)*w+x] + rowSum
+				integral[yW+x] = integral[prevYW+x] + rowSum
 			}
 		}
 	}
