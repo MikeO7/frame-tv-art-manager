@@ -171,7 +171,9 @@ Everything is configured through environment variables. **Only `TV_IPS` is requi
 | :--- | :--- | :--- |
 | `UPLOAD_ENABLED` | `false` | Enable the drag-and-drop uploader and `POST /upload` on port 8080. |
 | `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your sources list (e.g. `/data/sources.yaml`). |
+| `UNSPLASH_APP_ID` | *(empty)* | Unsplash Application ID. |
 | `UNSPLASH_ACCESS_KEY` | *(empty)* | Unsplash API Access Key. |
+| `UNSPLASH_SECRET_KEY` | *(empty)* | Unsplash API Secret Key. |
 | `PEXELS_API_KEY` | *(empty)* | Pexels API key. |
 | `PIXABAY_API_KEY` | *(empty)* | Pixabay API key. |
 | `NASA_API_KEY` | `DEMO_KEY` | NASA API key (the demo key works, with lower rate limits). |
@@ -209,6 +211,15 @@ Everything is configured through environment variables. **Only `TV_IPS` is requi
 | `ENABLE_REST_GATE` | `false` | Probe port 8001 to skip TVs busy with other content (firmware-dependent). |
 | `PUID` / `PGID` | `0` | Owner UID/GID for created data directories. |
 | `DRY_RUN` | `false` | Process images locally without touching the TV. |
+| `VERIFY_TLS` | `false` | Enable TLS/SSL certificate verification. |
+| `SKIP_TLS_VERIFY` | `false` | Skip TLS verification regardless of VERIFY_TLS setting. |
+| `CONNECTION_TIMEOUT_SECONDS` | `60` | Connection timeout for WSS handshake. |
+| `API_TIMEOUT_SECONDS` | `60` | API timeout for art API responses. |
+| `UPLOAD_DELAY_MS` | `3000` | Pause between consecutive image uploads. |
+| `UPLOAD_ATTEMPTS` | `3` | Number of times to retry a failed upload. |
+| `GATE_TIMEOUT_MS` | `10000` | HTTP timeout for the REST gate probe. |
+| `ARTWORK_DIR` | `/data/artwork` | Path to store artwork images. |
+| `TOKEN_DIR` | `/data/tokens` | Path to store TV auth tokens. |
 
 A full annotated list lives in [`.env.example`](.env.example).
 
