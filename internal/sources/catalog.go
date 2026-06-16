@@ -245,32 +245,29 @@ type indexEntry struct {
 	err           error
 }
 
-// Rebuild scans the artwork directory and rebuilds hash and prefix indexes.
-//
-//nolint:gocognit,gocyclo,funlen // complexity justified for this domain-specific path
-func (c *ArtworkCatalog) Rebuild() {
+func (c *ArtworkCatalog) isCacheValid() bool {
 	info, statErr := os.Stat(c.artworkDir)
 	if statErr == nil {
 		c.mu.Lock()
 		cached := info.ModTime().Equal(c.lastDirModTime) && len(c.hashIndex) > 0
 		c.mu.Unlock()
 		if cached {
-			return
+			return true
 		}
 		c.lastDirModTime = info.ModTime()
 	}
+	return false
+}
 
+func (c *ArtworkCatalog) resetState() {
 	c.mu.Lock()
 	c.hashIndex = make(map[string]string)
 	c.prefixMap = make(map[string]string)
 	c.catalog = make(map[string]struct{})
 	c.mu.Unlock()
+}
 
-	entries, err := os.ReadDir(c.artworkDir)
-	if err != nil {
-		return
-	}
-
+func (c *ArtworkCatalog) processFilesConcurrent(entries []os.DirEntry) chan indexEntry {
 	jobs := make(chan string, len(entries))
 	results := make(chan indexEntry, len(entries))
 
@@ -306,42 +303,64 @@ func (c *ArtworkCatalog) Rebuild() {
 		close(results)
 	}()
 
+	return results
+}
+
+func (c *ArtworkCatalog) processResult(res indexEntry) {
+	if res.err != nil {
+		return
+	}
+
+	filename := res.filename
+	path := filepath.Join(c.artworkDir, filename)
+	hash := res.hash
+	identity := res.identity
+	cleanIdentity := res.cleanIdentity
+
+	c.registerPrefix(cleanIdentity, filename)
+
+	if !strings.Contains(filename, ".h_"+hash[:12]) && !strings.Contains(filename, "__"+hash[:12]) {
+		ext := filepath.Ext(filename)
+		newName := artwork.BuildHashName(identity, hash[:12], ext)
+		newPath := filepath.Join(c.artworkDir, newName)
+		if err := os.Rename(path, newPath); err == nil {
+			filename = newName
+			path = newPath
+			c.registerPrefix(cleanIdentity, filename)
+		}
+		c.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:12])
+	}
+
+	c.mu.Lock()
+	if existing, ok := c.hashIndex[hash]; ok {
+		c.logger.Info("found existing duplicate content, removing", "file", filename, "matches", existing)
+		_ = os.Remove(path)
+	} else {
+		c.hashIndex[hash] = filename
+		if artwork.IsSupportedExtension(filepath.Ext(filename)) {
+			c.catalog[filename] = struct{}{}
+		}
+	}
+	c.mu.Unlock()
+}
+
+// Rebuild scans the artwork directory and rebuilds hash and prefix indexes.
+func (c *ArtworkCatalog) Rebuild() {
+	if c.isCacheValid() {
+		return
+	}
+
+	c.resetState()
+
+	entries, err := os.ReadDir(c.artworkDir)
+	if err != nil {
+		return
+	}
+
+	results := c.processFilesConcurrent(entries)
+
 	for res := range results {
-		if res.err != nil {
-			continue
-		}
-
-		filename := res.filename
-		path := filepath.Join(c.artworkDir, filename)
-		hash := res.hash
-		identity := res.identity
-		cleanIdentity := res.cleanIdentity
-
-		c.registerPrefix(cleanIdentity, filename)
-
-		if !strings.Contains(filename, ".h_"+hash[:12]) && !strings.Contains(filename, "__"+hash[:12]) {
-			ext := filepath.Ext(filename)
-			newName := artwork.BuildHashName(identity, hash[:12], ext)
-			newPath := filepath.Join(c.artworkDir, newName)
-			if err := os.Rename(path, newPath); err == nil {
-				filename = newName
-				path = newPath
-				c.registerPrefix(cleanIdentity, filename)
-			}
-			c.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:12])
-		}
-
-		c.mu.Lock()
-		if existing, ok := c.hashIndex[hash]; ok {
-			c.logger.Info("found existing duplicate content, removing", "file", filename, "matches", existing)
-			_ = os.Remove(path)
-		} else {
-			c.hashIndex[hash] = filename
-			if artwork.IsSupportedExtension(filepath.Ext(filename)) {
-				c.catalog[filename] = struct{}{}
-			}
-		}
-		c.mu.Unlock()
+		c.processResult(res)
 	}
 }
 
