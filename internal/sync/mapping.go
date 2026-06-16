@@ -17,19 +17,21 @@ type Mapping struct {
 	data map[string]string // filename → content_id
 }
 
-// LoadMapping reads a mapping file from disk.
+// LoadMapping reads the TV's current file mapping state from disk.
+// This mapping matches local source filenames to the remote Content IDs
+// assigned by the TV during upload.
 //
 // Parameters:
-//   - dir: The directory where the TV-specific mapping JSON files are stored.
-//   - tvIP: The IPv4 address of the target TV (used to generate the unique filename).
+//   - dir:  The directory containing the mapping JSON files (usually the token directory).
+//   - tvIP: The IP address of the TV, used to generate a unique filename for the mapping.
 //
 // Returns:
-//   - *Mapping: An instantiated, thread-safe mapping struct loaded with existing filename→content_id pairs.
-//   - error:    Any file I/O error encountered during read/parse, excluding "file not found" (which returns an empty Mapping).
+//   - *Mapping: An initialized mapping store populated from disk, ready for lookups.
+//   - error:    An error if the directory is unreadable or JSON parsing fails.
 //
 // Example:
 //
-//	mapping, err := sync.LoadMapping("/data/artwork", "192.168.1.150")
+//	mapping, err := sync.LoadMapping("/data/tokens", "192.168.1.150")
 //	if err != nil {
 //	    log.Fatal("Could not load mapping state:", err)
 //	}

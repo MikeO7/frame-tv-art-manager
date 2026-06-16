@@ -46,16 +46,16 @@ type Client struct {
 	backoffUntil time.Time
 }
 
-// NewClient creates a new TV client. Call Connect() to establish the
-// WebSocket connection.
+// NewClient creates a new Samsung TV client configured with the given IP and options.
+// It initializes the WebSocket client state but does not open the connection immediately.
 //
 // Parameters:
-//   - ip:     The IPv4 address of the target Frame TV.
-//   - opts:   Configuration options for the connection, including timeouts and client identity.
-//   - logger: A structured logger for emitting connection state and errors.
+//   - ip:     The network IP address of the target Samsung TV (e.g. "192.168.1.150").
+//   - opts:   Configuration options for the connection (timeout, MAC address, token storage).
+//   - logger: A base structured logger, which will be annotated with the TV's IP address.
 //
 // Returns:
-//   - *Client: An instantiated client ready to connect.
+//   - *Client: An initialized TV client ready for connection.
 //
 // Example:
 //

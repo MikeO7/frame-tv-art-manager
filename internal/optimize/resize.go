@@ -68,6 +68,26 @@ func DefaultConfig() Config {
 //	    fmt.Printf("Optimized file into %s\n", finalName)
 //	}
 //
+// OptimizeFile reads an image file, applies size reduction or aesthetic enhancements according to config,
+// and saves an optimized copy adjacent to the original file.
+//
+// Parameters:
+//   - path:   The full filesystem path to the original unoptimized image.
+//   - cfg:    The configuration containing maximum dimensions, quality settings, and visual mode flags.
+//   - logger: A structured logger for emitting pipeline events and warnings.
+//
+// Returns:
+//   - string: The filename of the resulting image (the new file if optimized, or the original if unchanged).
+//   - bool:   True if a new optimized file was created, false if the file was skipped or unneeded.
+//   - error:  An error if the source file could not be read or the optimized file could not be saved.
+//
+// Example:
+//
+//	newPath, changed, err := optimize.OptimizeFile("/data/artwork/monet.jpg", cfg, logger)
+//	if err != nil {
+//	    log.Println("Optimization failed:", err)
+//	}
+//
 //nolint:funlen,goconst // image optimization pipeline; extension constant is local
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
