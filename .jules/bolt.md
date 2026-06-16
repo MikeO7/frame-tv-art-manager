@@ -7,3 +7,6 @@
 ## 2026-06-13 - Extracting Math from 2D Loops
 **Learning:** In tight O(W*H) nested image processing loops, floating-point calculations like `math.Exp` or `math.Sqrt` that depend on only one coordinate (e.g., `x` or `y` individually) create massive overhead when computed repeatedly.
 **Action:** Always pre-calculate coordinate-dependent aesthetic or mathematical factors into 1D arrays outside the loop, replacing expensive function calls with simple slice lookups in the hot path.
+## 2026-06-16 - Precomputing Base Data for Concurrent Loops
+**Learning:** When concurrent loops process identical base data across different configurations (like parallel execution per threshold or channel), recalculating shared properties (like luminance) inside each goroutine introduces redundant CPU overhead that scales with the number of parallel workers.
+**Action:** Always precompute shared properties into a slice sequentially prior to spawning goroutines to significantly reduce redundant CPU operations and memory allocations across workers.
