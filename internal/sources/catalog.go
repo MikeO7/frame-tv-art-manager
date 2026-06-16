@@ -363,6 +363,7 @@ func (c *ArtworkCatalog) Rebuild() {
 		c.processResult(res)
 	}
 }
+
 func (c *ArtworkCatalog) processFile(filename string) indexEntry {
 	path := filepath.Join(c.artworkDir, filename)
 	identity, cleanIdentity, hash := artwork.ParseIdentity(filename)
