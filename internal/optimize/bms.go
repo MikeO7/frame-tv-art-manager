@@ -12,6 +12,16 @@ func generateBMSMap(src *image.RGBA) []float64 {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	bms := make([]float64, w*h)
 
+	// Precompute luminance map once for all thresholds to avoid redundant
+	// calculation overhead across concurrent goroutines
+	pix := src.Pix
+	lumMap := make([]uint8, w*h)
+	for i := 0; i < w*h; i++ {
+		idx := i * 4
+		lum := (int(pix[idx])*299 + int(pix[idx+1])*587 + int(pix[idx+2])*114) / 1000
+		lumMap[i] = uint8(lum)
+	}
+
 	thresholds := []uint8{50, 100, 150, 200, 240}
 	results := make([][]float64, len(thresholds))
 	var wg sync.WaitGroup
@@ -20,7 +30,7 @@ func generateBMSMap(src *image.RGBA) []float64 {
 		wg.Add(1)
 		go func(idx int, threshold uint8) {
 			defer wg.Done()
-			results[idx] = processBMSThreshold(src, threshold, w, h)
+			results[idx] = processBMSThreshold(lumMap, threshold, w, h)
 		}(i, t)
 	}
 	wg.Wait()
@@ -85,19 +95,14 @@ func (s *bmsState) floodFill() {
 }
 
 //nolint:gosec // uint8 conversion is safe here as max luminance is 255
-func processBMSThreshold(src *image.RGBA, t uint8, w, h int) []float64 {
+func processBMSThreshold(lumMap []uint8, t uint8, w, h int) []float64 {
 	if w <= 0 || h <= 0 {
 		return nil
 	}
 	res := make([]float64, w*h)
 	boolMap := make([]bool, w*h)
-	pix := src.Pix
 	for i := 0; i < w*h; i++ {
-		idx := i * 4
-		// OPTIMIZATION: Replacing floating point multiplication with integer math for much faster luminance calculation
-		// Extract src.Pix to a local variable to prevent pointer indirection in hot path
-		lum := (int(pix[idx])*299 + int(pix[idx+1])*587 + int(pix[idx+2])*114) / 1000
-		if uint8(lum) > t {
+		if lumMap[i] > t {
 			boolMap[i] = true
 		}
 	}
