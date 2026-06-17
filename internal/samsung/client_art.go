@@ -31,26 +31,9 @@ func (c *Client) IsInArtMode(ctx context.Context) bool {
 		keyRequestID: id,
 	}
 
-	payload, err := artAppRequest(req)
-	if err != nil {
-		c.logger.Debug("could not build get_artmode_status request, assuming safe to sync", "error", err)
-		return true
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
+	resp, _, err := c.sendArtRequest(ctx, req)
 	if err != nil {
 		c.logger.Debug("could not determine art mode, assuming safe to sync", "error", err)
-		return true
-	}
-
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		c.logger.Debug("parse artmode_status failed, assuming safe to sync", "error", err)
-		return true
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		c.logger.Debug("get_artmode_status error response, assuming safe to sync", "error", err)
 		return true
 	}
 
@@ -76,23 +59,9 @@ func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 		"category_id": "MY-C0002",
 	}
 
-	payload, err := artAppRequest(req)
+	resp, _, err := c.sendArtRequest(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
-	if err != nil {
-		return nil, fmt.Errorf("get_content_list: %w", err)
-	}
-
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		return nil, fmt.Errorf("get_content_list error: %w", err)
+		return nil, err
 	}
 
 	contentListStr := resp.ContentList()
@@ -138,26 +107,8 @@ func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 		"content_id_list": contentIDList,
 	}
 
-	payload, err := artAppRequest(req)
-	if err != nil {
-		return fmt.Errorf("build delete request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
-	if err != nil {
-		return fmt.Errorf("delete_image_list: %w", err)
-	}
-
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return fmt.Errorf("parse delete_image_list response: %w", err)
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		return fmt.Errorf("delete_image_list error: %w", err)
-	}
-
-	return nil
+	_, _, err := c.sendArtRequest(ctx, req)
+	return err
 }
 
 // SelectImage sets the currently displayed artwork.
@@ -179,26 +130,8 @@ func (c *Client) SelectImage(ctx context.Context, id string) error {
 		"show":       true,
 	}
 
-	payload, err := artAppRequest(req)
-	if err != nil {
-		return fmt.Errorf("build select_image request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, reqID, c.opts.APITimeout)
-	if err != nil {
-		return fmt.Errorf("select_image: %w", err)
-	}
-
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return fmt.Errorf("parse select_image response: %w", err)
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		return fmt.Errorf("select_image error: %w", err)
-	}
-
-	return nil
+	_, _, err := c.sendArtRequest(ctx, req)
+	return err
 }
 
 // getCategories retrieves the list of all artwork categories available on the TV.
@@ -211,26 +144,8 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 		keyRequestID: id,
 	}
 
-	payload, err := artAppRequest(req)
-	if err != nil {
-		return nil, fmt.Errorf("build get_categories request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
-	if err != nil {
-		return nil, fmt.Errorf("get_categories: %w", err)
-	}
-
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("parse get_categories response: %w", err)
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		return nil, fmt.Errorf("get_categories error: %w", err)
-	}
-
-	return raw, nil
+	_, raw, err := c.sendArtRequest(ctx, req)
+	return raw, err
 }
 
 // SaveMetadata fetches all available system information and artwork categories,
@@ -299,23 +214,9 @@ func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) 
 		keyRequestID: id,
 	}
 
-	payload, err := artAppRequest(req)
+	_, raw, err := c.sendArtRequest(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("build get_slideshow_status request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
-	if err != nil {
-		return nil, fmt.Errorf("get_slideshow_status: %w", err)
-	}
-
-	var artResp artResponse
-	if err := json.Unmarshal(raw, &artResp); err != nil {
-		return nil, fmt.Errorf("parse get_slideshow_status response: %w", err)
-	}
-
-	if err := checkArtError(&artResp); err != nil {
-		return nil, fmt.Errorf("get_slideshow_status error: %w", err)
+		return nil, err
 	}
 
 	var resp struct {
@@ -354,26 +255,8 @@ func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
 		"type":        s.Type,
 	}
 
-	payload, err := artAppRequest(req)
-	if err != nil {
-		return fmt.Errorf("build set_slideshow_status request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
-	if err != nil {
-		return fmt.Errorf("set_slideshow_status: %w", err)
-	}
-
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return fmt.Errorf("parse set_slideshow_status response: %w", err)
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		return fmt.Errorf("set_slideshow_status error: %w", err)
-	}
-
-	return nil
+	_, _, err := c.sendArtRequest(ctx, req)
+	return err
 }
 
 // SetBrightness sets the art mode brightness.
@@ -394,26 +277,8 @@ func (c *Client) SetBrightness(ctx context.Context, val int) error {
 		"value":      val,
 	}
 
-	payload, err := artAppRequest(req)
-	if err != nil {
-		return fmt.Errorf("build set_brightness request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
-	if err != nil {
-		return fmt.Errorf("set_brightness: %w", err)
-	}
-
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return fmt.Errorf("parse set_brightness response: %w", err)
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		return fmt.Errorf("set_brightness error: %w", err)
-	}
-
-	return nil
+	_, _, err := c.sendArtRequest(ctx, req)
+	return err
 }
 
 func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, timeout time.Duration) (string, error)) {
@@ -498,25 +363,12 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (
 		"file_size":         stat.Size(),
 	}
 
-	payload, err := artAppRequest(artReq)
+	resp, raw, err := c.sendArtRequest(ctx, artReq)
 	if err != nil {
-		return "", fmt.Errorf("build send_image request: %w", err)
-	}
-
-	raw, err := c.artConn.SendAndWait(ctx, payload, id, c.opts.APITimeout)
-	if err != nil {
-		return "", fmt.Errorf("send_image: %w", err)
+		return "", err
 	}
 
 	c.logger.Debug("send_image raw response", "raw", string(raw))
-	var resp artResponse
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return "", fmt.Errorf("parse send_image response: %w", err)
-	}
-
-	if err := checkArtError(&resp); err != nil {
-		return "", fmt.Errorf("send_image error: %w", err)
-	}
 
 	connInfoStr := resp.ConnInfo()
 	if connInfoStr == "" {
@@ -542,4 +394,30 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (
 	}
 
 	return contentID, nil
+}
+
+func (c *Client) sendArtRequest(ctx context.Context, req map[string]any) (*artResponse, json.RawMessage, error) {
+	name := fmt.Sprint(req[keyRequest])
+	reqID := fmt.Sprint(req[keyRequestID])
+
+	payload, err := artAppRequest(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build %s request: %w", name, err)
+	}
+
+	raw, err := c.artConn.SendAndWait(ctx, payload, reqID, c.opts.APITimeout)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", name, err)
+	}
+
+	var resp artResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, nil, fmt.Errorf("parse %s response: %w", name, err)
+	}
+
+	if err := checkArtError(&resp); err != nil {
+		return nil, nil, fmt.Errorf("%s error: %w", name, err)
+	}
+
+	return &resp, raw, nil
 }
