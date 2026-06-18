@@ -358,12 +358,14 @@ func findOrientationTag(tiff []byte, bo binary.ByteOrder, numEntries, entryOffse
 		}
 		if bo.Uint16(tiff[entryOffset:]) == 0x0112 {
 			valType := bo.Uint16(tiff[entryOffset+2:])
-			if valType == 3 {
+			switch valType {
+			case 3:
 				return int(bo.Uint16(tiff[entryOffset+8:])), nil
-			} else if valType == 4 {
+			case 4:
 				return int(bo.Uint32(tiff[entryOffset+8:])), nil
+			default:
+				return 1, fmt.Errorf("unexpected orientation tag type: %d", valType)
 			}
-			return 1, fmt.Errorf("unexpected orientation tag type: %d", valType)
 		}
 		entryOffset += 12
 	}
