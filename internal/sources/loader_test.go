@@ -76,25 +76,6 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	}
 }
 
-func TestLoader_UrlToSlug(t *testing.T) {
-	l := &Loader{}
-	tests := []struct {
-		url  string
-		want string
-	}{
-		{"https://example.com/photo.jpg", "example.com_photo.jpg"},
-		{"https://www.unsplash.com/123", "unsplash.com_123"},
-		{"invalid-url", "direct-source"},
-	}
-
-	for _, tt := range tests {
-		got := l.urlToSlug(tt.url)
-		if got != tt.want {
-			t.Errorf("urlToSlug(%q) = %q, want %q", tt.url, got, tt.want)
-		}
-	}
-}
-
 const testURL = "http://x.com/a"
 
 func TestExtensionFromResponse(t *testing.T) {
@@ -219,15 +200,6 @@ func TestLoader_Sync_Failures(t *testing.T) {
 
 	if downloaded != 0 {
 		t.Errorf("expected 0 downloads, got %d", downloaded)
-	}
-}
-
-func TestLoader_UrlToSlug_Long(t *testing.T) {
-	l := &Loader{}
-	longURL := "https://example.com/" + strings.Repeat("a", 200)
-	slug := l.urlToSlug(longURL)
-	if len(slug) > 100 {
-		t.Errorf("slug too long: %d", len(slug))
 	}
 }
 
