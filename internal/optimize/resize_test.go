@@ -155,3 +155,102 @@ func BenchmarkDither(b *testing.B) {
 		dither(img)
 	}
 }
+
+func TestCheckFastPath_StaleSmallerDimensions(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 3840
+	cfg.MaxHeight = 2160
+
+	tests := []struct {
+		name     string
+		filename string
+		want     bool
+	}{
+		{
+			name:     "exact match skips",
+			filename: "photo_3840x2160_opt.h_abc123.jpg",
+			want:     true,
+		},
+		{
+			name:     "stale smaller dims re-optimizes",
+			filename: "photo_1920x1080_opt.h_abc123.jpg",
+			want:     false,
+		},
+		{
+			name:     "no opt marker always processes",
+			filename: "photo.h_abc123.jpg",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := checkFastPath(tt.filename, cfg, slog.Default())
+			if got != tt.want {
+				t.Errorf("checkFastPath(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOptimizeFile_MuseumModeSkipsDither(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "museum_dither.jpg")
+
+	// Create a test image with a smooth gradient to make noise visible
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			img.Set(x, y, color.RGBA{128, 128, 128, 255})
+		}
+	}
+	f, err := os.Create(filepath.Clean(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = jpeg.Encode(f, img, &jpeg.Options{Quality: 100})
+	_ = f.Close()
+
+	// Run with museum mode ON
+	cfgMuseum := DefaultConfig()
+	cfgMuseum.MaxWidth = 100
+	cfgMuseum.MaxHeight = 100
+	cfgMuseum.MuseumModeEnabled = true
+	cfgMuseum.MuseumModeIntensity = 1
+
+	museumName, museumMod, err := OptimizeFile(path, cfgMuseum, slog.Default())
+	if err != nil {
+		t.Fatalf("OptimizeFile museum mode failed: %v", err)
+	}
+	if !museumMod {
+		t.Error("expected modified to be true with museum mode")
+	}
+	if err := ValidateImage(filepath.Join(tmpDir, museumName)); err != nil {
+		t.Errorf("museum mode output is invalid: %v", err)
+	}
+
+	// Run without museum mode for comparison — this path uses dither instead
+	path2 := filepath.Join(tmpDir, "no_museum.jpg")
+	f2, err := os.Create(filepath.Clean(path2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = jpeg.Encode(f2, img, &jpeg.Options{Quality: 100})
+	_ = f2.Close()
+
+	cfgNormal := DefaultConfig()
+	cfgNormal.MaxWidth = 100
+	cfgNormal.MaxHeight = 100
+	cfgNormal.MuseumModeEnabled = false
+
+	normalName, normalMod, err := OptimizeFile(path2, cfgNormal, slog.Default())
+	if err != nil {
+		t.Fatalf("OptimizeFile normal mode failed: %v", err)
+	}
+	if !normalMod {
+		t.Error("expected modified to be true without museum mode")
+	}
+	if err := ValidateImage(filepath.Join(tmpDir, normalName)); err != nil {
+		t.Errorf("normal mode output is invalid: %v", err)
+	}
+}

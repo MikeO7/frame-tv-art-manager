@@ -258,8 +258,9 @@ func processCollagePair(
 	collage = sharpen(collage)
 	if cfg.MuseumModeEnabled {
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
+	} else {
+		collage = dither(collage)
 	}
-	collage = dither(collage)
 
 	stem1, hash1, ext1 := artwork.ExtractStemAndHash(f1)
 	stem2, hash2, _ := artwork.ExtractStemAndHash(f2)
