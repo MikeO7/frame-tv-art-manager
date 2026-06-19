@@ -134,7 +134,7 @@ func (s *Server) Start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
-	mux.HandleFunc("/upload", s.handleUpload)
+	mux.HandleFunc("/upload", s.HandleUpload)
 
 	s.server = &http.Server{
 		Addr:              fmt.Sprintf(":%d", s.cfg.HealthPort),
@@ -203,10 +203,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// handleUpload processes HTTP multipart file uploads for artwork.
+// HandleUpload processes HTTP multipart file uploads for artwork.
 //
 //nolint:gocyclo,funlen // complexity and length are due to sequential validation of multipart file parameters
-func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if s.cfg == nil || !s.cfg.UploadEnabled {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)

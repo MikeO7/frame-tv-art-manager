@@ -66,6 +66,68 @@ func TestRotateImage(t *testing.T) {
 	if r, _, _, _ := rot270.At(2, 1).RGBA(); uint8(r) != 5 {
 		t.Errorf("expected At(2,1) to be 5, got %d", uint8(r))
 	}
+
+	// Test Mirror horizontal (orientation 2)
+	// Expected:
+	// B A
+	// D C
+	// F E
+	orient2 := RotateImage(img, 2)
+	if orient2.Bounds().Dx() != 2 || orient2.Bounds().Dy() != 3 {
+		t.Errorf("expected bounds 2x3, got %dx%d", orient2.Bounds().Dx(), orient2.Bounds().Dy())
+	}
+	if r, _, _, _ := orient2.At(0, 0).RGBA(); uint8(r) != 2 {
+		t.Errorf("expected At(0,0) to be 2, got %d", uint8(r))
+	}
+	if r, _, _, _ := orient2.At(1, 0).RGBA(); uint8(r) != 1 {
+		t.Errorf("expected At(1,0) to be 1, got %d", uint8(r))
+	}
+
+	// Test Mirror vertical (orientation 4)
+	// Expected:
+	// E F
+	// C D
+	// A B
+	orient4 := RotateImage(img, 4)
+	if orient4.Bounds().Dx() != 2 || orient4.Bounds().Dy() != 3 {
+		t.Errorf("expected bounds 2x3, got %dx%d", orient4.Bounds().Dx(), orient4.Bounds().Dy())
+	}
+	if r, _, _, _ := orient4.At(0, 0).RGBA(); uint8(r) != 5 {
+		t.Errorf("expected At(0,0) to be 5, got %d", uint8(r))
+	}
+	if r, _, _, _ := orient4.At(1, 2).RGBA(); uint8(r) != 2 {
+		t.Errorf("expected At(1,2) to be 2, got %d", uint8(r))
+	}
+
+	// Test Mirror horizontal and rotate 270 CW (orientation 5)
+	// Expected:
+	// A C E
+	// B D F
+	orient5 := RotateImage(img, 5)
+	if orient5.Bounds().Dx() != 3 || orient5.Bounds().Dy() != 2 {
+		t.Errorf("expected bounds 3x2, got %dx%d", orient5.Bounds().Dx(), orient5.Bounds().Dy())
+	}
+	if r, _, _, _ := orient5.At(0, 0).RGBA(); uint8(r) != 1 {
+		t.Errorf("expected At(0,0) to be 1, got %d", uint8(r))
+	}
+	if r, _, _, _ := orient5.At(2, 1).RGBA(); uint8(r) != 6 {
+		t.Errorf("expected At(2,1) to be 6, got %d", uint8(r))
+	}
+
+	// Test Mirror horizontal and rotate 90 CW (orientation 7)
+	// Expected:
+	// F D B
+	// E C A
+	orient7 := RotateImage(img, 7)
+	if orient7.Bounds().Dx() != 3 || orient7.Bounds().Dy() != 2 {
+		t.Errorf("expected bounds 3x2, got %dx%d", orient7.Bounds().Dx(), orient7.Bounds().Dy())
+	}
+	if r, _, _, _ := orient7.At(0, 0).RGBA(); uint8(r) != 6 {
+		t.Errorf("expected At(0,0) to be 6, got %d", uint8(r))
+	}
+	if r, _, _, _ := orient7.At(2, 1).RGBA(); uint8(r) != 1 {
+		t.Errorf("expected At(2,1) to be 1, got %d", uint8(r))
+	}
 }
 
 func TestPadPortrait(t *testing.T) {

@@ -89,7 +89,7 @@ func OptimizeCatalog(
 	var optimizedCount int64
 
 	// Collage pairing runs in two cases:
-	//   1. Always for uploaded files (prefixed "upload__"): iPhone/web uploads are
+	//   1. Always for uploaded files (prefixed "upload"): iPhone/web uploads are
 	//      personal photos and benefit from side-by-side collage layout.
 	//   2. For all portrait files when PORTRAIT_MODE=collage is explicitly set.
 	//
@@ -205,7 +205,7 @@ func isPortraitFile(path string) (bool, error) {
 
 	orientation, _ := ReadOrientation(f)
 	w, h := imgCfg.Width, imgCfg.Height
-	if orientation == 6 || orientation == 8 {
+	if orientation >= 5 && orientation <= 8 {
 		w, h = h, w
 	}
 	return h > w, nil
@@ -319,7 +319,7 @@ func processCollages(
 			delete(localFiles, filename)
 			continue
 		}
-		isUpload := strings.HasPrefix(filename, "upload__")
+		isUpload := strings.HasPrefix(filename, "upload")
 		if !wantsCollageAll && !isUpload {
 			continue
 		}

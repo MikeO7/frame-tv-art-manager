@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -245,7 +246,7 @@ func TestUpload_Disabled(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	srv.handleUpload(w, req)
+	srv.HandleUpload(w, req)
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", w.Code)
@@ -258,7 +259,7 @@ func TestUpload_MethodNotAllowed(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPut, "/upload", nil)
 	w := httptest.NewRecorder()
-	srv.handleUpload(w, req)
+	srv.HandleUpload(w, req)
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
@@ -271,7 +272,7 @@ func TestUpload_GETHTML(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	w := httptest.NewRecorder()
-	srv.handleUpload(w, req)
+	srv.HandleUpload(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
@@ -289,7 +290,7 @@ func TestUpload_InvalidMultipart(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader([]byte("not multipart")))
 	req.Header.Set("Content-Type", "application/octet-stream")
 	w := httptest.NewRecorder()
-	srv.handleUpload(w, req)
+	srv.HandleUpload(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -306,7 +307,7 @@ func TestUpload_UnsupportedType(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	srv.handleUpload(w, req)
+	srv.HandleUpload(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -332,7 +333,7 @@ func TestUpload_SuccessAndDeduplication(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	srv.handleUpload(w, req)
+	srv.HandleUpload(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -365,7 +366,7 @@ func TestUpload_SuccessAndDeduplication(t *testing.T) {
 	}
 
 	w2 := httptest.NewRecorder()
-	srv.handleUpload(w2, req2)
+	srv.HandleUpload(w2, req2)
 
 	if w2.Code != http.StatusOK {
 		t.Errorf("expected 200 on duplicate, got %d", w2.Code)
@@ -397,7 +398,7 @@ func TestUpload_SuccessRawBinary(t *testing.T) {
 	req.Header.Set("Content-Type", "image/jpeg")
 
 	w := httptest.NewRecorder()
-	srv.handleUpload(w, req)
+	srv.HandleUpload(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -422,4 +423,205 @@ func TestUpload_SuccessRawBinary(t *testing.T) {
 	if _, err := os.Stat(filePath); err != nil {
 		t.Errorf("file was not saved: %v", err)
 	}
+}
+
+func TestUpload_iOSShortcutSimulator(t *testing.T) {
+	// 1. Success case with form file parameter "file" (iOS Shortcut style)
+	t.Run("Valid Form JPEG", func(t *testing.T) {
+		status := NewStatus()
+		tmpDir := t.TempDir()
+		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+
+		jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
+		for i := 0; i < 100; i++ {
+			jpegContent = append(jpegContent, 0x00)
+		}
+
+		req, err := createMultipartRequest("shortcut_favorite.jpg", jpegContent)
+		if err != nil {
+			t.Fatalf("create request: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		srv.HandleUpload(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+
+		if resp["status"] != "ok" {
+			t.Errorf("expected status=ok, got %v", resp["status"])
+		}
+
+		filename, ok := resp["filename"].(string)
+		if !ok || filename == "" {
+			t.Fatalf("missing filename in response")
+		}
+
+		filePath := filepath.Join(tmpDir, filename)
+		if _, err := os.Stat(filePath); err != nil {
+			t.Errorf("file was not saved to disk: %v", err)
+		}
+	})
+
+	// 2. Success case with PNG
+	t.Run("Valid Form PNG", func(t *testing.T) {
+		status := NewStatus()
+		tmpDir := t.TempDir()
+		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+
+		pngContent := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+		for i := 0; i < 100; i++ {
+			pngContent = append(pngContent, 0x00)
+		}
+
+		req, err := createMultipartRequest("shortcut_fav.png", pngContent)
+		if err != nil {
+			t.Fatalf("create request: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		srv.HandleUpload(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+
+		if resp["status"] != "ok" {
+			t.Errorf("expected status=ok, got %v", resp["status"])
+		}
+
+		filename, ok := resp["filename"].(string)
+		if !ok || filename == "" {
+			t.Fatalf("missing filename in response")
+		}
+
+		if !strings.HasSuffix(filename, ".png") {
+			t.Errorf("expected png extension, got %s", filename)
+		}
+	})
+
+	// 3. Error case - file too large
+	t.Run("File Too Large", func(t *testing.T) {
+		status := NewStatus()
+		tmpDir := t.TempDir()
+		cfg := testConfig(0, true, tmpDir)
+		cfg.MaxDownloadSizeMB = 1 // 1 MB max size
+		srv := NewServer(cfg, status, silentLogger())
+
+		// Create content larger than 1MB
+		largeContent := make([]byte, 1024*1024+100)
+		// Set JPEG prefix just to make it otherwise valid
+		copy(largeContent, []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01})
+
+		req, err := createMultipartRequest("large.jpg", largeContent)
+		if err != nil {
+			t.Fatalf("create request: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		srv.HandleUpload(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request, got %d", w.Code)
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+
+		if resp["status"] != "error" {
+			t.Errorf("expected status=error, got %v", resp["status"])
+		}
+
+		errMsg, _ := resp["error"].(string)
+		if !strings.Contains(errMsg, "too large") && !strings.Contains(errMsg, "limit") {
+			t.Errorf("expected error message about size/limit, got %q", errMsg)
+		}
+	})
+
+	// 4. Error case - missing file field
+	t.Run("Missing File Field", func(t *testing.T) {
+		status := NewStatus()
+		tmpDir := t.TempDir()
+		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		// create some other field instead of "file"
+		part, err := writer.CreateFormField("not-file")
+		if err != nil {
+			t.Fatalf("create form field: %v", err)
+		}
+		_, _ = part.Write([]byte("some data"))
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		w := httptest.NewRecorder()
+		srv.HandleUpload(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+
+		if resp["status"] != "error" {
+			t.Errorf("expected status=error, got %v", resp["status"])
+		}
+
+		if !strings.Contains(resp["error"].(string), "missing 'file' parameter") {
+			t.Errorf("expected error message about missing file parameter, got %q", resp["error"])
+		}
+	})
+
+	// 5. Error case - unsupported format (HEIC/video)
+	t.Run("Unsupported Format", func(t *testing.T) {
+		status := NewStatus()
+		tmpDir := t.TempDir()
+		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+
+		// Mock HEIC image simulator data
+		heicContent := []byte("heic image simulator data")
+		req, err := createMultipartRequest("image.heic", heicContent)
+		if err != nil {
+			t.Fatalf("create request: %v", err)
+		}
+
+		w := httptest.NewRecorder()
+		srv.HandleUpload(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+
+		if resp["status"] != "error" {
+			t.Errorf("expected status=error, got %v", resp["status"])
+		}
+
+		if !strings.Contains(resp["error"].(string), "Unsupported file type") {
+			t.Errorf("expected error message about unsupported file type, got %q", resp["error"])
+		}
+	})
 }
