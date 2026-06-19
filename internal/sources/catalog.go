@@ -189,6 +189,9 @@ func (c *ArtworkCatalog) RegisterDownload(tempPath, filename, identity string) (
 		c.visited[filename] = true
 		return filename, true, fmt.Errorf("rename to final hash name: %w", err)
 	}
+	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
+	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
+	_ = os.Chmod(finalPath, 0o644)
 
 	c.hashIndex[hash] = finalName
 	c.prefixMap[cleanIdentity] = finalName
@@ -326,6 +329,9 @@ func (c *ArtworkCatalog) processResult(res indexEntry) {
 		if err := os.Rename(path, newPath); err == nil {
 			filename = newName
 			path = newPath
+			// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
+			// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
+			_ = os.Chmod(path, 0o644)
 			c.registerPrefix(cleanIdentity, filename)
 		}
 		c.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:12])

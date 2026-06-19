@@ -176,13 +176,18 @@ func validateDirectories(cfg *config.Config, logger *slog.Logger) {
 		path string
 		perm os.FileMode
 	}{
-		{"artwork", cfg.ArtworkDir, 0o700},
+		// 0o755 is intentional for artwork directory so that network shares
+		// like SMB/NFS can traverse and read the images. Do NOT tighten to 0o700.
+		{"artwork", cfg.ArtworkDir, 0o755},
 		{"tokens", cfg.TokenDir, 0o700},
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir.path, dir.perm); err != nil {
 			logger.Error("Failed to create/access directory", "name", dir.name, "path", dir.path, "error", err)
 			os.Exit(1)
+		}
+		if err := os.Chmod(dir.path, dir.perm); err != nil {
+			logger.Warn("Failed to set directory permissions", "path", dir.path, "perm", dir.perm, "error", err)
 		}
 		if cfg.PUID != 0 || cfg.PGID != 0 {
 			if err := os.Chown(dir.path, cfg.PUID, cfg.PGID); err != nil {
