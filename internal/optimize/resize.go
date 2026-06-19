@@ -4,6 +4,7 @@
 package optimize
 
 import (
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -317,42 +318,26 @@ func ReadOrientation(r io.Reader) (int, error) {
 	return 1, nil
 }
 
-//nolint:gocognit,gocritic,gocyclo,funlen // byte order check structure, switch simplification, parse loops, and length
 func parseExif(tiff []byte) (int, error) {
 	if len(tiff) < 8 {
 		return 1, fmt.Errorf("tiff header too short")
 	}
 
-	var isLittleEndian bool
+	var bo binary.ByteOrder
 	switch {
 	case tiff[0] == 'I' && tiff[1] == 'I':
-		isLittleEndian = true
+		bo = binary.LittleEndian
 	case tiff[0] == 'M' && tiff[1] == 'M':
-		isLittleEndian = false
+		bo = binary.BigEndian
 	default:
 		return 1, fmt.Errorf("invalid byte order")
 	}
 
-	readUint16 := func(b []byte, offset int) uint16 {
-		if isLittleEndian {
-			return uint16(b[offset]) | uint16(b[offset+1])<<8
-		}
-		return uint16(b[offset])<<8 | uint16(b[offset+1])
-	}
-
-	readUint32 := func(b []byte, offset int) uint32 {
-		if isLittleEndian {
-			return uint32(b[offset]) | uint32(b[offset+1])<<8 | uint32(b[offset+2])<<16 | uint32(b[offset+3])<<24
-		}
-		return uint32(b[offset])<<24 | uint32(b[offset+1])<<16 | uint32(b[offset+2])<<8 | uint32(b[offset+3])
-	}
-
-	magic := readUint16(tiff, 2)
-	if magic != 0x002A {
+	if bo.Uint16(tiff[2:]) != 0x002A {
 		return 1, fmt.Errorf("invalid tiff magic number")
 	}
 
-	ifdOffset := int(readUint32(tiff, 4))
+	ifdOffset := int(bo.Uint32(tiff[4:]))
 	if ifdOffset < 8 || ifdOffset >= len(tiff) {
 		return 1, fmt.Errorf("invalid ifd offset")
 	}
@@ -360,28 +345,30 @@ func parseExif(tiff []byte) (int, error) {
 	if len(tiff) < ifdOffset+2 {
 		return 1, fmt.Errorf("tiff too short for IFD count")
 	}
-	numEntries := int(readUint16(tiff, ifdOffset))
+	numEntries := int(bo.Uint16(tiff[ifdOffset:]))
 	entryOffset := ifdOffset + 2
 
+	return findOrientationTag(tiff, bo, numEntries, entryOffset)
+}
+
+func findOrientationTag(tiff []byte, bo binary.ByteOrder, numEntries, entryOffset int) (int, error) {
 	for i := 0; i < numEntries; i++ {
 		if len(tiff) < entryOffset+12 {
 			break
 		}
-		tag := readUint16(tiff, entryOffset)
-		if tag == 0x0112 {
-			valType := readUint16(tiff, entryOffset+2)
+		if bo.Uint16(tiff[entryOffset:]) == 0x0112 {
+			valType := bo.Uint16(tiff[entryOffset+2:])
 			switch valType {
 			case 3:
-				return int(readUint16(tiff, entryOffset+8)), nil
+				return int(bo.Uint16(tiff[entryOffset+8:])), nil
 			case 4:
-				return int(readUint32(tiff, entryOffset+8)), nil
+				return int(bo.Uint32(tiff[entryOffset+8:])), nil
 			default:
 				return 1, fmt.Errorf("unexpected orientation tag type: %d", valType)
 			}
 		}
 		entryOffset += 12
 	}
-
 	return 1, nil
 }
 
