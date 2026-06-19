@@ -348,6 +348,14 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 
 var macSeparators = regexp.MustCompile(`[^a-fA-F0-9]`)
 
+// sendWOL broadcasts a Wake-on-LAN magic packet to wake up the TV on the local network.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//   - macAddr: The MAC address string (e.g., "AA:BB:CC:DD:EE:FF") of the TV.
+//
+// Returns:
+//   - error: Any formatting error or network failure encountered while broadcasting.
 func (c *Client) sendWOL(ctx context.Context, macAddr string) error {
 	if macAddr == "" {
 		return nil
