@@ -23,3 +23,6 @@
 ## 2026-06-13 - Context alignment for Samsung Art Client Methods
 **Learning:** The documentation for the `Connect` and `wakeTV` methods in `internal/samsung/client.go` was disjointed, with the multi-step `Connect` execution sequence misplaced entirely above the `wakeTV` method block. Additionally, `SaveMetadata` had minor casing issues.
 **Action:** Always verify that multi-step procedural comments physically precede the correct parent function definition, and ensure exported methods adhere to Go's capitalization rules in their docstrings.
+## 2026-06-19 - Context alignment for undocumented connection methods
+**Learning:** Core connection and request methods in the Samsung TV client (`sendWOL`, `getCategories`, `sendArtRequest`) were completely undocumented, making it difficult to understand their precise inputs and outputs within the TV interaction lifecycle.
+**Action:** When auditing clients or connection facades, actively look for and document lower-level functional wrappers (like network requests and broadcast methods). Use exact string replacement to attach complete parameter and return breakdown blocks directly above the un-documented method definitions.
