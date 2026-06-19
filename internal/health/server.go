@@ -306,6 +306,9 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"error","error":"Failed to save uploaded file"}`))
 		return
 	}
+	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
+	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
+	_ = os.Chmod(destPath, 0o644)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{

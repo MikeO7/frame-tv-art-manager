@@ -164,6 +164,9 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename, identity st
 
 	written, err := io.Copy(out, reader)
 	_ = out.Close()
+	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
+	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
+	_ = os.Chmod(tmpPath, 0o644)
 	if err != nil {
 		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("download body: %w", err)

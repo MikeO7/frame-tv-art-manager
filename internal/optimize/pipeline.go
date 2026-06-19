@@ -287,6 +287,9 @@ func processCollagePair(
 		return "", fmt.Errorf("encode collage: %w", err)
 	}
 	_ = out.Close()
+	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
+	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
+	_ = os.Chmod(collagePath, 0o644)
 
 	// Delete source raw files
 	_ = os.Remove(p1)
