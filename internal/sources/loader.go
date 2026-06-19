@@ -198,10 +198,6 @@ func (l *Loader) downloadWithIdentity(ctx context.Context, url, identity string)
 	return l.executeDownload(ctx, url, filename, identity)
 }
 
-func (l *Loader) urlToSlug(url string) string {
-	return URLToSlug(url)
-}
-
 func extensionFromResponse(resp *http.Response, url string) string {
 	ct := resp.Header.Get("Content-Type")
 	switch {
