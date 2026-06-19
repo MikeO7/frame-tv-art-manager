@@ -6,3 +6,7 @@
 ## 2026-06-16 - ArtworkCatalog Rebuild Simplification
 **Learning:** The `Rebuild` method in `internal/sources/catalog.go` was a monolithic block handling cache checks, state resets, worker pool orchestration, and individual result processing. By cleanly separating these responsibilities into distinct helper methods (`isCacheValid`, `resetState`, `processFilesConcurrent`, and `processResult`), the function became a readable declarative pipeline, drastically reducing complexity metrics and allowing the removal of strict linter bypasses (`gocognit`, `gocyclo`, `funlen`) while maintaining identical runtime behavior.
 **Action:** When extracting large, mixed-responsibility functions, isolate the concurrency mechanics (worker pools, channel coordination) from the core business logic (result parsing, state mutations) to ensure both high readability and thread safety.
+
+## 2026-06-18 - parseExif Simplification
+**Learning:** The `parseExif` method in `internal/optimize/resize.go` had high cognitive complexity due to handling byte order logic alongside parsing the EXIF orientation tags.
+**Action:** Extracting the EXIF orientation tag loop into a separate `findOrientationTag` helper function significantly reduced cognitive load and cyclomatic complexity, resolving linter warnings.
