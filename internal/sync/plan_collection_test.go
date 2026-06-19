@@ -3,9 +3,13 @@ package sync
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"image"
 	"image/jpeg"
 	"log/slog"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,6 +135,125 @@ func TestCatalog_OptimizeCatalog_RemovesCorrupt(t *testing.T) {
 	if optimized != 0 {
 		t.Errorf("expected 0 optimized, got %d", optimized)
 	}
+}
+
+func TestPhoneUpload_CollageIntegration(t *testing.T) {
+	// Create a temporary directory for artwork
+	tmpDir := t.TempDir()
+
+	// 1. Create a health.Server to handle uploads
+	status := health.NewStatus()
+	cfg := &config.Config{
+		HealthPort:        0, // disable real listener
+		UploadEnabled:     true,
+		ArtworkDir:        tmpDir,
+		MaxDownloadSizeMB: 20,
+		OptimizeMaxWidth:  3840,
+		OptimizeMaxHeight: 2160,
+	}
+	srv := health.NewServer(cfg, status, slog.Default())
+
+	// Create two distinct vertical portrait JPEG files (height > width)
+	jpeg1 := createPortraitJPEG(t, 100, 200, 10)
+	jpeg2 := createPortraitJPEG(t, 100, 200, 20)
+
+	// Helper to send upload request
+	uploadForm := func(filename string, content []byte) string {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", filename)
+		if err != nil {
+			t.Fatalf("create form file: %v", err)
+		}
+		_, err = part.Write(content)
+		if err != nil {
+			t.Fatalf("write content: %v", err)
+		}
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		w := httptest.NewRecorder()
+		srv.HandleUpload(w, req)
+		if w.Code != 200 {
+			t.Fatalf("upload failed with code %d: %s", w.Code, w.Body.String())
+		}
+		var resp map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return resp["filename"].(string)
+	}
+
+	fn1 := uploadForm("myphone1.jpg", jpeg1)
+	fn2 := uploadForm("myphone2.jpg", jpeg2)
+
+	if !strings.HasPrefix(fn1, "upload") || !strings.HasPrefix(fn2, "upload") {
+		t.Fatalf("expected filenames to start with upload, got %q and %q", fn1, fn2)
+	}
+
+	// 2. Perform catalog optimization
+	catalog := sources.NewArtworkCatalog(tmpDir, slog.Default())
+	optCfg := cfg.OptimizeOptions()
+	optCfg.PortraitMode = "crop" // Ensure even if global mode is crop, phone uploads pair up!
+
+	optimizedCount, err := optimize.OptimizeCatalog(context.Background(), tmpDir, catalog, optCfg, nil, slog.Default())
+	if err != nil {
+		t.Fatalf("OptimizeCatalog failed: %v", err)
+	}
+
+	if optimizedCount != 1 {
+		t.Errorf("expected 1 optimized count (collaging the pair), got %d", optimizedCount)
+	}
+
+	// 3. Verify that the two original upload files are removed
+	if _, err := os.Stat(filepath.Join(tmpDir, fn1)); !os.IsNotExist(err) {
+		t.Errorf("expected original file %s to be deleted", fn1)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, fn2)); !os.IsNotExist(err) {
+		t.Errorf("expected original file %s to be deleted", fn2)
+	}
+
+	// 4. Verify that a collage file is created
+	files, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var collageFile string
+	for _, f := range files {
+		if strings.HasPrefix(f.Name(), "collage_") {
+			collageFile = f.Name()
+			break
+		}
+	}
+
+	if collageFile == "" {
+		t.Fatalf("expected a collage file to be created, files in dir: %v", files)
+	}
+
+	// Verify collage file contains dimensions 3840x2160 in its name
+	if !strings.Contains(collageFile, "3840x2160") {
+		t.Errorf("expected collage filename to contain 3840x2160, got %q", collageFile)
+	}
+}
+
+func createPortraitJPEG(t *testing.T, w, h int, val uint8) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for i := range img.Pix {
+		switch i % 4 {
+		case 0:
+			img.Pix[i] = val
+		case 3:
+			img.Pix[i] = 255
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func TestLogCycleSummary(t *testing.T) {
