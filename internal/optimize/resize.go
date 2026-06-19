@@ -291,31 +291,47 @@ func ReadOrientation(r io.Reader) (int, error) {
 			break
 		}
 
-		if _, err := io.ReadFull(r, buf[:2]); err != nil {
+		orientation, stop, err := processMarker(r, marker)
+		if err != nil {
 			return 1, err
 		}
-		length := int(buf[0])<<8 | int(buf[1])
-		if length < 2 {
-			return 1, fmt.Errorf("invalid marker length")
-		}
-
-		if marker == 0xE1 {
-			payload := make([]byte, length-2)
-			if _, err := io.ReadFull(r, payload); err != nil {
-				return 1, err
-			}
-			if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
-				return parseExif(payload[6:])
+		if stop {
+			if orientation > 0 {
+				return orientation, nil
 			}
 			continue
 		}
-
-		discardBytes := int64(length - 2)
-		if _, err := io.CopyN(io.Discard, r, discardBytes); err != nil {
-			return 1, err
-		}
 	}
 	return 1, nil
+}
+
+func processMarker(r io.Reader, marker byte) (int, bool, error) {
+	var buf [2]byte
+	if _, err := io.ReadFull(r, buf[:2]); err != nil {
+		return 0, true, err
+	}
+	length := int(buf[0])<<8 | int(buf[1])
+	if length < 2 {
+		return 0, true, fmt.Errorf("invalid marker length")
+	}
+
+	if marker == 0xE1 {
+		payload := make([]byte, length-2)
+		if _, err := io.ReadFull(r, payload); err != nil {
+			return 0, true, err
+		}
+		if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
+			orientation, err := parseExif(payload[6:])
+			return orientation, true, err
+		}
+		return 0, true, nil
+	}
+
+	discardBytes := int64(length - 2)
+	if _, err := io.CopyN(io.Discard, r, discardBytes); err != nil {
+		return 0, true, err
+	}
+	return 0, false, nil
 }
 
 func parseExif(tiff []byte) (int, error) {
