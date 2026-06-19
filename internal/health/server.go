@@ -298,7 +298,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = os.WriteFile(destPath, bodyBytes.Bytes(), 0o644)
+	// Sentinel: enforce restrictive 0600 permissions to prevent unauthorized local file access
+	err = os.WriteFile(destPath, bodyBytes.Bytes(), 0o600)
 	if err != nil {
 		s.logger.Error("Failed to write uploaded file", "path", destPath, "error", err)
 		w.Header().Set("Content-Type", "application/json")

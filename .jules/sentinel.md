@@ -67,3 +67,8 @@
 **Vulnerability:** Server-Side Request Forgery (SSRF) and localized path traversal via unbounded URL inputs.
 **Learning:** The `direct` custom source provider accepted raw URL strings and directly initialized an `http.NewRequest` with them. Because Go's standard library can sometimes be tricked by exotic schemes, failing to explicitly lock the URL scheme at the ingestion boundary could allow local file access (`file://`), loopback requests (`http://localhost`), or internal network enumerations if the application logic evolves to use custom transports.
 **Prevention:** Always validate external URL boundaries explicitly using `url.Parse` and verify the `Scheme` is precisely restricted to `"http"` or `"https"` before allocating an `http.Request`.
+
+## 2026-06-19 - [High] Insecure File Permissions on Uploaded Data
+**Vulnerability:** The web uploader endpoint (`/upload`) in `internal/health/server.go` saved uploaded artwork files using `os.WriteFile` with `0o644` permissions, making sensitive user images readable by any local system user.
+**Learning:** Default permissions in code snippets often favor convenience (`0644`) over security. File upload processors must default to the principle of least privilege, restricting access solely to the user running the application.
+**Prevention:** Always enforce restrictive file permissions (like `0600`) when writing dynamically uploaded user data or artifacts to disk.
