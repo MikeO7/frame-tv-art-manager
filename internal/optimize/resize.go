@@ -144,7 +144,7 @@ func checkFastPath(filename string, cfg Config, logger *slog.Logger) bool {
 		return false
 	}
 	w, h, ok := artwork.ParseDimensions(filename)
-	if ok && w <= cfg.MaxWidth && h <= cfg.MaxHeight {
+	if ok && w == cfg.MaxWidth && h == cfg.MaxHeight {
 		logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
 		return true
 	}
@@ -236,8 +236,9 @@ func rewriteImage(f *os.File, path, filename string, width, height int, needsAdj
 	rgba = sharpen(rgba)
 	if cfg.MuseumModeEnabled {
 		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
+	} else {
+		rgba = dither(rgba)
 	}
-	rgba = dither(rgba)
 
 	// Close original file so we can overwrite or rename it.
 	_ = f.Close()
