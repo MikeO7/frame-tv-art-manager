@@ -37,6 +37,12 @@ func (s *TVReconciler) ExecuteSyncPlan(
 		result:    &result,
 	}
 
+	// Purge mappings whose content IDs no longer exist on the TV. These point
+	// at nothing; locally-present files are re-uploaded (and re-mapped) below.
+	if len(plan.StaleFiles) > 0 {
+		mapping.DeleteBatch(plan.StaleFiles)
+	}
+
 	if err := s.processUploads(eCtx); err != nil {
 		return result, err
 	}
@@ -82,12 +88,18 @@ func (s *TVReconciler) processUploads(eCtx *executionContext) error {
 
 		contentID, uploadErr := s.uploadWithRetry(eCtx.ctx, eCtx.transport, job.FilePath, job.FileType, job.Matte, eCtx.policy)
 		if uploadErr != nil {
+			eCtx.result.ErrorMessage = uploadErr.Error()
+			// Storage-full is an expected condition handled by the capacity
+			// manager, not a transport failure: stop uploading without erroring.
 			if errors.Is(uploadErr, samsung.ErrStorageFull) {
 				eCtx.result.StorageFull = true
+				s.logger.Warn("storage full; stopping further uploads", "file", job.Filename)
+				return nil
 			}
+			// A genuine upload failure (after retries) should surface so the TV
+			// backs off and the cycle is reported as unhealthy.
 			s.logger.Error("upload failed", "file", job.Filename, "error", uploadErr)
-			eCtx.result.ErrorMessage = uploadErr.Error()
-			return nil
+			return fmt.Errorf("upload %s: %w", job.Filename, uploadErr)
 		}
 
 		eCtx.mapping.Set(job.Filename, contentID)
@@ -118,8 +130,9 @@ func (s *TVReconciler) deleteTrackedImages(eCtx *executionContext) {
 
 	s.logger.Info("deleting tracked images", "count", count)
 	if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteIDs); err != nil {
+		// The images remain on the TV and the mapping is left intact so the
+		// next cycle retries; do not report them as deleted.
 		s.logger.Error("batch delete failed", "error", err)
-		eCtx.result.Deleted = count
 		return
 	}
 

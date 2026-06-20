@@ -336,18 +336,18 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 		},
 	}
 	res, err := reconciler.ExecuteSyncPlan(ctx, planUploadErr, transportFail, mapping, policy)
-	if err != nil {
-		t.Errorf("expected no error from execution itself when upload fails, got: %v", err)
+	if err == nil {
+		t.Errorf("expected a genuine upload failure to propagate as an error")
 	}
 	if res.StorageFull {
 		t.Errorf("did not expect StorageFull to be true on general error")
 	}
 
-	// Test storage full upload error
+	// Test storage full upload error: benign, must not propagate as an error.
 	transportStorageFull := &mockTVTransportExecution{uploadErr: samsung.ErrStorageFull}
 	res, err = reconciler.ExecuteSyncPlan(ctx, planUploadErr, transportStorageFull, mapping, policy)
 	if err != nil {
-		t.Errorf("expected no error from execution itself when upload fails, got: %v", err)
+		t.Errorf("expected no error when upload reports storage full, got: %v", err)
 	}
 	if !res.StorageFull {
 		t.Errorf("expected StorageFull to be true when upload returns ErrStorageFull")

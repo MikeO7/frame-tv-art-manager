@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -307,16 +308,9 @@ func processCollagePair(
 	return collageName, nil
 }
 
-func processCollages(
-	artworkDir string,
-	localFiles map[string]struct{},
-	cfg Config,
-	catalog Catalog,
-	onRename func(oldName, newName string),
-	logger *slog.Logger,
-	optimizedCount *int64,
-) {
-	wantsCollageAll := cfg.PortraitMode == "collage"
+// collectRawPortraits returns the un-optimized portrait files eligible for
+// collage pairing, pruning AppleDouble ("._") entries from localFiles as it goes.
+func collectRawPortraits(artworkDir string, localFiles map[string]struct{}, wantsCollageAll bool) []string {
 	var rawPortraits []string
 	for filename := range localFiles {
 		if strings.HasPrefix(filename, "._") {
@@ -327,13 +321,32 @@ func processCollages(
 		if !wantsCollageAll && !isUpload {
 			continue
 		}
-		if !strings.Contains(filename, "_opt.h_") {
-			path := filepath.Join(artworkDir, filename)
-			if isPortrait, err := isPortraitFile(path); err == nil && isPortrait {
-				rawPortraits = append(rawPortraits, filename)
-			}
+		if strings.Contains(filename, "_opt.h_") {
+			continue
+		}
+		path := filepath.Join(artworkDir, filename)
+		if isPortrait, err := isPortraitFile(path); err == nil && isPortrait {
+			rawPortraits = append(rawPortraits, filename)
 		}
 	}
+	return rawPortraits
+}
+
+func processCollages(
+	artworkDir string,
+	localFiles map[string]struct{},
+	cfg Config,
+	catalog Catalog,
+	onRename func(oldName, newName string),
+	logger *slog.Logger,
+	optimizedCount *int64,
+) {
+	wantsCollageAll := cfg.PortraitMode == "collage"
+	rawPortraits := collectRawPortraits(artworkDir, localFiles, wantsCollageAll)
+
+	// Sort for deterministic pairing: map iteration order is random, so without
+	// this the same set of uploads could pair differently across runs.
+	sort.Strings(rawPortraits)
 
 	for i := 0; i < len(rawPortraits)-1; i += 2 {
 		f1 := rawPortraits[i]
@@ -351,5 +364,15 @@ func processCollages(
 		delete(localFiles, f2)
 		localFiles[collageFilename] = struct{}{}
 		atomic.AddInt64(optimizedCount, 1)
+	}
+
+	// If an odd number of raw portraits remains, the last one is unpaired.
+	// Exclude it from this cycle's optimization so it stays raw on disk; once
+	// optimized it would gain the "_opt.h_" marker and be permanently skipped by
+	// the raw-portrait scan above, so it could never pair with a future upload.
+	// Leaving it raw lets it wait for a partner on a later cycle. The file is
+	// untouched on disk and is rediscovered when the catalog is rescanned.
+	if len(rawPortraits)%2 == 1 {
+		delete(localFiles, rawPortraits[len(rawPortraits)-1])
 	}
 }

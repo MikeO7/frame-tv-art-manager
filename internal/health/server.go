@@ -167,8 +167,16 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.status.mu.RLock()
 	defer s.status.mu.RUnlock()
 
+	// Before the first cycle completes the service is still "ok" (starting up);
+	// once a cycle has run, the health reflects whether the last sync succeeded.
+	healthy := s.status.SyncCount == 0 || s.status.LastSyncOK
+	statusStr := "ok"
+	if !healthy {
+		statusStr = "error"
+	}
+
 	resp := map[string]any{
-		"status":        "ok",
+		"status":        statusStr,
 		"uptime":        time.Since(s.status.StartedAt).Round(time.Second).String(),
 		"last_sync":     s.status.LastSyncAt.Format(time.RFC3339),
 		"last_sync_ok":  s.status.LastSyncOK,
@@ -178,6 +186,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if !healthy {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
@@ -205,7 +216,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // HandleUpload processes HTTP multipart file uploads for artwork.
 //
-//nolint:gocyclo,funlen // complexity and length are due to sequential validation of multipart file parameters
+//nolint:gocyclo,gocognit,funlen // complexity and length are due to sequential validation of multipart file parameters
 func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if s.cfg == nil || !s.cfg.UploadEnabled {
 		w.Header().Set("Content-Type", "application/json")
@@ -244,10 +255,16 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = fileData.Close() }()
 
-	// Read header bytes to check file signature
+	// Read header bytes to check file signature. io.ReadFull fills the buffer
+	// across multiple reads; a short stream yields EOF/ErrUnexpectedEOF, which
+	// are expected for small images and not treated as failures.
 	buf := make([]byte, 512)
-	n, err := fileData.Read(buf)
-	if err != nil && !errors.Is(err, io.EOF) {
+	n, err := io.ReadFull(fileData, buf)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		if isTooLarge(err) {
+			writeUploadTooLarge(w)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"status":"error","error":"Failed to read upload stream"}`))
@@ -273,6 +290,10 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	bodyBytes.Write(buf[:n])
 	_, err = io.Copy(&bodyBytes, fileData)
 	if err != nil {
+		if isTooLarge(err) {
+			writeUploadTooLarge(w)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"status":"error","error":"Failed to read upload payload"}`))
@@ -316,6 +337,20 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		"message":  "File uploaded successfully",
 		"filename": filename,
 	})
+}
+
+// isTooLarge reports whether err was caused by the request body exceeding the
+// configured upload size limit (via http.MaxBytesReader).
+func isTooLarge(err error) bool {
+	var maxBytesErr *http.MaxBytesError
+	return errors.As(err, &maxBytesErr)
+}
+
+// writeUploadTooLarge writes the standard 400 response for oversized uploads.
+func writeUploadTooLarge(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_, _ = w.Write([]byte(`{"status":"error","error":"file too large (exceeds upload size limit)"}`))
 }
 
 // parseUploadedFile extracts the uploaded file payload from either a multipart form or raw request body.
