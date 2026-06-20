@@ -26,3 +26,6 @@
 ## 2026-06-19 - Context alignment for undocumented connection methods
 **Learning:** Core connection and request methods in the Samsung TV client (`sendWOL`, `getCategories`, `sendArtRequest`) were completely undocumented, making it difficult to understand their precise inputs and outputs within the TV interaction lifecycle.
 **Action:** When auditing clients or connection facades, actively look for and document lower-level functional wrappers (like network requests and broadcast methods). Use exact string replacement to attach complete parameter and return breakdown blocks directly above the un-documented method definitions.
+## 2026-06-20 - Context alignment for Samsung Art Client Methods
+**Learning:** During docstring alignment, ensure exact formatting and return types match the function signature, otherwise the code review will fail. Always verify changes are preserved and not accidentally reverted during git operations.
+**Action:** Always verify `ListUploaded` returns `[]ArtContent` and ensure temporary patches are thoroughly checked for correctness before submitting.

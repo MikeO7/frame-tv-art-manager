@@ -10,14 +10,13 @@ import (
 	"time"
 )
 
-// IsInArtMode reports whether the TV is currently in art mode by querying
-// the art API over the active WebSocket connection.
+// IsInArtMode checks whether the TV is currently displaying artwork.
 //
 // Parameters:
 //   - ctx: Context to control the timeout and cancellation of the request.
 //
 // Returns:
-//   - bool: True if the TV is powered on and currently in art mode, false otherwise.
+//   - bool: True if the TV is in Art Mode, false otherwise.
 func (c *Client) IsInArtMode(ctx context.Context) bool {
 	if c.info != nil && !c.info.IsOn() {
 		c.logger.Debug("TV is powered off")
@@ -42,14 +41,14 @@ func (c *Client) IsInArtMode(ctx context.Context) bool {
 	return isArt
 }
 
-// ListUploaded returns user-uploaded artwork on the TV (category MY-C0002 = "My Photos").
+// ListUploaded retrieves the list of user-uploaded images stored on the TV.
 //
 // Parameters:
 //   - ctx: Context to control the timeout and cancellation of the request.
 //
 // Returns:
-//   - []ArtContent: A list of user-uploaded artwork items currently stored on the TV.
-//   - error: Any network or API error encountered during the fetch operation.
+//   - []ArtContent: A slice of metadata for all user-uploaded artworks.
+//   - error: Any network or API error encountered during the fetch.
 func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 	id := newRequestID()
 	req := map[string]any{
@@ -84,11 +83,11 @@ func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 	return filtered, nil
 }
 
-// DeleteImages removes artwork from the TV by content IDs.
+// DeleteImages removes a batch of user-uploaded artworks from the TV.
 //
 // Parameters:
 //   - ctx: Context to control the timeout and cancellation of the request.
-//   - ids: A slice of content IDs representing the artwork to be deleted from the TV.
+//   - ids: A slice of string content IDs corresponding to the images to delete.
 //
 // Returns:
 //   - error: Any network or API error encountered during the deletion.
@@ -288,6 +287,10 @@ func (c *Client) SetBrightness(ctx context.Context, val int) error {
 	return err
 }
 
+// registerImageAddedListener sets up a one-time listener for the TV's image_added event.
+//
+// Returns:
+//   - waitFn: A function that blocks until the event is received, returning the new content ID.
 func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, timeout time.Duration) (string, error)) {
 	ch := make(chan json.RawMessage, 1)
 
