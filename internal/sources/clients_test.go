@@ -26,7 +26,7 @@ func TestNASAClient_FetchAPOD(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newNASAClient("test_key_1", slog.Default())
+	c := newNasaProvider("test_key_1", slog.Default())
 	c.BaseURL = server.URL
 
 	apod, err := c.FetchAPOD(context.Background())
@@ -62,7 +62,7 @@ func TestNASAClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newNASAClient("some_other_key", slog.Default())
+	c := newNasaProvider("some_other_key", slog.Default())
 	c.SearchURL = server.URL
 
 	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")
@@ -87,7 +87,7 @@ func TestArticClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newArticClient(slog.Default())
+	c := newArticProvider(slog.Default())
 	c.BaseURL = server.URL
 	urls, err := c.Search(context.Background(), "monet")
 	if err != nil {
@@ -111,7 +111,7 @@ func TestPixabayClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPixabayClient("key", slog.Default())
+	c := newPixabayProvider("key", slog.Default())
 	c.BaseURL = server.URL
 	urls, err := c.Search(context.Background(), "nature")
 	if err != nil {
@@ -135,7 +135,7 @@ func TestArticClient_FetchPhoto(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newArticClient(slog.Default())
+	c := newArticProvider(slog.Default())
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "1")
@@ -158,7 +158,7 @@ func TestPexelsClient_FetchPhoto(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPexelsClient("key", slog.Default())
+	c := newPexelsProvider("key", slog.Default())
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "123")
@@ -183,7 +183,7 @@ func TestPixabayClient_FetchPhoto(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPixabayClient("key", slog.Default())
+	c := newPixabayProvider("key", slog.Default())
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "1")
@@ -209,7 +209,7 @@ func TestPexelsClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPexelsClient("key", slog.Default())
+	c := newPexelsProvider("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.Search(context.Background(), "nature")
@@ -236,7 +236,7 @@ func TestPexelsClient_Curated(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPexelsClient("key", slog.Default())
+	c := newPexelsProvider("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.Curated(context.Background())
@@ -262,7 +262,7 @@ func TestPexelsClient_FetchCollection(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPexelsClient("key", slog.Default())
+	c := newPexelsProvider("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.FetchCollection(context.Background(), "abc")
@@ -287,7 +287,7 @@ func TestPixabayClient_EditorsChoice(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPixabayClient("key", slog.Default())
+	c := newPixabayProvider("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.EditorsChoice(context.Background())
@@ -312,7 +312,7 @@ func TestPixabayClient_User(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newPixabayClient("key", slog.Default())
+	c := newPixabayProvider("key", slog.Default())
 	c.BaseURL = server.URL
 
 	urls, err := c.User(context.Background(), "user123")
@@ -341,7 +341,7 @@ func TestNASAClient_FetchNASAAssetManifest_Errors(t *testing.T) {
 	}))
 	defer server500.Close()
 
-	c := newNASAClient("some_other_key", slog.Default())
+	c := newNasaProvider("some_other_key", slog.Default())
 	_, err := c.fetchNASAAssetManifest(context.Background(), server500.URL)
 	if err == nil || !strings.Contains(err.Error(), "nasa asset manifest api error") {
 		t.Errorf("expected 500 error, got %v", err)
@@ -411,7 +411,7 @@ func TestNASAClient_SearchNASAImageLibrary_Errors(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newNASAClient("some_other_key", slog.Default())
+	c := newNasaProvider("some_other_key", slog.Default())
 	c.SearchURL = server.URL
 
 	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")

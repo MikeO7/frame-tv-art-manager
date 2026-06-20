@@ -20,16 +20,6 @@ type pexelsProvider struct {
 	BaseURL string
 }
 
-// pexelsClient is a type alias for pexelsProvider to maintain backwards compatibility in tests.
-type pexelsClient = pexelsProvider
-
-// newPexelsClient creates a new Pexels API client/provider.
-//
-//nolint:unparam // complexity justified for this domain-specific path
-func newPexelsClient(apiKey string, logger *slog.Logger) *pexelsClient {
-	return newPexelsProvider(apiKey, logger)
-}
-
 // newPexelsProvider creates a new Pexels provider.
 func newPexelsProvider(apiKey string, logger *slog.Logger) *pexelsProvider {
 	return &pexelsProvider{

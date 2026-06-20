@@ -7,22 +7,23 @@ import (
 	"time"
 )
 
+// CycleSummary holds the per-cycle metrics rendered by LogCycleSummary,
+// bundling the many report inputs into a single cohesive value.
+type CycleSummary struct {
+	CycleNum        int
+	StartTime       time.Time
+	SyncIntervalMin int
+	TotalLocal      int
+	FromSources     int
+	Optimized       int
+	TVs             []TVSyncResult
+	Warnings        []string
+}
+
 // LogCycleSummary renders and logs a formatted sync cycle summary box to structured logs.
-//
-//nolint:revive // argument count justified for this domain-specific path
-func LogCycleSummary(
-	logger *slog.Logger,
-	cycleNum int,
-	startTime time.Time,
-	syncIntervalMin int,
-	totalLocal int,
-	fromSources int,
-	optimized int,
-	tvs []TVSyncResult,
-	warnings []string,
-) {
-	elapsed := time.Since(startTime).Round(time.Millisecond)
-	nextSync := time.Now().Add(time.Duration(syncIntervalMin) * time.Minute)
+func LogCycleSummary(logger *slog.Logger, s CycleSummary) {
+	elapsed := time.Since(s.StartTime).Round(time.Millisecond)
+	nextSync := time.Now().Add(time.Duration(s.SyncIntervalMin) * time.Minute)
 
 	const boxWidth = 50
 
@@ -38,28 +39,28 @@ func LogCycleSummary(
 	var sb strings.Builder
 	sb.WriteString("\n╔══════════════════════════════════════════════════╗\n")
 
-	header := fmt.Sprintf("  Sync Cycle #%d - %s", cycleNum, time.Now().Format("2006-01-02 15:04:05"))
+	header := fmt.Sprintf("  Sync Cycle #%d - %s", s.CycleNum, time.Now().Format("2006-01-02 15:04:05"))
 	sb.WriteString(padLine(header))
 
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 
-	for _, tv := range tvs {
+	for _, tv := range s.TVs {
 		writeTVSummary(&sb, tv, padLine)
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
 	}
 
-	localSummary := fmt.Sprintf("  Local:  %d files", totalLocal)
-	if fromSources > 0 {
-		localSummary += fmt.Sprintf(" │ %d from URLs", fromSources)
+	localSummary := fmt.Sprintf("  Local:  %d files", s.TotalLocal)
+	if s.FromSources > 0 {
+		localSummary += fmt.Sprintf(" │ %d from URLs", s.FromSources)
 	}
-	if optimized > 0 {
-		localSummary += fmt.Sprintf(" │ %d optimized", optimized)
+	if s.Optimized > 0 {
+		localSummary += fmt.Sprintf(" │ %d optimized", s.Optimized)
 	}
 	sb.WriteString(padLine(localSummary))
 
-	if len(warnings) > 0 {
+	if len(s.Warnings) > 0 {
 		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
-		writeWarningsSummary(&sb, warnings, padLine)
+		writeWarningsSummary(&sb, s.Warnings, padLine)
 	}
 
 	sb.WriteString("╠══════════════════════════════════════════════════╣\n")

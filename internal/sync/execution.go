@@ -185,7 +185,6 @@ func (s *TVReconciler) uploadWithRetry(
 	return "", lastErr
 }
 
-//nolint:gocyclo // complexity justified for this domain-specific path
 func (s *TVReconciler) applySelectionAndSlideshowPlan(
 	ctx context.Context,
 	plan *SyncPlan,
@@ -196,29 +195,12 @@ func (s *TVReconciler) applySelectionAndSlideshowPlan(
 		return
 	}
 
-	var selectedID string
-	slideshow := determineSlideshowSettings(s.cfg, s.logger)
-	settingsForMode := slideshow
-	if settingsForMode == nil {
-		settingsForMode = plan.PreserveSlideshow
+	settings := determineSlideshowSettings(s.cfg, s.logger)
+	if settings == nil {
+		settings = plan.PreserveSlideshow
 	}
 
-	if settingsForMode != nil && settingsForMode.Type == ssTypeShuffle {
-		values := mapValues(finalMapping)
-		if len(values) > 0 {
-			//nolint:gosec // weak random number generator is fine for selecting artwork shuffle order
-			selectedID = values[rand.IntN(len(values))]
-		}
-		s.logger.Info("selecting random image for shuffle mode")
-	} else {
-		for _, id := range finalMapping {
-			selectedID = id
-			break
-		}
-		s.logger.Info("selecting first image")
-	}
-
-	if selectedID != "" {
+	if selectedID := s.chooseImageID(finalMapping, settings); selectedID != "" {
 		if err := transport.SelectImage(ctx, selectedID); err != nil {
 			s.logger.Warn("failed to select image", "error", err)
 		}
@@ -229,6 +211,27 @@ func (s *TVReconciler) applySelectionAndSlideshowPlan(
 			s.logger.Warn("failed to restore slideshow", "error", err)
 		}
 	}
+}
+
+// chooseImageID picks the content ID to display: a random entry in shuffle
+// mode, otherwise an arbitrary (effectively first) entry. Returns "" when the
+// mapping is empty.
+func (s *TVReconciler) chooseImageID(finalMapping map[string]string, settings *samsung.SlideshowStatus) string {
+	if settings != nil && settings.Type == ssTypeShuffle {
+		values := mapValues(finalMapping)
+		if len(values) == 0 {
+			return ""
+		}
+		s.logger.Info("selecting random image for shuffle mode")
+		//nolint:gosec // weak RNG is acceptable for choosing artwork shuffle order
+		return values[rand.IntN(len(values))]
+	}
+
+	s.logger.Info("selecting first image")
+	for _, id := range finalMapping {
+		return id
+	}
+	return ""
 }
 
 func (s *TVReconciler) updateSlideshowPlan(

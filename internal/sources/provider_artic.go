@@ -20,14 +20,6 @@ type articProvider struct {
 	IIIFBaseURL string
 }
 
-// articClient is a type alias for articProvider to maintain backwards compatibility in tests.
-type articClient = articProvider
-
-// newArticClient creates a new Art Institute of Chicago API client/provider.
-func newArticClient(logger *slog.Logger) *articClient {
-	return newArticProvider(logger)
-}
-
 // newArticProvider creates a new Art Institute of Chicago provider.
 func newArticProvider(logger *slog.Logger) *articProvider {
 	return &articProvider{

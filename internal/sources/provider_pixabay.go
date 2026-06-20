@@ -20,16 +20,6 @@ type pixabayProvider struct {
 	BaseURL string
 }
 
-// pixabayClient is a type alias for pixabayProvider to maintain backwards compatibility in tests.
-type pixabayClient = pixabayProvider
-
-// newPixabayClient creates a new Pixabay API client/provider.
-//
-//nolint:unparam // complexity justified for this domain-specific path
-func newPixabayClient(apiKey string, logger *slog.Logger) *pixabayClient {
-	return newPixabayProvider(apiKey, logger)
-}
-
 // newPixabayProvider creates a new Pixabay provider.
 func newPixabayProvider(apiKey string, logger *slog.Logger) *pixabayProvider {
 	return &pixabayProvider{

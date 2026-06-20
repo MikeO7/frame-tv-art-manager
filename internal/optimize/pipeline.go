@@ -73,7 +73,14 @@ func (o *optContext) recordRename(oldName, newName string) {
 //	}
 //	fmt.Printf("Successfully optimized %d images\n", count)
 //
-//nolint:gocognit,revive,funlen,gocyclo // complexity, length, and argument count justified for parallel task processing
+// Worker-pool bounds: enough parallelism to saturate disk + CPU on typical
+// hosts without oversubscribing on very large machines.
+const (
+	minOptimizeWorkers = 4
+	maxOptimizeWorkers = 16
+)
+
+//nolint:revive // six parameters are justified for this top-level package entry point
 func OptimizeCatalog(
 	ctx context.Context,
 	artworkDir string,
@@ -98,30 +105,6 @@ func OptimizeCatalog(
 	// excluded from auto-collage unless PORTRAIT_MODE=collage is set.
 	processCollages(artworkDir, localFiles, cfg, catalog, onRename, logger, &optimizedCount)
 
-	type job struct {
-		filename string
-	}
-	jobs := make(chan job, len(localFiles))
-	for filename := range localFiles {
-		if strings.HasPrefix(filename, "._") {
-			delete(localFiles, filename)
-			continue
-		}
-		jobs <- job{filename: filename}
-	}
-	close(jobs)
-
-	numWorkers := runtime.NumCPU()
-	if numWorkers < 4 {
-		numWorkers = 4
-	}
-	if numWorkers > 16 {
-		numWorkers = 16
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(numWorkers)
-
 	o := &optContext{
 		artworkDir: artworkDir,
 		localFiles: localFiles,
@@ -131,31 +114,63 @@ func OptimizeCatalog(
 		logger:     logger,
 	}
 
+	runOptimizeWorkers(ctx, enqueueOptimizeJobs(localFiles), o, &optimizedCount)
+
+	if err := ctx.Err(); err != nil {
+		return int(optimizedCount), err
+	}
+	return int(optimizedCount), nil
+}
+
+// enqueueOptimizeJobs buffers each eligible filename onto a closed channel,
+// pruning AppleDouble ("._") sidecar entries from localFiles in the same pass.
+func enqueueOptimizeJobs(localFiles map[string]struct{}) <-chan string {
+	jobs := make(chan string, len(localFiles))
+	for filename := range localFiles {
+		if strings.HasPrefix(filename, "._") {
+			delete(localFiles, filename)
+			continue
+		}
+		jobs <- filename
+	}
+	close(jobs)
+	return jobs
+}
+
+// runOptimizeWorkers fans the jobs out across a bounded worker pool, honoring
+// ctx cancellation between files, and blocks until every worker drains.
+func runOptimizeWorkers(ctx context.Context, jobs <-chan string, o *optContext, optimizedCount *int64) {
+	numWorkers := clampWorkers(runtime.NumCPU())
+
+	var wg sync.WaitGroup
+	wg.Add(numWorkers)
 	for w := 0; w < numWorkers; w++ {
 		go func() {
 			defer wg.Done()
-			for j := range jobs {
+			for filename := range jobs {
 				select {
 				case <-ctx.Done():
 					return
 				default:
 				}
-
-				wasModified, ok := handleSingleOptimization(j.filename, o)
-				if ok && wasModified {
-					atomic.AddInt64(&optimizedCount, 1)
+				if wasModified, ok := handleSingleOptimization(filename, o); ok && wasModified {
+					atomic.AddInt64(optimizedCount, 1)
 				}
 			}
 		}()
 	}
-
 	wg.Wait()
+}
 
-	if err := ctx.Err(); err != nil {
-		return int(optimizedCount), err
+// clampWorkers bounds n to [minOptimizeWorkers, maxOptimizeWorkers].
+func clampWorkers(n int) int {
+	if n < minOptimizeWorkers {
+		return minOptimizeWorkers
 	}
-
-	return int(optimizedCount), nil
+	if n > maxOptimizeWorkers {
+		return maxOptimizeWorkers
+	}
+	return n
 }
 
 func handleSingleOptimization(filename string, o *optContext) (bool, bool) {

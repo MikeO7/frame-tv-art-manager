@@ -113,21 +113,7 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
 	var cycleWarnings []string
-	defer func() {
-		if e.health != nil {
-			var finalErr error
-			if err != nil {
-				finalErr = err
-			} else if len(syncErrors) > 0 {
-				finalErr = errors.Join(syncErrors...)
-			}
-			e.health.RecordSync(finalErr == nil, finalErr)
-			e.health.SetStage("idle")
-		}
-
-		runtime.GC()
-		debug.FreeOSMemory()
-	}()
+	defer func() { e.finalizeCycle(err, syncErrors) }()
 
 	e.cycleNum++
 	cycleLog := e.logger.With("cycle", e.cycleNum)
@@ -163,12 +149,38 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	syncErrors = make([]error, 0, len(tvSyncErrors))
 	syncErrors = append(syncErrors, tvSyncErrors...)
 
-	LogCycleSummary(e.logger, e.cycleNum, startTime, e.cfg.SyncIntervalMin, len(localFiles), srcDownloaded, optimized, tvSummaries, cycleWarnings)
+	LogCycleSummary(e.logger, CycleSummary{
+		CycleNum:        e.cycleNum,
+		StartTime:       startTime,
+		SyncIntervalMin: e.cfg.SyncIntervalMin,
+		TotalLocal:      len(localFiles),
+		FromSources:     srcDownloaded,
+		Optimized:       optimized,
+		TVs:             tvSummaries,
+		Warnings:        cycleWarnings,
+	})
 
 	if len(syncErrors) > 0 {
 		return errors.Join(syncErrors...)
 	}
 	return nil
+}
+
+// finalizeCycle records the cycle's health outcome and reclaims memory. It runs
+// deferred from RunOnce; cycleErr is the direct return error and syncErrors are
+// the accumulated per-TV failures, either of which marks the cycle unhealthy.
+func (e *Engine) finalizeCycle(cycleErr error, syncErrors []error) {
+	if e.health != nil {
+		finalErr := cycleErr
+		if finalErr == nil && len(syncErrors) > 0 {
+			finalErr = errors.Join(syncErrors...)
+		}
+		e.health.RecordSync(finalErr == nil, finalErr)
+		e.health.SetStage("idle")
+	}
+
+	runtime.GC()
+	debug.FreeOSMemory()
 }
 
 func (e *Engine) syncTV(

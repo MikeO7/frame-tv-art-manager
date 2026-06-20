@@ -12,10 +12,6 @@ import (
 // and validates the result. Returns an error if required values are missing
 // or constraints are violated.
 //
-// Returns:
-//   - *Config: A complete configuration struct populated from environment variables.
-//   - error:   An error if validation constraints (like missing required IPs) fail.
-//
 // Example:
 //
 //	cfg, err := config.Load()
@@ -23,22 +19,46 @@ import (
 //	    log.Fatal("Invalid configuration:", err)
 //	}
 //	fmt.Println("Artwork directory:", cfg.ArtworkDir)
-//
-//nolint:gocyclo,gocognit,funlen // Config loading is naturally complex due to many fields
 func Load() (*Config, error) {
-	cfg := &Config{
-		ArtworkDir:          envStr("ARTWORK_DIR", "/data/artwork"),
-		MaxArtworkImages:    envInt("MAX_ARTWORK_IMAGES", 0),
-		MaxDownloadSizeMB:   envInt("MAX_DOWNLOAD_SIZE_MB", 20),
-		TokenDir:            envStr("TOKEN_DIR", "/data/tokens"),
-		SyncIntervalMin:     envInt("SYNC_INTERVAL_MINUTES", 5),
-		MatteStyle:          envStr("MATTE_STYLE", "none"),
-		ClientName:          envStr("CLIENT_NAME", "Frame Art Manager"),
-		DryRun:              envBool("DRY_RUN"),
-		LogLevel:            strings.ToLower(envStr("LOG_LEVEL", "info")),
-		SlideshowEnabled:    envBool("SLIDESHOW_ENABLED"),
-		SlideshowInterval:   envInt("SLIDESHOW_INTERVAL", 15),
-		SlideshowType:       strings.ToLower(envStr("SLIDESHOW_TYPE", "shuffle")),
+	cfg := loadDefaults()
+
+	for _, parse := range []func(*Config) error{
+		parseTVIPs,
+		parseManualBrightness,
+		parseSolarCoordinates,
+	} {
+		if err := parse(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	cfg.SlideshowOverride = slideshowOverridden()
+
+	if err := validate(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// loadDefaults builds a Config from environment variables, falling back to
+// documented defaults. It performs no validation and never fails; dynamic
+// fields that can error (IPs, coordinates) are parsed by dedicated helpers.
+func loadDefaults() *Config {
+	return &Config{
+		ArtworkDir:        envStr("ARTWORK_DIR", "/data/artwork"),
+		MaxArtworkImages:  envInt("MAX_ARTWORK_IMAGES", 0),
+		MaxDownloadSizeMB: envInt("MAX_DOWNLOAD_SIZE_MB", 20),
+		TokenDir:          envStr("TOKEN_DIR", "/data/tokens"),
+		SyncIntervalMin:   envInt("SYNC_INTERVAL_MINUTES", 5),
+		MatteStyle:        envStr("MATTE_STYLE", "none"),
+		ClientName:        envStr("CLIENT_NAME", "Frame Art Manager"),
+		DryRun:            envBool("DRY_RUN"),
+		LogLevel:          strings.ToLower(envStr("LOG_LEVEL", "info")),
+
+		SlideshowEnabled:  envBool("SLIDESHOW_ENABLED"),
+		SlideshowInterval: envInt("SLIDESHOW_INTERVAL", 15),
+		SlideshowType:     strings.ToLower(envStr("SLIDESHOW_TYPE", "shuffle")),
+
 		SolarEnabled:        envBool("SOLAR_BRIGHTNESS_ENABLED"),
 		Timezone:            envStr("LOCATION_TIMEZONE", "UTC"),
 		BrightnessMin:       envInt("BRIGHTNESS_MIN", 2),
@@ -75,91 +95,101 @@ func Load() (*Config, error) {
 		PGID:                envInt("PGID", 0),
 		PortraitMode:        strings.ToLower(envStr("PORTRAIT_MODE", "crop")),
 	}
+}
 
-	// Parse TV IPs (required).
+// parseTVIPs extracts the required, comma-separated TV_IPS list, trimming
+// whitespace and rejecting an empty result.
+func parseTVIPs(cfg *Config) error {
 	raw := os.Getenv("TV_IPS")
 	if raw == "" {
-		return nil, fmt.Errorf("TV_IPS environment variable is required")
+		return fmt.Errorf("TV_IPS environment variable is required")
 	}
 	for _, ip := range strings.Split(raw, ",") {
-		ip = strings.TrimSpace(ip)
-		if ip != "" {
+		if ip = strings.TrimSpace(ip); ip != "" {
 			cfg.TVIPs = append(cfg.TVIPs, ip)
 		}
 	}
 	if len(cfg.TVIPs) == 0 {
-		return nil, fmt.Errorf("TV_IPS must contain at least one non-empty IP address")
+		return fmt.Errorf("TV_IPS must contain at least one non-empty IP address")
 	}
+	return nil
+}
 
-	// Slideshow override detection: true if any slideshow env var was set.
-	cfg.SlideshowOverride = os.Getenv("SLIDESHOW_ENABLED") != "" ||
-		os.Getenv("SLIDESHOW_INTERVAL") != "" ||
-		os.Getenv("SLIDESHOW_TYPE") != ""
-
-	// Manual brightness (optional).
-	if v := os.Getenv("BRIGHTNESS"); v != "" {
-		b, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, fmt.Errorf("invalid BRIGHTNESS value %q: %w", v, err)
-		}
-		cfg.ManualBrightness = &b
+// parseManualBrightness reads the optional BRIGHTNESS override into a pointer
+// so an explicit value is distinguishable from "unset".
+func parseManualBrightness(cfg *Config) error {
+	v := os.Getenv("BRIGHTNESS")
+	if v == "" {
+		return nil
 	}
+	b, err := strconv.Atoi(v)
+	if err != nil {
+		return fmt.Errorf("invalid BRIGHTNESS value %q: %w", v, err)
+	}
+	cfg.ManualBrightness = &b
+	return nil
+}
 
-	// Solar latitude/longitude (required if solar enabled).
+// parseSolarCoordinates reads optional latitude/longitude overrides. Presence
+// is enforced later by validate when solar brightness is enabled.
+func parseSolarCoordinates(cfg *Config) error {
 	if v := os.Getenv("LOCATION_LATITUDE"); v != "" {
 		lat, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid LOCATION_LATITUDE %q: %w", v, err)
+			return fmt.Errorf("invalid LOCATION_LATITUDE %q: %w", v, err)
 		}
 		cfg.Latitude = &lat
 	}
 	if v := os.Getenv("LOCATION_LONGITUDE"); v != "" {
 		lon, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid LOCATION_LONGITUDE %q: %w", v, err)
+			return fmt.Errorf("invalid LOCATION_LONGITUDE %q: %w", v, err)
 		}
 		cfg.Longitude = &lon
 	}
+	return nil
+}
 
-	// --- Validation ---
+// slideshowOverridden reports whether any slideshow env var was explicitly set,
+// in which case the manager overrides the TV's current slideshow settings.
+func slideshowOverridden() bool {
+	return os.Getenv("SLIDESHOW_ENABLED") != "" ||
+		os.Getenv("SLIDESHOW_INTERVAL") != "" ||
+		os.Getenv("SLIDESHOW_TYPE") != ""
+}
 
+// validate enforces cross-field constraints and enumerated value membership.
+func validate(cfg *Config) error {
 	if cfg.BrightnessMin >= cfg.BrightnessMax {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"BRIGHTNESS_MIN (%d) must be less than BRIGHTNESS_MAX (%d)",
 			cfg.BrightnessMin, cfg.BrightnessMax,
 		)
 	}
 
-	if cfg.SolarEnabled {
-		if cfg.Latitude == nil || cfg.Longitude == nil {
-			return nil, fmt.Errorf(
-				"LOCATION_LATITUDE and LOCATION_LONGITUDE are required when SOLAR_BRIGHTNESS_ENABLED=true",
-			)
-		}
-	}
-
-	if cfg.SlideshowType != "shuffle" && cfg.SlideshowType != "sequential" {
-		return nil, fmt.Errorf(
-			"SLIDESHOW_TYPE must be 'shuffle' or 'sequential', got %q",
-			cfg.SlideshowType,
+	if cfg.SolarEnabled && (cfg.Latitude == nil || cfg.Longitude == nil) {
+		return fmt.Errorf(
+			"LOCATION_LATITUDE and LOCATION_LONGITUDE are required when SOLAR_BRIGHTNESS_ENABLED=true",
 		)
 	}
 
-	validLogLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
-	if !validLogLevels[cfg.LogLevel] {
-		return nil, fmt.Errorf(
-			"LOG_LEVEL must be one of debug, info, warn, error; got %q",
-			cfg.LogLevel,
-		)
+	switch cfg.SlideshowType {
+	case "shuffle", "sequential":
+	default:
+		return fmt.Errorf("SLIDESHOW_TYPE must be 'shuffle' or 'sequential', got %q", cfg.SlideshowType)
 	}
 
-	validPortraitModes := map[string]bool{"collage": true, "pad": true, "crop": true}
-	if !validPortraitModes[cfg.PortraitMode] {
-		return nil, fmt.Errorf(
-			"PORTRAIT_MODE must be one of collage, pad, crop; got %q",
-			cfg.PortraitMode,
-		)
+	switch cfg.LogLevel {
+	case "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("LOG_LEVEL must be one of debug, info, warn, error; got %q", cfg.LogLevel)
 	}
 
-	return cfg, nil
+	switch cfg.PortraitMode {
+	case "collage", "pad", "crop":
+	default:
+		return fmt.Errorf("PORTRAIT_MODE must be one of collage, pad, crop; got %q", cfg.PortraitMode)
+	}
+
+	return nil
 }

@@ -564,13 +564,14 @@ func createPortraitJPEG(t *testing.T, val uint8) []byte {
 }
 
 func TestLogCycleSummary(t *testing.T) {
-	LogCycleSummary(
-		slog.Default(),
-		2,
-		time.Now().Add(-time.Second),
-		5,
-		3, 1, 2,
-		[]TVSyncResult{
+	LogCycleSummary(slog.Default(), CycleSummary{
+		CycleNum:        2,
+		StartTime:       time.Now().Add(-time.Second),
+		SyncIntervalMin: 5,
+		TotalLocal:      3,
+		FromSources:     1,
+		Optimized:       2,
+		TVs: []TVSyncResult{
 			{
 				IP: "1.2.3.4", Model: "Frame", Status: "ok",
 				Uploaded: 1, Deleted: 0, TotalImages: 5,
@@ -580,8 +581,8 @@ func TestLogCycleSummary(t *testing.T) {
 			{IP: "9.9.9.9", Status: "failed", ErrorMessage: "connection refused"},
 			{IP: "10.0.0.1", Status: "skipped (not art mode)"},
 		},
-		[]string{"Source download issue: timeout"},
-	)
+		Warnings: []string{"Source download issue: timeout"},
+	})
 }
 
 func TestTVReconciler_Reconcile_UploadWithRetry(t *testing.T) {
