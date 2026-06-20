@@ -25,16 +25,6 @@ type unsplashProvider struct {
 	BaseURL   string
 }
 
-// unsplashClient is a type alias for unsplashProvider to maintain backwards compatibility in tests.
-type unsplashClient = unsplashProvider
-
-// newUnsplashClient creates a new Unsplash API client/provider.
-//
-//nolint:unparam // complexity justified for this domain-specific path
-func newUnsplashClient(appID, accessKey, secretKey string, logger *slog.Logger) *unsplashClient {
-	return newUnsplashProvider(appID, accessKey, secretKey, logger)
-}
-
 // newUnsplashProvider creates a new Unsplash provider.
 func newUnsplashProvider(appID, accessKey, secretKey string, logger *slog.Logger) *unsplashProvider {
 	return &unsplashProvider{

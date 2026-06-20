@@ -22,7 +22,7 @@ func TestUnsplashClient_FetchPhoto(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashProvider("app", "key", "secret", slog.Default())
 	c.BaseURL = server.URL
 
 	photo, err := c.FetchPhoto(context.Background(), "123")
@@ -44,7 +44,7 @@ func TestUnsplashClient_FetchCollectionPhotos(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashProvider("app", "key", "secret", slog.Default())
 	c.BaseURL = server.URL
 
 	photos, err := c.FetchCollectionPhotos(context.Background(), "col-abc")
@@ -68,7 +68,7 @@ func TestUnsplashClient_TrackDownload(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashProvider("app", "key", "secret", slog.Default())
 	// Set BaseURL to the test server to pass validation
 	c.BaseURL = server.URL
 	c.TrackDownload(context.Background(), server.URL+"/track")
@@ -99,7 +99,7 @@ func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newUnsplashClient("app", "key", "secret", slog.Default())
+	c := newUnsplashProvider("app", "key", "secret", slog.Default())
 	c.BaseURL = server.URL
 
 	photos, err := c.FetchCollectionPhotos(context.Background(), "col-abc")
@@ -117,7 +117,7 @@ func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
 
 func TestUnsplashClient_TrackDownload_Errors(t *testing.T) {
 	logger, buf := newTestLogger()
-	c := newUnsplashClient("app", "key", "secret", logger)
+	c := newUnsplashProvider("app", "key", "secret", logger)
 	c.BaseURL = defaultUnsplashBaseURL
 
 	// 1. Test invalid URL format
@@ -153,7 +153,7 @@ func TestUnsplashClient_TrackDownload_Errors(t *testing.T) {
 
 func TestUnsplashClient_TrackDownload_InvalidBaseURL(t *testing.T) {
 	logger, buf := newTestLogger()
-	c := newUnsplashClient("app", "key", "secret", logger)
+	c := newUnsplashProvider("app", "key", "secret", logger)
 	c.BaseURL = "://invalid-base-url"
 
 	c.TrackDownload(context.Background(), "https://api.unsplash.com/track")
