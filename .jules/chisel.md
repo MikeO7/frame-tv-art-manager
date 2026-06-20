@@ -10,3 +10,6 @@
 ## 2026-06-18 - parseExif Simplification
 **Learning:** The `parseExif` method in `internal/optimize/resize.go` had high cognitive complexity due to handling byte order logic alongside parsing the EXIF orientation tags.
 **Action:** Extracting the EXIF orientation tag loop into a separate `findOrientationTag` helper function significantly reduced cognitive load and cyclomatic complexity, resolving linter warnings.
+## 2026-06-20 - Table-driven test state setup
+**Learning:** When refactoring sequential Go tests into a table-driven loop, ensure that state initialization (like mock objects or `t.TempDir()`) remains inside the `t.Run` closure rather than outside the loop, to prevent cross-test contamination and preserve strict test isolation.
+**Action:** When migrating tests, carefully evaluate which variables are static inputs and which are stateful environment setups, and scope the latter tightly within the `func(t *testing.T)` closure.
