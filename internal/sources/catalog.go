@@ -250,15 +250,16 @@ type indexEntry struct {
 
 func (c *ArtworkCatalog) isCacheValid() bool {
 	info, statErr := os.Stat(c.artworkDir)
-	if statErr == nil {
-		c.mu.Lock()
-		cached := info.ModTime().Equal(c.lastDirModTime) && len(c.hashIndex) > 0
-		c.mu.Unlock()
-		if cached {
-			return true
-		}
-		c.lastDirModTime = info.ModTime()
+	if statErr != nil {
+		return false
 	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if info.ModTime().Equal(c.lastDirModTime) && len(c.hashIndex) > 0 {
+		return true
+	}
+	c.lastDirModTime = info.ModTime()
 	return false
 }
 

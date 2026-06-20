@@ -425,6 +425,51 @@ func TestUpload_SuccessRawBinary(t *testing.T) {
 	}
 }
 
+func TestUpload_RawBinaryTooLarge(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	cfg := testConfig(0, true, tmpDir)
+	cfg.MaxDownloadSizeMB = 1
+	srv := NewServer(cfg, status, silentLogger())
+
+	// Valid JPEG header, but body exceeds the 1 MB limit.
+	largeContent := make([]byte, 1024*1024+100)
+	copy(largeContent, []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01})
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(largeContent))
+	req.Header.Set("Content-Type", "image/jpeg")
+
+	w := httptest.NewRecorder()
+	srv.HandleUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp["status"] != "error" {
+		t.Errorf("expected status=error, got %v", resp["status"])
+	}
+
+	errMsg, _ := resp["error"].(string)
+	if !strings.Contains(errMsg, "too large") {
+		t.Errorf("expected error message about size, got %q", errMsg)
+	}
+
+	// Ensure nothing was written to disk.
+	files, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected no files saved on oversized upload, got %d", len(files))
+	}
+}
+
 func TestUpload_iOSShortcutSimulator(t *testing.T) {
 	// 1. Success case with form file parameter "file" (iOS Shortcut style)
 	t.Run("Valid Form JPEG", func(t *testing.T) {
