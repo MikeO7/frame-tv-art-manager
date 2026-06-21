@@ -139,21 +139,13 @@ func calculateEdgeScore(src *image.RGBA, x1, y1, x2, y2 int) float64 {
 // generateSaliencyMap creates a 2D map where each pixel represents a saliency score.
 // It combines structural edges (Sobel), skin tone detection, and Boolean Map Saliency (BMS).
 //
-//nolint:funlen // single fused per-pixel loop kept monolithic to avoid per-pixel call overhead in this hot path
+//nolint:funlen,gocognit // single fused per-pixel loop kept monolithic to avoid per-pixel call overhead in this hot path
 func generateSaliencyMap(src *image.RGBA) []float64 {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	mapData := make([]float64, w*h)
 
 	// 1. Generate BMS (Boolean Map Saliency) surroundedness map.
-	// But first, precompute luminance for everything
-	srcPix := src.Pix
-	lumMapInt := make([]int, w*h)
-	for i := 0; i < w*h; i++ {
-		idx := i * 4
-		lumMapInt[i] = int(srcPix[idx])*299 + int(srcPix[idx+1])*587 + int(srcPix[idx+2])*114
-	}
-
-	bmsMap := generateBMSMapFromLum(lumMapInt, w, h)
+	bmsMap := generateBMSMap(src)
 
 	// 2. Precompute Mean Lab Color of the entire image to measure color distance
 	var sumL, sumA, sumB float64
@@ -162,6 +154,7 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	// OPTIMIZATION: Precompute Lab colors to avoid recalculating per-pixel later
 	labMap := make([]labColor, w*h)
 	srcStride := src.Stride
+	srcPix := src.Pix
 	for y := 1; y < h-1; y++ {
 		yStride := y * srcStride
 		yW := y * w
@@ -178,7 +171,6 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	meanL := sumL / totalPixels
 	meanA := sumA / totalPixels
 	meanB := sumB / totalPixels
-	meanLabColor := labColor{l: meanL, a: meanA, b: meanB}
 
 	// OPTIMIZATION: Precalculate coordinate-dependent aesthetic factors to avoid heavy math in inner loop
 	thirdX := make([]float64, w)
@@ -214,41 +206,10 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			r, g, b := srcPix[idx], srcPix[idx+1], srcPix[idx+2]
 
 			// 3. Structural Saliency (Edge Detection via 3x3 Sobel)
-			i00 := yW - w + x - 1
-			i10 := i00 + 1
-			i20 := i10 + 1
-
-			i01 := yW + x - 1
-			i21 := i01 + 2
-
-			i02 := yW + w + x - 1
-			i12 := i02 + 1
-			i22 := i12 + 1
-
-			l00 := lumMapInt[i00]
-			l10 := lumMapInt[i10]
-			l20 := lumMapInt[i20]
-
-			l01 := lumMapInt[i01]
-			l21 := lumMapInt[i21]
-
-			l02 := lumMapInt[i02]
-			l12 := lumMapInt[i12]
-			l22 := lumMapInt[i22]
-
-			gx := -l00 - (l01 << 1) - l02 + l20 + (l21 << 1) + l22
-			gy := -l00 - (l10 << 1) - l20 + l02 + (l12 << 1) + l22
-
-			edge := math.Sqrt(float64(gx)*float64(gx)+float64(gy)*float64(gy)) / 255000.0
+			edge := calculateSobelEdge(src, x, y)
 
 			// 4. Skin Tone Saliency (Heuristic)
-			rf, gf, bf := float64(r), float64(g), float64(b)
-			cb := 128 - 0.168736*rf - 0.331264*gf + 0.5*bf
-			cr := 128 + 0.5*rf - 0.418688*gf - 0.081312*bf
-			skin := 0.0
-			if cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 {
-				skin = 1.0
-			}
+			skin := calculateSkinProbability(r, g, b)
 
 			// 5. Object Saliency (BMS)
 			object := bmsMap[yW+x]
@@ -256,7 +217,7 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			// 6. Perceptual Lab Saliency (Color Contrast using CIEDE2000 color difference)
 			// Measures true perceptual distance from the average image background color
 			c := labMap[yW+x]
-			colorWeight := ciede2000(c, meanLabColor) / 100.0
+			colorWeight := ciede2000(c, labColor{l: meanL, a: meanA, b: meanB}) / 100.0
 			if colorWeight > 1.0 {
 				colorWeight = 1.0
 			}
@@ -360,6 +321,16 @@ func calculateSobelEdgeSlow(src *image.RGBA, x, y int, bounds image.Rectangle) f
 	gyFloat := float64(gy)
 
 	return math.Sqrt(gxFloat*gxFloat+gyFloat*gyFloat) / 255000.0
+}
+
+func calculateSkinProbability(r, g, b uint8) float64 {
+	rf, gf, bf := float64(r), float64(g), float64(b)
+	cb := 128 - 0.168736*rf - 0.331264*gf + 0.5*bf
+	cr := 128 + 0.5*rf - 0.418688*gf - 0.081312*bf
+	if cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 {
+		return 1.0
+	}
+	return 0.0
 }
 
 func calculateIntegralImage(saliencyMap []float64, w, h int) []float64 {
