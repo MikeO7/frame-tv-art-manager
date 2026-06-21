@@ -1,25 +1,21 @@
 package optimize
 
 import (
-	"image"
 	"sync"
 )
 
 // generateBMSMap implements Boolean Map Saliency's surroundedness principle.
 // It finds regions that are topologically isolated from the image borders.
 // v4.0 is fully parallelized across all threshold channels.
-func generateBMSMap(src *image.RGBA) []float64 {
-	w, h := src.Bounds().Dx(), src.Bounds().Dy()
+// generateBMSMapFromLum implements Boolean Map Saliency's surroundedness principle.
+// It finds regions that are topologically isolated from the image borders.
+// v4.0 is fully parallelized across all threshold channels.
+func generateBMSMapFromLum(lumMapInt []int, w, h int) []float64 {
 	bms := make([]float64, w*h)
 
-	// Precompute luminance map once for all thresholds to avoid redundant
-	// calculation overhead across concurrent goroutines
-	pix := src.Pix
 	lumMap := make([]uint8, w*h)
 	for i := 0; i < w*h; i++ {
-		idx := i * 4
-		lum := (int(pix[idx])*299 + int(pix[idx+1])*587 + int(pix[idx+2])*114) / 1000
-		lumMap[i] = uint8(lum)
+		lumMap[i] = uint8(lumMapInt[i] / 1000)
 	}
 
 	thresholds := []uint8{50, 100, 150, 200, 240}
@@ -74,24 +70,55 @@ func (s *bmsState) seedBorders() {
 }
 
 func (s *bmsState) floodFill() {
-	for s.head < s.tail {
-		curr := s.queue[s.head]
-		s.head++
-		cx, cy := curr%s.w, curr/s.w
+	q := s.queue
+	bMap := s.boolMap
+	bg := s.bg
+	w := s.w
 
-		if cx-1 >= 0 {
-			s.tryEnqueue(cy*s.w + cx - 1)
+	head := s.head
+	tail := s.tail
+
+	for head < tail {
+		curr := q[head]
+		head++
+
+		cx := curr % w
+
+		if cx > 0 {
+			idx := curr - 1
+			if !bMap[idx] && !bg[idx] {
+				bg[idx] = true
+				q[tail] = idx
+				tail++
+			}
 		}
-		if cx+1 < s.w {
-			s.tryEnqueue(cy*s.w + cx + 1)
+		if cx+1 < w {
+			idx := curr + 1
+			if !bMap[idx] && !bg[idx] {
+				bg[idx] = true
+				q[tail] = idx
+				tail++
+			}
 		}
-		if cy-1 >= 0 {
-			s.tryEnqueue((cy-1)*s.w + cx)
+		if curr >= w {
+			idx := curr - w
+			if !bMap[idx] && !bg[idx] {
+				bg[idx] = true
+				q[tail] = idx
+				tail++
+			}
 		}
-		if cy+1 < s.h {
-			s.tryEnqueue((cy+1)*s.w + cx)
+		if curr+w < len(bMap) {
+			idx := curr + w
+			if !bMap[idx] && !bg[idx] {
+				bg[idx] = true
+				q[tail] = idx
+				tail++
+			}
 		}
 	}
+	s.head = head
+	s.tail = tail
 }
 
 //nolint:gosec // uint8 conversion is safe here as max luminance is 255

@@ -145,7 +145,15 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	mapData := make([]float64, w*h)
 
 	// 1. Generate BMS (Boolean Map Saliency) surroundedness map.
-	bmsMap := generateBMSMap(src)
+	// But first, precompute luminance for everything
+	srcPix := src.Pix
+	lumMapInt := make([]int, w*h)
+	for i := 0; i < w*h; i++ {
+		idx := i * 4
+		lumMapInt[i] = int(srcPix[idx])*299 + int(srcPix[idx+1])*587 + int(srcPix[idx+2])*114
+	}
+
+	bmsMap := generateBMSMapFromLum(lumMapInt, w, h)
 
 	// 2. Precompute Mean Lab Color of the entire image to measure color distance
 	var sumL, sumA, sumB float64
@@ -154,7 +162,6 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 	// OPTIMIZATION: Precompute Lab colors to avoid recalculating per-pixel later
 	labMap := make([]labColor, w*h)
 	srcStride := src.Stride
-	srcPix := src.Pix
 	for y := 1; y < h-1; y++ {
 		yStride := y * srcStride
 		yW := y * w
@@ -206,7 +213,32 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			r, g, b := srcPix[idx], srcPix[idx+1], srcPix[idx+2]
 
 			// 3. Structural Saliency (Edge Detection via 3x3 Sobel)
-			edge := calculateSobelEdge(src, x, y)
+			i00 := yW - w + x - 1
+			i10 := i00 + 1
+			i20 := i10 + 1
+
+			i01 := yW + x - 1
+			i21 := i01 + 2
+
+			i02 := yW + w + x - 1
+			i12 := i02 + 1
+			i22 := i12 + 1
+
+			l00 := lumMapInt[i00]
+			l10 := lumMapInt[i10]
+			l20 := lumMapInt[i20]
+
+			l01 := lumMapInt[i01]
+			l21 := lumMapInt[i21]
+
+			l02 := lumMapInt[i02]
+			l12 := lumMapInt[i12]
+			l22 := lumMapInt[i22]
+
+			gx := -l00 - (l01 << 1) - l02 + l20 + (l21 << 1) + l22
+			gy := -l00 - (l10 << 1) - l20 + l02 + (l12 << 1) + l22
+
+			edge := math.Sqrt(float64(gx)*float64(gx)+float64(gy)*float64(gy)) / 255000.0
 
 			// 4. Skin Tone Saliency (Heuristic)
 			skin := calculateSkinProbability(r, g, b)
