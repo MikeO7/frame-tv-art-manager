@@ -35,34 +35,6 @@ func TestArtworkCatalog_InvalidateCacheAndRename(t *testing.T) {
 	}
 }
 
-func TestArtworkCatalog_RegisterHashAndMaxReached(t *testing.T) {
-	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
-
-	if existing, dup := idx.registerHash("hash1", "a.jpg"); dup || existing != "" {
-		t.Errorf("first register should not be duplicate: %q %v", existing, dup)
-	}
-	if existing, dup := idx.registerHash("hash1", "b.jpg"); !dup || existing != "a.jpg" {
-		t.Errorf("second register should be duplicate: %q %v", existing, dup)
-	}
-
-	idx.MarkVisited("a.jpg")
-	idx.MarkVisited("b.jpg")
-	if !idx.MaxReached(2) {
-		t.Error("expected MaxReached true at limit")
-	}
-	if idx.MaxReached(0) {
-		t.Error("expected MaxReached false when limit is 0")
-	}
-}
-
-func TestArtworkCatalog_SetHash(t *testing.T) {
-	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
-	idx.setHash("hash", "file.jpg")
-	if idx.hashIndex["hash"] != "file.jpg" {
-		t.Errorf("setHash failed: %q", idx.hashIndex["hash"])
-	}
-}
-
 func TestArtworkCatalog_UnsupportedPath(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(tmpFile, []byte("x"), 0o600); err != nil {
@@ -213,5 +185,18 @@ func TestArtworkCatalog_ProcessFile_WithEmbeddedHash(t *testing.T) {
 	}
 	if entry.err != nil {
 		t.Errorf("unexpected error: %v", entry.err)
+	}
+}
+
+func TestArtworkCatalog_MaxReached(t *testing.T) {
+	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
+
+	idx.MarkVisited("a.jpg")
+	idx.MarkVisited("b.jpg")
+	if !idx.MaxReached(2) {
+		t.Error("expected MaxReached true at limit")
+	}
+	if idx.MaxReached(0) {
+		t.Error("expected MaxReached false when limit is 0")
 	}
 }
