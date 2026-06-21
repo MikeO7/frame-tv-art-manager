@@ -199,7 +199,7 @@ func TestIsPortraitFile(t *testing.T) {
 	// Create a dummy file that is not a valid image
 	dir := t.TempDir()
 	path := filepath.Join(dir, "invalid.jpg")
-	err := os.WriteFile(path, []byte("not an image"), 0644)
+	err := os.WriteFile(path, []byte("not an image"), 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestIsPortraitFile(t *testing.T) {
 func TestLoadAndRotateImage(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "invalid.jpg")
-	err := os.WriteFile(path, []byte("not an image"), 0644)
+	err := os.WriteFile(path, []byte("not an image"), 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestCollectRawPortraits(t *testing.T) {
 
 	// Create an invalid image file so isPortraitFile returns an error
 	path := filepath.Join(dir, "upload2.jpg")
-	err := os.WriteFile(path, []byte("not an image"), 0644)
+	err := os.WriteFile(path, []byte("not an image"), 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}

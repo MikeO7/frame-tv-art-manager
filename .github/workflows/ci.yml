@@ -45,9 +45,9 @@ jobs:
           go-version: '1.26.4'
           cache: true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: v2.12.2
+          version: v1.64.6
 
   # Lane 2: Security Scan
   security:
