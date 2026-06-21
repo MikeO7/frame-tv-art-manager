@@ -18,6 +18,14 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
+// Supported image extensions and the marker embedded in optimized filenames.
+const (
+	extJPG          = ".jpg"
+	extJPEG         = ".jpeg"
+	extPNG          = ".png"
+	optimizedMarker = "_opt.h_"
+)
+
 type Config struct {
 	Enabled             bool
 	SmartCropEnabled    bool
@@ -45,51 +53,13 @@ func DefaultConfig() Config {
 	}
 }
 
-// OptimizeFile checks if an image needs resizing and optimizes it
-// in-place. It encapsulates the naming convention and returns the
-// final path/filename and whether the file was modified.
+// OptimizeFile resizes and enhances a JPEG in-place to the configured Frame TV
+// dimensions, writing an optimized copy adjacent to the original and applying
+// the hash-based "_opt.h_" naming convention.
 //
-// Parameters:
-//   - path: The absolute or relative file path to the original image (must be a JPEG).
-//   - cfg:  The configuration containing MaxWidth, MaxHeight, SmartCrop, and Quality preferences.
-//   - logger: A structured logger for emitting processing stages and skipped file notifications.
-//
-// Returns:
-//   - string: The final filename of the optimized image (e.g., "monet_opt.h_1a2b.jpg").
-//   - bool:   True if the file was actively modified, false if skipped due to dimensions or config.
-//   - error:  Any file I/O or decoding error encountered during the operation.
-//
-// Example:
-//
-//	finalName, modified, err := optimize.OptimizeFile("/data/artwork/monet.jpg", optimize.DefaultConfig(), logger)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	if modified {
-//	    fmt.Printf("Optimized file into %s\n", finalName)
-//	}
-//
-// OptimizeFile reads an image file, applies size reduction or aesthetic enhancements according to config,
-// and saves an optimized copy adjacent to the original file.
-//
-// Parameters:
-//   - path:   The full filesystem path to the original unoptimized image.
-//   - cfg:    The configuration containing maximum dimensions, quality settings, and visual mode flags.
-//   - logger: A structured logger for emitting pipeline events and warnings.
-//
-// Returns:
-//   - string: The filename of the resulting image (the new file if optimized, or the original if unchanged).
-//   - bool:   True if a new optimized file was created, false if the file was skipped or unneeded.
-//   - error:  An error if the source file could not be read or the optimized file could not be saved.
-//
-// Example:
-//
-//	newPath, changed, err := optimize.OptimizeFile("/data/artwork/monet.jpg", cfg, logger)
-//	if err != nil {
-//	    log.Println("Optimization failed:", err)
-//	}
-//
-//nolint:funlen,goconst // image optimization pipeline; extension constant is local
+// It returns the resulting filename (the renamed optimized file, or the
+// original when no work was needed), whether the file was modified, and any
+// I/O or decode error. Non-JPEG inputs and already-optimized files are skipped.
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
@@ -99,7 +69,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 
 	// Only optimize JPEGs (Frame TV primary format).
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext != ".jpg" && ext != ".jpeg" {
+	if ext != extJPG && ext != extJPEG {
 		return filename, false, nil
 	}
 
@@ -140,7 +110,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 
 // checkFastPath returns true if the file is already optimized with matching dimensions.
 func checkFastPath(filename string, cfg Config, logger *slog.Logger) bool {
-	if !strings.Contains(filename, "_opt.h_") {
+	if !strings.Contains(filename, optimizedMarker) {
 		return false
 	}
 	w, h, ok := artwork.ParseDimensions(filename)
@@ -154,7 +124,7 @@ func checkFastPath(filename string, cfg Config, logger *slog.Logger) bool {
 // handleRename renames the file according to optimized names if needed.
 func handleRename(path, filename, dir string, modified bool, finalW, finalH int, logger *slog.Logger) (string, bool, error) {
 	currentW, currentH, _ := artwork.ParseDimensions(filename)
-	isOpt := strings.Contains(filename, "_opt.h_")
+	isOpt := strings.Contains(filename, optimizedMarker)
 
 	if !modified && isOpt && currentW == finalW && currentH == finalH {
 		return filename, false, nil
@@ -267,7 +237,7 @@ func rewriteImage(f *os.File, path, filename string, width, height int, needsAdj
 
 // ReadOrientation reads the EXIF orientation tag from an image file if available.
 //
-//nolint:gocognit,goconst,gocyclo // custom EXIF parser logic needs to handle raw JPEG marker bounds checks; constant is local
+//nolint:gocognit,gocyclo // custom EXIF marker scan with raw JPEG bounds checks
 func ReadOrientation(r io.Reader) (int, error) {
 	var buf [4]byte
 	if _, err := io.ReadFull(r, buf[:2]); err != nil {

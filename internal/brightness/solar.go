@@ -19,88 +19,77 @@ var ErrSolarDisabled = errors.New("solar calculation disabled")
 // based on the solar declination and hour angle.
 //
 // Returns negative values when the sun is below the horizon.
-//
-//nolint:funlen // astronomical calculation formula is sequential
 func sunElevation(lat, lon float64, t time.Time) float64 {
-	// Convert to UTC for calculation.
 	t = t.UTC()
+	hours := float64(t.Hour()) + float64(t.Minute())/60.0 + float64(t.Second())/3600.0
 
-	// Julian date calculation.
+	jc := julianCentury(t)
+	decl, eqTime := solarDeclination(jc)
+
+	// True solar time (minutes), then the hour angle (degrees).
+	tst := math.Mod(hours*60+eqTime+4*lon, 1440)
+	ha := tst/4 - 180
+	if tst < 0 {
+		ha = tst/4 + 180
+	}
+	haRad := ha * math.Pi / 180
+	latRad := lat * math.Pi / 180
+
+	// Solar elevation angle.
+	sinElevation := math.Sin(latRad)*math.Sin(decl) +
+		math.Cos(latRad)*math.Cos(decl)*math.Cos(haRad)
+	return math.Asin(sinElevation) * 180 / math.Pi
+}
+
+// julianCentury returns the Julian centuries elapsed since the J2000.0 epoch
+// for time t (assumed already in UTC), the time base for the solar formulas.
+func julianCentury(t time.Time) float64 {
 	y := float64(t.Year())
 	m := float64(t.Month())
 	d := float64(t.Day())
 	h := float64(t.Hour()) + float64(t.Minute())/60.0 + float64(t.Second())/3600.0
 
-	// Adjust for Jan/Feb.
+	// Adjust for Jan/Feb (treated as months 13/14 of the prior year).
 	if m <= 2 {
 		y--
 		m += 12
 	}
 
 	jd := math.Floor(365.25*(y+4716)) + math.Floor(30.6001*(m+1)) + d + h/24.0 - 1524.5
+	return (jd - 2451545.0) / 36525.0
+}
 
-	// Julian century from J2000.0.
-	jc := (jd - 2451545.0) / 36525.0
-
-	// Solar coordinates.
-	// Mean longitude of the sun (degrees).
+// solarDeclination returns the sun's declination (radians) and the equation of
+// time (minutes) for the given Julian century, per the NOAA solar position formulas.
+func solarDeclination(jc float64) (decl, eqTime float64) {
+	// Mean longitude and mean anomaly of the sun (degrees).
 	l0 := math.Mod(280.46646+jc*(36000.76983+jc*0.0003032), 360)
-
-	// Mean anomaly of the sun (degrees).
 	m0 := 357.52911 + jc*(35999.05029-jc*0.0001537)
 	m0Rad := m0 * math.Pi / 180
 
-	// Equation of center.
+	// Equation of center and the resulting apparent longitude.
 	eoc := (1.914602-jc*(0.004817+jc*0.000014))*math.Sin(m0Rad) +
 		(0.019993-jc*0.000101)*math.Sin(2*m0Rad) +
 		0.000289*math.Sin(3*m0Rad)
-
-	// Sun's true longitude.
-	sunLon := l0 + eoc
-
-	// Sun's apparent longitude.
 	omega := 125.04 - 1934.136*jc
-	sunAppLon := sunLon - 0.00569 - 0.00478*math.Sin(omega*math.Pi/180)
+	sunAppLon := l0 + eoc - 0.00569 - 0.00478*math.Sin(omega*math.Pi/180)
 	sunAppLonRad := sunAppLon * math.Pi / 180
 
-	// Mean obliquity of the ecliptic.
+	// Corrected obliquity of the ecliptic.
 	obliq := 23.0 + (26.0+(21.448-jc*(46.815+jc*(0.00059-jc*0.001813)))/60.0)/60.0
 	obliqCorr := obliq + 0.00256*math.Cos(omega*math.Pi/180)
 	obliqCorrRad := obliqCorr * math.Pi / 180
 
-	// Sun's declination.
-	sinDecl := math.Sin(obliqCorrRad) * math.Sin(sunAppLonRad)
-	decl := math.Asin(sinDecl)
+	decl = math.Asin(math.Sin(obliqCorrRad) * math.Sin(sunAppLonRad))
 
 	// Equation of time (minutes).
 	tanHalfObliq := math.Tan(obliqCorrRad / 2)
 	y2 := tanHalfObliq * tanHalfObliq
 	l0Rad := l0 * math.Pi / 180
-	eqTime := 4 * (y2*math.Sin(2*l0Rad) -
+	eqTime = 4 * (y2*math.Sin(2*l0Rad) -
 		2*math.Sin(m0Rad)*(1-2*y2*math.Cos(2*l0Rad)) +
 		(0.0167*2)*math.Sin(2*m0Rad)) * 180 / math.Pi
-
-	// True solar time (minutes).
-	tst := math.Mod(h*60+eqTime+4*lon, 1440)
-
-	// Hour angle (degrees).
-	var ha float64
-	if tst < 0 {
-		ha = tst/4 + 180
-	} else {
-		ha = tst/4 - 180
-	}
-	haRad := ha * math.Pi / 180
-
-	// Latitude in radians.
-	latRad := lat * math.Pi / 180
-
-	// Solar elevation angle.
-	sinElevation := math.Sin(latRad)*math.Sin(decl) +
-		math.Cos(latRad)*math.Cos(decl)*math.Cos(haRad)
-	elevation := math.Asin(sinElevation) * 180 / math.Pi
-
-	return elevation
+	return decl, eqTime
 }
 
 // brightnessFromElevation maps a sun elevation angle (degrees) to a
@@ -163,18 +152,8 @@ func GetTargetValue(
 	manualBrightness *int,
 	logger *slog.Logger,
 ) *int {
-	//nolint:nestif // complexity justified for this domain-specific path
-	if loc != nil && loc.Latitude != nil && loc.Longitude != nil {
-		b, err := Calculate(loc.Latitude, loc.Longitude, loc.Timezone, minVal, maxVal)
-		if err == nil {
-			if logger != nil {
-				logger.Info("solar brightness", "value", *b)
-			}
-			return b
-		}
-		if !errors.Is(err, ErrSolarDisabled) && logger != nil {
-			logger.Warn("solar brightness calculation failed", "error", err)
-		}
+	if b := trySolarBrightness(loc, minVal, maxVal, logger); b != nil {
+		return b
 	}
 
 	if manualBrightness != nil {
@@ -185,4 +164,25 @@ func GetTargetValue(
 	}
 
 	return nil
+}
+
+// trySolarBrightness computes solar brightness when a complete location is
+// configured, returning nil when solar is unavailable or the calculation fails.
+func trySolarBrightness(loc *SolarLocation, minVal, maxVal int, logger *slog.Logger) *int {
+	if loc == nil || loc.Latitude == nil || loc.Longitude == nil {
+		return nil
+	}
+
+	b, err := Calculate(loc.Latitude, loc.Longitude, loc.Timezone, minVal, maxVal)
+	if err != nil {
+		if !errors.Is(err, ErrSolarDisabled) && logger != nil {
+			logger.Warn("solar brightness calculation failed", "error", err)
+		}
+		return nil
+	}
+
+	if logger != nil {
+		logger.Info("solar brightness", "value", *b)
+	}
+	return b
 }

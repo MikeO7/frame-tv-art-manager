@@ -336,8 +336,6 @@ func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, 
 // Returns:
 //   - string: The TV-assigned content ID for the newly uploaded artwork.
 //   - error: Any network or API error encountered during the upload transfer.
-//
-//nolint:funlen // complexity justified for this domain-specific path
 func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (string, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
@@ -354,23 +352,7 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (
 
 	// Step 1: Send the upload request to get D2D connection info.
 	id := newRequestID()
-	artReq := map[string]any{
-		keyRequest:   "send_image",
-		"file_type":  fileType,
-		"id":         id,
-		keyRequestID: id,
-		"conn_info": map[string]any{
-			"d2d_mode":      "socket",
-			"connection_id": time.Now().UnixNano() % (4 * 1024 * 1024 * 1024),
-			"id":            id,
-		},
-		"image_date":        time.Now().Format("2006:01:02 15:04:05"),
-		"matte_id":          matte,
-		"portrait_matte_id": matte,
-		"file_size":         stat.Size(),
-	}
-
-	resp, raw, err := c.sendArtRequest(ctx, artReq)
+	resp, raw, err := c.sendArtRequest(ctx, buildSendImageRequest(id, fileType, matte, stat.Size()))
 	if err != nil {
 		return "", err
 	}
@@ -401,6 +383,30 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (
 	}
 
 	return contentID, nil
+}
+
+// buildSendImageRequest constructs the art-API "send_image" payload that
+// announces a pending D2D socket transfer of the given size and matte.
+func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[string]any {
+	// connectionIDModulus bounds the generated connection_id to 4 GiB, the
+	// range the TV's D2D handshake expects.
+	const connectionIDModulus = 4 * 1024 * 1024 * 1024
+
+	return map[string]any{
+		keyRequest:   "send_image",
+		"file_type":  fileType,
+		"id":         id,
+		keyRequestID: id,
+		"conn_info": map[string]any{
+			"d2d_mode":      "socket",
+			"connection_id": time.Now().UnixNano() % connectionIDModulus,
+			"id":            id,
+		},
+		"image_date":        time.Now().Format("2006:01:02 15:04:05"),
+		"matte_id":          matte,
+		"portrait_matte_id": matte,
+		"file_size":         fileSize,
+	}
 }
 
 // sendArtRequest wraps an art request with standard JSON-RPC formatting and waits for the matching response.

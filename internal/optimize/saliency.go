@@ -11,8 +11,6 @@ import (
 // It uses a two-pass system:
 // 1. Global BMS analysis at 256px to find the primary Region of Interest.
 // 2. High-res Micro-Refinement at the focal point to optimize for edge alignment.
-//
-//nolint:nestif // complexity justified for this domain-specific path
 func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool) int {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
@@ -30,43 +28,38 @@ func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool
 	saliencyMap := generateSaliencyMap(workImg)
 	integral := calculateIntegralImage(saliencyMap, workW, workH)
 
-	mapWinW := int(float64(windowW) * scale)
-	mapWinH := int(float64(windowH) * scale)
-	if mapWinW < 1 {
-		mapWinW = 1
-	}
-	if mapWinH < 1 {
-		mapWinH = 1
-	}
+	mapWinW := max(int(float64(windowW)*scale), 1)
+	mapWinH := max(int(float64(windowH)*scale), 1)
 
-	bestMapPos := 0
-	maxScore := -1.0
-
-	if horizontal {
-		maxMapX := workW - mapWinW
-		for mx := 0; mx <= maxMapX; mx++ {
-			score := getRectSum(integral, mx, 0, mx+mapWinW-1, workH-1, workW)
-			if score > maxScore {
-				maxScore = score
-				bestMapPos = mx
-			}
-		}
-	} else {
-		maxMapY := workH - mapWinH
-		for my := 0; my <= maxMapY; my++ {
-			score := getRectSum(integral, 0, my, workW-1, my+mapWinH-1, workW)
-			if score > maxScore {
-				maxScore = score
-				bestMapPos = my
-			}
-		}
-	}
-
+	bestMapPos := scanBestWindow(integral, workW, workH, mapWinW, mapWinH, horizontal)
 	globalOffset := int(float64(bestMapPos) / scale)
 
 	// PASS 2: High-Res Micro-Refinement (Fine-tuning at the focal point)
 	// We search within a +/- 5% range at a higher resolution to snap to sharp edges.
 	return refineOffset(src, globalOffset, windowW, windowH, horizontal)
+}
+
+// scanBestWindow slides the crop window along the saliency integral image and
+// returns the start offset (on the active axis) whose enclosed saliency is
+// greatest.
+func scanBestWindow(integral []float64, workW, workH, mapWinW, mapWinH int, horizontal bool) int {
+	best, maxScore := 0, -1.0
+	if horizontal {
+		for mx := 0; mx <= workW-mapWinW; mx++ {
+			rect := image.Rect(mx, 0, mx+mapWinW-1, workH-1)
+			if score := getRectSum(integral, rect, workW); score > maxScore {
+				maxScore, best = score, mx
+			}
+		}
+		return best
+	}
+	for my := 0; my <= workH-mapWinH; my++ {
+		rect := image.Rect(0, my, workW-1, my+mapWinH-1)
+		if score := getRectSum(integral, rect, workW); score > maxScore {
+			maxScore, best = score, my
+		}
+	}
+	return best
 }
 
 // clampOffset ensures a crop offset is within valid image bounds.
@@ -146,7 +139,7 @@ func calculateEdgeScore(src *image.RGBA, x1, y1, x2, y2 int) float64 {
 // generateSaliencyMap creates a 2D map where each pixel represents a saliency score.
 // It combines structural edges (Sobel), skin tone detection, and Boolean Map Saliency (BMS).
 //
-//nolint:funlen // complexity justified for this domain-specific path
+//nolint:funlen // single fused per-pixel loop kept monolithic to avoid per-pixel call overhead in this hot path
 func generateSaliencyMap(src *image.RGBA) []float64 {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	mapData := make([]float64, w*h)
@@ -358,8 +351,11 @@ func calculateIntegralImage(saliencyMap []float64, w, h int) []float64 {
 	return integral
 }
 
-//nolint:revive // complexity justified for this domain-specific path
-func getRectSum(integral []float64, x1, y1, x2, y2, w int) float64 {
+// getRectSum returns the saliency sum over the rectangle r using the
+// summed-area table. NOTE: r.Max is treated as inclusive (matching
+// integral-image indexing), not the usual exclusive image.Rectangle bound.
+func getRectSum(integral []float64, r image.Rectangle, w int) float64 {
+	x1, y1, x2, y2 := r.Min.X, r.Min.Y, r.Max.X, r.Max.Y
 	res := integral[y2*w+x2]
 	if x1 > 0 {
 		res -= integral[y2*w+x1-1]
