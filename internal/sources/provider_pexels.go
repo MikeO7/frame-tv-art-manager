@@ -12,6 +12,16 @@ import (
 	"time"
 )
 
+const (
+	// pexelsMaxResponseBytes caps a decoded Pexels API response to guard against
+	// unbounded memory use from a hostile or malfunctioning endpoint.
+	pexelsMaxResponseBytes = 10 << 20 // 10 MiB
+	// pexelsCollectionPageSize is the per-page item count requested for collections.
+	pexelsCollectionPageSize = 80
+	// pexelsMaxPages bounds collection pagination to avoid unbounded crawling.
+	pexelsMaxPages = 10
+)
+
 // pexelsProvider handles communication with the Pexels API and resolves artwork sources.
 type pexelsProvider struct {
 	apiKey  string
@@ -64,65 +74,59 @@ func (p *pexelsProvider) Curated(ctx context.Context) ([]string, error) {
 }
 
 // FetchCollection retrieves all photos from a specific Pexels collection using pagination.
-//
-//nolint:gocognit // complexity justified for this domain-specific path
 func (p *pexelsProvider) FetchCollection(ctx context.Context, collectionID string) ([]string, error) {
 	var allUrls []string
-	page := 1
-
-	for {
-		apiURL := fmt.Sprintf("%s/v1/collections/%s?per_page=80&page=%d", p.BaseURL, url.PathEscape(collectionID), page)
-		p.logger.Debug("fetching pexels collection page", "id", collectionID, "page", page)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	for page := 1; page <= pexelsMaxPages; page++ {
+		urls, more, err := p.fetchCollectionPage(ctx, collectionID, page)
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Authorization", p.apiKey)
-
-		resp, err := p.client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("pexels api error: %d", resp.StatusCode)
-		}
-
-		var result struct {
-			Media []pexelsPhoto `json:"media"`
-			Page  int           `json:"page"`
-		}
-		maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-		reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-		decodeErr := json.NewDecoder(reader).Decode(&result)
-		_ = resp.Body.Close()
-		if decodeErr != nil {
-			return nil, fmt.Errorf("decode pexels response: %w", decodeErr)
-		}
-
-		if len(result.Media) == 0 {
-			break
-		}
-
-		for _, ph := range result.Media {
-			if ph.Src.Original != "" {
-				allUrls = append(allUrls, ph.Src.Original)
-			}
-		}
-
-		if len(result.Media) < 80 {
-			break
-		}
-		page++
-
-		if page > 10 {
+		allUrls = append(allUrls, urls...)
+		if !more {
 			break
 		}
 	}
-
 	return allUrls, nil
+}
+
+// fetchCollectionPage retrieves a single page of a Pexels collection and
+// reports whether a further page may exist (i.e. this page was full).
+func (p *pexelsProvider) fetchCollectionPage(ctx context.Context, collectionID string, page int) ([]string, bool, error) {
+	apiURL := fmt.Sprintf("%s/v1/collections/%s?per_page=%d&page=%d", p.BaseURL, url.PathEscape(collectionID), pexelsCollectionPageSize, page)
+	p.logger.Debug("fetching pexels collection page", "id", collectionID, "page", page)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Authorization", p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, false, fmt.Errorf("pexels api error: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Media []pexelsPhoto `json:"media"`
+		Page  int           `json:"page"`
+	}
+	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
+	if err := json.NewDecoder(reader).Decode(&result); err != nil {
+		return nil, false, fmt.Errorf("decode pexels response: %w", err)
+	}
+
+	urls := make([]string, 0, len(result.Media))
+	for _, ph := range result.Media {
+		if ph.Src.Original != "" {
+			urls = append(urls, ph.Src.Original)
+		}
+	}
+	return urls, len(result.Media) >= pexelsCollectionPageSize, nil
 }
 
 // FetchPhoto retrieves a single photo by its ID.
@@ -146,8 +150,7 @@ func (p *pexelsProvider) FetchPhoto(ctx context.Context, photoID string) (string
 	}
 
 	var photo pexelsPhoto
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
 	if err := json.NewDecoder(reader).Decode(&photo); err != nil {
 		return "", fmt.Errorf("decode pexels response: %w", err)
 	}
@@ -176,8 +179,7 @@ func (p *pexelsProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]s
 	var result struct {
 		Photos []pexelsPhoto `json:"photos"`
 	}
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode pexels response: %w", err)
 	}

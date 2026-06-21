@@ -598,16 +598,15 @@ func TestPlanSync(t *testing.T) {
 		},
 	}
 
-	plan := PlanSync(
-		"1.2.3.4",
-		cfg,
-		matteCfg,
-		mappingData,
-		tvContent,
-		localFiles,
-		nil,
-		slog.Default(),
-	)
+	plan := PlanSync(PlanInput{
+		IP:          "1.2.3.4",
+		Cfg:         cfg,
+		MatteConfig: matteCfg,
+		MappingData: mappingData,
+		TVContent:   tvContent,
+		LocalFiles:  localFiles,
+		Logger:      slog.Default(),
+	})
 
 	if plan.IP != "1.2.3.4" {
 		t.Errorf("expected plan IP 1.2.3.4, got %s", plan.IP)

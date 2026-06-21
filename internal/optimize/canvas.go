@@ -56,7 +56,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	return dst
 }
 
-//nolint:revive // complexity justified for this domain-specific path
+//nolint:revive // argument count reflects the per-pixel oil-paint inputs threaded through the hot loop
 func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
 	impasto := calculateScharrImpasto(src, x, y)
 	weave, varnishPool := calculateWeave(x, y)
@@ -87,7 +87,7 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 	dstPix[i+2] = b
 }
 
-//nolint:funlen // complexity justified for this domain-specific mathematical path
+//nolint:funlen // unrolled Scharr operator sampling the full 3x3 neighborhood inline for speed
 func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	stride := src.Stride
 	pix := src.Pix

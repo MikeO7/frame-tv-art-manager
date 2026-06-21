@@ -49,7 +49,7 @@ func unifyCollection(src *image.RGBA) *image.RGBA {
 	return src
 }
 
-//nolint:funlen // complexity justified for this domain-specific path
+//nolint:funlen // single-pass RMS contrast accumulation kept inline over the full pixel buffer
 func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -146,7 +146,7 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	return lutSrgb[idxR], lutSrgb[idxG], lutSrgb[idxB]
 }
 
-//nolint:gocognit // complexity justified for this domain-specific path
+//nolint:gocognit // per-pixel contrast/gamut mapping across goroutine-partitioned rows kept inline for throughput
 func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -208,7 +208,7 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 
 // polishPixel limits the maximum brightness and adds paper grain noise to a pixel.
 //
-//nolint:funlen // complexity justified for this domain-specific path
+//nolint:funlen // brightness clamp + paper-grain noise applied inline to each R/G/B channel
 func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 	const maxBright = 235.0
 	if r > maxBright {

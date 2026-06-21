@@ -23,33 +23,8 @@ func toRGBA(img image.Image) *image.RGBA {
 
 // centerCrop performs a content-aware crop and high-fidelity scale to target dimensions.
 // It uses the Director's Cut Saliency Engine to identify subjects and optimize composition.
-//
-//nolint:nestif // complexity justified for this domain-specific path
 func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
-	srcBounds := src.Bounds()
-	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
-
-	targetAspect := float64(targetW) / float64(targetH)
-	srcAspect := float64(srcW) / float64(srcH)
-
-	var cropRect image.Rectangle
-	if srcAspect > targetAspect {
-		// Image is wider than target.
-		cropW := int(float64(srcH) * targetAspect)
-		bestX := (srcW - cropW) / 2 // Default to center
-		if smart {
-			bestX = findBestDirectorCrop(src, cropW, srcH, true)
-		}
-		cropRect = image.Rect(bestX, 0, bestX+cropW, srcH)
-	} else {
-		// Image is taller than target.
-		cropH := int(float64(srcW) / targetAspect)
-		bestY := (srcH - cropH) / 2 // Default to center
-		if smart {
-			bestY = findBestDirectorCrop(src, srcW, cropH, false)
-		}
-		cropRect = image.Rect(0, bestY, srcW, bestY+cropH)
-	}
+	cropRect := cropRectForAspect(src, float64(targetW)/float64(targetH), smart)
 
 	// Single-pass high-fidelity scaling using Catmull-Rom (Bicubic).
 	final := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
@@ -57,9 +32,34 @@ func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
 	return final
 }
 
+// cropRectForAspect selects the source rectangle that matches targetAspect,
+// centered by default or saliency-aligned when smart cropping is enabled.
+func cropRectForAspect(src *image.RGBA, targetAspect float64, smart bool) image.Rectangle {
+	srcBounds := src.Bounds()
+	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
+
+	if float64(srcW)/float64(srcH) > targetAspect {
+		// Image is wider than target: crop horizontally.
+		cropW := int(float64(srcH) * targetAspect)
+		bestX := (srcW - cropW) / 2 // Default to center
+		if smart {
+			bestX = findBestDirectorCrop(src, cropW, srcH, true)
+		}
+		return image.Rect(bestX, 0, bestX+cropW, srcH)
+	}
+
+	// Image is taller than target: crop vertically.
+	cropH := int(float64(srcW) / targetAspect)
+	bestY := (srcH - cropH) / 2 // Default to center
+	if smart {
+		bestY = findBestDirectorCrop(src, srcW, cropH, false)
+	}
+	return image.Rect(0, bestY, srcW, bestY+cropH)
+}
+
 // dither applies a subtle random jitter to pixel values to break up banding in gradients.
 //
-//nolint:gocognit,funlen // complexity justified for this domain-specific path
+//nolint:gocognit,funlen // per-pixel xorshift jitter + channel clamps kept inline across goroutine-partitioned rows to avoid call overhead
 func dither(src *image.RGBA) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()

@@ -248,7 +248,7 @@ func loadAndRotateImage(path string) (*image.RGBA, error) {
 	return toRGBA(rotated), nil
 }
 
-//nolint:funlen,goconst // functional length is necessary for image processing pipeline; constant is local
+//nolint:funlen // functional length is necessary for this fixed image-processing pipeline
 func processCollagePair(
 	artworkDir string,
 	f1, f2 string,
@@ -282,8 +282,8 @@ func processCollagePair(
 	stem2, hash2, _ := artwork.ExtractStemAndHash(f2)
 
 	ext := strings.ToLower(ext1)
-	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
-		ext = ".jpg"
+	if ext != extJPG && ext != extJPEG && ext != extPNG {
+		ext = extJPG
 	}
 
 	combinedStem := "collage_" + stem1 + "_" + stem2
@@ -336,7 +336,7 @@ func collectRawPortraits(artworkDir string, localFiles map[string]struct{}, want
 		if !wantsCollageAll && !isUpload {
 			continue
 		}
-		if strings.Contains(filename, "_opt.h_") {
+		if strings.Contains(filename, optimizedMarker) {
 			continue
 		}
 		path := filepath.Join(artworkDir, filename)

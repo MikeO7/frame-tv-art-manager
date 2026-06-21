@@ -15,27 +15,29 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
+// PlanInput bundles the inputs required to plan a TV sync. Grouping them into
+// a struct keeps the pure planner free of positional-argument ambiguity.
+type PlanInput struct {
+	IP                string
+	Cfg               *config.Config
+	MatteConfig       *config.MatteConfig
+	MappingData       map[string]string
+	TVContent         []samsung.ArtContent
+	LocalFiles        map[string]struct{}
+	PreserveSlideshow *samsung.SlideshowStatus
+	Logger            *slog.Logger
+}
+
 // PlanSync evaluates current states and plans synchronization purely in memory.
-//
-//nolint:revive // justified argument count for pure planning
-func PlanSync(
-	ip string,
-	cfg *config.Config,
-	matteConfig *config.MatteConfig,
-	mappingData map[string]string,
-	tvContent []samsung.ArtContent,
-	localFiles map[string]struct{},
-	preserveSlideshow *samsung.SlideshowStatus,
-	logger *slog.Logger,
-) *SyncPlan {
-	policy := cfg.SyncPolicy()
+func PlanSync(in PlanInput) *SyncPlan {
+	policy := in.Cfg.SyncPolicy()
 
-	trackedFiles, unknownIDs, staleFiles := reconcileInventory(mappingData, tvContent, logger)
-	toUploadSet := diffSets(localFiles, trackedFiles)
-	toDeleteSet := diffSets(trackedFiles, localFiles)
+	trackedFiles, unknownIDs, staleFiles := reconcileInventory(in.MappingData, in.TVContent, in.Logger)
+	toUploadSet := diffSets(in.LocalFiles, trackedFiles)
+	toDeleteSet := diffSets(trackedFiles, in.LocalFiles)
 
-	toUpload := buildUploadJobs(policy, matteConfig, toUploadSet)
-	toDeleteIDs, toDeleteFiles := buildDeleteJobs(mappingData, toDeleteSet)
+	toUpload := buildUploadJobs(policy, in.MatteConfig, toUploadSet)
+	toDeleteIDs, toDeleteFiles := buildDeleteJobs(in.MappingData, toDeleteSet)
 
 	var toDeleteUnknownIDs []string
 	if policy.RemoveUnknownImages && len(unknownIDs) > 0 {
@@ -44,37 +46,32 @@ func PlanSync(
 
 	hasChanges := len(toUpload) > 0 || len(toDeleteIDs) > 0 || len(toDeleteUnknownIDs) > 0
 
-	slideshow := determineSlideshowSettings(cfg, logger)
+	slideshow := determineSlideshowSettings(in.Cfg, in.Logger)
 	settingsForMode := slideshow
 	if settingsForMode == nil {
-		settingsForMode = preserveSlideshow
+		settingsForMode = in.PreserveSlideshow
 	}
 
 	var selectedID string
-	if hasChanges && len(localFiles) > 0 {
-		selectedID = determineSelectedID(mappingData, toUpload, toDeleteFiles, settingsForMode)
-	}
-
-	var targetSlideshow *samsung.SlideshowStatus
-	if slideshow != nil {
-		targetSlideshow = slideshow
+	if hasChanges && len(in.LocalFiles) > 0 {
+		selectedID = determineSelectedID(in.MappingData, toUpload, toDeleteFiles, settingsForMode)
 	}
 
 	return &SyncPlan{
-		IP:                 ip,
+		IP:                 in.IP,
 		ToUpload:           toUpload,
 		ToDeleteIDs:        toDeleteIDs,
 		ToDeleteFiles:      toDeleteFiles,
 		ToDeleteUnknownIDs: toDeleteUnknownIDs,
 		SelectedID:         selectedID,
-		Slideshow:          targetSlideshow,
-		Brightness:         determineBrightness(cfg, logger),
-		TurnOff:            isWithinAutoOffWindow(cfg.AutoOffTime, cfg.AutoOffGraceHours, cfg.Timezone),
+		Slideshow:          slideshow,
+		Brightness:         determineBrightness(in.Cfg, in.Logger),
+		TurnOff:            isWithinAutoOffWindow(in.Cfg.AutoOffTime, in.Cfg.AutoOffGraceHours, in.Cfg.Timezone),
 		TrackedFilesCount:  len(trackedFiles),
 		StaleFiles:         staleFiles,
-		PreserveSlideshow:  preserveSlideshow,
+		PreserveSlideshow:  in.PreserveSlideshow,
 		HasChanges:         hasChanges,
-		LocalFiles:         localFiles,
+		LocalFiles:         in.LocalFiles,
 	}
 }
 

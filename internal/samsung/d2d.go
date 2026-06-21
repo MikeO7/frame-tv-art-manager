@@ -15,21 +15,8 @@ import (
 
 const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
 
-// UploadImageD2D transfers an image file to the TV via a direct TCP/TLS
-// socket connection. This is the "Device-to-Device" transfer protocol
-// used by Samsung Frame TVs for high-resolution image uploads.
-//
-// Protocol:
-//  1. Connect to info.IP:info.Port (TLS if info.Secured)
-//  2. Send 4-byte big-endian header length
-//  3. Send JSON header with file metadata and security key
-//  4. Send raw image bytes in 64KB chunks
-//  5. Close socket
-//
-// The caller must separately wait for the "image_added" event on the
-// WebSocket to confirm the upload succeeded and get the content_id.
-//
-//nolint:funlen // D2D upload follows a fixed multi-step TV protocol
+// dialD2D opens the TCP (or TLS, when info.Secured) connection to the TV's
+// Device-to-Device socket at info.IP:info.Port.
 func dialD2D(ctx context.Context, info connInfo, dialer *net.Dialer, skipTLSVerify bool) (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%s", info.IP, info.Port)
 	if info.Secured {
@@ -68,6 +55,19 @@ func streamFile(f io.Reader, conn io.Writer, fileSize int64) error {
 	return nil
 }
 
+// uploadImageD2D transfers an image file to the TV via a direct TCP/TLS
+// socket connection — the "Device-to-Device" transfer protocol used by
+// Samsung Frame TVs for high-resolution image uploads.
+//
+// Protocol:
+//  1. Connect to info.IP:info.Port (TLS if info.Secured)
+//  2. Send 4-byte big-endian header length
+//  3. Send JSON header with file metadata and security key
+//  4. Send raw image bytes in 64KB chunks
+//  5. Close socket
+//
+// The caller must separately wait for the "image_added" event on the
+// WebSocket to confirm the upload succeeded and get the content_id.
 func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileType string, timeout time.Duration, skipTLSVerify bool) error {
 	// Open the image file.
 	f, err := os.Open(filepath.Clean(filePath))
