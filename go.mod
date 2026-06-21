@@ -1,6 +1,6 @@
 module github.com/MikeO7/frame-tv-art-manager
 
-go 1.26.4
+go 1.24
 
 require (
 	golang.org/x/image v0.42.0
