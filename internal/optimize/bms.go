@@ -69,6 +69,7 @@ func (s *bmsState) seedBorders() {
 	}
 }
 
+//nolint:gocognit,gocyclo // unrolled loops increase cyclomatic and cognitive complexity metrics but drastically improve performance in tight mathematical paths
 func (s *bmsState) floodFill() {
 	q := s.queue
 	bMap := s.boolMap
