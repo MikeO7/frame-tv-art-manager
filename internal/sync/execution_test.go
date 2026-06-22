@@ -76,7 +76,7 @@ func TestTVReconciler_updateBrightnessPlan(t *testing.T) {
 
 	ctx := context.Background()
 	brightness := 5
-	plan := &SyncPlan{Brightness: &brightness}
+	plan := &Plan{Brightness: &brightness}
 	transport := &mockTVTransportExecution{}
 	result := &TVSyncResult{}
 
@@ -89,7 +89,7 @@ func TestTVReconciler_updateBrightnessPlan(t *testing.T) {
 		t.Errorf("expected SetBrightness(5) to be called")
 	}
 
-	planNil := &SyncPlan{Brightness: nil}
+	planNil := &Plan{Brightness: nil}
 	transportNil := &mockTVTransportExecution{}
 	reconciler.updateBrightnessPlan(ctx, planNil, transportNil, result)
 	if transportNil.setBrightnessCalled {
@@ -110,7 +110,7 @@ func TestTVReconciler_updateSlideshowPlan(t *testing.T) {
 	ctx := context.Background()
 
 	// Test needsUpdate = true (different value)
-	plan := &SyncPlan{Slideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffle"}}
+	plan := &Plan{Slideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffle"}}
 	transport := &mockTVTransportExecution{slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
 
 	reconciler.updateSlideshowPlan(ctx, plan, transport)
@@ -120,7 +120,7 @@ func TestTVReconciler_updateSlideshowPlan(t *testing.T) {
 	}
 
 	// Test nil plan
-	planNil := &SyncPlan{Slideshow: nil}
+	planNil := &Plan{Slideshow: nil}
 	transportNil := &mockTVTransportExecution{}
 	reconciler.updateSlideshowPlan(ctx, planNil, transportNil)
 	if transportNil.setSlideshowCalled {
@@ -128,7 +128,7 @@ func TestTVReconciler_updateSlideshowPlan(t *testing.T) {
 	}
 
 	// Test no update needed
-	planSame := &SyncPlan{Slideshow: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
+	planSame := &Plan{Slideshow: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
 	transportSame := &mockTVTransportExecution{slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
 	reconciler.updateSlideshowPlan(ctx, planSame, transportSame)
 	if transportSame.setSlideshowCalled {
@@ -150,7 +150,7 @@ func TestTVReconciler_handleAutoOffPlan(t *testing.T) {
 	ctx := context.Background()
 
 	// Test true
-	plan := &SyncPlan{TurnOff: true}
+	plan := &Plan{TurnOff: true}
 	transport := &mockTVTransportExecution{}
 
 	reconciler.handleAutoOffPlan(ctx, plan, transport)
@@ -159,7 +159,7 @@ func TestTVReconciler_handleAutoOffPlan(t *testing.T) {
 	}
 
 	// Test false
-	planFalse := &SyncPlan{TurnOff: false}
+	planFalse := &Plan{TurnOff: false}
 	transportFalse := &mockTVTransportExecution{}
 	reconciler.handleAutoOffPlan(ctx, planFalse, transportFalse)
 	if transportFalse.turnOffCalled {
@@ -181,7 +181,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. No changes plan
-	planNoChanges := &SyncPlan{HasChanges: false}
+	planNoChanges := &Plan{HasChanges: false}
 	transport1 := &mockTVTransportExecution{}
 	reconciler.applySelectionAndSlideshowPlan(ctx, planNoChanges, transport1, map[string]string{})
 	if transport1.selectImageCalled {
@@ -189,7 +189,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 	}
 
 	// 2. Changes, but no local files
-	planNoLocalFiles := &SyncPlan{HasChanges: true, LocalFiles: map[string]struct{}{}}
+	planNoLocalFiles := &Plan{HasChanges: true, LocalFiles: map[string]struct{}{}}
 	transport2 := &mockTVTransportExecution{}
 	reconciler.applySelectionAndSlideshowPlan(ctx, planNoLocalFiles, transport2, map[string]string{})
 	if transport2.selectImageCalled {
@@ -197,7 +197,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 	}
 
 	// 3. Changes, local files, but empty mapping
-	planEmptyMapping := &SyncPlan{HasChanges: true, LocalFiles: map[string]struct{}{"test.jpg": {}}}
+	planEmptyMapping := &Plan{HasChanges: true, LocalFiles: map[string]struct{}{"test.jpg": {}}}
 	transport3 := &mockTVTransportExecution{}
 	reconciler.applySelectionAndSlideshowPlan(ctx, planEmptyMapping, transport3, map[string]string{})
 	if transport3.selectImageCalled {
@@ -205,7 +205,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 	}
 
 	// 4. Shuffle selection
-	planShuffle := &SyncPlan{
+	planShuffle := &Plan{
 		HasChanges:        true,
 		LocalFiles:        map[string]struct{}{"test.jpg": {}},
 		PreserveSlideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffle"},
@@ -218,7 +218,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 	}
 
 	// 5. Normal selection (first image)
-	planNormal := &SyncPlan{
+	planNormal := &Plan{
 		HasChanges:        true,
 		LocalFiles:        map[string]struct{}{"test.jpg": {}},
 		PreserveSlideshow: &samsung.SlideshowStatus{Value: "15", Type: "normal"},
@@ -270,7 +270,7 @@ func TestTVReconciler_uploadWithRetry(t *testing.T) {
 	}
 }
 
-func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
+func TestTVReconciler_ExecutePlan(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	reconciler := &TVReconciler{logger: logger, cfg: &config.Config{}}
 	ctx := context.Background()
@@ -279,7 +279,7 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 	mapping := &Mapping{data: map[string]string{}}
 	transport := &mockTVTransportExecution{uploadId: "id-test"}
 
-	plan := &SyncPlan{
+	plan := &Plan{
 		IP: "1.2.3.4",
 		ToUpload: []UploadJob{
 			{Filename: "file.jpg", FilePath: "file.jpg", FileType: "jpeg", Matte: "none"},
@@ -300,7 +300,7 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 	policy := config.SyncPolicy{UploadAttempts: 1, UploadDelay: 1}
 
 	// Test normal execution
-	result, err := reconciler.ExecuteSyncPlan(ctx, plan, transport, mapping, policy)
+	result, err := reconciler.ExecutePlan(ctx, plan, transport, mapping, policy)
 	if err != nil {
 		t.Errorf("expected success, got err: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 
 	// Test dry run
 	policy.DryRun = true
-	result, err = reconciler.ExecuteSyncPlan(ctx, plan, transport, mapping, policy)
+	result, err = reconciler.ExecutePlan(ctx, plan, transport, mapping, policy)
 	if err != nil {
 		t.Errorf("expected success on dry run, got err: %v", err)
 	}
@@ -330,13 +330,13 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 	// Test upload error
 	policy.DryRun = false
 	transportFail := &mockTVTransportExecution{uploadErr: errors.New("fail")}
-	planUploadErr := &SyncPlan{
+	planUploadErr := &Plan{
 		IP: "1.2.3.4",
 		ToUpload: []UploadJob{
 			{Filename: "file.jpg", FilePath: "file.jpg", FileType: "jpeg", Matte: "none"},
 		},
 	}
-	res, err := reconciler.ExecuteSyncPlan(ctx, planUploadErr, transportFail, mapping, policy)
+	res, err := reconciler.ExecutePlan(ctx, planUploadErr, transportFail, mapping, policy)
 	if err == nil {
 		t.Errorf("expected a genuine upload failure to propagate as an error")
 	}
@@ -346,7 +346,7 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 
 	// Test storage full upload error: benign, must not propagate as an error.
 	transportStorageFull := &mockTVTransportExecution{uploadErr: samsung.ErrStorageFull}
-	res, err = reconciler.ExecuteSyncPlan(ctx, planUploadErr, transportStorageFull, mapping, policy)
+	res, err = reconciler.ExecutePlan(ctx, planUploadErr, transportStorageFull, mapping, policy)
 	if err != nil {
 		t.Errorf("expected no error when upload reports storage full, got: %v", err)
 	}
@@ -356,7 +356,7 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 
 	// Test delete error
 	transportDeleteFail := &mockTVTransportExecution{deleteErr: errors.New("fail")}
-	_, err = reconciler.ExecuteSyncPlan(ctx, plan, transportDeleteFail, mapping, policy)
+	_, err = reconciler.ExecutePlan(ctx, plan, transportDeleteFail, mapping, policy)
 	if err != nil {
 		t.Errorf("expected no error from execution itself when delete fails, got: %v", err)
 	}

@@ -11,10 +11,10 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-// ExecuteSyncPlan applies the computed planning rules onto the target transport.
-func (s *TVReconciler) ExecuteSyncPlan(
+// ExecutePlan applies the computed planning rules onto the target transport.
+func (s *TVReconciler) ExecutePlan(
 	ctx context.Context,
-	plan *SyncPlan,
+	plan *Plan,
 	transport TVTransport,
 	mapping *Mapping,
 	policy config.SyncPolicy,
@@ -62,7 +62,7 @@ func (s *TVReconciler) ExecuteSyncPlan(
 
 type executionContext struct {
 	ctx       context.Context
-	plan      *SyncPlan
+	plan      *Plan
 	transport TVTransport
 	mapping   *Mapping
 	policy    config.SyncPolicy
@@ -186,7 +186,7 @@ func (s *TVReconciler) uploadWithRetry(
 
 func (s *TVReconciler) applySelectionAndSlideshowPlan(
 	ctx context.Context,
-	plan *SyncPlan,
+	plan *Plan,
 	transport TVTransport,
 	finalMapping map[string]string,
 ) {
@@ -235,7 +235,7 @@ func (s *TVReconciler) chooseImageID(finalMapping map[string]string, settings *s
 
 func (s *TVReconciler) updateSlideshowPlan(
 	ctx context.Context,
-	plan *SyncPlan,
+	plan *Plan,
 	transport TVTransport,
 ) {
 	if plan.Slideshow == nil {
@@ -259,7 +259,7 @@ func (s *TVReconciler) updateSlideshowPlan(
 
 func (s *TVReconciler) updateBrightnessPlan(
 	ctx context.Context,
-	plan *SyncPlan,
+	plan *Plan,
 	transport TVTransport,
 	result *TVSyncResult,
 ) {
@@ -274,7 +274,7 @@ func (s *TVReconciler) updateBrightnessPlan(
 
 func (s *TVReconciler) handleAutoOffPlan(
 	ctx context.Context,
-	plan *SyncPlan,
+	plan *Plan,
 	transport TVTransport,
 ) {
 	if !plan.TurnOff {

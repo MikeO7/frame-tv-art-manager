@@ -2,10 +2,13 @@ package samsung
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -134,4 +137,303 @@ func (c *connection) extractAndSaveToken(data json.RawMessage) {
 	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0o600); err != nil {
 		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
 	}
+}
+
+// recvLoopShutdownGrace bounds how long Close waits for the background reader
+// to exit before proceeding, so shutdown can't hang on a stuck socket read.
+const recvLoopShutdownGrace = 500 * time.Millisecond
+
+// connConfig groups the parameters required to construct a connection.
+type connConfig struct {
+	host          string
+	port          int
+	endpoint      string
+	name          string
+	tokenFile     string
+	timeout       time.Duration
+	skipTLSVerify bool
+	logger        *slog.Logger
+}
+
+// newConnection creates a new WebSocket connection manager.
+func newConnection(cfg connConfig) *connection {
+	return &connection{
+		host:          cfg.host,
+		port:          cfg.port,
+		endpoint:      cfg.endpoint,
+		name:          cfg.name,
+		tokenFile:     cfg.tokenFile,
+		timeout:       cfg.timeout,
+		skipTLSVerify: cfg.skipTLSVerify,
+		logger:        cfg.logger,
+		pending:       make(map[string]chan json.RawMessage),
+	}
+}
+
+func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, error) {
+	client := &http.Client{
+		Transport: &http.Transport{
+			//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
+		},
+	}
+
+	dialCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	conn, httpResp, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
+		HTTPClient: client,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("websocket dial: %w", err)
+	}
+	if httpResp != nil && httpResp.Body != nil {
+		_ = httpResp.Body.Close()
+	}
+	return conn, nil
+}
+
+func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) error {
+	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	_, msg, err := conn.Read(readCtx)
+	if err != nil {
+		return fmt.Errorf("read handshake: %w", err)
+	}
+
+	c.logger.Debug("handshake message received", "msg", string(msg))
+	var resp wsResponse
+	if err := json.Unmarshal(msg, &resp); err != nil {
+		return fmt.Errorf("parse handshake: %w", err)
+	}
+
+	switch resp.Event {
+	case EventChannelConnect:
+		c.extractAndSaveToken(resp.Data)
+	case "ms.channel.unauthorized":
+		return ErrUnauthorized
+	case "ms.channel.timeOut":
+		return ErrTimeout
+	default:
+		return fmt.Errorf("unexpected event %q: %w", resp.Event, ErrConnectionFailure)
+	}
+	return nil
+}
+
+func (c *connection) waitForChannelReady(ctx context.Context, conn *websocket.Conn) error {
+	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	_, msg, err := conn.Read(readCtx)
+	if err != nil {
+		return fmt.Errorf("read channel ready: %w", err)
+	}
+
+	var readyResp wsResponse
+	if err := json.Unmarshal(msg, &readyResp); err != nil {
+		return fmt.Errorf("parse channel ready: %w", err)
+	}
+
+	if readyResp.Event != EventChannelReady {
+		return fmt.Errorf("expected ms.channel.ready, got %q: %w", readyResp.Event, ErrConnectionFailure)
+	}
+	return nil
+}
+
+func (c *connection) Open(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != nil {
+		return nil // already connected
+	}
+
+	token := c.readToken()
+	wsURL := c.formatURL(token)
+	c.logger.Debug("dialing WebSocket", "url", wsURL)
+
+	conn, err := c.dial(ctx, wsURL)
+	if err != nil {
+		return err
+	}
+
+	if err := c.readHandshake(ctx, conn); err != nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+		return err
+	}
+
+	if c.endpoint == endpointArtApp {
+		if err := c.waitForChannelReady(ctx, conn); err != nil {
+			_ = conn.Close(websocket.StatusNormalClosure, "")
+			return err
+		}
+	}
+
+	c.conn = conn
+	c.closed.Store(false)
+	c.recvDone = make(chan struct{})
+	//nolint:contextcheck,gosec // background reader goroutine intentionally uses its own long-lived context, not Open's transient handshake context
+	go c.recvLoop()
+
+	c.logger.Info("WebSocket connected", "endpoint", c.endpoint, "host", c.host)
+	return nil
+}
+
+// Close shuts down the WebSocket connection and waits for the recv loop to exit.
+func (c *connection) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn == nil {
+		return nil
+	}
+
+	c.closed.Store(true)
+	err := c.conn.Close(websocket.StatusNormalClosure, "")
+	c.conn = nil
+
+	if c.recvDone != nil {
+		select {
+		case <-c.recvDone:
+		case <-time.After(recvLoopShutdownGrace):
+			c.logger.Debug("recv loop did not exit quickly, continuing", "endpoint", c.endpoint)
+		}
+	}
+
+	c.pendingMu.Lock()
+	for id, ch := range c.pending {
+		close(ch)
+		delete(c.pending, id)
+	}
+	c.pendingMu.Unlock()
+
+	return err
+}
+
+// IsAlive returns true if the connection is open and not closed.
+func (c *connection) IsAlive() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn != nil && !c.closed.Load()
+}
+
+// recvLoop reads messages from the WebSocket and routes them to pending
+// request channels based on request_id or event name.
+func (c *connection) recvLoop() {
+	defer close(c.recvDone)
+
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
+		return
+	}
+
+	for {
+		_, msg, err := conn.Read(context.Background())
+		if err != nil {
+			if !c.closed.Load() {
+				c.logger.Debug("recv loop error", "error", err)
+			}
+			return
+		}
+
+		c.logger.Debug("WS RECV", "payload", string(msg))
+
+		var resp wsResponse
+		if err := json.Unmarshal(msg, &resp); err != nil {
+			c.logger.Debug("recv: unparseable message", "error", err)
+			continue
+		}
+
+		// Route d2d service messages to pending requests.
+		// Support both dot-notation and underscore-notation used by different models.
+		if resp.Event == EventD2DServiceMessageEvent || resp.Event == EventD2DServiceMessage {
+			c.routeD2DEvent(resp.Data)
+		}
+	}
+}
+
+func (c *connection) routeD2DEvent(dataRaw json.RawMessage) {
+	// Some TVs (like the 2024 model) send 'data' as a JSON-encoded string.
+	// Others send it as a raw JSON object. We try to handle both.
+	var dataToParse []byte = dataRaw
+
+	var dataStr string
+	if err := json.Unmarshal(dataRaw, &dataStr); err == nil {
+		// It was a string! Use the unwrapped string content for parsing.
+		dataToParse = []byte(dataStr)
+	}
+
+	var inner struct {
+		RequestID string `json:"request_id"`
+		ID        string `json:"id"`
+		Event     string `json:"event"`
+	}
+	if err := json.Unmarshal(dataToParse, &inner); err != nil {
+		c.logger.Debug("d2d event: parse failed", "error", err, "raw", string(dataRaw))
+		return
+	}
+
+	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
+
+	// Try matching by request_id first, then event name.
+	keys := []string{inner.RequestID, inner.ID, inner.Event}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if ch, ok := c.pending[key]; ok {
+			select {
+			case ch <- dataToParse:
+			default:
+			}
+			return
+		}
+	}
+}
+
+// wsResponse is the top-level WebSocket message envelope from the TV.
+type wsResponse struct {
+	Event string          `json:"event"`
+	Data  json.RawMessage `json:"data"`
+}
+
+// JSON envelope keys shared by outgoing art-app request messages.
+const (
+	keyMethod = "method"
+	keyParams = "params"
+	keyEvent  = "event"
+	keyData   = "data"
+)
+
+// artAppRequest builds the outer "ms.channel.emit" WebSocket message that wraps
+// an art API request payload, JSON-encoding the inner data as the host expects.
+func artAppRequest(data map[string]any) ([]byte, error) {
+	inner, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	outer := map[string]any{
+		keyMethod: "ms.channel.emit",
+		keyParams: map[string]any{
+			keyEvent: "art_app_request",
+			"to":     "host",
+			keyData:  string(inner),
+		},
+	}
+	return json.Marshal(outer)
+}
+
+// newRequestID generates a new UUID string for art API request correlation.
+func newRequestID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
