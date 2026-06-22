@@ -37,10 +37,11 @@ jobs:
         with:
           go-version: '1.26.4'
           cache: true
+          cache-dependency-path: go.sum
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
 
-  # Lane 1: High-speed Linting
+  # Lane 1: Lint + workflow validation (merged to avoid a separate runner spin-up)
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -50,34 +51,15 @@ jobs:
         with:
           go-version: '1.26.4'
           cache: true
+          cache-dependency-path: go.sum
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
-
-  # Lane 2: Security Scan
-  security:
-    name: Security
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.4'
-          cache: true
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
-
-  # Lane 3: Workflow Linting
-  actionlint:
-    name: Actionlint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
       - name: actionlint
         uses: reviewdog/action-actionlint@v1
 
-  # Lane 4: Test & Build
+  # Lane 2: Test, build, coverage, and security (govulncheck runs in parallel with tests)
   test-build:
     name: Test and Build
     runs-on: ubuntu-latest
@@ -87,8 +69,23 @@ jobs:
         with:
           go-version: '1.26.4'
           cache: true
-      - name: Test & Coverage Check
-        run: make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on"
+          cache-dependency-path: go.sum
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
+      - name: Test, Coverage & Security
+        run: |
+          set +e
+          govulncheck ./... &
+          vuln_pid=$!
+          make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on" GO_TEST_VERBOSE=
+          test_status=$?
+          wait "$vuln_pid"
+          vuln_status=$?
+          set -e
+          if [ "$test_status" -ne 0 ]; then
+            exit "$test_status"
+          fi
+          exit "$vuln_status"
       - name: Upload Coverage
         if: always()
         uses: actions/upload-artifact@v7
@@ -96,4 +93,4 @@ jobs:
           name: coverage-report
           path: coverage.out
       - name: Build
-        run: go build -v -o frame-tv-art-manager ./cmd/frame-tv-art-manager
+        run: go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager

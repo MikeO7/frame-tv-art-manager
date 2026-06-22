@@ -17,13 +17,14 @@ GOVULNCHECK := $(shell go env GOPATH)/bin/govulncheck
 endif
 
 GO_TEST_FLAGS ?= -shuffle=on
+GO_TEST_VERBOSE ?= -v
 
 all: check build
 
 
 test:
 	@echo "🔍 Running tests..."
-	go test $(GO_TEST_FLAGS) -v -coverprofile=coverage.out ./...
+	go test $(GO_TEST_FLAGS) $(GO_TEST_VERBOSE) -coverprofile=coverage.out ./...
 
 coverage: test
 	@echo "📊 Generating coverage report..."
