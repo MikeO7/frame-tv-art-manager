@@ -17,6 +17,12 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref so new pushes don't queue behind
+# stale work, dramatically reducing time-to-green during rapid iteration.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Lane 0: Pre-commit Hook Consistency
   pre-commit:
@@ -60,7 +66,7 @@ jobs:
           go-version: '1.26.4'
           cache: true
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
 
   # Lane 3: Workflow Linting
   actionlint:
@@ -82,9 +88,7 @@ jobs:
           go-version: '1.26.4'
           cache: true
       - name: Test & Coverage Check
-        run: |
-          sudo apt-get update && sudo apt-get install -y bc
-          make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on"
+        run: make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on"
       - name: Upload Coverage
         if: always()
         uses: actions/upload-artifact@v7

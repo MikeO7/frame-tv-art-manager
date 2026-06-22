@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// articMaxResponseBytes caps a decoded Art Institute API response to bound memory.
+const articMaxResponseBytes = 10 << 20 // 10 MiB
+
 // articProvider handles communication with the Art Institute of Chicago API and resolves artwork sources.
 type articProvider struct {
 	client      *http.Client
@@ -39,6 +42,37 @@ type articArtwork struct {
 	ImageID string `json:"image_id"`
 }
 
+// fetchJSON issues a GET (with the shared User-Agent) to apiURL and decodes the
+// size-bounded JSON response body into out, centralizing request boilerplate.
+func (p *articProvider) fetchJSON(ctx context.Context, apiURL, errLabel string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("artic api error: %d", resp.StatusCode)
+	}
+
+	reader := http.MaxBytesReader(nil, resp.Body, articMaxResponseBytes)
+	if err := json.NewDecoder(reader).Decode(out); err != nil {
+		return fmt.Errorf("decode %s response: %w", errLabel, err)
+	}
+	return nil
+}
+
+// iiifImageURL builds the IIIF 4K full-image URL for an Art Institute image ID.
+func (p *articProvider) iiifImageURL(imageID string) string {
+	return fmt.Sprintf("%s/%s/full/!3840,2160/0/default.jpg", p.IIIFBaseURL, imageID)
+}
+
 func (p *articProvider) Name() string {
 	return "artic"
 }
@@ -50,38 +84,18 @@ func (p *articProvider) CanHandle(line string) bool {
 // Search Masterpieces from the Artic library.
 func (p *articProvider) Search(ctx context.Context, query string) ([]string, error) {
 	searchURL := fmt.Sprintf("%s/api/v1/artworks/search?q=%s&fields=id,title,image_id&limit=10", p.BaseURL, url.QueryEscape(query))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("User-Agent", "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("artic api error: %d", resp.StatusCode)
-	}
 
 	var result struct {
 		Data []articArtwork `json:"data"`
 	}
-
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-	if err := json.NewDecoder(reader).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode artic search response: %w", err)
+	if err := p.fetchJSON(ctx, searchURL, "artic search", &result); err != nil {
+		return nil, err
 	}
 
 	var imageUrls []string
 	for _, art := range result.Data {
 		if art.ImageID != "" {
-			imgURL := fmt.Sprintf("%s/%s/full/!3840,2160/0/default.jpg", p.IIIFBaseURL, art.ImageID)
-			imageUrls = append(imageUrls, imgURL)
+			imageUrls = append(imageUrls, p.iiifImageURL(art.ImageID))
 		}
 	}
 
@@ -91,38 +105,19 @@ func (p *articProvider) Search(ctx context.Context, query string) ([]string, err
 // FetchPhoto retrieves a single masterpiece by its ID.
 func (p *articProvider) FetchPhoto(ctx context.Context, id string) (string, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/artworks/%s?fields=id,title,image_id", p.BaseURL, url.PathEscape(id))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("User-Agent", "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("artic api error: %d", resp.StatusCode)
-	}
 
 	var result struct {
 		Data articArtwork `json:"data"`
 	}
-
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-	if err := json.NewDecoder(reader).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode artic response: %w", err)
+	if err := p.fetchJSON(ctx, apiURL, "artic", &result); err != nil {
+		return "", err
 	}
 
 	if result.Data.ImageID == "" {
 		return "", fmt.Errorf("artwork %s has no image_id", id)
 	}
 
-	return fmt.Sprintf("%s/%s/full/!3840,2160/0/default.jpg", p.IIIFBaseURL, result.Data.ImageID), nil
+	return p.iiifImageURL(result.Data.ImageID), nil
 }
 
 func (p *articProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {

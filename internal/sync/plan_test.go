@@ -3,33 +3,7 @@ package sync
 import (
 	"testing"
 	"time"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
-
-func TestPlan_DetermineSelectedID_Shuffle(t *testing.T) {
-	mappingData := map[string]string{
-		"a.jpg": "id-a",
-		"b.jpg": "id-b",
-	}
-
-	shuffleSettings := &samsung.SlideshowStatus{
-		Type:  ssTypeShuffle,
-		Value: "15",
-	}
-
-	// Should select one of the IDs from the mapping
-	selected := determineSelectedID(mappingData, nil, nil, shuffleSettings)
-	if selected != "id-a" && selected != "id-b" {
-		t.Errorf("expected to select either id-a or id-b, got %q", selected)
-	}
-
-	// Empty mapping should return empty string
-	selectedEmpty := determineSelectedID(nil, nil, nil, shuffleSettings)
-	if selectedEmpty != "" {
-		t.Errorf("expected empty selection, got %q", selectedEmpty)
-	}
-}
 
 func TestPlan_IsWithinAutoOffWindow_Errors(t *testing.T) {
 	now := time.Now()

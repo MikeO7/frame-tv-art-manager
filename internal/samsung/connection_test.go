@@ -57,7 +57,16 @@ func TestNewRequestID(t *testing.T) {
 }
 
 func TestConnection_OpenFailure(t *testing.T) {
-	c := newConnection("localhost", 1, "endpoint", "name", "token", 10*time.Millisecond, true, slog.Default())
+	c := newConnection(connConfig{
+		host:          "localhost",
+		port:          1,
+		endpoint:      "endpoint",
+		name:          "name",
+		tokenFile:     "token",
+		timeout:       10 * time.Millisecond,
+		skipTLSVerify: true,
+		logger:        slog.Default(),
+	})
 	err := c.Open(context.Background())
 	if err == nil {
 		t.Error("expected failure to connect to localhost:1")
@@ -135,7 +144,16 @@ func TestConnection_SendAndWait(t *testing.T) {
 	// Use a temporary token file
 	tokenFile := filepath.Join(t.TempDir(), "token.txt")
 
-	c := newConnection(u.Hostname(), port, "com.samsung.art-app", "TestClient", tokenFile, 1*time.Second, true, slog.Default())
+	c := newConnection(connConfig{
+		host:          u.Hostname(),
+		port:          port,
+		endpoint:      "com.samsung.art-app",
+		name:          "TestClient",
+		tokenFile:     tokenFile,
+		timeout:       1 * time.Second,
+		skipTLSVerify: true,
+		logger:        slog.Default(),
+	})
 	err := c.Open(context.Background())
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
@@ -200,7 +218,16 @@ func TestConnection_SendAndWaitEvent(t *testing.T) {
 	port, _ := strconv.Atoi(u.Port())
 	tokenFile := filepath.Join(t.TempDir(), "token.txt")
 
-	c := newConnection(u.Hostname(), port, "com.samsung.art-app", "TestClient", tokenFile, 1*time.Second, true, slog.Default())
+	c := newConnection(connConfig{
+		host:          u.Hostname(),
+		port:          port,
+		endpoint:      "com.samsung.art-app",
+		name:          "TestClient",
+		tokenFile:     tokenFile,
+		timeout:       1 * time.Second,
+		skipTLSVerify: true,
+		logger:        slog.Default(),
+	})
 	if err := c.Open(context.Background()); err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}

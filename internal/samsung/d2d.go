@@ -55,6 +55,15 @@ func streamFile(f io.Reader, conn io.Writer, fileSize int64) error {
 	return nil
 }
 
+// d2dUpload groups the non-context parameters for uploadImageD2D.
+type d2dUpload struct {
+	info          connInfo
+	filePath      string
+	fileType      string
+	timeout       time.Duration
+	skipTLSVerify bool
+}
+
 // uploadImageD2D transfers an image file to the TV via a direct TCP/TLS
 // socket connection — the "Device-to-Device" transfer protocol used by
 // Samsung Frame TVs for high-resolution image uploads.
@@ -68,9 +77,9 @@ func streamFile(f io.Reader, conn io.Writer, fileSize int64) error {
 //
 // The caller must separately wait for the "image_added" event on the
 // WebSocket to confirm the upload succeeded and get the content_id.
-func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileType string, timeout time.Duration, skipTLSVerify bool) error {
+func uploadImageD2D(ctx context.Context, up d2dUpload) error {
 	// Open the image file.
-	f, err := os.Open(filepath.Clean(filePath))
+	f, err := os.Open(filepath.Clean(up.filePath))
 	if err != nil {
 		return fmt.Errorf("open image file: %w", err)
 	}
@@ -88,8 +97,8 @@ func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileTyp
 		"total":      1,
 		"fileLength": fileSize,
 		"fileName":   "dummy",
-		"fileType":   fileType,
-		"secKey":     info.Key,
+		"fileType":   up.fileType,
+		"secKey":     up.info.Key,
 		"version":    "0.0.1",
 	}
 
@@ -99,15 +108,15 @@ func uploadImageD2D(ctx context.Context, info connInfo, filePath string, fileTyp
 	}
 
 	// Connect to the TV's D2D socket.
-	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialD2D(ctx, info, &dialer, skipTLSVerify)
+	dialer := net.Dialer{Timeout: up.timeout}
+	conn, err := dialD2D(ctx, up.info, &dialer, up.skipTLSVerify)
 	if err != nil {
-		return fmt.Errorf("dial d2d socket %s:%s: %w", info.IP, info.Port, err)
+		return fmt.Errorf("dial d2d socket %s:%s: %w", up.info.IP, up.info.Port, err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set a write deadline for the entire transfer.
-	if err := conn.SetWriteDeadline(time.Now().Add(timeout + time.Duration(fileSize/d2dChunkSize)*100*time.Millisecond)); err != nil {
+	if err := conn.SetWriteDeadline(time.Now().Add(up.timeout + time.Duration(fileSize/d2dChunkSize)*100*time.Millisecond)); err != nil {
 		return fmt.Errorf("set write deadline: %w", err)
 	}
 

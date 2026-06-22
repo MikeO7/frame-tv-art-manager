@@ -7,7 +7,7 @@ linters:
     - bodyclose
     - contextcheck
     - copyloopvar
-    # - depguard
+    - depguard
     - dupl
     - dupword
     - errname
@@ -21,9 +21,9 @@ linters:
     - gocyclo
     - godox
     - goprintffuncname
-    # - gosec
+    - gosec
     - interfacebloat
-    # - lll
+    - lll
     - loggercheck
     - misspell
     - nakedret
@@ -31,10 +31,10 @@ linters:
     - nilerr
     - nilnil
     - noctx
-    # - nolintlint
+    - nolintlint
     - prealloc
     - predeclared
-    # - revive
+    - revive
     - errcheck
     - govet
     - ineffassign
@@ -132,6 +132,11 @@ linters:
           - revive
         text: "file-length-limit"
         path: "(plan_collection_test\\.go|clients_test\\.go|engine_test\\.go|loader_test\\.go|session_test\\.go|client_test\\.go)"
+      # assets.go is an embedded HTML/CSS/SVG UI template; Go line-length rules
+      # do not apply to inline markup, which legitimately has long lines.
+      - linters:
+          - lll
+        path: internal/health/assets.go
       - linters:
           - dupl
           - funlen

@@ -12,10 +12,18 @@ import (
 	"time"
 )
 
-const defaultUnsplashBaseURL = "https://api.unsplash.com"
+const (
+	defaultUnsplashBaseURL = "https://api.unsplash.com"
+
+	// unsplashMaxResponseBytes caps a decoded Unsplash API response to bound memory.
+	unsplashMaxResponseBytes = 10 << 20 // 10 MiB
+	// unsplashPageSize is the per-page item count requested for collections.
+	unsplashPageSize = 30
+	// unsplashMaxPages bounds collection pagination to avoid unbounded crawling.
+	unsplashMaxPages = 33
+)
 
 // unsplashProvider handles communication with the Unsplash API and resolves artwork sources.
-
 type unsplashProvider struct {
 	appID     string
 	accessKey string
@@ -54,6 +62,32 @@ type unsplashPhoto struct {
 	} `json:"urls"`
 }
 
+// fetchJSON issues a Client-ID-authorized GET to apiURL and decodes the
+// size-bounded JSON response body into out.
+func (p *unsplashProvider) fetchJSON(ctx context.Context, apiURL string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Client-ID "+p.accessKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unsplash api error: %d", resp.StatusCode)
+	}
+
+	reader := http.MaxBytesReader(nil, resp.Body, unsplashMaxResponseBytes)
+	if err := json.NewDecoder(reader).Decode(out); err != nil {
+		return fmt.Errorf("decode unsplash response: %w", err)
+	}
+	return nil
+}
+
 func (p *unsplashProvider) Name() string {
 	return "unsplash"
 }
@@ -68,32 +102,12 @@ func (p *unsplashProvider) FetchCollectionPhotos(ctx context.Context, collection
 	page := 1
 
 	for {
-		apiURL := fmt.Sprintf("%s/collections/%s/photos?per_page=30&page=%d", p.BaseURL, url.PathEscape(collectionID), page)
+		apiURL := fmt.Sprintf("%s/collections/%s/photos?per_page=%d&page=%d", p.BaseURL, url.PathEscape(collectionID), unsplashPageSize, page)
 		p.logger.Debug("fetching unsplash collection page", "id", collectionID, "page", page)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Client-ID "+p.accessKey)
-
-		resp, err := p.client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("unsplash api error: %d", resp.StatusCode)
-		}
-
 		var pagePhotos []unsplashPhoto
-		maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-		reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-		decodeErr := json.NewDecoder(reader).Decode(&pagePhotos)
-		_ = resp.Body.Close()
-		if decodeErr != nil {
-			return nil, fmt.Errorf("decode unsplash response: %w", decodeErr)
+		if err := p.fetchJSON(ctx, apiURL, &pagePhotos); err != nil {
+			return nil, err
 		}
 
 		if len(pagePhotos) == 0 {
@@ -102,12 +116,12 @@ func (p *unsplashProvider) FetchCollectionPhotos(ctx context.Context, collection
 
 		allPhotos = append(allPhotos, pagePhotos...)
 
-		if len(pagePhotos) < 30 {
+		if len(pagePhotos) < unsplashPageSize {
 			break
 		}
 		page++
 
-		if page > 33 {
+		if page > unsplashMaxPages {
 			break
 		}
 	}
@@ -118,28 +132,10 @@ func (p *unsplashProvider) FetchCollectionPhotos(ctx context.Context, collection
 // FetchPhoto retrieves metadata for a single Unsplash photo.
 func (p *unsplashProvider) FetchPhoto(ctx context.Context, photoID string) (*unsplashPhoto, error) {
 	apiURL := fmt.Sprintf("%s/photos/%s", p.BaseURL, url.PathEscape(photoID))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Client-ID "+p.accessKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unsplash api error: %d", resp.StatusCode)
-	}
 
 	var photo unsplashPhoto
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-	if err := json.NewDecoder(reader).Decode(&photo); err != nil {
-		return nil, fmt.Errorf("decode unsplash response: %w", err)
+	if err := p.fetchJSON(ctx, apiURL, &photo); err != nil {
+		return nil, err
 	}
 
 	return &photo, nil
@@ -207,11 +203,7 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string, globalIndex
 		phCopy := ph
 		urlStr := phCopy.URLs.Raw + "&w=3840&q=95&fm=jpg"
 
-		slug := Filename(parts[2] + "-" + phCopy.ID)
-		slug = strings.ReplaceAll(slug, " ", "-")
-		if len(slug) > 100 {
-			slug = slug[:100]
-		}
+		slug := capSlug(strings.ReplaceAll(Filename(parts[2]+"-"+phCopy.ID), " ", "-"))
 		idx := atomic.AddInt32(globalIndex, 1) - 1
 		identity := fmt.Sprintf("%03d__unsplash__%s", idx, slug)
 

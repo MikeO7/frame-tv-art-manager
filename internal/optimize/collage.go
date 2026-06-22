@@ -6,23 +6,31 @@ import (
 	std_draw "image/draw"
 )
 
-// CreateCollage joins two upright portrait images side-by-side into a single 3840x2160 landscape canvas,
-// utilizing center cropping on each image to fit the 1920x2160 bounds and drawing a clean dark divider line.
+// Collage canvas geometry: two portrait panels side-by-side on a 4K landscape
+// canvas, separated by a thin dark seam centered on the midline.
+const (
+	collageWidth      = 3840             // 4K landscape canvas width
+	collageHeight     = 2160             // 4K landscape canvas height
+	collagePanelWidth = collageWidth / 2 // per-image panel width (1920)
+	dividerHalfWidth  = 2                // seam extends dividerHalfWidth px each side of the midline
+)
+
+// CreateCollage joins two upright portrait images side-by-side into a single
+// 4K (3840x2160) landscape canvas, center-cropping each to a half-width panel
+// and drawing a clean dark divider line down the seam.
 func CreateCollage(img1, img2 *image.RGBA, smart bool) *image.RGBA {
-	canvas := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
+	canvas := image.NewRGBA(image.Rect(0, 0, collageWidth, collageHeight))
 
-	// Crop and scale both to 1920x2160
-	left := centerCrop(img1, 1920, 2160, smart)
-	right := centerCrop(img2, 1920, 2160, smart)
+	left := centerCrop(img1, collagePanelWidth, collageHeight, smart)
+	right := centerCrop(img2, collagePanelWidth, collageHeight, smart)
 
-	// Draw them side-by-side
-	std_draw.Draw(canvas, image.Rect(0, 0, 1920, 2160), left, left.Bounds().Min, std_draw.Src)
-	std_draw.Draw(canvas, image.Rect(1920, 0, 3840, 2160), right, right.Bounds().Min, std_draw.Src)
+	std_draw.Draw(canvas, image.Rect(0, 0, collagePanelWidth, collageHeight), left, left.Bounds().Min, std_draw.Src)
+	std_draw.Draw(canvas, image.Rect(collagePanelWidth, 0, collageWidth, collageHeight), right, right.Bounds().Min, std_draw.Src)
 
-	// Draw a thin 4-pixel separating vertical line (dark charcoal / off-black)
+	// Dark charcoal / off-black seam centered on the panel boundary.
 	dividerColor := color.RGBA{R: 18, G: 18, B: 18, A: 255}
-	for y := 0; y < 2160; y++ {
-		for x := 1918; x <= 1921; x++ {
+	for y := 0; y < collageHeight; y++ {
+		for x := collagePanelWidth - dividerHalfWidth; x < collagePanelWidth+dividerHalfWidth; x++ {
 			canvas.Set(x, y, dividerColor)
 		}
 	}

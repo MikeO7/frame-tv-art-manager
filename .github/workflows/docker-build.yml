@@ -26,8 +26,17 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: mikeo7/frame-tv-art-manager
 
+# Cancel superseded runs on the same ref to avoid queuing slow emulated
+# builds behind stale work. Tag builds get their own group so releases
+# are never cancelled by branch activity.
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # The Build job runs 3 times in parallel (amd64, arm64, arm/v7)
+  # On pull requests we only validate the native linux/amd64 build to keep
+  # feedback fast; the full multi-arch matrix (with slow QEMU emulation for
+  # arm64 and arm/v7) runs on pushes to main and tags where images are pushed.
   build:
     name: Build ${{ matrix.platform }}
     runs-on: ubuntu-latest
@@ -37,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux/amd64, linux/arm64, linux/arm/v7]
+        platform: ${{ github.event_name == 'pull_request' && fromJSON('["linux/amd64"]') || fromJSON('["linux/amd64", "linux/arm64", "linux/arm/v7"]') }}
 
     steps:
     - name: Check out code

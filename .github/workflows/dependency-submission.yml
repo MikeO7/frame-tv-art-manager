@@ -11,6 +11,12 @@ on:
 permissions:
   contents: write
 
+# Only the latest main state matters for the dependency graph, so cancel
+# any in-flight submission superseded by a newer push.
+concurrency:
+  group: dep-submission-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dependency-submission:
     runs-on: ubuntu-latest

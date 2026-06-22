@@ -22,7 +22,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
 
 	var wg sync.WaitGroup
-	workers := 8
+	workers := pixelWorkers
 	chunk := (height - 2 + workers - 1) / workers
 
 	srcStride := src.Stride
@@ -56,7 +56,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	return dst
 }
 
-//nolint:revive // argument count reflects the per-pixel oil-paint inputs threaded through the hot loop
+//nolint:revive // per-pixel hot loop: flat parameters avoid per-pixel struct-construction overhead
 func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
 	impasto := calculateScharrImpasto(src, x, y)
 	weave, varnishPool := calculateWeave(x, y)

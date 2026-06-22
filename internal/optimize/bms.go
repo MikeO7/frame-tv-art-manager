@@ -19,7 +19,7 @@ func generateBMSMap(src *image.RGBA) []float64 {
 	for i := 0; i < w*h; i++ {
 		idx := i * 4
 		lum := (int(pix[idx])*299 + int(pix[idx+1])*587 + int(pix[idx+2])*114) / 1000
-		lumMap[i] = uint8(lum)
+		lumMap[i] = uint8(lum) //nolint:gosec // weighted luminance of 0-255 channels stays within byte range
 	}
 
 	thresholds := []uint8{50, 100, 150, 200, 240}
@@ -94,7 +94,6 @@ func (s *bmsState) floodFill() {
 	}
 }
 
-//nolint:gosec // uint8 conversion is safe here as max luminance is 255
 func processBMSThreshold(lumMap []uint8, t uint8, w, h int) []float64 {
 	if w <= 0 || h <= 0 {
 		return nil
