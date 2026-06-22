@@ -44,13 +44,20 @@ lint:
 	@echo "✨ Running linter..."
 	$(GOLANGCI_LINT) run --timeout 5m
 
+PRE_COMMIT_VENV := .venv
+PRE_COMMIT_BIN := $(PRE_COMMIT_VENV)/bin/pre-commit
+
 precommit:
 	@echo "🎨 Running all pre-commit hooks..."
 	@if [ -n "$(PRE_COMMIT)" ]; then \
 		$(PRE_COMMIT) run --all-files; \
+	elif [ -x "$(PRE_COMMIT_BIN)" ]; then \
+		$(PRE_COMMIT_BIN) run --all-files; \
 	else \
-		echo "❌ pre-commit not found; install with: pip install pre-commit && pre-commit install"; \
-		exit 1; \
+		echo "📦 Bootstrapping pre-commit in $(PRE_COMMIT_VENV)..."; \
+		python3 -m venv $(PRE_COMMIT_VENV) && \
+		$(PRE_COMMIT_VENV)/bin/pip install -q pre-commit && \
+		$(PRE_COMMIT_BIN) run --all-files; \
 	fi
 
 vuln:

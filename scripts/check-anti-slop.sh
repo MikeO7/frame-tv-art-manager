@@ -58,6 +58,7 @@ find . -type f \( \
     -name "*.json" \
 \) \
 -not -path "*/.git/*" \
+-not -path "*/.venv/*" \
 -not -path "*/.jules/*" \
 -not -path "*/.gemini/*" \
 -not -path "*/scripts/check-anti-slop.sh" \
