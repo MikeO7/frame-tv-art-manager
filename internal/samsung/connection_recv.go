@@ -91,7 +91,7 @@ type wsResponse struct {
 	Data  json.RawMessage `json:"data"`
 }
 
-// artAppRequest builds the outer WebSocket message for an art API request.
+// JSON envelope keys shared by outgoing art-app request messages.
 const (
 	keyMethod = "method"
 	keyParams = "params"
@@ -99,6 +99,8 @@ const (
 	keyData   = "data"
 )
 
+// artAppRequest builds the outer "ms.channel.emit" WebSocket message that wraps
+// an art API request payload, JSON-encoding the inner data as the host expects.
 func artAppRequest(data map[string]any) ([]byte, error) {
 	inner, err := json.Marshal(data)
 	if err != nil {

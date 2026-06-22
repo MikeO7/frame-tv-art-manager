@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +25,25 @@ const (
 	keyContentID        = "content_id"
 )
 
+// WebSocket endpoint names exposed by Samsung Frame TVs.
+const (
+	endpointArtApp        = "com.samsung.art-app"
+	endpointRemoteControl = "samsung.remote.control"
+)
+
+// Samsung Frame TV network ports and protocol limits.
+const (
+	portArtWSS         = 8002 // WSS art-app + remote-control endpoint
+	portRESTGate       = 8001 // REST art-mode gate probe
+	wolBroadcastPort   = 9    // Wake-on-LAN discard port
+	maxBackoffDelay    = 1 * time.Hour
+	maxDeviceInfoBytes = 1 << 20 // 1 MiB cap on the device-info response
+
+	// powerKeyHold is how long KEY_POWER is held between the press and release
+	// events to trigger a power toggle on the TV's remote-control endpoint.
+	powerKeyHold = 3 * time.Second
+)
+
 // Client is the high-level facade for interacting with a single Samsung
 // Frame TV. It composes the lower-level connection, REST, gate,
 // WoL, and remote control components into a clean interface that the
@@ -39,6 +56,10 @@ type Client struct {
 	artConn *connection
 	info    *DeviceInfo
 
+	// powerHold is the KEY_POWER press-to-release duration. It defaults to
+	// powerKeyHold and is overridable in tests to avoid real-time waits.
+	powerHold time.Duration
+
 	// Persistent backoff state
 	mu           sync.Mutex
 	failures     int
@@ -46,45 +67,14 @@ type Client struct {
 	backoffUntil time.Time
 }
 
-// NewClient creates a new Samsung TV client configured with the given IP and options.
-// It initializes the WebSocket client state but does not open the connection immediately.
-//
-// Parameters:
-//   - ip:     The network IP address of the target Samsung TV (e.g. "192.168.1.150").
-//   - opts:   Configuration options for the connection (timeout, MAC address, token storage).
-//   - logger: A base structured logger, which will be annotated with the TV's IP address.
-//
-// Returns:
-//   - *Client: An initialized TV client ready for connection.
-//
-// Example:
-//
-//	tv := samsung.NewClient("192.168.1.150", opts, logger)
-//	if err := tv.Connect(ctx); err != nil {
-//	    log.Fatal("Could not connect to TV:", err)
-//	}
-//	defer tv.Close()
+// NewClient creates a Samsung TV client for the given IP and options. It only
+// initializes client state; call Connect to open the WebSocket connection.
 func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Client {
 	return &Client{
-		IP:     ip,
-		opts:   opts,
-		logger: logger.With("tv", ip),
-	}
-}
-
-// wakeTV sends a Wake-on-LAN magic packet to the TV to wake it up if it's sleeping.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-func (c *Client) wakeTV(ctx context.Context) {
-	if c.opts.TVMAC == "" {
-		return
-	}
-	c.logger.Info("sending Wake-on-LAN", "mac", c.opts.TVMAC)
-	if err := c.sendWOL(ctx, c.opts.TVMAC); err != nil {
-		c.logger.Warn("WoL failed", "error", err)
-	} else {
-		time.Sleep(2 * time.Second)
+		IP:        ip,
+		opts:      opts,
+		logger:    logger.With("tv", ip),
+		powerHold: powerKeyHold,
 	}
 }
 
@@ -113,7 +103,7 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	if err := os.MkdirAll(filepath.Dir(tokenFile), 0o700); err != nil {
 		return fmt.Errorf("create token dir: %w", err)
 	}
-	if err := c.ensureToken(ctx, tokenFile, 8002); err != nil {
+	if err := c.ensureToken(ctx, tokenFile, portArtWSS); err != nil {
 		c.logger.Warn("remote handshake failed (TV might be off or busy)", "error", err)
 	} else {
 		time.Sleep(2 * time.Second)
@@ -144,22 +134,28 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 
-	c.artConn = newConnection(
-		c.IP, 8002, "com.samsung.art-app",
-		c.opts.ClientName, tokenFile,
-		c.opts.ConnectionTimeout, c.opts.SkipTLSVerify, c.logger,
-	)
+	c.artConn = newConnection(connConfig{
+		host:          c.IP,
+		port:          portArtWSS,
+		endpoint:      endpointArtApp,
+		name:          c.opts.ClientName,
+		tokenFile:     tokenFile,
+		timeout:       c.opts.ConnectionTimeout,
+		skipTLSVerify: c.opts.SkipTLSVerify,
+		logger:        c.logger,
+	})
 
 	if err := c.artConn.Open(ctx); err != nil {
 		return fmt.Errorf("connect to art endpoint: %w", err)
 	}
 
-	info, err := c.fetchDeviceInfo(ctx, 8002)
+	info, err := c.fetchDeviceInfo(ctx, portArtWSS)
 	if err != nil {
 		c.logger.Warn("could not fetch device info", "error", err)
 	} else {
 		c.info = info
-		c.logger.Info("connected",
+		c.logger.Info(
+			"connected",
 			"model", info.ModelName,
 			"firmware", info.FirmwareVersion,
 			"frameTVSupport", info.FrameTVSupport,
@@ -180,81 +176,10 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// ShouldSkip returns true if the TV is in a backoff window due to failures.
-//
-// Returns:
-//   - bool: True if the client is still waiting out a failure timeout period.
-func (c *Client) ShouldSkip() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if time.Now().Before(c.backoffUntil) {
-		remaining := time.Until(c.backoffUntil).Round(time.Second)
-		c.logger.Info("TV in backoff period, skipping",
-			"failures", c.failures,
-			"retry_in", remaining.String(),
-		)
-		return true
-	}
-	return false
-}
-
-// RecordFailure tracks a connection failure and calculates exponential backoff.
-//
-// Parameters:
-//   - baseInterval: The initial time duration to wait before the next retry.
-func (c *Client) RecordFailure(baseInterval time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.failures++
-	c.lastFailure = time.Now()
-
-	maxDelay := 1 * time.Hour
-	delay := baseInterval
-	for i := 1; i < c.failures; i++ {
-		if delay >= maxDelay {
-			delay = maxDelay
-			break
-		}
-		if delay > maxDelay/2 {
-			delay = maxDelay
-			break
-		}
-		delay *= 2
-	}
-	if delay > maxDelay {
-		delay = maxDelay
-	}
-
-	c.backoffUntil = c.lastFailure.Add(delay)
-
-	c.logger.Warn("TV unreachable, backing off",
-		"consecutive_failures", c.failures,
-		"next_retry", c.backoffUntil.Format(time.Kitchen),
-		"backoff_duration", delay.Round(time.Second).String(),
-	)
-}
-
-// RecordSuccess resets failure count.
-//
-// Calling this method clears the backoff window completely.
-func (c *Client) RecordSuccess() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.failures > 0 {
-		c.logger.Info("TV recovered after failures",
-			"previous_failures", c.failures,
-		)
-	}
-	c.failures = 0
-	c.backoffUntil = time.Time{}
-}
-
 func checkArtError(resp *artResponse) error {
 	if resp.ErrorCode != 0 {
-		if resp.ErrorCode == 403 || resp.ErrorCode == 507 || resp.ErrorCode == 11001 { // 11001 is sometimes returned by Samsung's art app for out-of-storage
+		// 11001 is sometimes returned by Samsung's art app for out-of-storage.
+		if resp.ErrorCode == 403 || resp.ErrorCode == 507 || resp.ErrorCode == 11001 {
 			return fmt.Errorf("%w: code %d", ErrStorageFull, resp.ErrorCode)
 		}
 		return fmt.Errorf("%w: code %d", ErrArtAPIError, resp.ErrorCode)
@@ -287,23 +212,27 @@ func (c *Client) tokenFilePath() string {
 	return filepath.Join(c.opts.TokenDir, fmt.Sprintf("tv_%s.txt", safeIP))
 }
 
+// remoteControlConfig builds the connConfig for the TV's remote-control
+// endpoint at the given port, using the supplied token file.
+func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
+	return connConfig{
+		host:          c.IP,
+		port:          port,
+		endpoint:      endpointRemoteControl,
+		name:          c.opts.ClientName,
+		tokenFile:     tokenFile,
+		timeout:       c.opts.ConnectionTimeout,
+		skipTLSVerify: c.opts.SkipTLSVerify,
+		logger:        c.logger,
+	}
+}
+
 func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
-	conn := newConnection(c.IP, port, "samsung.remote.control", c.opts.ClientName, tokenFile, c.opts.ConnectionTimeout, c.opts.SkipTLSVerify, c.logger)
+	conn := newConnection(c.remoteControlConfig(port, tokenFile))
 	if err := conn.Open(ctx); err != nil {
 		return err
 	}
 	return conn.Close()
-}
-
-// TurnOff powers off the TV via the remote control API.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the power command.
-//
-// Returns:
-//   - error: Any network or API error encountered while sending the off signal.
-func (c *Client) TurnOff(ctx context.Context) error {
-	return c.turnOffTV(ctx, 8002)
 }
 
 func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, error) {
@@ -329,9 +258,8 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Prevent DoS / resource exhaustion by enforcing a 1MB maximum read size
-	maxBytes := int64(1 * 1024 * 1024)
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+	// Prevent DoS / resource exhaustion by enforcing a maximum read size.
+	reader := http.MaxBytesReader(nil, resp.Body, maxDeviceInfoBytes)
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
@@ -346,126 +274,8 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	return &envelope.Device, nil
 }
 
-var macSeparators = regexp.MustCompile(`[^a-fA-F0-9]`)
-
-// sendWOL broadcasts a Wake-on-LAN magic packet to wake up the TV on the local network.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the network request.
-//   - macAddr: The MAC address string (e.g., "AA:BB:CC:DD:EE:FF") of the TV.
-//
-// Returns:
-//   - error: Any formatting error or network failure encountered while broadcasting.
-func (c *Client) sendWOL(ctx context.Context, macAddr string) error {
-	if macAddr == "" {
-		return nil
-	}
-
-	// Strip separators and validate length.
-	clean := macSeparators.ReplaceAllString(macAddr, "")
-	clean = strings.ToLower(clean)
-	if len(clean) != 12 {
-		return fmt.Errorf("invalid MAC address %q: expected 12 hex chars, got %d", macAddr, len(clean))
-	}
-
-	// Parse hex bytes.
-	mac := make([]byte, 6)
-	for i := 0; i < 6; i++ {
-		_, err := fmt.Sscanf(clean[i*2:i*2+2], "%02x", &mac[i])
-		if err != nil {
-			return fmt.Errorf("invalid MAC address %q: %w", macAddr, err)
-		}
-	}
-
-	// Build magic packet: 6 bytes of 0xFF followed by MAC repeated 16 times.
-	packet := make([]byte, 6+16*6)
-	for i := 0; i < 6; i++ {
-		packet[i] = 0xFF
-	}
-	for i := 0; i < 16; i++ {
-		copy(packet[6+i*6:], mac)
-	}
-
-	// Send to broadcast address.
-	dialer := net.Dialer{Timeout: 5 * time.Second}
-	conn, err := dialer.DialContext(ctx, "udp", "255.255.255.255:9")
-	if err != nil {
-		return fmt.Errorf("dial broadcast: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
-
-	_, err = conn.Write(packet)
-	if err != nil {
-		return fmt.Errorf("send magic packet: %w", err)
-	}
-
-	return nil
-}
-
-func (c *Client) turnOffTV(ctx context.Context, port int) error {
-	conn := newConnection(
-		c.IP, port, "samsung.remote.control",
-		c.opts.ClientName, c.tokenFilePath(),
-		c.opts.ConnectionTimeout, c.opts.SkipTLSVerify, c.logger,
-	)
-
-	if err := conn.Open(ctx); err != nil {
-		return fmt.Errorf("open remote control connection: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
-
-	// Send KEY_POWER press.
-	press := map[string]any{
-		keyMethod: methodRemoteControl,
-		keyParams: map[string]any{
-			"Cmd":          "Press",
-			"DataOfCmd":    "KEY_POWER",
-			"Option":       stringFalse,
-			"TypeOfRemote": "SendRemoteKey",
-		},
-	}
-
-	pressPayload, err := json.Marshal(press)
-	if err != nil {
-		return fmt.Errorf("marshal press command: %w", err)
-	}
-
-	if err := conn.Send(ctx, pressPayload); err != nil {
-		return fmt.Errorf("send press: %w", err)
-	}
-
-	// Hold for 3 seconds.
-	select {
-	case <-time.After(3 * time.Second):
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	// Send KEY_POWER release.
-	release := map[string]any{
-		keyMethod: methodRemoteControl,
-		keyParams: map[string]any{
-			"Cmd":          "Release",
-			"DataOfCmd":    "KEY_POWER",
-			"Option":       stringFalse,
-			"TypeOfRemote": "SendRemoteKey",
-		},
-	}
-
-	releasePayload, err := json.Marshal(release)
-	if err != nil {
-		return fmt.Errorf("marshal release command: %w", err)
-	}
-
-	if err := conn.Send(ctx, releasePayload); err != nil {
-		return fmt.Errorf("send release: %w", err)
-	}
-
-	return nil
-}
-
 func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
-	url := fmt.Sprintf("http://%s:8001/ms/art", c.IP)
+	url := fmt.Sprintf("http://%s:%d/ms/art", c.IP, portRESTGate)
 
 	client := &http.Client{Timeout: c.opts.GateTimeout}
 

@@ -6,9 +6,16 @@ import (
 	"sync"
 )
 
+// sRGB encode lookup table precision: a 14-bit (16384-entry) table trades a
+// small fixed memory cost for a per-pixel gamma encode that avoids math.Pow.
+const (
+	srgbLUTSize   = 16384
+	srgbLUTMaxIdx = srgbLUTSize - 1
+)
+
 //nolint:gochecknoglobals // global read-only lookup table for performance-critical sRGB calculations
 var (
-	lutSrgb     [16384]uint8
+	lutSrgb     [srgbLUTSize]uint8
 	lutSrgbOnce sync.Once
 )
 
@@ -49,14 +56,13 @@ func unifyCollection(src *image.RGBA) *image.RGBA {
 	return src
 }
 
-//nolint:funlen // single-pass RMS contrast accumulation kept inline over the full pixel buffer
 func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	var sumSq, sum float64
 
 	var wg sync.WaitGroup
-	workers := 8
+	workers := pixelWorkers
 	chunk := (height + workers - 1) / workers
 	sums := make([]float64, workers)
 	sumSqs := make([]float64, workers)
@@ -73,7 +79,16 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 
 		wg.Add(1)
 		go func(workerIdx, sy, ey int) {
-			calculateRMSWorker(src, width, sy, ey, workerIdx, sums, sumSqs, &wg)
+			calculateRMSWorker(rmsWork{
+				src:       src,
+				width:     width,
+				sy:        sy,
+				ey:        ey,
+				workerIdx: workerIdx,
+				sums:      sums,
+				sumSqs:    sumSqs,
+				wg:        &wg,
+			})
 		}(i, startY, endY)
 	}
 	wg.Wait()
@@ -87,7 +102,25 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	return mean, rms
 }
 
-func calculateRMSWorker(src *image.RGBA, width, sy, ey, workerIdx int, sums, sumSqs []float64, wg *sync.WaitGroup) {
+// rmsWork bundles the inputs for a single goroutine-partitioned slice of the
+// RMS-contrast luminance accumulation.
+type rmsWork struct {
+	src          *image.RGBA
+	width        int
+	sy, ey       int
+	workerIdx    int
+	sums, sumSqs []float64
+	wg           *sync.WaitGroup
+}
+
+func calculateRMSWorker(work rmsWork) {
+	src := work.src
+	width := work.width
+	sy, ey := work.sy, work.ey
+	workerIdx := work.workerIdx
+	sums, sumSqs := work.sums, work.sumSqs
+	wg := work.wg
+
 	defer wg.Done()
 	var localSum, localSumSq uint64
 
@@ -119,26 +152,26 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	gLin = gLin*0.97 + avg*0.03
 	bLin = bLin*0.97 + avg*0.03
 
-	fR := rLin * 16383.0
+	fR := rLin * srgbLUTMaxIdx
 	idxR := 0
-	if fR >= 16383.0 {
-		idxR = 16383
+	if fR >= srgbLUTMaxIdx {
+		idxR = srgbLUTMaxIdx
 	} else if fR > 0 {
 		idxR = int(fR)
 	}
 
-	fG := gLin * 16383.0
+	fG := gLin * srgbLUTMaxIdx
 	idxG := 0
-	if fG >= 16383.0 {
-		idxG = 16383
+	if fG >= srgbLUTMaxIdx {
+		idxG = srgbLUTMaxIdx
 	} else if fG > 0 {
 		idxG = int(fG)
 	}
 
-	fB := bLin * 16383.0
+	fB := bLin * srgbLUTMaxIdx
 	idxB := 0
-	if fB >= 16383.0 {
-		idxB = 16383
+	if fB >= srgbLUTMaxIdx {
+		idxB = srgbLUTMaxIdx
 	} else if fB > 0 {
 		idxB = int(fB)
 	}
@@ -157,8 +190,8 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	}
 
 	lutSrgbOnce.Do(func() {
-		for i := 0; i < 16384; i++ {
-			val := math.Pow(float64(i)/16383.0, 0.454545454545) * 255.0
+		for i := 0; i < srgbLUTSize; i++ {
+			val := math.Pow(float64(i)/srgbLUTMaxIdx, 0.454545454545) * 255.0
 			switch {
 			case val < 0:
 				lutSrgb[i] = 0
@@ -171,7 +204,7 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	})
 
 	var wg sync.WaitGroup
-	workers := 8
+	workers := pixelWorkers
 	chunk := (height + workers - 1) / workers
 
 	for j := 0; j < workers; j++ {
@@ -204,109 +237,4 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 		}(startY, endY)
 	}
 	wg.Wait()
-}
-
-// polishPixel limits the maximum brightness and adds paper grain noise to a pixel.
-//
-//nolint:funlen // brightness clamp + paper-grain noise applied inline to each R/G/B channel
-func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
-	const maxBright = 235.0
-	if r > maxBright {
-		r = maxBright
-	}
-	if g > maxBright {
-		g = maxBright
-	}
-	if b > maxBright {
-		b = maxBright
-	}
-
-	avg := (r + g + b) * 0.33333333
-	r = r*0.92 + avg*0.08
-	g = g*0.92 + avg*0.08
-	b = b*0.92 + avg*0.08
-
-	*state ^= *state << 13
-	*state ^= *state >> 17
-	*state ^= *state << 5
-
-	noise := (float32(*state)/float32(0xFFFFFFFF) - 0.5) * 5.0
-	r += noise
-	g += noise
-	b += noise
-
-	var outR, outG, outB uint8
-	switch {
-	case r < 0:
-		outR = 0
-	case r > 255:
-		outR = 255
-	default:
-		outR = uint8(r)
-	}
-
-	switch {
-	case g < 0:
-		outG = 0
-	case g > 255:
-		outG = 255
-	default:
-		outG = uint8(g)
-	}
-
-	switch {
-	case b < 0:
-		outB = 0
-	case b > 255:
-		outB = 255
-	default:
-		outB = uint8(b)
-	}
-
-	return outR, outG, outB
-}
-
-func galleryMasterPolish(src *image.RGBA) *image.RGBA {
-	bounds := src.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-
-	var wg sync.WaitGroup
-	workers := 8
-	chunk := (height + workers - 1) / workers
-
-	for j := 0; j < workers; j++ {
-		startY := j * chunk
-		endY := startY + chunk
-		if endY > height {
-			endY = height
-		}
-		if startY >= height {
-			break
-		}
-
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
-
-			//nolint:gosec // sy is a positive chunk offset, conversion is mathematically safe
-			state := uint32(sy + 1) // Seed based on row
-
-			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
-			pix := src.Pix
-			stride := src.Stride
-
-			for y := sy; y < ey; y++ {
-				offset := y * stride
-				for x := 0; x < width; x++ {
-					i := offset + x*4
-					outR, outG, outB := polishPixel(float32(pix[i]), float32(pix[i+1]), float32(pix[i+2]), &state)
-					pix[i] = outR
-					pix[i+1] = outG
-					pix[i+2] = outB
-				}
-			}
-		}(startY, endY)
-	}
-	wg.Wait()
-	return src
 }

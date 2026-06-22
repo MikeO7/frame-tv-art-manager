@@ -19,7 +19,7 @@ type labColor struct {
 
 // ciede2000 calculates the exact CIE 2000 color-difference standard between two CIELAB colors.
 //
-//nolint:funlen,gocognit,gocyclo // mathematical formula requiring monolithic execution flow for performance and readability
+//nolint:funlen,gocyclo // mathematical formula requiring monolithic execution flow for performance and readability
 func ciede2000(color1, color2 labColor) float64 {
 	const degToRad = math.Pi / 180.0
 	const e7 = 6103515625.0 // 25^7

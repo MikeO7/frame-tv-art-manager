@@ -31,9 +31,9 @@ coverage: test
 
 coverage-check: test
 	@echo "📈 Checking coverage threshold (50%)..."
-	@TOTAL_COVERAGE=$$(go tool cover -func=coverage.out | grep total | awk '{print substr($$3, 1, length($$3)-1)}'); \
+	@TOTAL_COVERAGE=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $$3); print $$3}'); \
 	echo "Total coverage: $$TOTAL_COVERAGE%"; \
-	if [ $$(echo "$$TOTAL_COVERAGE < 50" | bc) -eq 1 ]; then \
+	if awk "BEGIN { exit !($$TOTAL_COVERAGE < 50) }"; then \
 		echo "❌ Coverage is below 50%"; \
 		exit 1; \
 	fi
@@ -88,7 +88,10 @@ agent-fix:
 	@chmod +x scripts/agent-loop.sh
 	./scripts/agent-loop.sh
 
-check: tidy fmt lint vuln actionlint coverage-check precommit
+# Ordered for fast feedback: cheap/structural checks and the most common
+# failures (formatting, actionlint, lint, anti-slop) run before the slow
+# test suite and govulncheck, so failures surface as early as possible.
+check: tidy fmt actionlint lint precommit coverage-check vuln
 	@echo "✅ All local checks passed!"
 
 tools:

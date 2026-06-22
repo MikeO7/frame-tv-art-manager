@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+const (
+	// nasaMaxResponseBytes caps a decoded NASA API response to bound memory use.
+	nasaMaxResponseBytes = 10 << 20 // 10 MiB
+	// nasaMaxSearchItems limits image-library search results to avoid huge downloads.
+	nasaMaxSearchItems = 10
+)
+
 // nasaProvider handles communication with NASA APIs and resolves artwork sources.
 type nasaProvider struct {
 	apiKey    string
@@ -45,6 +52,31 @@ type apodResponse struct {
 	Type  string `json:"media_type"`
 }
 
+// fetchJSON issues a GET to apiURL and decodes the size-bounded JSON response
+// body into out, centralizing the NASA request boilerplate.
+func (p *nasaProvider) fetchJSON(ctx context.Context, apiURL, errLabel string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s error: %d", errLabel, resp.StatusCode)
+	}
+
+	reader := http.MaxBytesReader(nil, resp.Body, nasaMaxResponseBytes)
+	if err := json.NewDecoder(reader).Decode(out); err != nil {
+		return fmt.Errorf("decode %s response: %w", errLabel, err)
+	}
+	return nil
+}
+
 func (p *nasaProvider) Name() string {
 	return providerNASA
 }
@@ -56,26 +88,10 @@ func (p *nasaProvider) CanHandle(line string) bool {
 // FetchAPOD retrieves today's Astronomy Picture of the Day.
 func (p *nasaProvider) FetchAPOD(ctx context.Context) (*apodResponse, error) {
 	urlStr := fmt.Sprintf("%s/planetary/apod?api_key=%s", p.BaseURL, p.apiKey)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("nasa apod api error: %d", resp.StatusCode)
-	}
 
 	var apod apodResponse
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-	if err := json.NewDecoder(reader).Decode(&apod); err != nil {
-		return nil, fmt.Errorf("decode nasa apod response: %w", err)
+	if err := p.fetchJSON(ctx, urlStr, "nasa apod api", &apod); err != nil {
+		return nil, err
 	}
 
 	if apod.Type != mediaTypeImage {
@@ -88,20 +104,6 @@ func (p *nasaProvider) FetchAPOD(ctx context.Context) (*apodResponse, error) {
 // SearchNASAImageLibrary searches for high-resolution images in the NASA library.
 func (p *nasaProvider) SearchNASAImageLibrary(ctx context.Context, query string) ([]string, error) {
 	searchURL := fmt.Sprintf("%s/search?q=%s&media_type=image", p.SearchURL, url.QueryEscape(query))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("nasa image library error: %d", resp.StatusCode)
-	}
 
 	var result struct {
 		Collection struct {
@@ -115,18 +117,12 @@ func (p *nasaProvider) SearchNASAImageLibrary(ctx context.Context, query string)
 		} `json:"collection"`
 	}
 
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-	if err := json.NewDecoder(reader).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode nasa search response: %w", err)
+	if err := p.fetchJSON(ctx, searchURL, "nasa image library", &result); err != nil {
+		return nil, err
 	}
 
 	var imageUrls []string
-	// Limit to first 10 results for search to avoid huge downloads
-	maxItems := 10
-	if len(result.Collection.Items) < maxItems {
-		maxItems = len(result.Collection.Items)
-	}
+	maxItems := min(len(result.Collection.Items), nasaMaxSearchItems)
 
 	for i := 0; i < maxItems; i++ {
 		item := result.Collection.Items[i]
@@ -145,25 +141,8 @@ func (p *nasaProvider) SearchNASAImageLibrary(ctx context.Context, query string)
 
 // fetchNASAAssetManifest resolves the actual high-res image link from a NASA manifest.
 func (p *nasaProvider) fetchNASAAssetManifest(ctx context.Context, href string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, href, nil)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("nasa asset manifest api error: %d", resp.StatusCode)
-	}
-
 	var manifest []string
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-	if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
+	if err := p.fetchJSON(ctx, href, "nasa asset manifest api", &manifest); err != nil {
 		return "", err
 	}
 

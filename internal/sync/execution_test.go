@@ -255,7 +255,8 @@ func TestTVReconciler_uploadWithRetry(t *testing.T) {
 	// 1. Success on first attempt
 	transportSuccess := &mockTVTransportExecution{uploadId: "id-test"}
 	policySuccess := config.SyncPolicy{UploadAttempts: 1}
-	id, err := reconciler.uploadWithRetry(ctx, transportSuccess, "file.jpg", "jpeg", "none", policySuccess)
+	job := UploadJob{Filename: "file.jpg", FilePath: "file.jpg", FileType: "jpeg", Matte: "none"}
+	id, err := reconciler.uploadWithRetry(ctx, transportSuccess, job, policySuccess)
 	if err != nil || id != "id-test" {
 		t.Errorf("expected success, got err: %v, id: %s", err, id)
 	}
@@ -263,7 +264,7 @@ func TestTVReconciler_uploadWithRetry(t *testing.T) {
 	// 2. Failure after all attempts
 	transportFail := &mockTVTransportExecution{uploadErr: errors.New("fail")}
 	policyFail := config.SyncPolicy{UploadAttempts: 2, UploadDelay: 1}
-	_, err = reconciler.uploadWithRetry(ctx, transportFail, "file.jpg", "jpeg", "none", policyFail)
+	_, err = reconciler.uploadWithRetry(ctx, transportFail, job, policyFail)
 	if err == nil {
 		t.Errorf("expected failure")
 	}

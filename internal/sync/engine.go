@@ -35,22 +35,9 @@ func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVTran
 	return samsung.NewClient(ip, cfg.TVConnectOptions(), logger)
 }
 
-// NewEngine creates a sync engine with the given configuration.
-//
-// Parameters:
-//   - cfg:          The configuration settings for the engine.
-//   - logger:       A structured logger for recording events and errors.
-//   - healthStatus: A pointer to a Health status tracker for monitoring sync state.
-//
-// Returns:
-//   - *Engine: A new initialized Engine ready to run synchronization loops.
-//
-// Example:
-//
-//	engine := sync.NewEngine(cfg, logger, healthStatus)
-//	if err := engine.RunOnce(ctx); err != nil {
-//	    log.Fatal("Sync failed:", err)
-//	}
+// NewEngine creates a sync engine wired with the artwork catalog, source
+// loader, and health tracker derived from cfg. The returned Engine is ready
+// to run synchronization via RunOnce or RunLoop.
 func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Status) *Engine {
 	catalog := sources.NewArtworkCatalog(cfg.ArtworkDir, logger)
 	return &Engine{
@@ -108,8 +95,9 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 	}
 }
 
-// RunOnce performs a single sync cycle for all configured TVs.
-// Structural simplifications have been made to extract optimization and parallel TV synchronization logic into distinct, readable methods.
+// RunOnce performs a single sync cycle: download sources, optimize the local
+// catalog, then reconcile every configured TV concurrently. It records the
+// cycle outcome to health tracking and returns the joined per-TV errors, if any.
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
 	var cycleWarnings []string
@@ -233,8 +221,9 @@ func (e *Engine) optimizeCatalog(ctx context.Context) (int, error) {
 	return optimized, nil
 }
 
-// syncAllTVs orchestrates concurrent sync cycles for all provided TVs.
-// Extracted from RunOnce to reduce cognitive load and nested loop complexity.
+// syncAllTVs reconciles all configured TVs concurrently, collecting per-TV
+// summaries and errors. It stops launching new work once the context is
+// cancelled and appends the cancellation cause to the returned errors.
 func (e *Engine) syncAllTVs(
 	ctx context.Context,
 	localFiles map[string]struct{},

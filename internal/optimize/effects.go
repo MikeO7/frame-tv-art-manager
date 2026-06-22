@@ -8,6 +8,11 @@ import (
 	"golang.org/x/image/draw"
 )
 
+// pixelWorkers is the fixed goroutine count used to partition per-pixel image
+// kernels by row. Eight maps well to common multi-core CPUs without the
+// overhead of spawning one goroutine per core on very large machines.
+const pixelWorkers = 8
+
 // toRGBA converts any image type to a standard RGBA image for processing.
 // This also serves as a color normalization step, flattening different
 // color profiles into a consistent sRGB-like space for the TV.
@@ -65,7 +70,7 @@ func dither(src *image.RGBA) *image.RGBA {
 	width, height := bounds.Dx(), bounds.Dy()
 
 	var wg sync.WaitGroup
-	workers := 8
+	workers := pixelWorkers
 	chunk := (height + workers - 1) / workers
 	stride := src.Stride
 	pix := src.Pix
@@ -148,7 +153,7 @@ func sharpen(src *image.RGBA) *image.RGBA {
 	}
 
 	var wg sync.WaitGroup
-	workers := 8 // Target 8 routines to map well to multi-core CPUs
+	workers := pixelWorkers
 	chunk := (height - 2) / workers
 	if chunk == 0 {
 		chunk = 1

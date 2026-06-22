@@ -272,7 +272,10 @@ func TestTurnOff(t *testing.T) {
 	// Wait, we can just change `turnOffTV` to accept a port just like `ensureToken` does!
 	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
 
-	// Fast context so we don't wait the full 3 seconds in testing
+	// Shorten the KEY_POWER hold so the test verifies the press/release
+	// sequence without waiting the full real-world hold duration.
+	c.powerHold = 10 * time.Millisecond
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -369,7 +372,16 @@ func TestClientWrapperMethods(t *testing.T) {
 	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
 
 	// Create art connection directly to test wrappers
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
+	c.artConn = newConnection(connConfig{
+		host:          host,
+		port:          port,
+		endpoint:      "com.samsung.art-app",
+		name:          "TestClient",
+		tokenFile:     c.tokenFilePath(),
+		timeout:       1 * time.Second,
+		skipTLSVerify: true,
+		logger:        slog.Default(),
+	})
 	if err := c.artConn.Open(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +531,16 @@ func TestClientUpload(t *testing.T) {
 	port, _ := strconv.Atoi(u.Port())
 
 	c := NewClient(host, (&config.Config{ConnectionTimeout: 2 * time.Second, APITimeout: 2 * time.Second, TokenDir: t.TempDir()}).TVConnectOptions(), slog.Default())
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
+	c.artConn = newConnection(connConfig{
+		host:          host,
+		port:          port,
+		endpoint:      "com.samsung.art-app",
+		name:          "TestClient",
+		tokenFile:     c.tokenFilePath(),
+		timeout:       1 * time.Second,
+		skipTLSVerify: true,
+		logger:        slog.Default(),
+	})
 	if err := c.artConn.Open(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +588,16 @@ func TestSaveMetadata_NoDir(t *testing.T) {
 	host := u.Hostname()
 	port, _ := strconv.Atoi(u.Port())
 
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
+	c.artConn = newConnection(connConfig{
+		host:          host,
+		port:          port,
+		endpoint:      "com.samsung.art-app",
+		name:          "TestClient",
+		tokenFile:     c.tokenFilePath(),
+		timeout:       1 * time.Second,
+		skipTLSVerify: true,
+		logger:        slog.Default(),
+	})
 	_ = c.artConn.Open(context.Background())
 	defer func() { _ = c.Close() }()
 
@@ -700,7 +730,16 @@ func TestClient_PublicTransportMethods(t *testing.T) {
 		APITimeout:        2 * time.Second,
 	}).TVConnectOptions(), slog.Default())
 
-	c.artConn = newConnection(host, port, "com.samsung.art-app", "TestClient", c.tokenFilePath(), 1*time.Second, true, slog.Default())
+	c.artConn = newConnection(connConfig{
+		host:          host,
+		port:          port,
+		endpoint:      "com.samsung.art-app",
+		name:          "TestClient",
+		tokenFile:     c.tokenFilePath(),
+		timeout:       1 * time.Second,
+		skipTLSVerify: true,
+		logger:        slog.Default(),
+	})
 	if err := c.artConn.Open(context.Background()); err != nil {
 		t.Fatal(err)
 	}

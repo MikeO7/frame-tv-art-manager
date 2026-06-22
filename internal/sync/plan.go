@@ -3,7 +3,6 @@ package sync
 import (
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -47,15 +46,6 @@ func PlanSync(in PlanInput) *SyncPlan {
 	hasChanges := len(toUpload) > 0 || len(toDeleteIDs) > 0 || len(toDeleteUnknownIDs) > 0
 
 	slideshow := determineSlideshowSettings(in.Cfg, in.Logger)
-	settingsForMode := slideshow
-	if settingsForMode == nil {
-		settingsForMode = in.PreserveSlideshow
-	}
-
-	var selectedID string
-	if hasChanges && len(in.LocalFiles) > 0 {
-		selectedID = determineSelectedID(in.MappingData, toUpload, toDeleteFiles, settingsForMode)
-	}
 
 	return &SyncPlan{
 		IP:                 in.IP,
@@ -63,7 +53,6 @@ func PlanSync(in PlanInput) *SyncPlan {
 		ToDeleteIDs:        toDeleteIDs,
 		ToDeleteFiles:      toDeleteFiles,
 		ToDeleteUnknownIDs: toDeleteUnknownIDs,
-		SelectedID:         selectedID,
 		Slideshow:          slideshow,
 		Brightness:         determineBrightness(in.Cfg, in.Logger),
 		TurnOff:            isWithinAutoOffWindow(in.Cfg.AutoOffTime, in.Cfg.AutoOffGraceHours, in.Cfg.Timezone),
@@ -108,41 +97,6 @@ func buildDeleteJobs(
 		}
 	}
 	return ids, files
-}
-
-func determineSelectedID(
-	mappingData map[string]string,
-	toUpload []UploadJob,
-	toDeleteFiles []string,
-	settingsForMode *samsung.SlideshowStatus,
-) string {
-	finalMapping := make(map[string]string)
-	for k, v := range mappingData {
-		finalMapping[k] = v
-	}
-	for i, u := range toUpload {
-		finalMapping[u.Filename] = fmt.Sprintf("mock-id-%d", i)
-	}
-	for _, f := range toDeleteFiles {
-		delete(finalMapping, f)
-	}
-
-	if len(finalMapping) == 0 {
-		return ""
-	}
-
-	if settingsForMode != nil && settingsForMode.Type == ssTypeShuffle {
-		values := mapValues(finalMapping)
-		if len(values) > 0 {
-			//nolint:gosec // weak random number generator is fine for selecting artwork shuffle order
-			return values[rand.IntN(len(values))]
-		}
-	}
-
-	for _, id := range finalMapping {
-		return id
-	}
-	return ""
 }
 
 func determineSlideshowSettings(cfg *config.Config, logger *slog.Logger) *samsung.SlideshowStatus {

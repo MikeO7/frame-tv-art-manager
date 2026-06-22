@@ -5,19 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 )
 
+// imageAddedTimeout bounds how long Upload waits for the TV to confirm an
+// uploaded image via the "image_added" event after the D2D transfer completes.
+const imageAddedTimeout = 30 * time.Second
+
 // IsInArtMode reports whether the TV is currently in art mode by querying
-// the art API over the active WebSocket connection.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//
-// Returns:
-//   - bool: True if the TV is powered on and currently in art mode, false otherwise.
+// the art API over the active WebSocket connection. On query failure it
+// returns true, treating the TV as safe to sync.
 func (c *Client) IsInArtMode(ctx context.Context) bool {
 	if c.info != nil && !c.info.IsOn() {
 		c.logger.Debug("TV is powered off")
@@ -43,13 +40,6 @@ func (c *Client) IsInArtMode(ctx context.Context) bool {
 }
 
 // ListUploaded returns user-uploaded artwork on the TV (category MY-C0002 = "My Photos").
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//
-// Returns:
-//   - []ArtContent: A list of user-uploaded artwork items currently stored on the TV.
-//   - error: Any network or API error encountered during the fetch operation.
 func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 	id := newRequestID()
 	req := map[string]any{
@@ -85,13 +75,6 @@ func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 }
 
 // DeleteImages removes artwork from the TV by content IDs.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - ids: A slice of content IDs representing the artwork to be deleted from the TV.
-//
-// Returns:
-//   - error: Any network or API error encountered during the deletion.
 func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 	id := newRequestID()
 
@@ -111,14 +94,7 @@ func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 	return err
 }
 
-// SelectImage sets the currently displayed artwork.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - id: The content ID of the artwork to be displayed on the TV screen.
-//
-// Returns:
-//   - error: Any network or API error encountered during the selection.
+// SelectImage sets the currently displayed artwork by content ID.
 func (c *Client) SelectImage(ctx context.Context, id string) error {
 	reqID := newRequestID()
 
@@ -134,14 +110,7 @@ func (c *Client) SelectImage(ctx context.Context, id string) error {
 	return err
 }
 
-// getCategories retrieves the list of all artwork categories available on the TV.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//
-// Returns:
-//   - json.RawMessage: The raw JSON list of artwork categories from the TV.
-//   - error: Any network or API error encountered during the fetch operation.
+// getCategories retrieves the raw JSON list of artwork categories from the TV.
 func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	id := newRequestID()
 
@@ -153,139 +122,6 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 
 	_, raw, err := c.sendArtRequest(ctx, req)
 	return raw, err
-}
-
-// SaveMetadata fetches all available system information and artwork categories,
-// saving them to a JSON file in the tokens directory for auditing.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//
-// Returns:
-//   - error: Any file I/O or network error encountered during export.
-func (c *Client) SaveMetadata(ctx context.Context) error {
-	metadata := make(map[string]any)
-	metadata["timestamp"] = time.Now().Format(time.RFC3339)
-
-	// 1. Basic Device Info.
-	if c.info != nil {
-		metadata["device"] = c.info
-	}
-
-	// 2. Slideshow Status.
-	if ss, err := c.SlideshowStatus(ctx); err == nil {
-		metadata["slideshow"] = ss
-	}
-
-	// 3. All Categories.
-	if cats, err := c.getCategories(ctx); err == nil {
-		var raw json.RawMessage
-		if err := json.Unmarshal(cats, &raw); err == nil {
-			metadata["categories"] = raw
-		}
-	}
-
-	// 4. Detailed Environment (reserved for future telemetry integration).
-	metadata["platform"] = "Y2025"
-
-	b, err := json.MarshalIndent(metadata, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal metadata: %w", err)
-	}
-
-	safeIP := strings.ReplaceAll(c.IP, ".", "_")
-	path := filepath.Join(c.opts.TokenDir, fmt.Sprintf("tv_%s_metadata.json", safeIP))
-
-	if err := os.WriteFile(path, b, 0o600); err != nil {
-		return fmt.Errorf("write metadata file: %w", err)
-	}
-
-	c.logger.Info("metadata saved", "path", path)
-	return nil
-}
-
-// SlideshowStatus returns the current slideshow configuration.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//
-// Returns:
-//   - *SlideshowStatus: A struct detailing the current slideshow state on the TV.
-//   - error: Any network or API error encountered during the fetch operation.
-func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
-	id := newRequestID()
-
-	req := map[string]any{
-		keyRequest:   "get_slideshow_status",
-		"id":         id,
-		keyRequestID: id,
-	}
-
-	_, raw, err := c.sendArtRequest(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	var resp struct {
-		Value      string `json:"value"`
-		Type       string `json:"type"`
-		CategoryID string `json:"category_id"`
-	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("parse slideshow_status: %w", err)
-	}
-
-	return &SlideshowStatus{
-		Value:      resp.Value,
-		Type:       resp.Type,
-		CategoryID: resp.CategoryID,
-	}, nil
-}
-
-// SetSlideshow updates the slideshow configuration.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - s: The desired slideshow configuration to apply.
-//
-// Returns:
-//   - error: Any network or API error encountered during the update.
-func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
-	id := newRequestID()
-
-	req := map[string]any{
-		keyRequest:    "set_slideshow_status",
-		"id":          id,
-		keyRequestID:  id,
-		"value":       s.Value,
-		"category_id": s.CategoryID,
-		"type":        s.Type,
-	}
-
-	_, _, err := c.sendArtRequest(ctx, req)
-	return err
-}
-
-// SetBrightness sets the art mode brightness.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - val: The brightness value to set on the TV.
-//
-// Returns:
-//   - error: Any network or API error encountered during the update.
-func (c *Client) SetBrightness(ctx context.Context, val int) error {
-	id := newRequestID()
-
-	req := map[string]any{
-		keyRequest:   "set_brightness",
-		"id":         id,
-		keyRequestID: id,
-		"value":      val,
-	}
-
-	_, _, err := c.sendArtRequest(ctx, req)
-	return err
 }
 
 func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, timeout time.Duration) (string, error)) {
@@ -325,17 +161,9 @@ func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, 
 	}
 }
 
-// Upload sends an image to the TV via the art API + D2D socket transfer with the given matte style.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - filePath: The local filesystem path to the optimized image to upload.
-//   - fileType: The MIME type or file extension format of the image.
-//   - matte: The requested matte style ID string to apply to the artwork.
-//
-// Returns:
-//   - string: The TV-assigned content ID for the newly uploaded artwork.
-//   - error: Any network or API error encountered during the upload transfer.
+// Upload sends an image to the TV via the art API and D2D socket transfer with
+// the given matte style, returning the TV-assigned content ID. An empty matte
+// falls back to the configured default.
 func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (string, error) {
 	stat, err := os.Stat(filePath)
 	if err != nil {
@@ -372,12 +200,18 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (
 	c.logger.Debug("send_image parsed conn_info", "ip", ci.IP, "port", ci.Port)
 
 	// Step 2: Transfer the file over D2D socket.
-	if err := uploadImageD2D(ctx, ci, filePath, fileType, c.opts.ConnectionTimeout, c.opts.SkipTLSVerify); err != nil {
+	if err := uploadImageD2D(ctx, d2dUpload{
+		info:          ci,
+		filePath:      filePath,
+		fileType:      fileType,
+		timeout:       c.opts.ConnectionTimeout,
+		skipTLSVerify: c.opts.SkipTLSVerify,
+	}); err != nil {
 		return "", fmt.Errorf("d2d transfer: %w", err)
 	}
 
 	// Step 3: Wait for the TV to confirm the image was added.
-	contentID, err := waitForAdded(ctx, 30*time.Second)
+	contentID, err := waitForAdded(ctx, imageAddedTimeout)
 	if err != nil {
 		return "", fmt.Errorf("wait for confirmation: %w", err)
 	}
@@ -409,16 +243,8 @@ func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[strin
 	}
 }
 
-// sendArtRequest wraps an art request with standard JSON-RPC formatting and waits for the matching response.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - req: The raw art API request parameters as a map.
-//
-// Returns:
-//   - *artResponse: The parsed base artResponse structure.
-//   - json.RawMessage: The full raw JSON response for specific payload parsing.
-//   - error: Any formatting, network, or API-level error encountered.
+// sendArtRequest wraps req in the art-app envelope, sends it, and waits for the
+// matching response, returning the parsed artResponse and the raw JSON payload.
 func (c *Client) sendArtRequest(ctx context.Context, req map[string]any) (*artResponse, json.RawMessage, error) {
 	name := fmt.Sprint(req[keyRequest])
 	reqID := fmt.Sprint(req[keyRequestID])

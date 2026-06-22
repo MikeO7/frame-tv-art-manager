@@ -86,7 +86,7 @@ func (s *TVReconciler) processUploads(eCtx *executionContext) error {
 			continue
 		}
 
-		contentID, uploadErr := s.uploadWithRetry(eCtx.ctx, eCtx.transport, job.FilePath, job.FileType, job.Matte, eCtx.policy)
+		contentID, uploadErr := s.uploadWithRetry(eCtx.ctx, eCtx.transport, job, eCtx.policy)
 		if uploadErr != nil {
 			eCtx.result.ErrorMessage = uploadErr.Error()
 			// Storage-full is an expected condition handled by the capacity
@@ -159,16 +159,15 @@ func (s *TVReconciler) deleteUnknownImages(eCtx *executionContext) {
 	}
 }
 
-//nolint:revive // justified argument count for retry logic
 func (s *TVReconciler) uploadWithRetry(
 	ctx context.Context,
 	transport TVTransport,
-	filePath, fileType, matte string,
+	job UploadJob,
 	policy config.SyncPolicy,
 ) (string, error) {
 	var lastErr error
 	for attempt := 1; attempt <= policy.UploadAttempts; attempt++ {
-		contentID, err := transport.Upload(ctx, filePath, fileType, matte)
+		contentID, err := transport.Upload(ctx, job.FilePath, job.FileType, job.Matte)
 		if err == nil {
 			return contentID, nil
 		}

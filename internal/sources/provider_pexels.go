@@ -53,6 +53,32 @@ type pexelsPhoto struct {
 	} `json:"src"`
 }
 
+// fetchJSON issues an authorized GET to apiURL and decodes the size-bounded
+// JSON response body into out, centralizing the Pexels request boilerplate.
+func (p *pexelsProvider) fetchJSON(ctx context.Context, apiURL string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("pexels api error: %d", resp.StatusCode)
+	}
+
+	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
+	if err := json.NewDecoder(reader).Decode(out); err != nil {
+		return fmt.Errorf("decode pexels response: %w", err)
+	}
+	return nil
+}
+
 func (p *pexelsProvider) Name() string {
 	return providerPexels
 }
@@ -95,29 +121,12 @@ func (p *pexelsProvider) fetchCollectionPage(ctx context.Context, collectionID s
 	apiURL := fmt.Sprintf("%s/v1/collections/%s?per_page=%d&page=%d", p.BaseURL, url.PathEscape(collectionID), pexelsCollectionPageSize, page)
 	p.logger.Debug("fetching pexels collection page", "id", collectionID, "page", page)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, false, err
-	}
-	req.Header.Set("Authorization", p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, false, fmt.Errorf("pexels api error: %d", resp.StatusCode)
-	}
-
 	var result struct {
 		Media []pexelsPhoto `json:"media"`
 		Page  int           `json:"page"`
 	}
-	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(&result); err != nil {
-		return nil, false, fmt.Errorf("decode pexels response: %w", err)
+	if err := p.fetchJSON(ctx, apiURL, &result); err != nil {
+		return nil, false, err
 	}
 
 	urls := make([]string, 0, len(result.Media))
@@ -132,56 +141,21 @@ func (p *pexelsProvider) fetchCollectionPage(ctx context.Context, collectionID s
 // FetchPhoto retrieves a single photo by its ID.
 func (p *pexelsProvider) FetchPhoto(ctx context.Context, photoID string) (string, error) {
 	apiURL := fmt.Sprintf("%s/v1/photos/%s", p.BaseURL, url.PathEscape(photoID))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Authorization", p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("pexels api error: %d", resp.StatusCode)
-	}
 
 	var photo pexelsPhoto
-	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(&photo); err != nil {
-		return "", fmt.Errorf("decode pexels response: %w", err)
+	if err := p.fetchJSON(ctx, apiURL, &photo); err != nil {
+		return "", err
 	}
 
 	return photo.Src.Original, nil
 }
 
 func (p *pexelsProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pexels api error: %d", resp.StatusCode)
-	}
-
 	var result struct {
 		Photos []pexelsPhoto `json:"photos"`
 	}
-	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode pexels response: %w", err)
+	if err := p.fetchJSON(ctx, apiURL, &result); err != nil {
+		return nil, err
 	}
 
 	urls := make([]string, 0, len(result.Photos))

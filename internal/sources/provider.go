@@ -14,7 +14,19 @@ const (
 	providerPixabay  = "pixabay"
 	mediaTypeImage   = "image"
 	slugDirectSource = "direct-source"
+
+	// maxSlugLen bounds derived filename slugs to keep paths and the TV's art
+	// API comfortably within length limits.
+	maxSlugLen = 100
 )
+
+// capSlug truncates a slug to maxSlugLen runes' worth of bytes (slugs are ASCII).
+func capSlug(slug string) string {
+	if len(slug) > maxSlugLen {
+		return slug[:maxSlugLen]
+	}
+	return slug
+}
 
 // SourceImage represents resolved metadata for a downloadable image source.
 type SourceImage struct {
@@ -39,11 +51,7 @@ func slugFromArticURL(u string) string {
 	if len(urlParts) <= 5 {
 		return URLToSlug(u)
 	}
-	slug := Filename(urlParts[5])
-	if len(slug) > 100 {
-		slug = slug[:100]
-	}
-	return slug
+	return capSlug(Filename(urlParts[5]))
 }
 
 // slugFromNASAURL derives a stable slug from a NASA image URL.
@@ -57,12 +65,8 @@ func slugFromNASAURL(u string) string {
 	}
 	last := urlParts[len(urlParts)-1]
 	id := strings.Split(last, "~")[0]
-	slug := Filename(id)
-	slug = strings.ReplaceAll(slug, " ", "-")
-	if len(slug) > 100 {
-		slug = slug[:100]
-	}
-	return slug
+	slug := strings.ReplaceAll(Filename(id), " ", "-")
+	return capSlug(slug)
 }
 
 // URLToSlug generates a deterministic slug from a URL.
@@ -73,12 +77,8 @@ func URLToSlug(url string) string {
 		if parts := strings.Split(path, "/"); len(parts) > 0 {
 			path = parts[0]
 		}
-		slug := Filename(host + "_" + path)
-		slug = strings.ReplaceAll(slug, " ", "-")
-		if len(slug) > 100 {
-			slug = slug[:100]
-		}
-		return slug
+		slug := strings.ReplaceAll(Filename(host+"_"+path), " ", "-")
+		return capSlug(slug)
 	}
 	return slugDirectSource
 }

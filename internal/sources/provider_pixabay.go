@@ -12,6 +12,15 @@ import (
 	"time"
 )
 
+const (
+	// pixabayMaxResponseBytes caps a decoded Pixabay API response to bound memory.
+	pixabayMaxResponseBytes = 10 << 20 // 10 MiB
+	// pixabayPageSize is the per-page item count requested (Pixabay's max).
+	pixabayPageSize = 200
+	// pixabayMaxPages bounds pagination to avoid unbounded crawling.
+	pixabayMaxPages = 5
+)
+
 // pixabayProvider handles communication with the Pixabay API and resolves artwork sources.
 type pixabayProvider struct {
 	apiKey  string
@@ -82,7 +91,7 @@ func (p *pixabayProvider) fetchAllPages(ctx context.Context, baseURL string) ([]
 	page := 1
 
 	for {
-		u := fmt.Sprintf("%s&per_page=200&page=%d", baseURL, page)
+		u := fmt.Sprintf("%s&per_page=%d&page=%d", baseURL, pixabayPageSize, page)
 		p.logger.Debug("fetching pixabay page", "url", u, "page", page)
 
 		urls, err := p.fetchPhotoList(ctx, u)
@@ -96,12 +105,12 @@ func (p *pixabayProvider) fetchAllPages(ctx context.Context, baseURL string) ([]
 
 		allUrls = append(allUrls, urls...)
 
-		if len(urls) < 200 {
+		if len(urls) < pixabayPageSize {
 			break
 		}
 		page++
 
-		if page > 5 {
+		if page > pixabayMaxPages {
 			break
 		}
 	}
@@ -128,8 +137,7 @@ func (p *pixabayProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]
 	var result struct {
 		Hits []pixabayPhoto `json:"hits"`
 	}
-	maxBytes := int64(10 * 1024 * 1024) // 10MB limit
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
+	reader := http.MaxBytesReader(nil, resp.Body, pixabayMaxResponseBytes)
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode pixabay response: %w", err)
 	}

@@ -68,10 +68,18 @@ func blurImage(src *image.RGBA, radius int) *image.RGBA {
 	return blurred
 }
 
+// avgChannel returns the box-blur window mean as a byte. Each summed sample is
+// a 0-255 channel value, so sum/windowSize is inherently within byte range and
+// the conversion cannot overflow.
+func avgChannel(sum, windowSize int) uint8 {
+	return uint8(sum / windowSize) //nolint:gosec // mean of 0-255 samples stays in byte range
+}
+
 //nolint:dupl // horizontal and vertical passes are structurally similar but iterate differently
 func boxBlurH(src, dst *image.RGBA, radius int) {
 	bounds := src.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
+	windowSize := 2*radius + 1
 	for y := 0; y < h; y++ {
 		var rSum, gSum, bSum int
 		// Initialize window
@@ -90,9 +98,9 @@ func boxBlurH(src, dst *image.RGBA, radius int) {
 
 		for x := 0; x < w; x++ {
 			offDst := y*dst.Stride + x*4
-			dst.Pix[offDst] = uint8(rSum / (2*radius + 1))
-			dst.Pix[offDst+1] = uint8(gSum / (2*radius + 1))
-			dst.Pix[offDst+2] = uint8(bSum / (2*radius + 1))
+			dst.Pix[offDst] = avgChannel(rSum, windowSize)
+			dst.Pix[offDst+1] = avgChannel(gSum, windowSize)
+			dst.Pix[offDst+2] = avgChannel(bSum, windowSize)
 			dst.Pix[offDst+3] = 255
 
 			// Slide window
@@ -119,6 +127,7 @@ func boxBlurH(src, dst *image.RGBA, radius int) {
 func boxBlurV(src, dst *image.RGBA, radius int) {
 	bounds := src.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
+	windowSize := 2*radius + 1
 	for x := 0; x < w; x++ {
 		var rSum, gSum, bSum int
 		// Initialize window
@@ -137,9 +146,9 @@ func boxBlurV(src, dst *image.RGBA, radius int) {
 
 		for y := 0; y < h; y++ {
 			offDst := y*dst.Stride + x*4
-			dst.Pix[offDst] = uint8(rSum / (2*radius + 1))
-			dst.Pix[offDst+1] = uint8(gSum / (2*radius + 1))
-			dst.Pix[offDst+2] = uint8(bSum / (2*radius + 1))
+			dst.Pix[offDst] = avgChannel(rSum, windowSize)
+			dst.Pix[offDst+1] = avgChannel(gSum, windowSize)
+			dst.Pix[offDst+2] = avgChannel(bSum, windowSize)
 			dst.Pix[offDst+3] = 255
 
 			// Slide window

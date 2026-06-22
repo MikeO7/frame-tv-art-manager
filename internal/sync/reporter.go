@@ -27,6 +27,12 @@ func LogCycleSummary(logger *slog.Logger, s CycleSummary) {
 
 	const boxWidth = 50
 
+	// Borders are derived from boxWidth so the frame stays aligned with padLine.
+	border := strings.Repeat("═", boxWidth)
+	topBorder := "\n╔" + border + "╗\n"
+	midBorder := "╠" + border + "╣\n"
+	bottomBorder := "╚" + border + "╝\n"
+
 	padLine := func(content string) string {
 		runes := []rune(content)
 		if len(runes) > boxWidth {
@@ -37,16 +43,16 @@ func LogCycleSummary(logger *slog.Logger, s CycleSummary) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("\n╔══════════════════════════════════════════════════╗\n")
+	sb.WriteString(topBorder)
 
 	header := fmt.Sprintf("  Sync Cycle #%d - %s", s.CycleNum, time.Now().Format("2006-01-02 15:04:05"))
 	sb.WriteString(padLine(header))
 
-	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
+	sb.WriteString(midBorder)
 
 	for _, tv := range s.TVs {
 		writeTVSummary(&sb, tv, padLine)
-		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
+		sb.WriteString(midBorder)
 	}
 
 	localSummary := fmt.Sprintf("  Local:  %d files", s.TotalLocal)
@@ -59,14 +65,14 @@ func LogCycleSummary(logger *slog.Logger, s CycleSummary) {
 	sb.WriteString(padLine(localSummary))
 
 	if len(s.Warnings) > 0 {
-		sb.WriteString("╠══════════════════════════════════════════════════╣\n")
+		sb.WriteString(midBorder)
 		writeWarningsSummary(&sb, s.Warnings, padLine)
 	}
 
-	sb.WriteString("╠══════════════════════════════════════════════════╣\n")
+	sb.WriteString(midBorder)
 	sb.WriteString(padLine("  Took:   " + elapsed.String()))
 	sb.WriteString(padLine("  Next:   " + nextSync.Format("15:04:05")))
-	sb.WriteString("╚══════════════════════════════════════════════════╝\n")
+	sb.WriteString(bottomBorder)
 
 	logger.Info(sb.String())
 }
