@@ -33,3 +33,4 @@ tokens/
 /artwork/
 
 tmp/
+.venv/
