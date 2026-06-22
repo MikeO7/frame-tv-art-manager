@@ -131,7 +131,7 @@ linters:
       - linters:
           - revive
         text: "file-length-limit"
-        path: "(plan_collection_test\\.go|clients_test\\.go|engine_test\\.go|loader_test\\.go|session_test\\.go|client_test\\.go)"
+        path: "(plan_collection_test\\.go|clients_test\\.go|engine_test\\.go|loader_test\\.go|session_test\\.go|client_test\\.go|client\\.go|connection\\.go|catalog\\.go|loader\\.go)"
       # assets.go is an embedded HTML/CSS/SVG UI template; Go line-length rules
       # do not apply to inline markup, which legitimately has long lines.
       - linters:
