@@ -110,7 +110,10 @@ func (c *Client) SelectImage(ctx context.Context, id string) error {
 	return err
 }
 
-// getCategories retrieves the raw JSON list of artwork categories from the TV.
+// getCategories retrieves the raw JSON list of artwork categories from the TV
+// by opening a request envelope and extracting the content collection node.
+// This category dictionary must be pulled dynamically because firmware updates
+// can deprecate or shift default category IDs (like "MY-C0002") without warning.
 func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	id := newRequestID()
 
@@ -245,6 +248,8 @@ func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[strin
 
 // sendArtRequest wraps req in the art-app envelope, sends it, and waits for the
 // matching response, returning the parsed artResponse and the raw JSON payload.
+// It acts as the primary communication bridge for all non-D2D art commands, enforcing
+// context timeouts and standardizing error extraction for raw firmware responses.
 func (c *Client) sendArtRequest(ctx context.Context, req map[string]any) (*artResponse, json.RawMessage, error) {
 	name := fmt.Sprint(req[keyRequest])
 	reqID := fmt.Sprint(req[keyRequestID])
