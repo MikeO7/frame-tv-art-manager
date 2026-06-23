@@ -10,11 +10,15 @@ import (
 // recvLoop reads messages from the WebSocket and routes them to pending
 // request channels based on request_id or event name.
 func (c *connection) recvLoop() {
-	defer close(c.recvDone)
-
 	c.mu.Lock()
+	// Hound: Capture the current recvDone channel while locked before deferring its closure.
+	// If c.recvDone is directly passed to defer, it will be evaluated at the end of the function,
+	// which can lead to closing a newly instantiated channel if the connection reconnected concurrently.
+	done := c.recvDone
 	conn := c.conn
 	c.mu.Unlock()
+
+	defer close(done)
 
 	if conn == nil {
 		return
