@@ -10,3 +10,6 @@
 ## 2026-06-18 - parseExif Simplification
 **Learning:** The `parseExif` method in `internal/optimize/resize.go` had high cognitive complexity due to handling byte order logic alongside parsing the EXIF orientation tags.
 **Action:** Extracting the EXIF orientation tag loop into a separate `findOrientationTag` helper function significantly reduced cognitive load and cyclomatic complexity, resolving linter warnings.
+## 2024-06-23 - mapping_test.go Test Simplification
+**Learning:** Extracting overly complex and monolithic god-tests into clean `t.Run()` sub-tests while retaining their exact initialization conditions ensures coverage is preserved exactly, reducing cognitive and cyclomatic complexity metrics drastically.
+**Action:** When simplifying large tests via text manipulation, make sure that the exact variables created in the test (e.g. `m2, err := LoadMapping()`) are retained to prevent any loss of disk I/O verification.
