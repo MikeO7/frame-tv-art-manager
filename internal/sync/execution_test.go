@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
@@ -110,8 +111,8 @@ func TestTVReconciler_updateSlideshowPlan(t *testing.T) {
 	ctx := context.Background()
 
 	// Test needsUpdate = true (different value)
-	plan := &SyncPlan{Slideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffle"}}
-	transport := &mockTVTransportExecution{slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
+	plan := &SyncPlan{Slideshow: &samsung.SlideshowStatus{Value: "15", Type: ssTypeShuffle}}
+	transport := &mockTVTransportExecution{slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: ssTypeShuffle}}
 
 	reconciler.updateSlideshowPlan(ctx, plan, transport)
 
@@ -128,15 +129,15 @@ func TestTVReconciler_updateSlideshowPlan(t *testing.T) {
 	}
 
 	// Test no update needed
-	planSame := &SyncPlan{Slideshow: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
-	transportSame := &mockTVTransportExecution{slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
+	planSame := &SyncPlan{Slideshow: &samsung.SlideshowStatus{Value: "10", Type: ssTypeShuffle}}
+	transportSame := &mockTVTransportExecution{slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: ssTypeShuffle}}
 	reconciler.updateSlideshowPlan(ctx, planSame, transportSame)
 	if transportSame.setSlideshowCalled {
 		t.Errorf("did not expect SetSlideshow to be called for identical settings")
 	}
 
 	// Test failure is swallowed gracefully
-	transportFail := &mockTVTransportExecution{setSlideshowErr: errors.New("fail"), slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: "shuffle"}}
+	transportFail := &mockTVTransportExecution{setSlideshowErr: errors.New("fail"), slideshowStatus: &samsung.SlideshowStatus{Value: "10", Type: ssTypeShuffle}}
 	reconciler.updateSlideshowPlan(ctx, plan, transportFail)
 	if !transportFail.setSlideshowCalled {
 		t.Errorf("expected SetSlideshow to be called even when error returned")
@@ -208,7 +209,7 @@ func TestTVReconciler_applySelectionAndSlideshowPlan(t *testing.T) {
 	planShuffle := &SyncPlan{
 		HasChanges:        true,
 		LocalFiles:        map[string]struct{}{"test.jpg": {}},
-		PreserveSlideshow: &samsung.SlideshowStatus{Value: "15", Type: "shuffle"},
+		PreserveSlideshow: &samsung.SlideshowStatus{Value: "15", Type: ssTypeShuffle},
 	}
 	mapping := map[string]string{"test.jpg": "id-test"}
 	transport4 := &mockTVTransportExecution{}
@@ -290,7 +291,7 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 		ToDeleteUnknownIDs: []string{"id-unknown"},
 		HasChanges:         true,
 		LocalFiles:         map[string]struct{}{"file.jpg": {}},
-		PreserveSlideshow:  &samsung.SlideshowStatus{Value: "15", Type: "shuffle"},
+		PreserveSlideshow:  &samsung.SlideshowStatus{Value: "15", Type: ssTypeShuffle},
 		TurnOff:            true,
 	}
 
@@ -359,5 +360,66 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 	_, err = reconciler.ExecuteSyncPlan(ctx, plan, transportDeleteFail, mapping, policy)
 	if err != nil {
 		t.Errorf("expected no error from execution itself when delete fails, got: %v", err)
+	}
+}
+
+func TestTVReconciler_chooseImageID_ShuffleEmpty(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	reconciler := &TVReconciler{logger: logger}
+
+	shuffleSettings := &samsung.SlideshowStatus{Type: ssTypeShuffle}
+	// Passing an empty map, mapValues will return an empty slice
+	if id := reconciler.chooseImageID(map[string]string{}, shuffleSettings); id != "" {
+		t.Errorf("expected empty string for empty mapping in shuffle mode, got %s", id)
+	}
+
+	normalSettings := &samsung.SlideshowStatus{Type: "normal"}
+	if id := reconciler.chooseImageID(map[string]string{}, normalSettings); id != "" {
+		t.Errorf("expected empty string for empty mapping in normal mode, got %s", id)
+	}
+}
+
+func TestTVReconciler_ContextCancellation(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	reconciler := &TVReconciler{logger: logger}
+
+	// Test L077-L078: context cancellation during processUploads delay
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel the context
+
+	plan := &SyncPlan{
+		ToUpload: []UploadJob{
+			{Filename: "file1.jpg"},
+			{Filename: "file2.jpg"},
+		},
+	}
+	transport := &mockTVTransportExecution{uploadId: "id"}
+	mapping := &Mapping{data: map[string]string{}}
+	policy := config.SyncPolicy{UploadDelay: 1 * time.Minute, UploadAttempts: 1} // large delay
+
+	eCtx := &executionContext{
+		ctx:       ctx,
+		plan:      plan,
+		transport: transport,
+		mapping:   mapping,
+		policy:    policy,
+		result:    &TVSyncResult{NewUploads: make(map[string]string)},
+	}
+
+	err := reconciler.processUploads(eCtx)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled error, got %v", err)
+	}
+
+	// Test L178-L179: context cancellation during upload retry delay
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	cancel2() // pre-cancel
+
+	transportFail := &mockTVTransportExecution{uploadErr: errors.New("fail")}
+	policyRetry := config.SyncPolicy{UploadAttempts: 2, UploadDelay: 1 * time.Minute}
+
+	_, err = reconciler.uploadWithRetry(ctx2, transportFail, UploadJob{Filename: "file1.jpg"}, policyRetry)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled error during upload retry, got %v", err)
 	}
 }
