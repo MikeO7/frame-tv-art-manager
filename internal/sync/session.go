@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -219,7 +218,7 @@ func (s *TVReconciler) planSyncCycle(
 		Logger:            s.logger,
 	})
 
-	s.logPlan(plan, policy)
+	logPlan(plan, policy, s.logger)
 	return plan
 }
 
@@ -256,25 +255,6 @@ func (s *TVReconciler) handleCapacityError(execResult *TVSyncResult, plan *Plan,
 	}
 }
 
-func (s *TVReconciler) connectTV(
-	ctx context.Context,
-	transport TVTransport,
-	policy config.SyncPolicy,
-	result *TVSyncResult,
-) error {
-	if err := transport.Connect(ctx); err != nil {
-		if errors.Is(err, samsung.ErrGateFailed) {
-			s.logger.Info("skipping — REST gate says TV is busy")
-			result.Status = "skipped (gate)"
-			return nil
-		}
-		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
-		result.Status = statusError
-		return fmt.Errorf("connect: %w", err)
-	}
-	return nil
-}
-
 func (s *TVReconciler) getTVContent(
 	ctx context.Context,
 	transport TVTransport,
@@ -299,21 +279,4 @@ func (s *TVReconciler) getTVContent(
 	}
 
 	return tvContent, nil
-}
-
-func (s *TVReconciler) logPlan(plan *Plan, policy config.SyncPolicy) {
-	if len(plan.ToDeleteUnknownIDs) > 0 {
-		if policy.RemoveUnknownImages {
-			s.logger.Info("will remove unknown images", "count", len(plan.ToDeleteUnknownIDs))
-		} else {
-			s.logger.Warn("unknown images on TV (set REMOVE_UNKNOWN_IMAGES=true to remove)",
-				"count", len(plan.ToDeleteUnknownIDs))
-		}
-	}
-
-	s.logger.Info("sync plan",
-		"to_upload", len(plan.ToUpload),
-		"to_delete", len(plan.ToDeleteIDs),
-		"unknown_to_delete", len(plan.ToDeleteUnknownIDs),
-	)
 }

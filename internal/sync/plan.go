@@ -275,3 +275,20 @@ func formatGraceDisplay(hours float64) string {
 	}
 	return fmt.Sprintf("%.1f", hours)
 }
+
+func logPlan(plan *Plan, policy config.SyncPolicy, logger *slog.Logger) {
+	if len(plan.ToDeleteUnknownIDs) > 0 {
+		if policy.RemoveUnknownImages {
+			logger.Info("will remove unknown images", "count", len(plan.ToDeleteUnknownIDs))
+		} else {
+			logger.Warn("unknown images on TV (set REMOVE_UNKNOWN_IMAGES=true to remove)",
+				"count", len(plan.ToDeleteUnknownIDs))
+		}
+	}
+
+	logger.Info("sync plan",
+		"to_upload", len(plan.ToUpload),
+		"to_delete", len(plan.ToDeleteIDs),
+		"unknown_to_delete", len(plan.ToDeleteUnknownIDs),
+	)
+}
