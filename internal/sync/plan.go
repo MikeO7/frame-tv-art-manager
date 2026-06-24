@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -274,4 +275,47 @@ func formatGraceDisplay(hours float64) string {
 		return fmt.Sprintf("%d", int(hours))
 	}
 	return fmt.Sprintf("%.1f", hours)
+}
+
+func (s *TVReconciler) logPlan(plan *Plan, policy config.SyncPolicy) {
+	if len(plan.ToDeleteUnknownIDs) > 0 {
+		if policy.RemoveUnknownImages {
+			s.logger.Info("will remove unknown images", "count", len(plan.ToDeleteUnknownIDs))
+		} else {
+			s.logger.Warn("unknown images on TV (set REMOVE_UNKNOWN_IMAGES=true to remove)",
+				"count", len(plan.ToDeleteUnknownIDs))
+		}
+	}
+
+	s.logger.Info("sync plan",
+		"to_upload", len(plan.ToUpload),
+		"to_delete", len(plan.ToDeleteIDs),
+		"unknown_to_delete", len(plan.ToDeleteUnknownIDs),
+	)
+}
+
+func (s *TVReconciler) getTVContent(
+	ctx context.Context,
+	transport TVTransport,
+	result *TVSyncResult,
+) ([]samsung.ArtContent, error) {
+	result.Model = transport.Model()
+
+	if !transport.IsInArtMode(ctx) {
+		s.logger.Info("skipping — TV not in art mode")
+		result.Status = statusSkippedNotArtMode
+		return nil, nil
+	}
+	result.ArtMode = true
+
+	if err := transport.SaveMetadata(ctx); err != nil {
+		s.logger.Debug("could not save metadata", "error", err)
+	}
+
+	tvContent, err := transport.ListUploaded(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get TV images: %w", err)
+	}
+
+	return tvContent, nil
 }
