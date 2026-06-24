@@ -11,10 +11,10 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-// ExecutePlan applies the computed planning rules onto the target transport.
-func (s *TVReconciler) ExecutePlan(
+// ExecuteSyncPlan applies the computed planning rules onto the target transport.
+func (s *TVReconciler) ExecuteSyncPlan(
 	ctx context.Context,
-	plan *Plan,
+	plan *SyncPlan,
 	transport TVTransport,
 	mapping *Mapping,
 	policy config.SyncPolicy,
@@ -62,7 +62,7 @@ func (s *TVReconciler) ExecutePlan(
 
 type executionContext struct {
 	ctx       context.Context
-	plan      *Plan
+	plan      *SyncPlan
 	transport TVTransport
 	mapping   *Mapping
 	policy    config.SyncPolicy
@@ -186,7 +186,7 @@ func (s *TVReconciler) uploadWithRetry(
 
 func (s *TVReconciler) applySelectionAndSlideshowPlan(
 	ctx context.Context,
-	plan *Plan,
+	plan *SyncPlan,
 	transport TVTransport,
 	finalMapping map[string]string,
 ) {
@@ -235,7 +235,7 @@ func (s *TVReconciler) chooseImageID(finalMapping map[string]string, settings *s
 
 func (s *TVReconciler) updateSlideshowPlan(
 	ctx context.Context,
-	plan *Plan,
+	plan *SyncPlan,
 	transport TVTransport,
 ) {
 	if plan.Slideshow == nil {
@@ -259,7 +259,7 @@ func (s *TVReconciler) updateSlideshowPlan(
 
 func (s *TVReconciler) updateBrightnessPlan(
 	ctx context.Context,
-	plan *Plan,
+	plan *SyncPlan,
 	transport TVTransport,
 	result *TVSyncResult,
 ) {
@@ -274,7 +274,7 @@ func (s *TVReconciler) updateBrightnessPlan(
 
 func (s *TVReconciler) handleAutoOffPlan(
 	ctx context.Context,
-	plan *Plan,
+	plan *SyncPlan,
 	transport TVTransport,
 ) {
 	if !plan.TurnOff {
@@ -286,4 +286,23 @@ func (s *TVReconciler) handleAutoOffPlan(
 	} else {
 		s.logger.Info("TV turned off")
 	}
+}
+
+func (s *TVReconciler) connectTV(
+	ctx context.Context,
+	transport TVTransport,
+	policy config.SyncPolicy,
+	result *TVSyncResult,
+) error {
+	if err := transport.Connect(ctx); err != nil {
+		if errors.Is(err, samsung.ErrGateFailed) {
+			s.logger.Info("skipping — REST gate says TV is busy")
+			result.Status = "skipped (gate)"
+			return nil
+		}
+		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
+		result.Status = statusError
+		return fmt.Errorf("connect: %w", err)
+	}
+	return nil
 }

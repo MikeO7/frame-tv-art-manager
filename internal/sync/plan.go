@@ -28,7 +28,7 @@ type PlanInput struct {
 }
 
 // PlanSync evaluates current states and plans synchronization purely in memory.
-func PlanSync(in PlanInput) *Plan {
+func PlanSync(in PlanInput) *SyncPlan {
 	policy := in.Cfg.SyncPolicy()
 
 	trackedFiles, unknownIDs, staleFiles := reconcileInventory(in.MappingData, in.TVContent, in.Logger)
@@ -47,7 +47,7 @@ func PlanSync(in PlanInput) *Plan {
 
 	slideshow := determineSlideshowSettings(in.Cfg, in.Logger)
 
-	return &Plan{
+	return &SyncPlan{
 		IP:                 in.IP,
 		ToUpload:           toUpload,
 		ToDeleteIDs:        toDeleteIDs,
@@ -274,21 +274,4 @@ func formatGraceDisplay(hours float64) string {
 		return fmt.Sprintf("%d", int(hours))
 	}
 	return fmt.Sprintf("%.1f", hours)
-}
-
-func logPlan(plan *Plan, policy config.SyncPolicy, logger *slog.Logger) {
-	if len(plan.ToDeleteUnknownIDs) > 0 {
-		if policy.RemoveUnknownImages {
-			logger.Info("will remove unknown images", "count", len(plan.ToDeleteUnknownIDs))
-		} else {
-			logger.Warn("unknown images on TV (set REMOVE_UNKNOWN_IMAGES=true to remove)",
-				"count", len(plan.ToDeleteUnknownIDs))
-		}
-	}
-
-	logger.Info("sync plan",
-		"to_upload", len(plan.ToUpload),
-		"to_delete", len(plan.ToDeleteIDs),
-		"unknown_to_delete", len(plan.ToDeleteUnknownIDs),
-	)
 }
