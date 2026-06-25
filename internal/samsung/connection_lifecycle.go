@@ -43,6 +43,10 @@ func newConnection(cfg connConfig) *connection {
 	}
 }
 
+// maxMessageSize is the maximum size in bytes of a message read from the TV WebSocket.
+// The default in coder/websocket is 32 KB, which is too small for large content lists.
+const maxMessageSize = 16 * 1024 * 1024 // 16 MB
+
 func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, error) {
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -63,6 +67,7 @@ func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, e
 	if httpResp != nil && httpResp.Body != nil {
 		_ = httpResp.Body.Close()
 	}
+	conn.SetReadLimit(maxMessageSize)
 	return conn, nil
 }
 
