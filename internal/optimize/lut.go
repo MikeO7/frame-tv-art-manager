@@ -14,7 +14,6 @@ var (
 	lutCraquelureOnce sync.Once
 )
 
-//nolint:gocognit // one-time procedural craquelure (crack-pattern) generation over a seeded grid
 func initializeCraquelure() {
 	type pt struct {
 		x, y float64

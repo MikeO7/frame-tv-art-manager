@@ -134,14 +134,3 @@ func (m *Mapping) AllContentIDs() map[string]string {
 	}
 	return out
 }
-
-// TrackedFilenames returns the set of filenames that have known content IDs.
-func (m *Mapping) TrackedFilenames() map[string]struct{} {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make(map[string]struct{}, len(m.data))
-	for k := range m.data {
-		out[k] = struct{}{}
-	}
-	return out
-}

@@ -179,7 +179,6 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	return lutSrgb[idxR], lutSrgb[idxG], lutSrgb[idxB]
 }
 
-//nolint:gocognit // per-pixel contrast/gamut mapping across goroutine-partitioned rows kept inline for throughput
 func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()

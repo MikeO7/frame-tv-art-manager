@@ -156,24 +156,6 @@ func TestMapping_AllContentIDs(t *testing.T) {
 	}
 }
 
-func TestMapping_TrackedFilenames(t *testing.T) {
-	m := &Mapping{
-		data: map[string]string{
-			testAJPG: valIDA,
-			testBJPG: valIDB,
-		},
-	}
-	expected := map[string]struct{}{
-		testAJPG: {},
-		testBJPG: {},
-	}
-
-	got := m.TrackedFilenames()
-	if !reflect.DeepEqual(got, expected) {
-		t.Errorf("expected %v, got %v", expected, got)
-	}
-}
-
 func TestMapping_DeleteBatch(t *testing.T) {
 	m := &Mapping{
 		data: map[string]string{

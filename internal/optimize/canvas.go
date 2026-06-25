@@ -56,7 +56,6 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	return dst
 }
 
-//nolint:revive // per-pixel hot loop: flat parameters avoid per-pixel struct-construction overhead
 func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
 	impasto := calculateScharrImpasto(src, x, y)
 	weave, varnishPool := calculateWeave(x, y)

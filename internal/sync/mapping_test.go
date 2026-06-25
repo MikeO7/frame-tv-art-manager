@@ -83,13 +83,6 @@ func TestMapping_Lifecycle(t *testing.T) {
 	if _, ok := m2.GetContentID("b2.jpg"); ok {
 		t.Errorf("expected b2.jpg to be deleted by batch")
 	}
-
-	// Case 6: TrackedFilenames
-	m2.Set("track.jpg", "TRACKED_ID")
-	tracked := m2.TrackedFilenames()
-	if _, ok := tracked["track.jpg"]; !ok {
-		t.Errorf("expected track.jpg to be in TrackedFilenames")
-	}
 }
 
 func TestMapping_ErrorsAndEdgeCases(t *testing.T) {
