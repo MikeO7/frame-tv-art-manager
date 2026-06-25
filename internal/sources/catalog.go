@@ -64,21 +64,23 @@ func (c *ArtworkCatalog) NoteFileRename(oldName, newName string) {
 	if newName != "" {
 		c.catalog[newName] = struct{}{}
 	}
-	for identity, filename := range c.prefixMap {
-		if filename == oldName {
-			if newName != "" {
-				c.prefixMap[identity] = newName
-			} else {
-				delete(c.prefixMap, identity)
-			}
+	if _, ok := c.visited[oldName]; ok {
+		delete(c.visited, oldName)
+		if newName != "" {
+			c.visited[newName] = true
 		}
 	}
-	for hash, filename := range c.hashIndex {
-		if filename == oldName {
-			if newName != "" {
-				c.hashIndex[hash] = newName
+	c.updateMap(c.prefixMap, oldName, newName)
+	c.updateMap(c.hashIndex, oldName, newName)
+}
+
+func (c *ArtworkCatalog) updateMap(m map[string]string, oldVal, newVal string) {
+	for k, v := range m {
+		if v == oldVal {
+			if newVal != "" {
+				m[k] = newVal
 			} else {
-				delete(c.hashIndex, hash)
+				delete(m, k)
 			}
 		}
 	}

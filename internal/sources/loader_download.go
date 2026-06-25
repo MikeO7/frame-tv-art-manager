@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
 func (l *Loader) checkExisting(identity string) (string, bool) {
@@ -34,6 +36,11 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename, identity st
 		return false, err
 	}
 
+	if resp.ContentLength > 0 && written != resp.ContentLength {
+		_ = os.Remove(tmpPath)
+		return false, fmt.Errorf("incomplete download: expected %d bytes, got %d", resp.ContentLength, written)
+	}
+
 	finalName, isNew, err := l.index.RegisterDownload(tmpPath, filename, identity)
 	if err != nil {
 		_ = os.Remove(tmpPath)
@@ -44,6 +51,18 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename, identity st
 	}
 
 	l.logger.Info("downloaded source image", "file", finalName, "size_bytes", written)
+
+	optCfg := l.cfg.OptimizeOptions()
+	if optCfg.Enabled {
+		finalPath := filepath.Join(l.artworkDir, finalName)
+		optName, modified, optErr := optimize.OptimizeFile(finalPath, optCfg, l.logger)
+		if optErr != nil {
+			l.logger.Warn("post-download optimization failed", "file", finalName, "error", optErr)
+		} else if modified && optName != finalName {
+			l.index.NoteFileRename(finalName, optName)
+		}
+	}
+
 	return true, nil
 }
 
