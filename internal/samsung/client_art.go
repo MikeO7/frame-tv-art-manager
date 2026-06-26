@@ -111,6 +111,13 @@ func (c *Client) SelectImage(ctx context.Context, id string) error {
 }
 
 // getCategories retrieves the raw JSON list of artwork categories from the TV.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - json.RawMessage: The raw JSON byte slice containing the artwork categories.
+//   - error: Any network, validation, or underlying TV API error encountered.
 func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	id := newRequestID()
 
@@ -124,7 +131,9 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	return raw, err
 }
 
-func (c *Client) registerImageAddedListener() (waitFn func(ctx context.Context, timeout time.Duration) (string, error)) {
+// registerImageAddedListener prepares a listener for the image_added event.
+func (c *Client) registerImageAddedListener() func(ctx context.Context, timeout time.Duration) (string, error) {
+
 	ch := make(chan json.RawMessage, 1)
 
 	c.artConn.pendingMu.Lock()
@@ -245,6 +254,15 @@ func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[strin
 
 // sendArtRequest wraps req in the art-app envelope, sends it, and waits for the
 // matching response, returning the parsed artResponse and the raw JSON payload.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - req: A map containing the structured payload for the art app API.
+//
+// Returns:
+//   - *artResponse: The successfully parsed and structurally validated TV response.
+//   - json.RawMessage: The raw JSON byte slice payload directly from the TV.
+//   - error: Any network, validation, or underlying TV API error encountered.
 func (c *Client) sendArtRequest(ctx context.Context, req map[string]any) (*artResponse, json.RawMessage, error) {
 	name := fmt.Sprint(req[keyRequest])
 	reqID := fmt.Sprint(req[keyRequestID])
