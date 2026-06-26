@@ -133,7 +133,6 @@ func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 
 // registerImageAddedListener prepares a listener for the image_added event.
 func (c *Client) registerImageAddedListener() func(ctx context.Context, timeout time.Duration) (string, error) {
-
 	ch := make(chan json.RawMessage, 1)
 
 	c.artConn.pendingMu.Lock()
