@@ -48,8 +48,8 @@ type UploadJob struct {
 	Matte    string
 }
 
-// SyncPlan holds the pure decisions of a synchronization cycle.
-type SyncPlan struct {
+// Plan holds the pure decisions of a synchronization cycle.
+type Plan struct {
 	IP                 string
 	ToUpload           []UploadJob
 	ToDeleteIDs        []string
@@ -135,7 +135,7 @@ func (s *TVReconciler) Reconcile(
 
 	plan := s.planSyncCycle(ctx, transport, policy, tvContent, localFiles)
 
-	execResult, err := s.ExecuteSyncPlan(ctx, plan, transport, s.mapping, policy)
+	execResult, err := s.ExecutePlan(ctx, plan, transport, s.mapping, policy)
 	if err != nil {
 		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
 		execResult.Status = statusError
@@ -159,7 +159,7 @@ func (s *TVReconciler) planSyncCycle(
 	policy config.SyncPolicy,
 	tvContent []samsung.ArtContent,
 	localFiles map[string]struct{},
-) *SyncPlan {
+) *Plan {
 	var preserveSlideshow *samsung.SlideshowStatus
 	if !policy.SlideshowOverride {
 		preserveSlideshow, _ = transport.SlideshowStatus(ctx)
@@ -194,7 +194,7 @@ func (s *TVReconciler) applyCapacityFilter(localFiles map[string]struct{}) (map[
 	return localFiles, capacityMgr
 }
 
-func (s *TVReconciler) handleCapacityError(execResult *TVSyncResult, plan *SyncPlan, capacityMgr *CapacityManager) {
+func (s *TVReconciler) handleCapacityError(execResult *TVSyncResult, plan *Plan, capacityMgr *CapacityManager) {
 	if !execResult.StorageFull {
 		return
 	}
@@ -258,7 +258,7 @@ func (s *TVReconciler) getTVContent(
 	return tvContent, nil
 }
 
-func (s *TVReconciler) logPlan(plan *SyncPlan, policy config.SyncPolicy) {
+func (s *TVReconciler) logPlan(plan *Plan, policy config.SyncPolicy) {
 	if len(plan.ToDeleteUnknownIDs) > 0 {
 		if policy.RemoveUnknownImages {
 			s.logger.Info("will remove unknown images", "count", len(plan.ToDeleteUnknownIDs))
@@ -274,3 +274,46 @@ func (s *TVReconciler) logPlan(plan *SyncPlan, policy config.SyncPolicy) {
 		"unknown_to_delete", len(plan.ToDeleteUnknownIDs),
 	)
 }
+
+// tvConnection manages the lifecycle and health tracking of a TV connection.
+type tvConnection interface {
+	ShouldSkip() bool
+	Connect(ctx context.Context) error
+	Close() error
+	RecordFailure(baseInterval time.Duration)
+	RecordSuccess()
+}
+
+// tvArtStore manages the artwork content stored on the TV.
+type tvArtStore interface {
+	ListUploaded(ctx context.Context) ([]samsung.ArtContent, error)
+	Upload(ctx context.Context, filePath, fileType, matte string) (string, error)
+	DeleteImages(ctx context.Context, ids []string) error
+}
+
+// tvState exposes read-only device identity, mode, and metadata persistence.
+type tvState interface {
+	Model() string
+	IsInArtMode(ctx context.Context) bool
+	SaveMetadata(ctx context.Context) error
+}
+
+// tvDisplay controls how the TV presents artwork (selection, slideshow, brightness, power).
+type tvDisplay interface {
+	SelectImage(ctx context.Context, contentID string) error
+	SlideshowStatus(ctx context.Context) (*samsung.SlideshowStatus, error)
+	SetSlideshow(ctx context.Context, status samsung.SlideshowStatus) error
+	SetBrightness(ctx context.Context, val int) error
+	TurnOff(ctx context.Context) error
+}
+
+// TVTransport is the seam for Samsung TV I/O used during reconciliation,
+// composed from the connection, art-store, state, and display role interfaces.
+type TVTransport interface {
+	tvConnection
+	tvArtStore
+	tvState
+	tvDisplay
+}
+
+var _ TVTransport = (*samsung.Client)(nil)
