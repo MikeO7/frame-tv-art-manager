@@ -97,7 +97,6 @@ func readImagePayload(r io.Reader) (*bytes.Buffer, string, int, error) {
 	return body, ext, 0, nil
 }
 
-
 // imageExtension maps a sniffed MIME type to a supported file extension.
 func imageExtension(contentType string) (string, bool) {
 	switch contentType {
