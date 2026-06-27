@@ -18,13 +18,13 @@ func (p *directProvider) Name() string {
 	return "direct"
 }
 
-func (p *directProvider) CanHandle(line string) bool {
+func (p *directProvider) CanHandle(_ string) bool {
 	// Direct provider is the fallback, so it matches everything not matched by others.
 	// But it can also match lines starting with "direct:" explicitly.
 	return true
 }
 
-func (p *directProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
+func (p *directProvider) Resolve(_ context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
 	urlStr := strings.TrimPrefix(line, "direct:")
 
 	u, err := neturl.Parse(urlStr)

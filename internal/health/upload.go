@@ -50,9 +50,9 @@ func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = fileData.Close() }()
 
-	payload, ext, uerr := readImagePayload(fileData)
-	if uerr != nil {
-		writeJSONError(w, uerr.code, uerr.msg)
+	payload, ext, code, err := readImagePayload(fileData)
+	if err != nil {
+		writeJSONError(w, code, err.Error())
 		return
 	}
 
@@ -68,46 +68,35 @@ func (s *Server) maxUploadBytes() int64 {
 	return defaultMaxUploadBytes
 }
 
-// uploadError pairs an HTTP status code with a client-facing message so payload
-// parsing can report precise failures without writing the response itself.
-type uploadError struct {
-	code int
-	msg  string
-}
-
-func (e *uploadError) Error() string { return e.msg }
-
 // readImagePayload buffers the upload, verifying via content sniffing that it is
 // a supported image and that it stayed within the body-size limit.
-func readImagePayload(r io.Reader) (*bytes.Buffer, string, *uploadError) {
+func readImagePayload(r io.Reader) (*bytes.Buffer, string, int, error) {
 	// io.ReadFull fills the 512-byte sniff buffer across multiple reads; a short
 	// stream yields EOF/ErrUnexpectedEOF, expected for small images and not a failure.
 	header := make([]byte, 512)
 	n, err := io.ReadFull(r, header)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return nil, "", readFailure(err, "Failed to read upload stream")
+		if isTooLarge(err) {
+			return nil, "", http.StatusBadRequest, errors.New("file too large (exceeds upload size limit)")
+		}
+		return nil, "", http.StatusInternalServerError, errors.New("Failed to read upload stream")
 	}
 
 	ext, ok := imageExtension(http.DetectContentType(header[:n]))
 	if !ok {
-		return nil, "", &uploadError{http.StatusBadRequest, "Unsupported file type (only JPEG and PNG are allowed)"}
+		return nil, "", http.StatusBadRequest, errors.New("Unsupported file type (only JPEG and PNG are allowed)")
 	}
 
 	body := bytes.NewBuffer(header[:n:n])
 	if _, err := io.Copy(body, r); err != nil {
-		return nil, "", readFailure(err, "Failed to read upload payload")
+		if isTooLarge(err) {
+			return nil, "", http.StatusBadRequest, errors.New("file too large (exceeds upload size limit)")
+		}
+		return nil, "", http.StatusInternalServerError, errors.New("Failed to read upload payload")
 	}
-	return body, ext, nil
+	return body, ext, 0, nil
 }
 
-// readFailure classifies a read error as either an oversized-body rejection
-// (400) or an internal read failure (500) with the supplied message.
-func readFailure(err error, internalMsg string) *uploadError {
-	if isTooLarge(err) {
-		return &uploadError{http.StatusBadRequest, "file too large (exceeds upload size limit)"}
-	}
-	return &uploadError{http.StatusInternalServerError, internalMsg}
-}
 
 // imageExtension maps a sniffed MIME type to a supported file extension.
 func imageExtension(contentType string) (string, bool) {
