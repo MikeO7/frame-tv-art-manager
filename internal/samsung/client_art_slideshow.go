@@ -12,6 +12,12 @@ import (
 
 // SaveMetadata fetches device info, slideshow status, and artwork categories,
 // writing them to a per-TV JSON file in the tokens directory for auditing.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network requests.
+//
+// Returns:
+//   - error: Any network, serialization, or filesystem error encountered during save.
 func (c *Client) SaveMetadata(ctx context.Context) error {
 	metadata := make(map[string]any)
 	metadata["timestamp"] = time.Now().Format(time.RFC3339)

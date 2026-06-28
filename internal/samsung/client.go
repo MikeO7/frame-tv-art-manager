@@ -78,6 +78,14 @@ func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Cl
 	}
 }
 
+// checkGate probes the TV's REST gate endpoint (if enabled) to determine if it is
+// in art mode and safe to sync without prompting the user.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the probe.
+//
+// Returns:
+//   - error: ErrGateFailed if the TV is not in art mode, or nil if safe.
 func (c *Client) checkGate(ctx context.Context) error {
 	if !c.opts.EnableRESTGate {
 		return nil
@@ -95,6 +103,15 @@ func (c *Client) checkGate(ctx context.Context) error {
 	return nil
 }
 
+// setupToken checks for an existing token file and performs a one-time remote
+// handshake to obtain a new token if it does not exist.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the handshake.
+//   - tokenFile: The filesystem path where the token is or should be stored.
+//
+// Returns:
+//   - error: Any network or filesystem error encountered during setup.
 func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	if _, err := os.Stat(tokenFile); !os.IsNotExist(err) {
 		return nil
@@ -176,6 +193,14 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// checkArtError inspects the parsed art API response for error codes and
+// maps them to typed application errors.
+//
+// Parameters:
+//   - resp: The unmarshaled response from the Samsung art API.
+//
+// Returns:
+//   - error: ErrStorageFull, ErrArtAPIError, or nil if successful.
 func checkArtError(resp *artResponse) error {
 	if resp.ErrorCode != 0 {
 		// 11001 is sometimes returned by Samsung's art app for out-of-storage.
@@ -227,6 +252,16 @@ func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
 	}
 }
 
+// ensureToken attempts a brief connection to the remote control endpoint to trigger
+// the TV's authorization prompt and save the resulting token.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the connection.
+//   - tokenFile: The path where the new authentication token will be saved.
+//   - port: The integer network port for the remote control endpoint.
+//
+// Returns:
+//   - error: Any network error encountered during the connection attempt.
 func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
 	conn := newConnection(c.remoteControlConfig(port, tokenFile))
 	if err := conn.Open(ctx); err != nil {
@@ -235,6 +270,15 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 	return conn.Close()
 }
 
+// fetchDeviceInfo retrieves the TV's hardware and firmware information from the REST API.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - port: The integer network port to query for device information.
+//
+// Returns:
+//   - *DeviceInfo: The parsed device capabilities and system properties.
+//   - error: Any network or serialization error encountered during retrieval.
 func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, error) {
 	url := fmt.Sprintf("https://%s:%d/api/v2/", c.IP, port)
 
@@ -274,6 +318,15 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	return &envelope.Device, nil
 }
 
+// checkArtModeGate executes an HTTP GET request against the TV's art mode gate
+// to verify if it is currently displaying artwork.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - bool: True if the TV is in art mode (returns HTTP 200), false otherwise.
+//   - error: Always nil; network errors are treated as false for safety.
 func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 	url := fmt.Sprintf("http://%s:%d/ms/art", c.IP, portRESTGate)
 

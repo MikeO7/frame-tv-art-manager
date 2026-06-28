@@ -26,3 +26,6 @@
 ## 2026-06-19 - Context alignment for undocumented connection methods
 **Learning:** Core connection and request methods in the Samsung TV client (`sendWOL`, `getCategories`, `sendArtRequest`) were completely undocumented, making it difficult to understand their precise inputs and outputs within the TV interaction lifecycle.
 **Action:** When auditing clients or connection facades, actively look for and document lower-level functional wrappers (like network requests and broadcast methods). Use exact string replacement to attach complete parameter and return breakdown blocks directly above the un-documented method definitions.
+## 2026-06-28 - Context alignment and revive linter constraints for blank imports
+**Learning:** Adding JSDoc/GoDoc blocks via automated scripts can sometimes inadvertently highlight pre-existing linting failures like `revive: blank-imports` or `unused-parameter` if the file is re-evaluated by strict linters post-modification.
+**Action:** When fixing linter errors related to `blank-imports` (like `_ "image/jpeg"`), always include an explanatory comment (e.g., `// register jpeg decoder`) directly above the import to satisfy the `revive` linter.

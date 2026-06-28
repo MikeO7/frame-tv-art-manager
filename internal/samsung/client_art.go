@@ -75,6 +75,13 @@ func (c *Client) ListUploaded(ctx context.Context) ([]ArtContent, error) {
 }
 
 // DeleteImages removes artwork from the TV by content IDs.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - ids: A slice of string content IDs identifying the images to remove.
+//
+// Returns:
+//   - error: Any network or API error encountered during deletion.
 func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 	id := newRequestID()
 
@@ -95,6 +102,13 @@ func (c *Client) DeleteImages(ctx context.Context, ids []string) error {
 }
 
 // SelectImage sets the currently displayed artwork by content ID.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - id: The string content ID of the image to display.
+//
+// Returns:
+//   - error: Any network or API error encountered during the selection.
 func (c *Client) SelectImage(ctx context.Context, id string) error {
 	reqID := newRequestID()
 
@@ -111,6 +125,13 @@ func (c *Client) SelectImage(ctx context.Context, id string) error {
 }
 
 // getCategories retrieves the raw JSON list of artwork categories from the TV.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - json.RawMessage: The raw JSON byte payload containing the category list.
+//   - error: Any network or API error encountered during retrieval.
 func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	id := newRequestID()
 
@@ -221,6 +242,15 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (
 
 // buildSendImageRequest constructs the art-API "send_image" payload that
 // announces a pending D2D socket transfer of the given size and matte.
+//
+// Parameters:
+//   - id: The string request ID to use for the transaction.
+//   - fileType: The MIME or file extension type of the image.
+//   - matte: The Samsung-specific string identifier for the border style.
+//   - fileSize: The size in bytes of the image file to be transferred.
+//
+// Returns:
+//   - map[string]any: The assembled JSON payload for the request.
 func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[string]any {
 	// connectionIDModulus bounds the generated connection_id to 4 GiB, the
 	// range the TV's D2D handshake expects.
@@ -245,6 +275,15 @@ func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[strin
 
 // sendArtRequest wraps req in the art-app envelope, sends it, and waits for the
 // matching response, returning the parsed artResponse and the raw JSON payload.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//   - req: A map representing the JSON payload of the art API request.
+//
+// Returns:
+//   - *artResponse: The successfully parsed application-level response.
+//   - json.RawMessage: The raw JSON byte slice of the response.
+//   - error: Any network, serialization, or API-level error encountered.
 func (c *Client) sendArtRequest(ctx context.Context, req map[string]any) (*artResponse, json.RawMessage, error) {
 	name := fmt.Sprint(req[keyRequest])
 	reqID := fmt.Sprint(req[keyRequestID])

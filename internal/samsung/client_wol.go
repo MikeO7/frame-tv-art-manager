@@ -83,6 +83,12 @@ func (c *Client) sendWOL(ctx context.Context, macAddr string) error {
 }
 
 // TurnOff powers off the TV via the remote control API.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network requests.
+//
+// Returns:
+//   - error: Any network or protocol error encountered during the power sequence.
 func (c *Client) TurnOff(ctx context.Context) error {
 	return c.turnOffTV(ctx, portArtWSS)
 }
