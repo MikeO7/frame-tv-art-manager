@@ -7,8 +7,6 @@ import (
 )
 
 // ReadOrientation reads the EXIF orientation tag from an image file if available.
-//
-//nolint:gocognit,gocyclo // custom EXIF marker scan with raw JPEG bounds checks
 func ReadOrientation(r io.Reader) (int, error) {
 	var buf [4]byte
 	if _, err := io.ReadFull(r, buf[:2]); err != nil {
@@ -19,19 +17,11 @@ func ReadOrientation(r io.Reader) (int, error) {
 	}
 
 	for {
-		if _, err := io.ReadFull(r, buf[:2]); err != nil {
+		marker, err := advanceToNextMarker(r, buf[:2])
+		if err != nil {
 			return 1, err
 		}
-		for buf[0] == 0xFF && buf[1] == 0xFF {
-			if _, err := io.ReadFull(r, buf[1:2]); err != nil {
-				return 1, err
-			}
-		}
-		if buf[0] != 0xFF {
-			return 1, fmt.Errorf("invalid marker prefix")
-		}
 
-		marker := buf[1]
 		if marker == 0xD9 || marker == 0xDA { // EOI or SOS
 			break
 		}
@@ -48,6 +38,22 @@ func ReadOrientation(r io.Reader) (int, error) {
 		}
 	}
 	return 1, nil
+}
+
+// advanceToNextMarker scans the stream to find the next valid JPEG marker.
+func advanceToNextMarker(r io.Reader, buf []byte) (byte, error) {
+	if _, err := io.ReadFull(r, buf[:2]); err != nil {
+		return 0, err
+	}
+	for buf[0] == 0xFF && buf[1] == 0xFF {
+		if _, err := io.ReadFull(r, buf[1:2]); err != nil {
+			return 0, err
+		}
+	}
+	if buf[0] != 0xFF {
+		return 0, fmt.Errorf("invalid marker prefix")
+	}
+	return buf[1], nil
 }
 
 func processMarker(r io.Reader, marker byte) (int, bool, error) {
