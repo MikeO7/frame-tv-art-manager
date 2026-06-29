@@ -110,7 +110,7 @@ func (p *nasaProvider) SearchNASAImageLibrary(ctx context.Context, query string)
 			Items []struct {
 				Href string `json:"href"` // This is the manifest URL
 				Data []struct {
-					Title  string `json:"title"`
+					Title string `json:"title"`
 				} `json:"data"`
 			} `json:"items"`
 		} `json:"collection"`
