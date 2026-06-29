@@ -9,15 +9,16 @@ import (
 // ReadOrientation reads the EXIF orientation tag from an image file if available.
 func ReadOrientation(r io.Reader) (int, error) {
 	var buf [4]byte
-	if _, err := io.ReadFull(r, buf[:2]); err != nil {
+	if err := verifyJPEGHeader(r, buf[:2]); err != nil {
 		return 1, err
 	}
-	if buf[0] != 0xFF || buf[1] != 0xD8 {
-		return 1, fmt.Errorf("not a JPEG (SOI missing)")
-	}
 
+	return scanMarkers(r, buf[:2])
+}
+
+func scanMarkers(r io.Reader, buf []byte) (int, error) {
 	for {
-		marker, err := advanceToNextMarker(r, buf[:2])
+		marker, err := advanceToNextMarker(r, buf)
 		if err != nil {
 			return 1, err
 		}
@@ -30,14 +31,25 @@ func ReadOrientation(r io.Reader) (int, error) {
 		if err != nil {
 			return 1, err
 		}
+
 		if stop {
 			if orientation > 0 {
 				return orientation, nil
 			}
-			continue
+			break
 		}
 	}
 	return 1, nil
+}
+
+func verifyJPEGHeader(r io.Reader, buf []byte) error {
+	if _, err := io.ReadFull(r, buf[:2]); err != nil {
+		return err
+	}
+	if buf[0] != 0xFF || buf[1] != 0xD8 {
+		return fmt.Errorf("not a JPEG (SOI missing)")
+	}
+	return nil
 }
 
 // advanceToNextMarker scans the stream to find the next valid JPEG marker.
