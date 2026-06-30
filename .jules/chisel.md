@@ -10,3 +10,7 @@
 ## 2026-06-18 - parseExif Simplification
 **Learning:** The `parseExif` method in `internal/optimize/resize.go` had high cognitive complexity due to handling byte order logic alongside parsing the EXIF orientation tags.
 **Action:** Extracting the EXIF orientation tag loop into a separate `findOrientationTag` helper function significantly reduced cognitive load and cyclomatic complexity, resolving linter warnings.
+
+## 2026-06-25 - TestUpload_iOSShortcutSimulator Simplification
+**Learning:** The `TestUpload_iOSShortcutSimulator` function in `internal/health/server_test.go` accumulated extreme cognitive complexity (score 61) by housing five completely distinct `t.Run` test closures within a single parent function block.
+**Action:** When a top-level test function only serves as an organizational container for multiple un-shared `t.Run` closures, split those closures directly into individual top-level test functions (e.g., `TestUpload_iOSShortcutSimulator_ValidFormJPEG`). This immediately collapses unnecessary nesting, satisfies cyclomatic bounds, and preserves identical test execution behavior.

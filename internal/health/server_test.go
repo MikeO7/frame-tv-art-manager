@@ -470,203 +470,201 @@ func TestUpload_RawBinaryTooLarge(t *testing.T) {
 	}
 }
 
-func TestUpload_iOSShortcutSimulator(t *testing.T) {
-	// 1. Success case with form file parameter "file" (iOS Shortcut style)
-	t.Run("Valid Form JPEG", func(t *testing.T) {
-		status := NewStatus()
-		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+// 1. Success case with form file parameter "file" (iOS Shortcut style)
+func TestUpload_iOSShortcutSimulator_ValidFormJPEG(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-		jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
-		for i := 0; i < 100; i++ {
-			jpegContent = append(jpegContent, 0x00)
-		}
+	jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
+	for i := 0; i < 100; i++ {
+		jpegContent = append(jpegContent, 0x00)
+	}
 
-		req, err := createMultipartRequest("shortcut_favorite.jpg", jpegContent)
-		if err != nil {
-			t.Fatalf("create request: %v", err)
-		}
+	req, err := createMultipartRequest("shortcut_favorite.jpg", jpegContent)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
 
-		w := httptest.NewRecorder()
-		srv.HandleUpload(w, req)
+	w := httptest.NewRecorder()
+	srv.HandleUpload(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
-		}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
 
-		var resp map[string]any
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 
-		if resp["status"] != "ok" {
-			t.Errorf("expected status=ok, got %v", resp["status"])
-		}
+	if resp["status"] != "ok" {
+		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
 
-		filename, ok := resp["filename"].(string)
-		if !ok || filename == "" {
-			t.Fatalf("missing filename in response")
-		}
+	filename, ok := resp["filename"].(string)
+	if !ok || filename == "" {
+		t.Fatalf("missing filename in response")
+	}
 
-		filePath := filepath.Join(tmpDir, filename)
-		if _, err := os.Stat(filePath); err != nil {
-			t.Errorf("file was not saved to disk: %v", err)
-		}
-	})
+	filePath := filepath.Join(tmpDir, filename)
+	if _, err := os.Stat(filePath); err != nil {
+		t.Errorf("file was not saved to disk: %v", err)
+	}
+}
 
-	// 2. Success case with PNG
-	t.Run("Valid Form PNG", func(t *testing.T) {
-		status := NewStatus()
-		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+// 2. Success case with PNG
+func TestUpload_iOSShortcutSimulator_ValidFormPNG(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-		pngContent := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
-		for i := 0; i < 100; i++ {
-			pngContent = append(pngContent, 0x00)
-		}
+	pngContent := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	for i := 0; i < 100; i++ {
+		pngContent = append(pngContent, 0x00)
+	}
 
-		req, err := createMultipartRequest("shortcut_fav.png", pngContent)
-		if err != nil {
-			t.Fatalf("create request: %v", err)
-		}
+	req, err := createMultipartRequest("shortcut_fav.png", pngContent)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
 
-		w := httptest.NewRecorder()
-		srv.HandleUpload(w, req)
+	w := httptest.NewRecorder()
+	srv.HandleUpload(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
-		}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
 
-		var resp map[string]any
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 
-		if resp["status"] != "ok" {
-			t.Errorf("expected status=ok, got %v", resp["status"])
-		}
+	if resp["status"] != "ok" {
+		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
 
-		filename, ok := resp["filename"].(string)
-		if !ok || filename == "" {
-			t.Fatalf("missing filename in response")
-		}
+	filename, ok := resp["filename"].(string)
+	if !ok || filename == "" {
+		t.Fatalf("missing filename in response")
+	}
 
-		if !strings.HasSuffix(filename, ".png") {
-			t.Errorf("expected png extension, got %s", filename)
-		}
-	})
+	if !strings.HasSuffix(filename, ".png") {
+		t.Errorf("expected png extension, got %s", filename)
+	}
+}
 
-	// 3. Error case - file too large
-	t.Run("File Too Large", func(t *testing.T) {
-		status := NewStatus()
-		tmpDir := t.TempDir()
-		cfg := testConfig(0, true, tmpDir)
-		cfg.MaxDownloadSizeMB = 1 // 1 MB max size
-		srv := NewServer(cfg, status, silentLogger())
+// 3. Error case - file too large
+func TestUpload_iOSShortcutSimulator_FileTooLarge(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	cfg := testConfig(0, true, tmpDir)
+	cfg.MaxDownloadSizeMB = 1 // 1 MB max size
+	srv := NewServer(cfg, status, silentLogger())
 
-		// Create content larger than 1MB
-		largeContent := make([]byte, 1024*1024+100)
-		// Set JPEG prefix just to make it otherwise valid
-		copy(largeContent, []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01})
+	// Create content larger than 1MB
+	largeContent := make([]byte, 1024*1024+100)
+	// Set JPEG prefix just to make it otherwise valid
+	copy(largeContent, []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01})
 
-		req, err := createMultipartRequest("large.jpg", largeContent)
-		if err != nil {
-			t.Fatalf("create request: %v", err)
-		}
+	req, err := createMultipartRequest("large.jpg", largeContent)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
 
-		w := httptest.NewRecorder()
-		srv.HandleUpload(w, req)
+	w := httptest.NewRecorder()
+	srv.HandleUpload(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("expected 400 Bad Request, got %d", w.Code)
-		}
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request, got %d", w.Code)
+	}
 
-		var resp map[string]any
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 
-		if resp["status"] != "error" {
-			t.Errorf("expected status=error, got %v", resp["status"])
-		}
+	if resp["status"] != "error" {
+		t.Errorf("expected status=error, got %v", resp["status"])
+	}
 
-		errMsg, _ := resp["error"].(string)
-		if !strings.Contains(errMsg, "too large") && !strings.Contains(errMsg, "limit") {
-			t.Errorf("expected error message about size/limit, got %q", errMsg)
-		}
-	})
+	errMsg, _ := resp["error"].(string)
+	if !strings.Contains(errMsg, "too large") && !strings.Contains(errMsg, "limit") {
+		t.Errorf("expected error message about size/limit, got %q", errMsg)
+	}
+}
 
-	// 4. Error case - missing file field
-	t.Run("Missing File Field", func(t *testing.T) {
-		status := NewStatus()
-		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+// 4. Error case - missing file field
+func TestUpload_iOSShortcutSimulator_MissingFileField(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-		var body bytes.Buffer
-		writer := multipart.NewWriter(&body)
-		// create some other field instead of "file"
-		part, err := writer.CreateFormField("not-file")
-		if err != nil {
-			t.Fatalf("create form field: %v", err)
-		}
-		_, _ = part.Write([]byte("some data"))
-		_ = writer.Close()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	// create some other field instead of "file"
+	part, err := writer.CreateFormField("not-file")
+	if err != nil {
+		t.Fatalf("create form field: %v", err)
+	}
+	_, _ = part.Write([]byte("some data"))
+	_ = writer.Close()
 
-		req := httptest.NewRequest(http.MethodPost, "/upload", &body)
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+	req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-		w := httptest.NewRecorder()
-		srv.HandleUpload(w, req)
+	w := httptest.NewRecorder()
+	srv.HandleUpload(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("expected 400, got %d", w.Code)
-		}
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
 
-		var resp map[string]any
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 
-		if resp["status"] != "error" {
-			t.Errorf("expected status=error, got %v", resp["status"])
-		}
+	if resp["status"] != "error" {
+		t.Errorf("expected status=error, got %v", resp["status"])
+	}
 
-		if !strings.Contains(resp["error"].(string), "missing 'file' parameter") {
-			t.Errorf("expected error message about missing file parameter, got %q", resp["error"])
-		}
-	})
+	if !strings.Contains(resp["error"].(string), "missing 'file' parameter") {
+		t.Errorf("expected error message about missing file parameter, got %q", resp["error"])
+	}
+}
 
-	// 5. Error case - unsupported format (HEIC/video)
-	t.Run("Unsupported Format", func(t *testing.T) {
-		status := NewStatus()
-		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+// 5. Error case - unsupported format (HEIC/video)
+func TestUpload_iOSShortcutSimulator_UnsupportedFormat(t *testing.T) {
+	status := NewStatus()
+	tmpDir := t.TempDir()
+	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-		// Mock HEIC image simulator data
-		heicContent := []byte("heic image simulator data")
-		req, err := createMultipartRequest("image.heic", heicContent)
-		if err != nil {
-			t.Fatalf("create request: %v", err)
-		}
+	// Mock HEIC image simulator data
+	heicContent := []byte("heic image simulator data")
+	req, err := createMultipartRequest("image.heic", heicContent)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
 
-		w := httptest.NewRecorder()
-		srv.HandleUpload(w, req)
+	w := httptest.NewRecorder()
+	srv.HandleUpload(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("expected 400, got %d", w.Code)
-		}
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
 
-		var resp map[string]any
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatalf("decode response: %v", err)
-		}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 
-		if resp["status"] != "error" {
-			t.Errorf("expected status=error, got %v", resp["status"])
-		}
+	if resp["status"] != "error" {
+		t.Errorf("expected status=error, got %v", resp["status"])
+	}
 
-		if !strings.Contains(resp["error"].(string), "Unsupported file type") {
-			t.Errorf("expected error message about unsupported file type, got %q", resp["error"])
-		}
-	})
+	if !strings.Contains(resp["error"].(string), "Unsupported file type") {
+		t.Errorf("expected error message about unsupported file type, got %q", resp["error"])
+	}
 }
