@@ -140,25 +140,6 @@ func (c *ArtworkCatalog) registerPrefix(identity, filename string) {
 	c.prefixMap[artwork.StripIndexPrefix(identity)] = filename
 }
 
-// registerHash records a content hash. Returns existing filename and whether it was a duplicate.
-func (c *ArtworkCatalog) registerHash(hash, filename string) (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	existing, ok := c.hashIndex[hash]
-	if ok {
-		return existing, true
-	}
-	c.hashIndex[hash] = filename
-	return "", false
-}
-
-// setHash associates a hash with a filename, replacing any prior entry.
-func (c *ArtworkCatalog) setHash(hash, filename string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.hashIndex[hash] = filename
-}
-
 // RegisterDownload hashes a downloaded file, checks for duplicates,
 // renames it to a hash-based filename, registers it in index maps, and marks it visited.
 // It returns the final filename, whether it was newly added (not a duplicate), and any error.
