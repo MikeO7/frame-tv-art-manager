@@ -6,12 +6,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
 // Config holds all application settings. It is populated by Load() and then

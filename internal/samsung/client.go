@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"io"
 	"log/slog"
 	"net"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 const (
