@@ -10,3 +10,6 @@
 ## 2026-06-18 - parseExif Simplification
 **Learning:** The `parseExif` method in `internal/optimize/resize.go` had high cognitive complexity due to handling byte order logic alongside parsing the EXIF orientation tags.
 **Action:** Extracting the EXIF orientation tag loop into a separate `findOrientationTag` helper function significantly reduced cognitive load and cyclomatic complexity, resolving linter warnings.
+## 2026-07-02 - Respecting Performance Hot-Paths
+**Learning:** Extracting code for readability in performance-critical sections (like pixel processing loops marked with explicit inline/unroll warnings) violates structural boundaries and risks severe performance regressions.
+**Action:** Always fully read function blocks before executing scripts, and actively look for `//` developer comments indicating deliberate loop unrolling, lack of function calls, or manual inline assignments before attempting structural extraction.
