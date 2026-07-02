@@ -14,3 +14,6 @@
 ## 2026-06-11 - Goroutine Leaks from select loop returns
 **Learning:** Using `return` directly inside a `select` loop handling concurrent `go` functions causes any previously launched goroutines to leak because it skips the `wg.Wait()` step. This can also lead to subsequent data races or logic flaws as the leaked goroutines continue processing shared structures unpredictably.
 **Action:** When iterating over inputs to spawn goroutines with a top-level cancellation check (`ctx.Done()`), always `break` out of the loop and call `wg.Wait()` before returning to ensure all active goroutines finish correctly.
+## 2026-07-02 - Flaky WebSocket Test Closure
+**Learning:** `TestEnsureToken` frequently failed in CI because `conn.Close()` occasionally caught a `use of closed network connection` error if the test's `httptest.Server` abruptly severed the underlying connection after writing the message but before the client could gracefully close it.
+**Action:** When testing websocket handshakes where only the received side-effect (like an auth token written to disk) matters, it is sometimes acceptable to ignore the final closure error (`_ = err`) to prevent flakey race conditions between the mock server's `defer conn.Close()` and the client's `Close()`.
