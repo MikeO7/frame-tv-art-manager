@@ -4,6 +4,13 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -196,4 +203,367 @@ type Config struct {
 	// PortraitMode controls how vertical photos are resized: "collage", "pad", "crop" (default "crop").
 	// Uploaded files (from the /upload endpoint) always use collage mode regardless of this setting.
 	PortraitMode string
+}
+
+// --- helpers ---
+
+func envStr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func envBool(key string) bool {
+	return envBoolWithDefault(key, false)
+}
+
+func envBoolWithDefault(key string, def bool) bool {
+	v := strings.ToLower(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	switch v {
+	case "true", "1", "yes":
+		return true
+	case "false", "0", "no":
+		return false
+	default:
+		return def
+	}
+}
+
+func envFloat(key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return def
+	}
+	return f
+}
+
+// MatteConfig holds per-image matte overrides loaded from a mattes.json file.
+type MatteConfig struct {
+	Overrides    map[string]string
+	DefaultMatte string
+}
+
+// LoadMatteConfig reads a mattes.json file from the artwork directory.
+func LoadMatteConfig(artworkDir string) *MatteConfig {
+	mc := &MatteConfig{
+		Overrides: make(map[string]string),
+	}
+
+	path := filepath.Join(artworkDir, "mattes.json")
+	raw, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return mc
+	}
+
+	var data map[string]string
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return mc
+	}
+
+	for k, v := range data {
+		if k == "_default" {
+			mc.DefaultMatte = v
+		} else {
+			mc.Overrides[k] = v
+		}
+	}
+
+	return mc
+}
+
+// GetMatte returns the matte style for a specific filename.
+func (mc *MatteConfig) GetMatte(filename, globalMatte string) string {
+	if matte, ok := mc.Overrides[filename]; ok {
+		return matte
+	}
+	if mc.DefaultMatte != "" {
+		return mc.DefaultMatte
+	}
+	return globalMatte
+}
+
+// String returns a summary of the matte configuration for logging.
+func (mc *MatteConfig) String() string {
+	if len(mc.Overrides) == 0 && mc.DefaultMatte == "" {
+		return "global (no per-file overrides)"
+	}
+	return fmt.Sprintf("%d per-file overrides, default=%q", len(mc.Overrides), mc.DefaultMatte)
+}
+
+// SyncPolicy holds operational settings for a TV sync reconciliation run.
+type SyncPolicy struct {
+	DryRun              bool
+	RemoveUnknownImages bool
+	SlideshowOverride   bool
+	ArtworkDir          string
+	UploadDelay         time.Duration
+	UploadAttempts      int
+	SyncIntervalMin     int
+	MatteStyle          string
+}
+
+// SyncPolicy returns sync reconciliation settings derived from config.
+func (c *Config) SyncPolicy() SyncPolicy {
+	attempts := c.UploadAttempts
+	if attempts < 1 {
+		attempts = 1
+	}
+	return SyncPolicy{
+		DryRun:              c.DryRun,
+		RemoveUnknownImages: c.RemoveUnknownImages,
+		SlideshowOverride:   c.SlideshowOverride,
+		ArtworkDir:          c.ArtworkDir,
+		UploadDelay:         c.UploadDelay,
+		UploadAttempts:      attempts,
+		SyncIntervalMin:     c.SyncIntervalMin,
+		MatteStyle:          c.MatteStyle,
+	}
+}
+
+// TVConnectOptions holds settings used when opening a TV connection.
+type TVConnectOptions struct {
+	TVMAC             string
+	EnableRESTGate    bool
+	SkipTLSVerify     bool
+	ClientName        string
+	TokenDir          string
+	ConnectionTimeout time.Duration
+	APITimeout        time.Duration
+	GateTimeout       time.Duration
+	MatteStyle        string
+}
+
+// TVConnectOptions returns TV connection settings derived from config.
+func (c *Config) TVConnectOptions() TVConnectOptions {
+	return TVConnectOptions{
+		TVMAC:             c.TVMAC,
+		EnableRESTGate:    c.EnableRESTGate,
+		SkipTLSVerify:     !c.VerifyTLS,
+		ClientName:        c.ClientName,
+		TokenDir:          c.TokenDir,
+		ConnectionTimeout: c.ConnectionTimeout,
+		APITimeout:        c.APITimeout,
+		GateTimeout:       c.GateTimeout,
+		MatteStyle:        c.MatteStyle,
+	}
+}
+
+// OptimizeOptions returns image optimization settings derived from config.
+func (c *Config) OptimizeOptions() optimize.Config {
+	return optimize.Config{
+		Enabled:             c.OptimizeEnabled,
+		SmartCropEnabled:    c.SmartCropEnabled,
+		MaxWidth:            c.OptimizeMaxWidth,
+		MaxHeight:           c.OptimizeMaxHeight,
+		OptimizeJPEGQuality: c.OptimizeJPEGQuality,
+		MuseumModeEnabled:   c.MuseumModeEnabled,
+		MuseumModeIntensity: c.MuseumModeIntensity,
+		PortraitMode:        c.PortraitMode,
+	}
+}
+
+// Load reads configuration from environment variables, applies defaults,
+// and validates the result. Returns an error if required values are missing
+// or constraints are violated.
+//
+// Example:
+//
+//	cfg, err := config.Load()
+//	if err != nil {
+//	    log.Fatal("Invalid configuration:", err)
+//	}
+//	fmt.Println("Artwork directory:", cfg.ArtworkDir)
+func Load() (*Config, error) {
+	cfg := loadDefaults()
+
+	for _, parse := range []func(*Config) error{
+		parseTVIPs,
+		parseManualBrightness,
+		parseSolarCoordinates,
+	} {
+		if err := parse(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	cfg.SlideshowOverride = slideshowOverridden()
+
+	if err := validate(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// loadDefaults builds a Config from environment variables, falling back to
+// documented defaults. It performs no validation and never fails; dynamic
+// fields that can error (IPs, coordinates) are parsed by dedicated helpers.
+func loadDefaults() *Config {
+	return &Config{
+		ArtworkDir:        envStr("ARTWORK_DIR", "/data/artwork"),
+		MaxArtworkImages:  envInt("MAX_ARTWORK_IMAGES", 0),
+		MaxDownloadSizeMB: envInt("MAX_DOWNLOAD_SIZE_MB", 20),
+		TokenDir:          envStr("TOKEN_DIR", "/data/tokens"),
+		SyncIntervalMin:   envInt("SYNC_INTERVAL_MINUTES", 5),
+		MatteStyle:        envStr("MATTE_STYLE", "none"),
+		ClientName:        envStr("CLIENT_NAME", "Frame Art Manager"),
+		DryRun:            envBool("DRY_RUN"),
+		LogLevel:          strings.ToLower(envStr("LOG_LEVEL", "info")),
+
+		SlideshowEnabled:  envBool("SLIDESHOW_ENABLED"),
+		SlideshowInterval: envInt("SLIDESHOW_INTERVAL", 15),
+		SlideshowType:     strings.ToLower(envStr("SLIDESHOW_TYPE", "shuffle")),
+
+		SolarEnabled:        envBool("SOLAR_BRIGHTNESS_ENABLED"),
+		Timezone:            envStr("LOCATION_TIMEZONE", "UTC"),
+		BrightnessMin:       envInt("BRIGHTNESS_MIN", 2),
+		BrightnessMax:       envInt("BRIGHTNESS_MAX", 10),
+		RemoveUnknownImages: envBool("REMOVE_UNKNOWN_IMAGES"),
+		AutoOffTime:         envStr("AUTO_OFF_TIME", ""),
+		AutoOffGraceHours:   envFloat("AUTO_OFF_GRACE_HOURS", 2),
+		TVMAC:               envStr("TV_MAC", ""),
+		EnableRESTGate:      envBool("ENABLE_REST_GATE"),
+		// SKIP_TLS_VERIFY, when true, forces verification off regardless of VERIFY_TLS.
+		VerifyTLS:           envBool("VERIFY_TLS") && !envBool("SKIP_TLS_VERIFY"),
+		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
+		UnsplashAppID:       envStr("UNSPLASH_APP_ID", ""),
+		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
+		UnsplashSecretKey:   envStr("UNSPLASH_SECRET_KEY", ""),
+		NasaAPIKey:          envStr("NASA_API_KEY", "DEMO_KEY"),
+		PexelsAPIKey:        envStr("PEXELS_API_KEY", ""),
+		PixabayAPIKey:       envStr("PIXABAY_API_KEY", ""),
+		OptimizeEnabled:     envBoolWithDefault("IMAGE_OPTIMIZE_ENABLED", true),
+		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", false),
+		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
+		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
+		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 95),
+		MuseumModeEnabled:   envBoolWithDefault("IMAGE_MUSEUM_MODE", false),
+		MuseumModeIntensity: envInt("IMAGE_MUSEUM_INTENSITY", 5),
+		HealthPort:          envInt("HEALTH_PORT", 8080),
+		UploadEnabled:       envBool("UPLOAD_ENABLED"),
+		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,
+		APITimeout:          time.Duration(envInt("API_TIMEOUT_SECONDS", 60)) * time.Second,
+		UploadDelay:         time.Duration(envInt("UPLOAD_DELAY_MS", 3000)) * time.Millisecond,
+		UploadAttempts:      envInt("UPLOAD_ATTEMPTS", 3),
+		GateTimeout:         time.Duration(envInt("GATE_TIMEOUT_MS", 10000)) * time.Millisecond,
+		PUID:                envInt("PUID", 0),
+		PGID:                envInt("PGID", 0),
+		PortraitMode:        strings.ToLower(envStr("PORTRAIT_MODE", "crop")),
+	}
+}
+
+// parseTVIPs extracts the required, comma-separated TV_IPS list, trimming
+// whitespace and rejecting an empty result.
+func parseTVIPs(cfg *Config) error {
+	raw := os.Getenv("TV_IPS")
+	if raw == "" {
+		return fmt.Errorf("TV_IPS environment variable is required")
+	}
+	for _, ip := range strings.Split(raw, ",") {
+		if ip = strings.TrimSpace(ip); ip != "" {
+			cfg.TVIPs = append(cfg.TVIPs, ip)
+		}
+	}
+	if len(cfg.TVIPs) == 0 {
+		return fmt.Errorf("TV_IPS must contain at least one non-empty IP address")
+	}
+	return nil
+}
+
+// parseManualBrightness reads the optional BRIGHTNESS override into a pointer
+// so an explicit value is distinguishable from "unset".
+func parseManualBrightness(cfg *Config) error {
+	v := os.Getenv("BRIGHTNESS")
+	if v == "" {
+		return nil
+	}
+	b, err := strconv.Atoi(v)
+	if err != nil {
+		return fmt.Errorf("invalid BRIGHTNESS value %q: %w", v, err)
+	}
+	cfg.ManualBrightness = &b
+	return nil
+}
+
+// parseSolarCoordinates reads optional latitude/longitude overrides. Presence
+// is enforced later by validate when solar brightness is enabled.
+func parseSolarCoordinates(cfg *Config) error {
+	if v := os.Getenv("LOCATION_LATITUDE"); v != "" {
+		lat, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fmt.Errorf("invalid LOCATION_LATITUDE %q: %w", v, err)
+		}
+		cfg.Latitude = &lat
+	}
+	if v := os.Getenv("LOCATION_LONGITUDE"); v != "" {
+		lon, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fmt.Errorf("invalid LOCATION_LONGITUDE %q: %w", v, err)
+		}
+		cfg.Longitude = &lon
+	}
+	return nil
+}
+
+// slideshowOverridden reports whether any slideshow env var was explicitly set,
+// in which case the manager overrides the TV's current slideshow settings.
+func slideshowOverridden() bool {
+	return os.Getenv("SLIDESHOW_ENABLED") != "" ||
+		os.Getenv("SLIDESHOW_INTERVAL") != "" ||
+		os.Getenv("SLIDESHOW_TYPE") != ""
+}
+
+// validate enforces cross-field constraints and enumerated value membership.
+func validate(cfg *Config) error {
+	if cfg.BrightnessMin >= cfg.BrightnessMax {
+		return fmt.Errorf(
+			"BRIGHTNESS_MIN (%d) must be less than BRIGHTNESS_MAX (%d)",
+			cfg.BrightnessMin, cfg.BrightnessMax,
+		)
+	}
+
+	if cfg.SolarEnabled && (cfg.Latitude == nil || cfg.Longitude == nil) {
+		return fmt.Errorf(
+			"LOCATION_LATITUDE and LOCATION_LONGITUDE are required when SOLAR_BRIGHTNESS_ENABLED=true",
+		)
+	}
+
+	switch cfg.SlideshowType {
+	case "shuffle", "sequential":
+	default:
+		return fmt.Errorf("SLIDESHOW_TYPE must be 'shuffle' or 'sequential', got %q", cfg.SlideshowType)
+	}
+
+	switch cfg.LogLevel {
+	case "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("LOG_LEVEL must be one of debug, info, warn, error; got %q", cfg.LogLevel)
+	}
+
+	switch cfg.PortraitMode {
+	case "collage", "pad", "crop":
+	default:
+		return fmt.Errorf("PORTRAIT_MODE must be one of collage, pad, crop; got %q", cfg.PortraitMode)
+	}
+
+	return nil
 }

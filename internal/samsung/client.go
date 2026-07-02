@@ -5,16 +5,17 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 const (
@@ -291,4 +292,316 @@ func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusOK, nil
+}
+
+// SaveMetadata fetches device info, slideshow status, and artwork categories,
+// writing them to a per-TV JSON file in the tokens directory for auditing.
+func (c *Client) SaveMetadata(ctx context.Context) error {
+	metadata := make(map[string]any)
+	metadata["timestamp"] = time.Now().Format(time.RFC3339)
+
+	// 1. Basic Device Info.
+	if c.info != nil {
+		metadata["device"] = c.info
+	}
+
+	// 2. Slideshow Status.
+	if ss, err := c.SlideshowStatus(ctx); err == nil {
+		metadata["slideshow"] = ss
+	}
+
+	// 3. All Categories.
+	if cats, err := c.getCategories(ctx); err == nil {
+		var raw json.RawMessage
+		if err := json.Unmarshal(cats, &raw); err == nil {
+			metadata["categories"] = raw
+		}
+	}
+
+	// 4. Detailed Environment (reserved for future telemetry integration).
+	metadata["platform"] = "Y2025"
+
+	b, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	safeIP := strings.ReplaceAll(c.IP, ".", "_")
+	path := filepath.Join(c.opts.TokenDir, fmt.Sprintf("tv_%s_metadata.json", safeIP))
+
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return fmt.Errorf("write metadata file: %w", err)
+	}
+
+	c.logger.Info("metadata saved", "path", path)
+	return nil
+}
+
+// SlideshowStatus returns the TV's current slideshow configuration.
+func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
+	id := newRequestID()
+
+	req := map[string]any{
+		keyRequest:   "get_slideshow_status",
+		"id":         id,
+		keyRequestID: id,
+	}
+
+	_, raw, err := c.sendArtRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Value      string `json:"value"`
+		Type       string `json:"type"`
+		CategoryID string `json:"category_id"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse slideshow_status: %w", err)
+	}
+
+	return &SlideshowStatus{
+		Value:      resp.Value,
+		Type:       resp.Type,
+		CategoryID: resp.CategoryID,
+	}, nil
+}
+
+// SetSlideshow updates the TV's slideshow configuration.
+func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
+	id := newRequestID()
+
+	req := map[string]any{
+		keyRequest:    "set_slideshow_status",
+		"id":          id,
+		keyRequestID:  id,
+		"value":       s.Value,
+		"category_id": s.CategoryID,
+		"type":        s.Type,
+	}
+
+	_, _, err := c.sendArtRequest(ctx, req)
+	return err
+}
+
+// SetBrightness sets the art-mode brightness value.
+func (c *Client) SetBrightness(ctx context.Context, val int) error {
+	id := newRequestID()
+
+	req := map[string]any{
+		keyRequest:   "set_brightness",
+		"id":         id,
+		keyRequestID: id,
+		"value":      val,
+	}
+
+	_, _, err := c.sendArtRequest(ctx, req)
+	return err
+}
+
+// wakeTV sends a Wake-on-LAN magic packet to the TV to wake it up if it's sleeping.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+func (c *Client) wakeTV(ctx context.Context) {
+	if c.opts.TVMAC == "" {
+		return
+	}
+	c.logger.Info("sending Wake-on-LAN", "mac", c.opts.TVMAC)
+	if err := c.sendWOL(ctx, c.opts.TVMAC); err != nil {
+		c.logger.Warn("WoL failed", "error", err)
+	} else {
+		time.Sleep(2 * time.Second)
+	}
+}
+
+var macSeparators = regexp.MustCompile(`[^a-fA-F0-9]`)
+
+// sendWOL broadcasts a Wake-on-LAN magic packet to wake up the TV on the local network.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//   - macAddr: The MAC address string (e.g., "AA:BB:CC:DD:EE:FF") of the TV.
+//
+// Returns:
+//   - error: Any formatting error or network failure encountered while broadcasting.
+func (c *Client) sendWOL(ctx context.Context, macAddr string) error {
+	if macAddr == "" {
+		return nil
+	}
+
+	// Strip separators and validate length.
+	clean := macSeparators.ReplaceAllString(macAddr, "")
+	clean = strings.ToLower(clean)
+	if len(clean) != 12 {
+		return fmt.Errorf("invalid MAC address %q: expected 12 hex chars, got %d", macAddr, len(clean))
+	}
+
+	// Parse hex bytes.
+	mac := make([]byte, 6)
+	for i := 0; i < 6; i++ {
+		_, err := fmt.Sscanf(clean[i*2:i*2+2], "%02x", &mac[i])
+		if err != nil {
+			return fmt.Errorf("invalid MAC address %q: %w", macAddr, err)
+		}
+	}
+
+	// Build magic packet: 6 bytes of 0xFF followed by MAC repeated 16 times.
+	packet := make([]byte, 6+16*6)
+	for i := 0; i < 6; i++ {
+		packet[i] = 0xFF
+	}
+	for i := 0; i < 16; i++ {
+		copy(packet[6+i*6:], mac)
+	}
+
+	// Send to broadcast address.
+	dialer := net.Dialer{Timeout: 5 * time.Second}
+	conn, err := dialer.DialContext(ctx, "udp", fmt.Sprintf("255.255.255.255:%d", wolBroadcastPort))
+	if err != nil {
+		return fmt.Errorf("dial broadcast: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	_, err = conn.Write(packet)
+	if err != nil {
+		return fmt.Errorf("send magic packet: %w", err)
+	}
+
+	return nil
+}
+
+// TurnOff powers off the TV via the remote control API.
+func (c *Client) TurnOff(ctx context.Context) error {
+	return c.turnOffTV(ctx, portArtWSS)
+}
+
+func (c *Client) turnOffTV(ctx context.Context, port int) error {
+	conn := newConnection(c.remoteControlConfig(port, c.tokenFilePath()))
+
+	if err := conn.Open(ctx); err != nil {
+		return fmt.Errorf("open remote control connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Send KEY_POWER press.
+	press := map[string]any{
+		keyMethod: methodRemoteControl,
+		keyParams: map[string]any{
+			"Cmd":          "Press",
+			"DataOfCmd":    "KEY_POWER",
+			"Option":       stringFalse,
+			"TypeOfRemote": "SendRemoteKey",
+		},
+	}
+
+	pressPayload, err := json.Marshal(press)
+	if err != nil {
+		return fmt.Errorf("marshal press command: %w", err)
+	}
+
+	if err := conn.Send(ctx, pressPayload); err != nil {
+		return fmt.Errorf("send press: %w", err)
+	}
+
+	// Hold KEY_POWER before releasing to trigger the power toggle.
+	hold := c.powerHold
+	if hold <= 0 {
+		hold = powerKeyHold
+	}
+	select {
+	case <-time.After(hold):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// Send KEY_POWER release.
+	release := map[string]any{
+		keyMethod: methodRemoteControl,
+		keyParams: map[string]any{
+			"Cmd":          "Release",
+			"DataOfCmd":    "KEY_POWER",
+			"Option":       stringFalse,
+			"TypeOfRemote": "SendRemoteKey",
+		},
+	}
+
+	releasePayload, err := json.Marshal(release)
+	if err != nil {
+		return fmt.Errorf("marshal release command: %w", err)
+	}
+
+	if err := conn.Send(ctx, releasePayload); err != nil {
+		return fmt.Errorf("send release: %w", err)
+	}
+
+	return nil
+}
+
+// ShouldSkip returns true if the TV is in a backoff window due to failures.
+//
+// Returns:
+//   - bool: True if the client is still waiting out a failure timeout period.
+func (c *Client) ShouldSkip() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if time.Now().Before(c.backoffUntil) {
+		remaining := time.Until(c.backoffUntil).Round(time.Second)
+		c.logger.Info(
+			"TV in backoff period, skipping",
+			"failures", c.failures,
+			"retry_in", remaining.String(),
+		)
+		return true
+	}
+	return false
+}
+
+// RecordFailure tracks a connection failure and calculates exponential backoff.
+//
+// Parameters:
+//   - baseInterval: The initial time duration to wait before the next retry.
+func (c *Client) RecordFailure(baseInterval time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.failures++
+	c.lastFailure = time.Now()
+
+	// Exponential backoff: baseInterval doubled per consecutive failure, capped.
+	delay := baseInterval
+	for i := 1; i < c.failures && delay < maxBackoffDelay; i++ {
+		delay *= 2
+	}
+	if delay > maxBackoffDelay {
+		delay = maxBackoffDelay
+	}
+
+	c.backoffUntil = c.lastFailure.Add(delay)
+
+	c.logger.Warn(
+		"TV unreachable, backing off",
+		"consecutive_failures", c.failures,
+		"next_retry", c.backoffUntil.Format(time.Kitchen),
+		"backoff_duration", delay.Round(time.Second).String(),
+	)
+}
+
+// RecordSuccess resets failure count.
+//
+// Calling this method clears the backoff window completely.
+func (c *Client) RecordSuccess() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.failures > 0 {
+		c.logger.Info(
+			"TV recovered after failures",
+			"previous_failures", c.failures,
+		)
+	}
+	c.failures = 0
+	c.backoffUntil = time.Time{}
 }

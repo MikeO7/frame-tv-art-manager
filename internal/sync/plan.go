@@ -28,7 +28,7 @@ type PlanInput struct {
 }
 
 // PlanSync evaluates current states and plans synchronization purely in memory.
-func PlanSync(in PlanInput) *SyncPlan {
+func PlanSync(in PlanInput) *Plan {
 	policy := in.Cfg.SyncPolicy()
 
 	trackedFiles, unknownIDs, staleFiles := reconcileInventory(in.MappingData, in.TVContent, in.Logger)
@@ -47,7 +47,7 @@ func PlanSync(in PlanInput) *SyncPlan {
 
 	slideshow := determineSlideshowSettings(in.Cfg, in.Logger)
 
-	return &SyncPlan{
+	return &Plan{
 		IP:                 in.IP,
 		ToUpload:           toUpload,
 		ToDeleteIDs:        toDeleteIDs,

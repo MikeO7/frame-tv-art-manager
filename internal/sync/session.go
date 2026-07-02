@@ -48,8 +48,8 @@ type UploadJob struct {
 	Matte    string
 }
 
-// SyncPlan holds the pure decisions of a synchronization cycle.
-type SyncPlan struct {
+// Plan holds the pure decisions of a synchronization cycle.
+type Plan struct {
 	IP                 string
 	ToUpload           []UploadJob
 	ToDeleteIDs        []string
@@ -135,7 +135,7 @@ func (s *TVReconciler) Reconcile(
 
 	plan := s.planSyncCycle(ctx, transport, policy, tvContent, localFiles)
 
-	execResult, err := s.ExecuteSyncPlan(ctx, plan, transport, s.mapping, policy)
+	execResult, err := s.ExecutePlan(ctx, plan, transport, s.mapping, policy)
 	if err != nil {
 		transport.RecordFailure(time.Duration(policy.SyncIntervalMin) * time.Minute)
 		execResult.Status = statusError
@@ -159,7 +159,7 @@ func (s *TVReconciler) planSyncCycle(
 	policy config.SyncPolicy,
 	tvContent []samsung.ArtContent,
 	localFiles map[string]struct{},
-) *SyncPlan {
+) *Plan {
 	var preserveSlideshow *samsung.SlideshowStatus
 	if !policy.SlideshowOverride {
 		preserveSlideshow, _ = transport.SlideshowStatus(ctx)
@@ -194,7 +194,7 @@ func (s *TVReconciler) applyCapacityFilter(localFiles map[string]struct{}) (map[
 	return localFiles, capacityMgr
 }
 
-func (s *TVReconciler) handleCapacityError(execResult *TVSyncResult, plan *SyncPlan, capacityMgr *CapacityManager) {
+func (s *TVReconciler) handleCapacityError(execResult *TVSyncResult, plan *Plan, capacityMgr *CapacityManager) {
 	if !execResult.StorageFull {
 		return
 	}
@@ -258,7 +258,7 @@ func (s *TVReconciler) getTVContent(
 	return tvContent, nil
 }
 
-func (s *TVReconciler) logPlan(plan *SyncPlan, policy config.SyncPolicy) {
+func (s *TVReconciler) logPlan(plan *Plan, policy config.SyncPolicy) {
 	if len(plan.ToDeleteUnknownIDs) > 0 {
 		if policy.RemoveUnknownImages {
 			s.logger.Info("will remove unknown images", "count", len(plan.ToDeleteUnknownIDs))
