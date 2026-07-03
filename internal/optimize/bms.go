@@ -79,17 +79,18 @@ func (s *bmsState) floodFill() {
 		s.head++
 		cx, cy := curr%s.w, curr/s.w
 
+		// OPTIMIZATION: Reuse 'curr' (which equals cy*s.w + cx) to eliminate redundant index multiplications
 		if cx-1 >= 0 {
-			s.tryEnqueue(cy*s.w + cx - 1)
+			s.tryEnqueue(curr - 1)
 		}
 		if cx+1 < s.w {
-			s.tryEnqueue(cy*s.w + cx + 1)
+			s.tryEnqueue(curr + 1)
 		}
 		if cy-1 >= 0 {
-			s.tryEnqueue((cy-1)*s.w + cx)
+			s.tryEnqueue(curr - s.w)
 		}
 		if cy+1 < s.h {
-			s.tryEnqueue((cy+1)*s.w + cx)
+			s.tryEnqueue(curr + s.w)
 		}
 	}
 }

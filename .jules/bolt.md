@@ -10,3 +10,6 @@
 ## 2026-06-16 - Precomputing Base Data for Concurrent Loops
 **Learning:** When concurrent loops process identical base data across different configurations (like parallel execution per threshold or channel), recalculating shared properties (like luminance) inside each goroutine introduces redundant CPU overhead that scales with the number of parallel workers.
 **Action:** Always precompute shared properties into a slice sequentially prior to spawning goroutines to significantly reduce redundant CPU operations and memory allocations across workers.
+## 2026-06-21 - Reusing Linear Loop Variables in Grid Processing
+**Learning:** In tight 1D loops iterating over a grid (like flood fill queues in BMS processing), repeatedly converting the 1D index (`curr`) back into 2D coordinates (`cx`, `cy`) and then immediately recalculating the adjacent 1D indexes via `cy * width + cx +/- 1` introduces massive redundant multiplication and addition overhead on every pixel iteration.
+**Action:** When scanning neighbors in a flat 1D slice representation of a grid, always calculate adjacent indices through direct addition/subtraction from the current 1D index (e.g., `curr - 1`, `curr + width`) to entirely eliminate coordinate conversions in the hot path.
