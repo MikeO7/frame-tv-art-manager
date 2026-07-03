@@ -10,3 +10,6 @@
 ## 2026-06-17 - Samsung Client Art Request Consolidation
 **Learning:** Highly repetitive shallow wrappers around WebSocket APIs (like 9 separate methods manually formatting requests, awaiting WS streams, and unpacking JSON using the exact same flow) massively increase interface-to-logic ratios without providing meaningful isolation. A `sendArtRequest` deep helper flawlessly integrates all steps without leaking JSON structure, while still allowing dynamic `fmt.Errorf("... %w", err)` wrapping.
 **Action:** When a file contains dozens of identical `SendAndWait` and `json.Unmarshal` flows, collapse them into a single deep network request handler that returns strictly validated structs and raw data, shrinking the file interface surface area.
+## 2026-07-03 - Saliency Module Consolidation
+**Learning:** Shallow helper modules (`bms.go`, `integral.go`, `sobel.go`, `color.go`) used exclusively by the core `saliency.go` engine increase cognitive load and artificially spread related algorithmic logic across multiple files.
+**Action:** Fold purely internal, domain-specific algorithm components directly into their primary consumer file when they have no reuse outside that context. This creates a deep module with a cleaner boundary.
