@@ -111,6 +111,13 @@ func (c *Client) SelectImage(ctx context.Context, id string) error {
 }
 
 // getCategories retrieves the raw JSON list of artwork categories from the TV.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the request.
+//
+// Returns:
+//   - json.RawMessage: The raw JSON list of categories retrieved from the TV.
+//   - error: Any network or API error encountered during the request.
 func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	id := newRequestID()
 
@@ -245,6 +252,15 @@ func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[strin
 
 // sendArtRequest wraps req in the art-app envelope, sends it, and waits for the
 // matching response, returning the parsed artResponse and the raw JSON payload.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//   - req: The raw payload to wrap in the art-app envelope and send.
+//
+// Returns:
+//   - *artResponse: The parsed art API response.
+//   - json.RawMessage: The raw JSON response payload from the TV.
+//   - error: Any serialization, network, or TV-reported error encountered.
 func (c *Client) sendArtRequest(ctx context.Context, req map[string]any) (*artResponse, json.RawMessage, error) {
 	name := fmt.Sprint(req[keyRequest])
 	reqID := fmt.Sprint(req[keyRequestID])
