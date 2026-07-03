@@ -40,7 +40,7 @@ func (m *mockCatalog) NoteFileRename(oldName, newName string) {
 func TestOptimizeCatalog(t *testing.T) {
 	tempDir := t.TempDir()
 
-	err := os.WriteFile(filepath.Join(tempDir, "test.jpg"), []byte("notanimage"), 0644)
+	err := os.WriteFile(filepath.Join(tempDir, "test.jpg"), []byte("notanimage"), 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +91,7 @@ func TestOptimizeCatalog(t *testing.T) {
 		}
 	})
 }
+
 func TestHandleSingleOptimization(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -114,7 +115,7 @@ func TestHandleSingleOptimization(t *testing.T) {
 			0x00, 0x00, 0x3f, 0x00, 0x37, 0xff, 0xd9,
 		}
 
-		err := os.WriteFile(filepath.Join(tempDir, "valid.jpg"), validJPG, 0644)
+		err := os.WriteFile(filepath.Join(tempDir, "valid.jpg"), validJPG, 0o644)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +138,7 @@ func TestHandleSingleOptimization(t *testing.T) {
 
 	t.Run("Opt enabled - unsupported image error", func(t *testing.T) {
 		tempDir := t.TempDir()
-		err := os.WriteFile(filepath.Join(tempDir, "test.jpg"), []byte("notanimage"), 0644)
+		err := os.WriteFile(filepath.Join(tempDir, "test.jpg"), []byte("notanimage"), 0o644)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -161,7 +162,7 @@ func TestHandleSingleOptimization(t *testing.T) {
 	t.Run("Opt enabled - fast path", func(t *testing.T) {
 		tempDir := t.TempDir()
 		// create a file that matches checkFastPath pattern
-		err := os.WriteFile(filepath.Join(tempDir, "image_3840x2160_opt.h_a1b2c3d4.jpg"), []byte("notanimage"), 0644)
+		err := os.WriteFile(filepath.Join(tempDir, "image_3840x2160_opt.h_a1b2c3d4.jpg"), []byte("notanimage"), 0o644)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,6 +183,7 @@ func TestHandleSingleOptimization(t *testing.T) {
 		}
 	})
 }
+
 func TestEnqueueOptimizeJobs(t *testing.T) {
 	files := map[string]struct{}{
 		"test1.jpg":   {},
@@ -215,6 +217,7 @@ func TestClampWorkers(t *testing.T) {
 		t.Errorf("expected clamp 8 -> 8")
 	}
 }
+
 func TestRecordRename(t *testing.T) {
 	o := &optContext{
 		localFiles: map[string]struct{}{"old.jpg": {}},
@@ -256,7 +259,7 @@ func TestRunOptimizeWorkers_CancelInFlight(t *testing.T) {
 		cfg:        Config{Enabled: false},
 		artworkDir: t.TempDir(),
 	}
-	_ = os.WriteFile(filepath.Join(o.artworkDir, "test.jpg"), []byte("data"), 0644)
+	_ = os.WriteFile(filepath.Join(o.artworkDir, "test.jpg"), []byte("data"), 0o644)
 
 	var count int64
 
@@ -289,7 +292,7 @@ func TestRunOptimizeWorkers_ModifiedCount(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xda, 0x00, 0x08, 0x01, 0x01,
 		0x00, 0x00, 0x3f, 0x00, 0x37, 0xff, 0xd9,
 	}
-	_ = os.WriteFile(filepath.Join(tempDir, "tomodify.jpg"), validJPG, 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "tomodify.jpg"), validJPG, 0o644)
 
 	o := &optContext{
 		logger:     slog.New(slog.NewTextHandler(os.Stdout, nil)),
@@ -323,7 +326,7 @@ func TestRunOptimizeWorkers_Default(t *testing.T) {
 		artworkDir: t.TempDir(),
 	}
 
-	_ = os.WriteFile(filepath.Join(o.artworkDir, "test.jpg"), []byte("data"), 0644)
+	_ = os.WriteFile(filepath.Join(o.artworkDir, "test.jpg"), []byte("data"), 0o644)
 
 	var count int64
 	runOptimizeWorkers(ctx, jobs, o, &count)
@@ -349,7 +352,7 @@ func TestHandleSingleOptimization_Modified(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xda, 0x00, 0x08, 0x01, 0x01,
 		0x00, 0x00, 0x3f, 0x00, 0x37, 0xff, 0xd9,
 	}
-	err := os.WriteFile(filepath.Join(tempDir, "tomodify.jpg"), validJPG, 0644)
+	err := os.WriteFile(filepath.Join(tempDir, "tomodify.jpg"), validJPG, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
