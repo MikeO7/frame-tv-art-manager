@@ -73,6 +73,8 @@ func (s *bmsState) seedBorders() {
 	}
 }
 
+// floodFill uses 1D pointer arithmetic (curr +/- w) instead of redundant 2D Cartesian
+// recalculations (cy*w + cx) to optimize the dense O(W*H) inner loop.
 func (s *bmsState) floodFill() {
 	for s.head < s.tail {
 		curr := s.queue[s.head]
@@ -80,16 +82,16 @@ func (s *bmsState) floodFill() {
 		cx, cy := curr%s.w, curr/s.w
 
 		if cx-1 >= 0 {
-			s.tryEnqueue(cy*s.w + cx - 1)
+			s.tryEnqueue(curr - 1)
 		}
 		if cx+1 < s.w {
-			s.tryEnqueue(cy*s.w + cx + 1)
+			s.tryEnqueue(curr + 1)
 		}
 		if cy-1 >= 0 {
-			s.tryEnqueue((cy-1)*s.w + cx)
+			s.tryEnqueue(curr - s.w)
 		}
 		if cy+1 < s.h {
-			s.tryEnqueue((cy+1)*s.w + cx)
+			s.tryEnqueue(curr + s.w)
 		}
 	}
 }
