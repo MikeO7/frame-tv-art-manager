@@ -119,6 +119,14 @@ func (c *connection) waitForChannelReady(ctx context.Context, conn *websocket.Co
 	return nil
 }
 
+// Open establishes the WebSocket connection to the TV endpoint, handles
+// the authentication handshake, and starts the background read loop.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the dial and handshake.
+//
+// Returns:
+//   - error: Any network, TLS, or authentication error encountered.
 func (c *connection) Open(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

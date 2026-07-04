@@ -58,6 +58,16 @@ func DefaultConfig() Config {
 // It returns the resulting filename (the renamed optimized file, or the
 // original when no work was needed), whether the file was modified, and any
 // I/O or decode error. Non-JPEG inputs and already-optimized files are skipped.
+//
+// Parameters:
+//   - path: The absolute or relative file path to the source image.
+//   - cfg: Config struct defining size constraints, JPEG quality, Museum Mode, and Portrait behavior.
+//   - logger: Slog instance for recording processing warnings or debug information.
+//
+// Returns:
+//   - string: The final base filename of the image.
+//   - bool: Indicates whether the image was actually modified on disk.
+//   - error: Any decode, processing, or file IO error encountered.
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)

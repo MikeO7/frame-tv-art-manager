@@ -17,9 +17,17 @@ type Mapping struct {
 	data map[string]string // filename → content_id
 }
 
-// LoadMapping reads the per-TV filename→content_id mapping from disk, keyed by
-// the TV's IP. A missing file yields an empty (but usable) mapping; a malformed
-// file returns an error.
+// LoadMapping reads the state file for the specified TV IP from the directory,
+// unmarshaling the JSON into a Mapping struct. If the file does not exist, it
+// returns a new, empty Mapping.
+//
+// Parameters:
+//   - dir: The directory path containing mapping state files (e.g., '/data/tokens').
+//   - tvIP: The IP address of the target TV, used to construct the filename.
+//
+// Returns:
+//   - *Mapping: The loaded or newly initialized Mapping struct.
+//   - error: Any file read or JSON unmarshal error encountered.
 func LoadMapping(dir, tvIP string) (*Mapping, error) {
 	safeIP := strings.ReplaceAll(tvIP, ".", "_")
 	path := filepath.Clean(filepath.Join(dir, fmt.Sprintf("tv_%s_mapping.json", safeIP)))
