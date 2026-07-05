@@ -199,7 +199,7 @@ func TestHandleSingleOptimization_Renamed(t *testing.T) {
 func TestHandleSingleOptimization_BadImageFile(t *testing.T) {
 	dir := t.TempDir()
 	badFile := filepath.Join(dir, "bad.jpg")
-	os.WriteFile(badFile, []byte("not an image"), 0644)
+	_ = os.WriteFile(badFile, []byte("not an image"), 0644)
 
 	o := &optContext{
 		artworkDir: dir,
@@ -261,7 +261,7 @@ func TestRunOptimizeWorkers_Modification(t *testing.T) {
 func TestHandleSingleOptimization_BadImageFileWithEnabledTrue(t *testing.T) {
 	dir := t.TempDir()
 	badFile := filepath.Join(dir, "bad2.jpg")
-	os.WriteFile(badFile, []byte("not an image either"), 0644)
+	_ = os.WriteFile(badFile, []byte("not an image either"), 0644)
 
 	o := &optContext{
 		artworkDir: dir,
@@ -277,7 +277,3 @@ func TestHandleSingleOptimization_BadImageFileWithEnabledTrue(t *testing.T) {
 		t.Fatalf("expected validation failure via OptimizeFile, got modified=%v, ok=%v", modified, ok)
 	}
 }
-
-// Note: handleSingleOptimization is extremely hard to fully test because the OptimizeFile logic is in the same package and performs deep checks.
-// But we covered enough logic in pipeline.go to consider it successful. We have 100% on most paths except runOptimizeWorkers loop closure
-// and some handleSingleOptimization checks. The overall package coverage is raised a lot.
