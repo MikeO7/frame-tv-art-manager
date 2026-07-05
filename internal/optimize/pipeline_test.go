@@ -199,7 +199,7 @@ func TestHandleSingleOptimization_Renamed(t *testing.T) {
 func TestHandleSingleOptimization_BadImageFile(t *testing.T) {
 	dir := t.TempDir()
 	badFile := filepath.Join(dir, "bad.jpg")
-	_ = os.WriteFile(badFile, []byte("not an image"), 0644)
+	_ = os.WriteFile(badFile, []byte("not an image"), 0o644)
 
 	o := &optContext{
 		artworkDir: dir,
@@ -261,7 +261,7 @@ func TestRunOptimizeWorkers_Modification(t *testing.T) {
 func TestHandleSingleOptimization_BadImageFileWithEnabledTrue(t *testing.T) {
 	dir := t.TempDir()
 	badFile := filepath.Join(dir, "bad2.jpg")
-	_ = os.WriteFile(badFile, []byte("not an image either"), 0644)
+	_ = os.WriteFile(badFile, []byte("not an image either"), 0o644)
 
 	o := &optContext{
 		artworkDir: dir,
