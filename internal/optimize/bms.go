@@ -45,17 +45,20 @@ func generateBMSMap(src *image.RGBA) []float64 {
 }
 
 type bmsState struct {
-	queue   []int
-	head    int
-	tail    int
-	boolMap []bool
-	bg      []bool
-	w       int
-	h       int
+	queue  []int
+	head   int
+	tail   int
+	lumMap []uint8
+	t      uint8
+	bg     []bool
+	w      int
+	h      int
 }
 
 func (s *bmsState) tryEnqueue(idx int) {
-	if !s.boolMap[idx] && !s.bg[idx] {
+	// ⚡ Bolt: Evaluate threshold on the fly directly from the lumMap
+	// to avoid pre-allocating an intermediate boolMap slice
+	if s.lumMap[idx] <= s.t && !s.bg[idx] {
 		s.bg[idx] = true
 		s.queue[s.tail] = idx
 		s.tail++
@@ -77,19 +80,22 @@ func (s *bmsState) floodFill() {
 	for s.head < s.tail {
 		curr := s.queue[s.head]
 		s.head++
-		cx, cy := curr%s.w, curr/s.w
 
-		if cx-1 >= 0 {
-			s.tryEnqueue(cy*s.w + cx - 1)
+		// ⚡ Bolt: Use direct 1D arithmetic rather than converting
+		// to 2D space for every coordinate check to save math cycles
+		cx := curr % s.w
+
+		if cx > 0 {
+			s.tryEnqueue(curr - 1)
 		}
 		if cx+1 < s.w {
-			s.tryEnqueue(cy*s.w + cx + 1)
+			s.tryEnqueue(curr + 1)
 		}
-		if cy-1 >= 0 {
-			s.tryEnqueue((cy-1)*s.w + cx)
+		if curr >= s.w {
+			s.tryEnqueue(curr - s.w)
 		}
-		if cy+1 < s.h {
-			s.tryEnqueue((cy+1)*s.w + cx)
+		if curr+s.w < s.w*s.h {
+			s.tryEnqueue(curr + s.w)
 		}
 	}
 }
@@ -99,26 +105,21 @@ func processBMSThreshold(lumMap []uint8, t uint8, w, h int) []float64 {
 		return nil
 	}
 	res := make([]float64, w*h)
-	boolMap := make([]bool, w*h)
-	for i := 0; i < w*h; i++ {
-		if lumMap[i] > t {
-			boolMap[i] = true
-		}
-	}
 
 	state := bmsState{
-		queue:   make([]int, w*h),
-		boolMap: boolMap,
-		bg:      make([]bool, w*h),
-		w:       w,
-		h:       h,
+		queue:  make([]int, w*h),
+		lumMap: lumMap,
+		t:      t,
+		bg:     make([]bool, w*h),
+		w:      w,
+		h:      h,
 	}
 
 	state.seedBorders()
 	state.floodFill()
 
 	for i := 0; i < w*h; i++ {
-		if state.boolMap[i] && !state.bg[i] {
+		if lumMap[i] > t && !state.bg[i] {
 			res[i] = 1.0
 		}
 	}

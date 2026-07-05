@@ -10,3 +10,10 @@
 ## 2026-06-16 - Precomputing Base Data for Concurrent Loops
 **Learning:** When concurrent loops process identical base data across different configurations (like parallel execution per threshold or channel), recalculating shared properties (like luminance) inside each goroutine introduces redundant CPU overhead that scales with the number of parallel workers.
 **Action:** Always precompute shared properties into a slice sequentially prior to spawning goroutines to significantly reduce redundant CPU operations and memory allocations across workers.
+## 2026-07-05 - Avoid Redundant Slice Allocations inside Parallel Loops
+**Learning:** In tight, parallelized inner operations (like Boolean Map Saliency processing across multiple thresholds), dynamically allocating temporary arrays (like `boolMap := make([]bool, w*h)`) inside each goroutine introduces severe heap allocation pressure and garbage collection overhead. Furthermore, transforming basic mathematical state evaluation into memory access causes cache misses.
+**Action:** When translating boolean states against thresholds, evaluate the state strictly on-the-fly (`s.lumMap[idx] <= s.t`) directly from pre-computed shared memory slices rather than pre-allocating an intermediate boolean mapping structure.
+
+## 2026-07-05 - 1D Arithmetic Trumps 2D Conversion in Hot Paths
+**Learning:** Converting a 1D slice index (`curr`) back into 2D Cartesian coordinates (`cx := curr % w; cy := curr / w`) inside an extremely tight flood-fill processing loop wastes CPU cycles doing division and modulo operations for every single neighbor calculation.
+**Action:** Always maintain strict 1D index offsets (`curr - 1`, `curr + w`) in hot execution paths to handle spatial neighbors, skipping coordinate space transitions entirely to minimize arithmetic load.
