@@ -67,23 +67,15 @@ type Client struct {
 	backoffUntil time.Time
 }
 
-// NewClient creates a Samsung TV client for the given IP and options. It only
-// initializes client state; call Connect to open the WebSocket connection.
+// NewClient creates a TV client.
 //
 // Parameters:
-//   - ip: The network IP address of the target Samsung Frame TV.
-//   - opts: Connection options including timeouts, certificates, and REST gate preferences.
-//   - logger: The structured logger for this specific TV connection.
+//   - ip: Network IP address.
+//   - opts: Connection options.
+//   - logger: Structured logger.
 //
 // Returns:
-//   - *Client: An initialized, disconnected Client ready to invoke Connect().
-//
-// Example:
-//
-//	tv := samsung.NewClient("192.168.1.150", cfg.TVConnectOptions(), logger)
-//	if err := tv.Connect(ctx); err != nil {
-//	    return err
-//	}
+//   - *Client: An initialized Client.
 func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Client {
 	return &Client{
 		IP:        ip,
@@ -126,11 +118,11 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	return nil
 }
 
-// Connect establishes a connection to the TV with the following sequence:
-//  1. Wake-on-LAN (if MAC configured)
-//  2. Silent REST Gate (if enabled) -> abort if TV is not in art mode
-//  3. Open WSS connection to art endpoint on port 8002
-//  4. Fetch device info via REST API
+// Connect establishes a connection to the TV:
+//  1. WoL (if MAC configured)
+//  2. REST Gate (if enabled)
+//  3. Open WSS on port 8002
+//  4. Fetch device info
 //
 // Parameters:
 //   - ctx: Context to control the timeout and cancellation of the connection.
@@ -241,7 +233,6 @@ func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
 		logger:        c.logger,
 	}
 }
-
 func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
 	conn := newConnection(c.remoteControlConfig(port, tokenFile))
 	if err := conn.Open(ctx); err != nil {
@@ -249,7 +240,6 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 	}
 	return conn.Close()
 }
-
 func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, error) {
 	url := fmt.Sprintf("https://%s:%d/api/v2/", c.IP, port)
 
@@ -288,7 +278,6 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 
 	return &envelope.Device, nil
 }
-
 func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 	url := fmt.Sprintf("http://%s:%d/ms/art", c.IP, portRESTGate)
 

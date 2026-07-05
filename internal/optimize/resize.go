@@ -64,13 +64,6 @@ func DefaultConfig() Config {
 //   - string: The resulting filename (the renamed optimized file, or the original when no work was needed).
 //   - bool: Indicates whether the file was modified.
 //   - error: Any I/O or decode error encountered. Non-JPEG inputs and already-optimized files are skipped.
-//
-// Example:
-//
-//	optName, modified, err := OptimizeFile("/data/artwork/photo.jpg", cfg, logger)
-//	if err != nil {
-//	    return err
-//	}
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
