@@ -26,3 +26,6 @@
 ## 2026-06-19 - Context alignment for undocumented connection methods
 **Learning:** Core connection and request methods in the Samsung TV client (`sendWOL`, `getCategories`, `sendArtRequest`) were completely undocumented, making it difficult to understand their precise inputs and outputs within the TV interaction lifecycle.
 **Action:** When auditing clients or connection facades, actively look for and document lower-level functional wrappers (like network requests and broadcast methods). Use exact string replacement to attach complete parameter and return breakdown blocks directly above the un-documented method definitions.
+## 2026-06-25 - GoDoc `<pre>` Code Examples Formatting
+**Learning:** Adding code examples within GoDoc comments requires specific indentation. If example code blocks are not indented, they will be parsed as normal text paragraphs and not formatted as `<pre>` code blocks in the generated documentation.
+**Action:** When adding GoDoc examples for public methods or clients, ensure the example code lines are indented using tabs or spaces directly below the `Example:` heading to properly trigger `<pre>` block parsing.

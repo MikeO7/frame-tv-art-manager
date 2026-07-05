@@ -55,9 +55,22 @@ func DefaultConfig() Config {
 // dimensions, writing an optimized copy adjacent to the original and applying
 // the hash-based "_opt.h_" naming convention.
 //
-// It returns the resulting filename (the renamed optimized file, or the
-// original when no work was needed), whether the file was modified, and any
-// I/O or decode error. Non-JPEG inputs and already-optimized files are skipped.
+// Parameters:
+//   - path: The absolute path to the local image file.
+//   - cfg: Configuration specifying target dimensions and processing rules.
+//   - logger: The structured logger for recording optimization events.
+//
+// Returns:
+//   - string: The resulting filename (the renamed optimized file, or the original when no work was needed).
+//   - bool: Indicates whether the file was modified.
+//   - error: Any I/O or decode error encountered. Non-JPEG inputs and already-optimized files are skipped.
+//
+// Example:
+//
+//	optName, modified, err := OptimizeFile("/data/artwork/photo.jpg", cfg, logger)
+//	if err != nil {
+//	    return err
+//	}
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
@@ -208,7 +221,9 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 		return 0, 0, fmt.Errorf("decode image: %w", err)
 	}
 
-	params.logger.Info("optimizing image", "file", params.filename, "original_dims", fmt.Sprintf("%dx%d", params.width, params.height))
+	params.logger.Info("optimizing image",
+		"file", params.filename,
+		"original_dims", fmt.Sprintf("%dx%d", params.width, params.height))
 
 	img = RotateImage(img, orientation)
 	rgba := toRGBA(img)

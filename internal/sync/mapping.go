@@ -20,6 +20,21 @@ type Mapping struct {
 // LoadMapping reads the per-TV filename→content_id mapping from disk, keyed by
 // the TV's IP. A missing file yields an empty (but usable) mapping; a malformed
 // file returns an error.
+//
+// Parameters:
+//   - dir: The directory where the JSON mapping files are stored.
+//   - tvIP: The IP address of the TV, used to construct a safe filename.
+//
+// Returns:
+//   - *Mapping: The thread-safe mapping object.
+//   - error: Any failure during read or JSON parsing.
+//
+// Example:
+//
+//	m, err := sync.LoadMapping("/data/tokens", "192.168.1.150")
+//	if err != nil {
+//	    return err
+//	}
 func LoadMapping(dir, tvIP string) (*Mapping, error) {
 	safeIP := strings.ReplaceAll(tvIP, ".", "_")
 	path := filepath.Clean(filepath.Join(dir, fmt.Sprintf("tv_%s_mapping.json", safeIP)))
