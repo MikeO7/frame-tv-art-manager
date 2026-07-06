@@ -79,17 +79,19 @@ func (s *bmsState) floodFill() {
 		s.head++
 		cx, cy := curr%s.w, curr/s.w
 
+		// OPTIMIZATION: Reusing 1D loop variable 'curr' instead of recalculating 2D Cartesian
+		// coordinates (cy*s.w + cx) avoids heavy redundant math operations in this tight loop.
 		if cx-1 >= 0 {
-			s.tryEnqueue(cy*s.w + cx - 1)
+			s.tryEnqueue(curr - 1)
 		}
 		if cx+1 < s.w {
-			s.tryEnqueue(cy*s.w + cx + 1)
+			s.tryEnqueue(curr + 1)
 		}
 		if cy-1 >= 0 {
-			s.tryEnqueue((cy-1)*s.w + cx)
+			s.tryEnqueue(curr - s.w)
 		}
 		if cy+1 < s.h {
-			s.tryEnqueue((cy+1)*s.w + cx)
+			s.tryEnqueue(curr + s.w)
 		}
 	}
 }
