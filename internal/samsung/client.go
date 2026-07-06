@@ -13,10 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
-
 const (
 	keyRequest          = "request"
 	keyRequestID        = "request_id"
@@ -24,13 +22,11 @@ const (
 	keyGetContentList   = "get_content_list"
 	keyContentID        = "content_id"
 )
-
 // WebSocket endpoint names exposed by Samsung Frame TVs.
 const (
 	endpointArtApp        = "com.samsung.art-app"
 	endpointRemoteControl = "samsung.remote.control"
 )
-
 // Samsung Frame TV network ports and protocol limits.
 const (
 	portArtWSS         = 8002 // WSS art-app + remote-control endpoint
@@ -38,12 +34,10 @@ const (
 	wolBroadcastPort   = 9    // Wake-on-LAN discard port
 	maxBackoffDelay    = 1 * time.Hour
 	maxDeviceInfoBytes = 1 << 20 // 1 MiB cap on the device-info response
-
 	// powerKeyHold is how long KEY_POWER is held between the press and release
 	// events to trigger a power toggle on the TV's remote-control endpoint.
 	powerKeyHold = 3 * time.Second
 )
-
 // Client is the high-level facade for interacting with a single Samsung
 // Frame TV. It composes the lower-level connection, REST, gate,
 // WoL, and remote control components into a clean interface that the
@@ -52,21 +46,17 @@ type Client struct {
 	IP     string
 	opts   config.TVConnectOptions
 	logger *slog.Logger
-
 	artConn *connection
 	info    *DeviceInfo
-
 	// powerHold is the KEY_POWER press-to-release duration. It defaults to
 	// powerKeyHold and is overridable in tests to avoid real-time waits.
 	powerHold time.Duration
-
 	// Persistent backoff state
 	mu           sync.Mutex
 	failures     int
 	lastFailure  time.Time
 	backoffUntil time.Time
 }
-
 // NewClient creates a Samsung TV client for the given IP and options. It only
 // initializes client state; call Connect to open the WebSocket connection.
 func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Client {
@@ -77,7 +67,6 @@ func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Cl
 		powerHold: powerKeyHold,
 	}
 }
-
 func (c *Client) checkGate(ctx context.Context) error {
 	if !c.opts.EnableRESTGate {
 		return nil
@@ -94,7 +83,6 @@ func (c *Client) checkGate(ctx context.Context) error {
 	c.logger.Debug("REST gate: TV is in art mode")
 	return nil
 }
-
 func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	if _, err := os.Stat(tokenFile); !os.IsNotExist(err) {
 		return nil
@@ -110,7 +98,6 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	}
 	return nil
 }
-
 // Connect establishes a connection to the TV with the following sequence:
 //  1. Wake-on-LAN (if MAC configured)
 //  2. Silent REST Gate (if enabled) -> abort if TV is not in art mode
@@ -124,16 +111,13 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 //   - error: Any network or authentication error encountered during handshake.
 func (c *Client) Connect(ctx context.Context) error {
 	c.wakeTV(ctx)
-
 	if err := c.checkGate(ctx); err != nil {
 		return err
 	}
-
 	tokenFile := c.tokenFilePath()
 	if err := c.setupToken(ctx, tokenFile); err != nil {
 		return err
 	}
-
 	c.artConn = newConnection(connConfig{
 		host:          c.IP,
 		port:          portArtWSS,
@@ -144,11 +128,9 @@ func (c *Client) Connect(ctx context.Context) error {
 		skipTLSVerify: c.opts.SkipTLSVerify,
 		logger:        c.logger,
 	})
-
 	if err := c.artConn.Open(ctx); err != nil {
 		return fmt.Errorf("connect to art endpoint: %w", err)
 	}
-
 	info, err := c.fetchDeviceInfo(ctx, portArtWSS)
 	if err != nil {
 		c.logger.Warn("could not fetch device info", "error", err)
@@ -161,10 +143,8 @@ func (c *Client) Connect(ctx context.Context) error {
 			"frameTVSupport", info.FrameTVSupport,
 		)
 	}
-
 	return nil
 }
-
 // Close shuts down the WebSocket connection.
 //
 // Returns:
@@ -175,7 +155,6 @@ func (c *Client) Close() error {
 	}
 	return nil
 }
-
 func checkArtError(resp *artResponse) error {
 	if resp.ErrorCode != 0 {
 		// 11001 is sometimes returned by Samsung's art app for out-of-storage.
@@ -186,7 +165,6 @@ func checkArtError(resp *artResponse) error {
 	}
 	return nil
 }
-
 // Model returns the connected TV model name, if known.
 //
 // Returns:
@@ -197,7 +175,6 @@ func (c *Client) Model() string {
 	}
 	return ""
 }
-
 // DeviceInfo returns the cached device info, or nil if not fetched.
 //
 // Returns:
@@ -205,13 +182,11 @@ func (c *Client) Model() string {
 func (c *Client) DeviceInfo() *DeviceInfo {
 	return c.info
 }
-
 // tokenFilePath returns the path to the token file for this TV.
 func (c *Client) tokenFilePath() string {
 	safeIP := strings.ReplaceAll(c.IP, ".", "_")
 	return filepath.Join(c.opts.TokenDir, fmt.Sprintf("tv_%s.txt", safeIP))
 }
-
 // remoteControlConfig builds the connConfig for the TV's remote-control
 // endpoint at the given port, using the supplied token file.
 func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
@@ -226,7 +201,6 @@ func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
 		logger:        c.logger,
 	}
 }
-
 // ensureToken opens a remote control connection to verify or establish an authentication token with the TV.
 //
 // Parameters:
@@ -243,7 +217,6 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 	}
 	return conn.Close()
 }
-
 // fetchDeviceInfo retrieves the TV's system capabilities and hardware identifiers via its REST API.
 //
 // Parameters:
@@ -255,7 +228,6 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 //   - error: Any network or API error encountered.
 func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, error) {
 	url := fmt.Sprintf("https://%s:%d/api/v2/", c.IP, port)
-
 	client := &http.Client{
 		Timeout: c.opts.APITimeout,
 		Transport: &http.Transport{
@@ -264,34 +236,27 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 			},
 		},
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-
 	// Prevent DoS / resource exhaustion by enforcing a maximum read size.
 	reader := http.MaxBytesReader(nil, resp.Body, maxDeviceInfoBytes)
-
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
-
 	var envelope deviceInfoResponse
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("parse device info: %w", err)
 	}
-
 	return &envelope.Device, nil
 }
-
 // checkArtModeGate probes the TV's REST endpoint to determine if it is currently in art mode.
 //
 // Parameters:
@@ -302,19 +267,15 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 //   - error: Any network error encountered during the probe.
 func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 	url := fmt.Sprintf("http://%s:%d/ms/art", c.IP, portRESTGate)
-
 	client := &http.Client{Timeout: c.opts.GateTimeout}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, nil
 	}
-
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, nil
 	}
 	defer func() { _ = resp.Body.Close() }()
-
 	return resp.StatusCode == http.StatusOK, nil
 }
