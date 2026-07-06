@@ -87,14 +87,6 @@ func (c *Client) TurnOff(ctx context.Context) error {
 	return c.turnOffTV(ctx, portArtWSS)
 }
 
-// turnOffTV opens a remote control connection on the specified port and sends a KEY_POWER sequence to turn off the TV.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the network request.
-//   - port: The network port to use for the remote control connection.
-//
-// Returns:
-//   - error: Any network or authentication error encountered.
 func (c *Client) turnOffTV(ctx context.Context, port int) error {
 	conn := newConnection(c.remoteControlConfig(port, c.tokenFilePath()))
 

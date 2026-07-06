@@ -12,12 +12,6 @@ import (
 
 // SaveMetadata fetches device info, slideshow status, and artwork categories,
 // writing them to a per-TV JSON file in the tokens directory for auditing.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//
-// Returns:
-//   - error: Any network or API error encountered.
 func (c *Client) SaveMetadata(ctx context.Context) error {
 	metadata := make(map[string]any)
 	metadata["timestamp"] = time.Now().Format(time.RFC3339)
@@ -60,13 +54,6 @@ func (c *Client) SaveMetadata(ctx context.Context) error {
 }
 
 // SlideshowStatus returns the TV's current slideshow configuration.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//
-// Returns:
-//   - *SlideshowStatus: The parsed slideshow status response from the TV API.
-//   - error: Any network or API error encountered.
 func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) {
 	id := newRequestID()
 
@@ -98,13 +85,6 @@ func (c *Client) SlideshowStatus(ctx context.Context) (*SlideshowStatus, error) 
 }
 
 // SetSlideshow updates the TV's slideshow configuration.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - s: The SlideshowStatus struct containing the desired slideshow configuration.
-//
-// Returns:
-//   - error: Any network or API error encountered.
 func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
 	id := newRequestID()
 
@@ -122,13 +102,6 @@ func (c *Client) SetSlideshow(ctx context.Context, s SlideshowStatus) error {
 }
 
 // SetBrightness sets the art-mode brightness value.
-//
-// Parameters:
-//   - ctx: Context to control the timeout and cancellation of the request.
-//   - val: The integer brightness value to set on the TV.
-//
-// Returns:
-//   - error: Any network or API error encountered.
 func (c *Client) SetBrightness(ctx context.Context, val int) error {
 	id := newRequestID()
 

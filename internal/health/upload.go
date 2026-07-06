@@ -167,7 +167,7 @@ func parseUploadedFile(r *http.Request, maxSize int64) (io.ReadCloser, error) {
 	if strings.Contains(contentTypeHeader, "multipart/form-data") {
 		// r.Body is already wrapped with http.MaxBytesReader(maxSize) by the
 		// caller, so form parsing is bounded despite gosec's G120 heuristic.
-		err := r.ParseMultipartForm(maxSize) //nolint:gosec // body bounded upstream by MaxBytesReader
+		err := r.ParseMultipartForm(maxSize)
 		if err != nil {
 			return nil, errors.New("file too large or invalid request")
 		}

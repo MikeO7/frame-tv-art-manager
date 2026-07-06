@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,8 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
+
 const (
 	keyRequest          = "request"
 	keyRequestID        = "request_id"
@@ -22,11 +23,13 @@ const (
 	keyGetContentList   = "get_content_list"
 	keyContentID        = "content_id"
 )
+
 // WebSocket endpoint names exposed by Samsung Frame TVs.
 const (
 	endpointArtApp        = "com.samsung.art-app"
 	endpointRemoteControl = "samsung.remote.control"
 )
+
 // Samsung Frame TV network ports and protocol limits.
 const (
 	portArtWSS         = 8002 // WSS art-app + remote-control endpoint
@@ -38,14 +41,15 @@ const (
 	// events to trigger a power toggle on the TV's remote-control endpoint.
 	powerKeyHold = 3 * time.Second
 )
+
 // Client is the high-level facade for interacting with a single Samsung
 // Frame TV. It composes the lower-level connection, REST, gate,
 // WoL, and remote control components into a clean interface that the
 // sync engine consumes.
 type Client struct {
-	IP     string
-	opts   config.TVConnectOptions
-	logger *slog.Logger
+	IP      string
+	opts    config.TVConnectOptions
+	logger  *slog.Logger
 	artConn *connection
 	info    *DeviceInfo
 	// powerHold is the KEY_POWER press-to-release duration. It defaults to
@@ -57,6 +61,7 @@ type Client struct {
 	lastFailure  time.Time
 	backoffUntil time.Time
 }
+
 // NewClient creates a Samsung TV client for the given IP and options. It only
 // initializes client state; call Connect to open the WebSocket connection.
 func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Client {
@@ -67,6 +72,7 @@ func NewClient(ip string, opts config.TVConnectOptions, logger *slog.Logger) *Cl
 		powerHold: powerKeyHold,
 	}
 }
+
 func (c *Client) checkGate(ctx context.Context) error {
 	if !c.opts.EnableRESTGate {
 		return nil
@@ -83,6 +89,7 @@ func (c *Client) checkGate(ctx context.Context) error {
 	c.logger.Debug("REST gate: TV is in art mode")
 	return nil
 }
+
 func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	if _, err := os.Stat(tokenFile); !os.IsNotExist(err) {
 		return nil
@@ -98,8 +105,10 @@ func (c *Client) setupToken(ctx context.Context, tokenFile string) error {
 	}
 	return nil
 }
+
 // Connect establishes a connection to the TV with the following sequence:
 //  1. Wake-on-LAN (if MAC configured)
+
 //  2. Silent REST Gate (if enabled) -> abort if TV is not in art mode
 //  3. Open WSS connection to art endpoint on port 8002
 //  4. Fetch device info via REST API
@@ -145,6 +154,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 	return nil
 }
+
 // Close shuts down the WebSocket connection.
 //
 // Returns:
@@ -155,6 +165,7 @@ func (c *Client) Close() error {
 	}
 	return nil
 }
+
 func checkArtError(resp *artResponse) error {
 	if resp.ErrorCode != 0 {
 		// 11001 is sometimes returned by Samsung's art app for out-of-storage.
@@ -165,6 +176,7 @@ func checkArtError(resp *artResponse) error {
 	}
 	return nil
 }
+
 // Model returns the connected TV model name, if known.
 //
 // Returns:
@@ -175,6 +187,7 @@ func (c *Client) Model() string {
 	}
 	return ""
 }
+
 // DeviceInfo returns the cached device info, or nil if not fetched.
 //
 // Returns:
@@ -182,11 +195,13 @@ func (c *Client) Model() string {
 func (c *Client) DeviceInfo() *DeviceInfo {
 	return c.info
 }
+
 // tokenFilePath returns the path to the token file for this TV.
 func (c *Client) tokenFilePath() string {
 	safeIP := strings.ReplaceAll(c.IP, ".", "_")
 	return filepath.Join(c.opts.TokenDir, fmt.Sprintf("tv_%s.txt", safeIP))
 }
+
 // remoteControlConfig builds the connConfig for the TV's remote-control
 // endpoint at the given port, using the supplied token file.
 func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
@@ -201,6 +216,7 @@ func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
 		logger:        c.logger,
 	}
 }
+
 // ensureToken opens a remote control connection to verify or establish an authentication token with the TV.
 //
 // Parameters:
@@ -217,6 +233,7 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 	}
 	return conn.Close()
 }
+
 // fetchDeviceInfo retrieves the TV's system capabilities and hardware identifiers via its REST API.
 //
 // Parameters:
@@ -257,6 +274,7 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	}
 	return &envelope.Device, nil
 }
+
 // checkArtModeGate probes the TV's REST endpoint to determine if it is currently in art mode.
 //
 // Parameters:
