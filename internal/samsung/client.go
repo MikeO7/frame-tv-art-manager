@@ -227,6 +227,15 @@ func (c *Client) remoteControlConfig(port int, tokenFile string) connConfig {
 	}
 }
 
+// ensureToken opens a remote control connection to verify or establish an authentication token with the TV.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//   - tokenFile: The file path to store or read the authentication token.
+//   - port: The network port to use for the remote control connection.
+//
+// Returns:
+//   - error: Any network or authentication error encountered.
 func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) error {
 	conn := newConnection(c.remoteControlConfig(port, tokenFile))
 	if err := conn.Open(ctx); err != nil {
@@ -235,6 +244,15 @@ func (c *Client) ensureToken(ctx context.Context, tokenFile string, port int) er
 	return conn.Close()
 }
 
+// fetchDeviceInfo retrieves the TV's system capabilities and hardware identifiers via its REST API.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//   - port: The network port to query for device information.
+//
+// Returns:
+//   - *DeviceInfo: The parsed device information from the TV.
+//   - error: Any network or API error encountered.
 func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, error) {
 	url := fmt.Sprintf("https://%s:%d/api/v2/", c.IP, port)
 
@@ -274,6 +292,14 @@ func (c *Client) fetchDeviceInfo(ctx context.Context, port int) (*DeviceInfo, er
 	return &envelope.Device, nil
 }
 
+// checkArtModeGate probes the TV's REST endpoint to determine if it is currently in art mode.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//
+// Returns:
+//   - bool: True if the TV is in art mode, false otherwise.
+//   - error: Any network error encountered during the probe.
 func (c *Client) checkArtModeGate(ctx context.Context) (bool, error) {
 	url := fmt.Sprintf("http://%s:%d/ms/art", c.IP, portRESTGate)
 
