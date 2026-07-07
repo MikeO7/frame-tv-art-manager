@@ -79,17 +79,20 @@ func (s *bmsState) floodFill() {
 		s.head++
 		cx, cy := curr%s.w, curr/s.w
 
-		if cx-1 >= 0 {
-			s.tryEnqueue(cy*s.w + cx - 1)
+		// OPTIMIZATION: cy*s.w + cx is mathematically equivalent to curr.
+		// Reusing curr directly avoids 4 redundant multiplications and additions
+		// per pixel in this heavily utilized flood fill hot path.
+		if cx > 0 {
+			s.tryEnqueue(curr - 1)
 		}
 		if cx+1 < s.w {
-			s.tryEnqueue(cy*s.w + cx + 1)
+			s.tryEnqueue(curr + 1)
 		}
-		if cy-1 >= 0 {
-			s.tryEnqueue((cy-1)*s.w + cx)
+		if cy > 0 {
+			s.tryEnqueue(curr - s.w)
 		}
 		if cy+1 < s.h {
-			s.tryEnqueue((cy+1)*s.w + cx)
+			s.tryEnqueue(curr + s.w)
 		}
 	}
 }

@@ -94,6 +94,13 @@ func calculateSobelEdgeSlow(src *image.RGBA, x, y int, bounds image.Rectangle) f
 }
 
 func calculateSkinProbability(r, g, b uint8) float64 {
+	// OPTIMIZATION: Early return if blue channel is exceptionally high,
+	// bypassing expensive floating-point skin probability calculations.
+	// Skin tones almost never contain more blue than red or green.
+	if b > r || b > g {
+		return 0.0
+	}
+
 	rf, gf, bf := float64(r), float64(g), float64(b)
 	cb := 128 - 0.168736*rf - 0.331264*gf + 0.5*bf
 	cr := 128 + 0.5*rf - 0.418688*gf - 0.081312*bf
