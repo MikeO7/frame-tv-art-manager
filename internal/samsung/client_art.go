@@ -111,6 +111,13 @@ func (c *Client) SelectImage(ctx context.Context, id string) error {
 }
 
 // getCategories retrieves the raw JSON list of artwork categories from the TV.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//
+// Returns:
+//   - json.RawMessage: The raw JSON list of artwork categories, or nil if an error occurs.
+//   - error: Any network or API error encountered during retrieval.
 func (c *Client) getCategories(ctx context.Context) (json.RawMessage, error) {
 	id := newRequestID()
 
@@ -221,6 +228,15 @@ func (c *Client) Upload(ctx context.Context, filePath, fileType, matte string) (
 
 // buildSendImageRequest constructs the art-API "send_image" payload that
 // announces a pending D2D socket transfer of the given size and matte.
+//
+// Parameters:
+//   - id: The unique request ID for the art-API payload.
+//   - fileType: The image file type (e.g., "JPEG" or "PNG").
+//   - matte: The matte style ID to apply to the image.
+//   - fileSize: The total size of the image file in bytes.
+//
+// Returns:
+//   - map[string]any: The complete "send_image" JSON payload structure.
 func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[string]any {
 	// connectionIDModulus bounds the generated connection_id to 4 GiB, the
 	// range the TV's D2D handshake expects.
@@ -245,6 +261,15 @@ func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[strin
 
 // sendArtRequest wraps req in the art-app envelope, sends it, and waits for the
 // matching response, returning the parsed artResponse and the raw JSON payload.
+//
+// Parameters:
+//   - ctx: Context to control the timeout and cancellation of the network request.
+//   - req: The raw map payload containing the request arguments.
+//
+// Returns:
+//   - *artResponse: The parsed response from the TV's art API.
+//   - json.RawMessage: The raw JSON bytes from the TV's art API.
+//   - error: Any network or API error encountered during transmission.
 func (c *Client) sendArtRequest(ctx context.Context, req map[string]any) (*artResponse, json.RawMessage, error) {
 	name := fmt.Sprint(req[keyRequest])
 	reqID := fmt.Sprint(req[keyRequestID])
