@@ -20,6 +20,18 @@ func TestFilterLocalFiles(t *testing.T) {
 		t.Errorf("expected 4 files, got %d", len(res))
 	}
 
+	// Case 0: Limit is 0 (should filter out all files)
+	res = FilterLocalFiles(local, 0)
+	if len(res) != 0 {
+		t.Errorf("expected 0 files for 0 limit, got %d", len(res))
+	}
+
+	// Case -1: Limit is less than 0 (should bypass filtering and return all)
+	res = FilterLocalFiles(local, -1)
+	if len(res) != 4 {
+		t.Errorf("expected 4 files for -1 limit, got %d", len(res))
+	}
+
 	// Case 2: Limit is less
 	res = FilterLocalFiles(local, 2)
 	if len(res) != 2 {

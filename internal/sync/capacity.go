@@ -104,7 +104,7 @@ func (cm *CapacityManager) Save(state *CapacityState) error {
 
 // FilterLocalFiles returns a subset of local files limited to MaxImages if the TV is full.
 func FilterLocalFiles(localFiles map[string]struct{}, maxImages int) map[string]struct{} {
-	if maxImages <= 0 || len(localFiles) <= maxImages {
+	if maxImages < 0 || len(localFiles) <= maxImages {
 		return localFiles
 	}
 
