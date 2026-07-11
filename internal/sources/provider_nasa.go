@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -55,26 +54,10 @@ type apodResponse struct {
 // fetchJSON issues a GET to apiURL and decodes the size-bounded JSON response
 // body into out, centralizing the NASA request boilerplate.
 func (p *nasaProvider) fetchJSON(ctx context.Context, apiURL, errLabel string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s error: %d", errLabel, resp.StatusCode)
-	}
-
-	reader := http.MaxBytesReader(nil, resp.Body, nasaMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(out); err != nil {
-		return fmt.Errorf("decode %s response: %w", errLabel, err)
-	}
-	return nil
+	return fetchProviderJSON(ctx, providerJSONRequest{
+		client: p.client, url: apiURL, maxBytes: nasaMaxResponseBytes,
+		statusLabel: errLabel, decodeLabel: errLabel,
+	}, out)
 }
 
 func (p *nasaProvider) Name() string {

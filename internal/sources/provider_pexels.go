@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -56,27 +55,10 @@ type pexelsPhoto struct {
 // fetchJSON issues an authorized GET to apiURL and decodes the size-bounded
 // JSON response body into out, centralizing the Pexels request boilerplate.
 func (p *pexelsProvider) fetchJSON(ctx context.Context, apiURL string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("pexels api error: %d", resp.StatusCode)
-	}
-
-	reader := http.MaxBytesReader(nil, resp.Body, pexelsMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(out); err != nil {
-		return fmt.Errorf("decode pexels response: %w", err)
-	}
-	return nil
+	return fetchProviderJSON(ctx, providerJSONRequest{
+		client: p.client, url: apiURL, headers: map[string]string{headerAuthorization: p.apiKey},
+		maxBytes: pexelsMaxResponseBytes, statusLabel: "pexels api", decodeLabel: "pexels",
+	}, out)
 }
 
 func (p *pexelsProvider) Name() string {

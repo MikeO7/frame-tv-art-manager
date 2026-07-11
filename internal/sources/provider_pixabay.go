@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -119,27 +118,14 @@ func (p *pixabayProvider) fetchAllPages(ctx context.Context, baseURL string) ([]
 }
 
 func (p *pixabayProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pixabay api error: %d", resp.StatusCode)
-	}
-
 	var result struct {
 		Hits []pixabayPhoto `json:"hits"`
 	}
-	reader := http.MaxBytesReader(nil, resp.Body, pixabayMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode pixabay response: %w", err)
+	if err := fetchProviderJSON(ctx, providerJSONRequest{
+		client: p.client, url: apiURL, maxBytes: pixabayMaxResponseBytes,
+		statusLabel: "pixabay api", decodeLabel: "pixabay",
+	}, &result); err != nil {
+		return nil, err
 	}
 
 	var urls []string

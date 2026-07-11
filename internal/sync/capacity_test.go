@@ -85,6 +85,65 @@ func TestCapacityManager_LoadSave(t *testing.T) {
 	}
 }
 
+func TestCapacityManager_RecoversTransactionalBackup(t *testing.T) {
+	t.Parallel()
+
+	tokenDir := t.TempDir()
+	cm := NewCapacityManager(tokenDir, "1.2.3.4")
+	first := &CapacityState{MaxImages: 40, IsFull: true, SuccessStreak: 2}
+	second := &CapacityState{MaxImages: 45, IsFull: false}
+	if err := cm.Save(first); err != nil {
+		t.Fatalf("save first state: %v", err)
+	}
+	if err := cm.Save(second); err != nil {
+		t.Fatalf("save second state: %v", err)
+	}
+	if err := os.WriteFile(cm.path, []byte("truncated"), 0o600); err != nil {
+		t.Fatalf("corrupt current state: %v", err)
+	}
+
+	got, err := cm.Load()
+	if err != nil {
+		t.Fatalf("load recovered state: %v", err)
+	}
+	if *got != *first {
+		t.Fatalf("recovered state = %+v, want %+v", got, first)
+	}
+
+	fileInfo, err := os.Stat(cm.path)
+	if err != nil {
+		t.Fatalf("stat capacity file: %v", err)
+	}
+	if gotPerm := fileInfo.Mode().Perm(); gotPerm != 0o600 {
+		t.Fatalf("capacity permissions = %o, want 600", gotPerm)
+	}
+}
+
+func TestCapacityManager_RecoversBackupWhenPrimaryIsMissing(t *testing.T) {
+	t.Parallel()
+
+	tokenDir := t.TempDir()
+	cm := NewCapacityManager(tokenDir, "1.2.3.4")
+	want := &CapacityState{MaxImages: 40, IsFull: true, SuccessStreak: 2}
+	if err := cm.Save(want); err != nil {
+		t.Fatalf("save recoverable state: %v", err)
+	}
+	if err := cm.Save(&CapacityState{MaxImages: 45}); err != nil {
+		t.Fatalf("save current state: %v", err)
+	}
+	if err := os.Remove(cm.path); err != nil {
+		t.Fatalf("remove primary state: %v", err)
+	}
+
+	got, err := cm.Load()
+	if err != nil {
+		t.Fatalf("load backup state: %v", err)
+	}
+	if *got != *want {
+		t.Fatalf("recovered state = %+v, want %+v", got, want)
+	}
+}
+
 func TestCapacityManager_RecordSuccess(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "capacity-test-*")
 	if err != nil {

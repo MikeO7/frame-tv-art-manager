@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -45,27 +44,10 @@ type articArtwork struct {
 // fetchJSON issues a GET (with the shared User-Agent) to apiURL and decodes the
 // size-bounded JSON response body into out, centralizing request boilerplate.
 func (p *articProvider) fetchJSON(ctx context.Context, apiURL, errLabel string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("artic api error: %d", resp.StatusCode)
-	}
-
-	reader := http.MaxBytesReader(nil, resp.Body, articMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(out); err != nil {
-		return fmt.Errorf("decode %s response: %w", errLabel, err)
-	}
-	return nil
+	return fetchProviderJSON(ctx, providerJSONRequest{
+		client: p.client, url: apiURL, headers: map[string]string{"User-Agent": userAgent},
+		maxBytes: articMaxResponseBytes, statusLabel: "artic api", decodeLabel: errLabel,
+	}, out)
 }
 
 // iiifImageURL builds the IIIF 4K full-image URL for an Art Institute image ID.

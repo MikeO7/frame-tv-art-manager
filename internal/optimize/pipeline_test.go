@@ -114,8 +114,9 @@ func TestOptimizeCatalogRenamesImage(t *testing.T) {
 	cfg.MaxHeight = 6
 	var callback [][2]string
 
-	count, err := OptimizeCatalog(context.Background(), dir, catalog, cfg, func(oldName, newName string) {
+	count, err := OptimizeCatalog(context.Background(), dir, catalog, cfg, func(oldName, newName string) error {
 		callback = append(callback, [2]string{oldName, newName})
+		return nil
 	}, discardLogger())
 	if err != nil {
 		t.Fatalf("OptimizeCatalog: %v", err)
@@ -128,6 +129,26 @@ func TestOptimizeCatalogRenamesImage(t *testing.T) {
 	}
 	if err := ValidateImage(filepath.Join(dir, callback[0][1])); err != nil {
 		t.Fatalf("renamed output invalid: %v", err)
+	}
+}
+
+func TestOptimizeCatalogReturnsRenameObserverFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	const oldName = "landscape.h_abcdef123456.jpg"
+	writeTestImage(t, filepath.Join(dir, oldName), 12, 8)
+	catalog := &recordingCatalog{files: map[string]struct{}{oldName: {}}}
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 10
+	cfg.MaxHeight = 6
+	wantErr := errors.New("persist TV mapping")
+
+	count, err := OptimizeCatalog(context.Background(), dir, catalog, cfg, func(_, _ string) error {
+		return wantErr
+	}, discardLogger())
+	if count != 1 || !errors.Is(err, wantErr) {
+		t.Fatalf("OptimizeCatalog() = (%d, %v), want (1, %v)", count, err, wantErr)
 	}
 }
 
@@ -204,17 +225,20 @@ func TestProcessCollagesUpdatesBatchState(t *testing.T) {
 	catalog := &recordingCatalog{}
 	var count int64
 	var callbacks [][2]string
-	processCollages(collageBatch{
+	if err := processCollages(collageBatch{
 		artworkDir: dir,
 		localFiles: localFiles,
 		cfg:        DefaultConfig(),
 		catalog:    catalog,
-		onRename: func(oldName, newName string) {
+		onRename: func(oldName, newName string) error {
 			callbacks = append(callbacks, [2]string{oldName, newName})
+			return nil
 		},
 		logger:         discardLogger(),
 		optimizedCount: &count,
-	})
+	}); err != nil {
+		t.Fatalf("processCollages: %v", err)
+	}
 	if count != 1 || len(localFiles) != 1 || len(callbacks) != 2 || len(catalog.renames) != 2 {
 		t.Fatalf("count=%d files=%v callbacks=%v renames=%v", count, localFiles, callbacks, catalog.renames)
 	}

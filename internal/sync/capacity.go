@@ -2,6 +2,7 @@ package sync
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,18 +47,40 @@ func (cm *CapacityManager) Load() (*CapacityState, error) {
 	defer cm.mu.RUnlock()
 
 	raw, err := os.ReadFile(cm.path)
+	if os.IsNotExist(err) {
+		return loadCapacityBackup(cm.path, true)
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return &CapacityState{MaxImages: 0, IsFull: false, SuccessStreak: 0}, nil
-		}
 		return nil, fmt.Errorf("read capacity file: %w", err)
 	}
 
+	state, err := decodeCapacityState(raw, "file")
+	if err != nil {
+		backupState, backupErr := loadCapacityBackup(cm.path, false)
+		if backupErr != nil {
+			return nil, errors.Join(err, backupErr)
+		}
+		return backupState, nil
+	}
+	return state, nil
+}
+
+func loadCapacityBackup(path string, defaultWhenMissing bool) (*CapacityState, error) {
+	backupRaw, err := os.ReadFile(path + ".bak")
+	if defaultWhenMissing && os.IsNotExist(err) {
+		return &CapacityState{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read capacity backup: %w", err)
+	}
+	return decodeCapacityState(backupRaw, "backup")
+}
+
+func decodeCapacityState(raw []byte, source string) (*CapacityState, error) {
 	var state CapacityState
 	if err := json.Unmarshal(raw, &state); err != nil {
-		return nil, fmt.Errorf("parse capacity file: %w", err)
+		return nil, fmt.Errorf("parse capacity %s: %w", source, err)
 	}
-
 	return &state, nil
 }
 
@@ -99,7 +122,10 @@ func (cm *CapacityManager) Save(state *CapacityState) error {
 		return fmt.Errorf("marshal capacity state: %w", err)
 	}
 
-	return os.WriteFile(cm.path, raw, 0o600)
+	if err := atomicWriteWithBackup(cm.path, raw, 0o600); err != nil {
+		return fmt.Errorf("write capacity state: %w", err)
+	}
+	return nil
 }
 
 // FilterLocalFiles returns a subset of local files limited to MaxImages if the TV is full.

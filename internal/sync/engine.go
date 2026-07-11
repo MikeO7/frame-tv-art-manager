@@ -12,20 +12,17 @@ import (
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
-	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
-	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
 // Engine orchestrates artwork synchronization across all configured TVs.
 type Engine struct {
-	cfg       *config.Config
-	logger    *slog.Logger
-	health    *health.Status
-	srcLoader sources.SourceLoader
-	catalog   *sources.ArtworkCatalog
-	cycleNum  int
-	newClient func(ip string, cfg *config.Config, logger *slog.Logger) TVTransport
+	cfg        *config.Config
+	logger     *slog.Logger
+	health     *health.Status
+	collection *localCollection
+	cycleNum   int
+	newClient  func(ip string, cfg *config.Config, logger *slog.Logger) TVTransport
 
 	mu      sync.Mutex
 	clients map[string]TVTransport
@@ -39,14 +36,9 @@ func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVTran
 // loader, and health tracker derived from cfg. The returned Engine is ready
 // to run synchronization via RunOnce or RunLoop.
 func NewEngine(cfg *config.Config, logger *slog.Logger, healthStatus *health.Status) *Engine {
-	catalog := sources.NewArtworkCatalog(cfg.ArtworkDir, logger)
 	return &Engine{
-		cfg:       cfg,
-		logger:    logger,
-		health:    healthStatus,
-		srcLoader: sources.NewLoader(cfg, logger, catalog),
-		catalog:   catalog,
-		newClient: defaultNewClient,
+		cfg: cfg, logger: logger, health: healthStatus,
+		collection: newLocalCollection(cfg, logger, healthStatus), newClient: defaultNewClient,
 	}
 }
 
@@ -100,7 +92,6 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 // cycle outcome to health tracking and returns the joined per-TV errors, if any.
 func (e *Engine) RunOnce(ctx context.Context) (err error) {
 	var syncErrors []error
-	var cycleWarnings []string
 	defer func() { e.finalizeCycle(err, syncErrors) }()
 
 	e.cycleNum++
@@ -111,18 +102,13 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 		"tvs", len(e.cfg.TVIPs),
 	)
 
-	srcDownloaded, cycleWarnings := e.downloadSources(ctx, cycleLog)
-
-	optimized, optErr := e.optimizeCatalog(ctx)
-	if optErr != nil {
-		return optErr
-	}
-
-	localFiles, err := e.catalog.SupportedFiles()
+	collection, err := e.collection.prepare(ctx)
 	if err != nil {
 		return err
 	}
-	cycleLog.Info("local artwork ready", "total", len(localFiles), "optimized", optimized)
+	localFiles := collection.files
+	cycleWarnings := append([]string(nil), collection.warnings...)
+	cycleLog.Info("local artwork ready", "total", len(localFiles), "optimized", collection.optimized)
 
 	if e.health != nil {
 		e.health.SetStage("syncing TVs")
@@ -142,8 +128,8 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 		StartTime:       startTime,
 		SyncIntervalMin: e.cfg.SyncIntervalMin,
 		TotalLocal:      len(localFiles),
-		FromSources:     srcDownloaded,
-		Optimized:       optimized,
+		FromSources:     collection.downloaded,
+		Optimized:       collection.optimized,
 		TVs:             tvSummaries,
 		Warnings:        cycleWarnings,
 	})
@@ -186,39 +172,6 @@ func (e *Engine) syncTV(
 	}
 
 	return reconciler.Reconcile(ctx, client, localFiles)
-}
-
-func (e *Engine) downloadSources(ctx context.Context, cycleLog *slog.Logger) (int, []string) {
-	if e.health != nil {
-		e.health.SetStage("downloading sources")
-	}
-	srcDownloaded, srcErr := e.srcLoader.Sync(ctx)
-	var cycleWarnings []string
-	if srcErr != nil {
-		cycleLog.Warn("source download error", "error", srcErr)
-		cycleWarnings = append(cycleWarnings, fmt.Sprintf("Source download issue: %v", srcErr))
-	}
-	return srcDownloaded, cycleWarnings
-}
-
-func (e *Engine) optimizeCatalog(ctx context.Context) (int, error) {
-	optCfg := e.cfg.OptimizeOptions()
-	optimized, optErr := optimize.OptimizeCatalog(ctx, e.cfg.ArtworkDir, e.catalog, optCfg, func(oldName, newName string) {
-		for _, ip := range e.cfg.TVIPs {
-			m, err := LoadMapping(e.cfg.TokenDir, ip)
-			if err != nil {
-				continue
-			}
-			_, _ = m.Rename(oldName, newName)
-		}
-	}, e.logger)
-	if optErr != nil {
-		return 0, optErr
-	}
-	if optimized > 0 {
-		e.catalog.InvalidateCache()
-	}
-	return optimized, nil
 }
 
 // syncAllTVs reconciles all configured TVs concurrently, collecting per-TV

@@ -76,6 +76,7 @@ type TVReconciler struct {
 	logger      *slog.Logger
 	mapping     *Mapping
 	matteConfig *config.MatteConfig
+	now         func() time.Time
 }
 
 // NewTVReconciler instantiates a new TV synchronization session.
@@ -96,6 +97,7 @@ func NewTVReconciler(
 		logger:      logger.With("tv", ip),
 		mapping:     mapping,
 		matteConfig: matteConfig,
+		now:         time.Now,
 	}, nil
 }
 
@@ -165,7 +167,7 @@ func (s *TVReconciler) planSyncCycle(
 		preserveSlideshow, _ = transport.SlideshowStatus(ctx)
 	}
 
-	plan := PlanSync(PlanInput{
+	plan := planSync(planInput{
 		IP:                s.ip,
 		Cfg:               s.cfg,
 		MatteConfig:       s.matteConfig,
@@ -174,6 +176,7 @@ func (s *TVReconciler) planSyncCycle(
 		LocalFiles:        localFiles,
 		PreserveSlideshow: preserveSlideshow,
 		Logger:            s.logger,
+		Now:               s.now(),
 	})
 
 	s.logPlan(plan, policy)

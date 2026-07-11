@@ -1,6 +1,7 @@
 package optimize
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -67,7 +68,7 @@ type collageJob struct {
 	f1, f2     string
 	cfg        Config
 	catalog    Catalog
-	onRename   func(oldName, newName string)
+	onRename   RenameObserver
 	logger     *slog.Logger
 }
 
@@ -154,13 +155,17 @@ func processCollagePair(job collageJob) (string, error) {
 	_ = os.Remove(p1)
 	_ = os.Remove(p2)
 
-	// Notify catalog and caller
-	if onRename != nil {
-		onRename(f1, collageName)
-		onRename(f2, "")
-	}
+	// Update the local catalog after the on-disk commit. Observer failures are
+	// reported without pretending the already-committed collection change did
+	// not happen.
 	catalog.NoteFileRename(f1, collageName)
 	catalog.NoteFileRename(f2, "")
+
+	if onRename != nil {
+		if err := errors.Join(onRename(f1, collageName), onRename(f2, "")); err != nil {
+			return collageName, fmt.Errorf("observe collage source renames: %w", err)
+		}
+	}
 
 	return collageName, nil
 }
@@ -196,12 +201,12 @@ type collageBatch struct {
 	localFiles     map[string]struct{}
 	cfg            Config
 	catalog        Catalog
-	onRename       func(oldName, newName string)
+	onRename       RenameObserver
 	logger         *slog.Logger
 	optimizedCount *int64
 }
 
-func processCollages(batch collageBatch) {
+func processCollages(batch collageBatch) error {
 	artworkDir := batch.artworkDir
 	localFiles := batch.localFiles
 	cfg := batch.cfg
@@ -209,6 +214,7 @@ func processCollages(batch collageBatch) {
 	onRename := batch.onRename
 	logger := batch.logger
 	optimizedCount := batch.optimizedCount
+	var observerErrors []error
 
 	wantsCollageAll := cfg.PortraitMode == "collage"
 	rawPortraits := collectRawPortraits(artworkDir, localFiles, wantsCollageAll)
@@ -231,16 +237,17 @@ func processCollages(batch collageBatch) {
 			onRename:   onRename,
 			logger:     logger,
 		})
+		if collageFilename != "" {
+			delete(localFiles, f1)
+			delete(localFiles, f2)
+			localFiles[collageFilename] = struct{}{}
+			atomic.AddInt64(optimizedCount, 1)
+		}
 		if err != nil {
 			logger.Error("failed to create collage pair", "file1", f1, "file2", f2, "error", err)
+			observerErrors = append(observerErrors, err)
 			continue
 		}
-
-		// Update localFiles map
-		delete(localFiles, f1)
-		delete(localFiles, f2)
-		localFiles[collageFilename] = struct{}{}
-		atomic.AddInt64(optimizedCount, 1)
 	}
 
 	// If an odd number of raw portraits remains, the last one is unpaired.
@@ -252,4 +259,5 @@ func processCollages(batch collageBatch) {
 	if len(rawPortraits)%2 == 1 {
 		delete(localFiles, rawPortraits[len(rawPortraits)-1])
 	}
+	return errors.Join(observerErrors...)
 }

@@ -14,9 +14,9 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-// PlanInput bundles the inputs required to plan a TV sync. Grouping them into
+// planInput bundles the inputs required to plan a TV sync. Grouping them into
 // a struct keeps the pure planner free of positional-argument ambiguity.
-type PlanInput struct {
+type planInput struct {
 	IP                string
 	Cfg               *config.Config
 	MatteConfig       *config.MatteConfig
@@ -25,10 +25,11 @@ type PlanInput struct {
 	LocalFiles        map[string]struct{}
 	PreserveSlideshow *samsung.SlideshowStatus
 	Logger            *slog.Logger
+	Now               time.Time
 }
 
-// PlanSync evaluates current states and plans synchronization purely in memory.
-func PlanSync(in PlanInput) *SyncPlan {
+// planSync evaluates current states and plans synchronization purely in memory.
+func planSync(in planInput) *SyncPlan {
 	policy := in.Cfg.SyncPolicy()
 
 	trackedFiles, unknownIDs, staleFiles := reconcileInventory(in.MappingData, in.TVContent, in.Logger)
@@ -55,7 +56,7 @@ func PlanSync(in PlanInput) *SyncPlan {
 		ToDeleteUnknownIDs: toDeleteUnknownIDs,
 		Slideshow:          slideshow,
 		Brightness:         determineBrightness(in.Cfg, in.Logger),
-		TurnOff:            isWithinAutoOffWindow(in.Cfg.AutoOffTime, in.Cfg.AutoOffGraceHours, in.Cfg.Timezone),
+		TurnOff:            isWithinAutoOffWindowAt(in.Cfg.AutoOffTime, in.Cfg.AutoOffGraceHours, in.Cfg.Timezone, in.Now),
 		TrackedFilesCount:  len(trackedFiles),
 		StaleFiles:         staleFiles,
 		PreserveSlideshow:  in.PreserveSlideshow,
@@ -213,12 +214,6 @@ func mapValues(m map[string]string) []string {
 		result = append(result, v)
 	}
 	return result
-}
-
-// isWithinAutoOffWindow returns true if the current time falls within the
-// auto-off window: [offTime, offTime + graceHours). Handles midnight wrap.
-func isWithinAutoOffWindow(autoOffTime string, graceHours float64, tz string) bool {
-	return isWithinAutoOffWindowAt(autoOffTime, graceHours, tz, time.Now())
 }
 
 // isWithinAutoOffWindowAt accepts an explicit "now" time.

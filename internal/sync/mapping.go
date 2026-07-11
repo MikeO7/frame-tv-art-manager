@@ -2,6 +2,7 @@ package sync
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,47 +64,60 @@ func (m *Mapping) saveLocked() error {
 }
 
 func atomicWriteWithBackup(path string, data []byte, perm os.FileMode) error {
+	if current, err := os.ReadFile(path); err == nil {
+		if err := atomicReplace(path+".bak", current, perm); err != nil {
+			return fmt.Errorf("write state backup: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read state for backup: %w", err)
+	}
+	if err := atomicReplace(path, data, perm); err != nil {
+		return fmt.Errorf("replace state: %w", err)
+	}
+	return nil
+}
+
+func atomicReplace(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".mapping-*.tmp")
+	tmp, err := os.CreateTemp(dir, ".state-*.tmp")
 	if err != nil {
-		return fmt.Errorf("create mapping temporary file: %w", err)
+		return fmt.Errorf("create state temporary file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
 	if err := tmp.Chmod(perm); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("chmod mapping temporary file: %w", err)
+		return closeStateFile(tmp, fmt.Errorf("chmod state temporary file: %w", err))
 	}
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write mapping temporary file: %w", err)
+		return closeStateFile(tmp, fmt.Errorf("write state temporary file: %w", err))
 	}
 	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("sync mapping temporary file: %w", err)
+		return closeStateFile(tmp, fmt.Errorf("sync state temporary file: %w", err))
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close mapping temporary file: %w", err)
-	}
-	if current, err := os.ReadFile(path); err == nil {
-		if err := os.WriteFile(path+".bak", current, perm); err != nil { //nolint:gosec // path is derived from validated internal state
-			return fmt.Errorf("write mapping backup: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("read mapping for backup: %w", err)
+		return fmt.Errorf("close state temporary file: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("replace mapping: %w", err)
+		return fmt.Errorf("rename state temporary file: %w", err)
 	}
 	d, err := os.Open(dir)
 	if err != nil {
-		return fmt.Errorf("open mapping directory: %w", err)
+		return fmt.Errorf("open state directory: %w", err)
 	}
-	defer d.Close()
 	if err := d.Sync(); err != nil {
-		return fmt.Errorf("sync mapping directory: %w", err)
+		return closeStateFile(d, fmt.Errorf("sync state directory: %w", err))
+	}
+	if err := d.Close(); err != nil {
+		return fmt.Errorf("close state directory: %w", err)
 	}
 	return nil
+}
+
+func closeStateFile(file *os.File, operationErr error) error {
+	if err := file.Close(); err != nil {
+		return errors.Join(operationErr, fmt.Errorf("close state file: %w", err))
+	}
+	return operationErr
 }
 
 // Save writes the mapping to disk as formatted JSON.

@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -65,27 +64,10 @@ type unsplashPhoto struct {
 // fetchJSON issues a Client-ID-authorized GET to apiURL and decodes the
 // size-bounded JSON response body into out.
 func (p *unsplashProvider) fetchJSON(ctx context.Context, apiURL string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Client-ID "+p.accessKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unsplash api error: %d", resp.StatusCode)
-	}
-
-	reader := http.MaxBytesReader(nil, resp.Body, unsplashMaxResponseBytes)
-	if err := json.NewDecoder(reader).Decode(out); err != nil {
-		return fmt.Errorf("decode unsplash response: %w", err)
-	}
-	return nil
+	return fetchProviderJSON(ctx, providerJSONRequest{
+		client: p.client, url: apiURL, headers: map[string]string{headerAuthorization: "Client-ID " + p.accessKey},
+		maxBytes: unsplashMaxResponseBytes, statusLabel: "unsplash api", decodeLabel: "unsplash",
+	}, out)
 }
 
 func (p *unsplashProvider) Name() string {

@@ -29,6 +29,7 @@ type fakeTVTransport struct {
 	deleteErr      error
 	recordFailures int
 	recordSuccess  int
+	turnedOff      bool
 }
 
 func (f *fakeTVTransport) ShouldSkip() bool { return f.skip }
@@ -87,7 +88,10 @@ func (f *fakeTVTransport) SetBrightness(_ context.Context, val int) error {
 	return nil
 }
 
-func (f *fakeTVTransport) TurnOff(context.Context) error { return nil }
+func (f *fakeTVTransport) TurnOff(context.Context) error {
+	f.turnedOff = true
+	return nil
+}
 
 func (f *fakeTVTransport) RecordFailure(_ time.Duration) { f.recordFailures++ }
 
@@ -426,7 +430,7 @@ func TestTVReconciler_Reconcile_AutoOff(t *testing.T) {
 		TokenDir:          tmpDir,
 		AutoOffTime:       "22:00",
 		AutoOffGraceHours: 2.0,
-		Timezone:          "America/New_York",
+		Timezone:          "UTC",
 	}
 	mc := &config.MatteConfig{}
 
@@ -434,10 +438,16 @@ func TestTVReconciler_Reconcile_AutoOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.now = func() time.Time {
+		return time.Date(2026, time.July, 11, 22, 30, 0, 0, time.UTC)
+	}
 
 	_, err = s.Reconcile(context.Background(), fake, make(map[string]struct{}))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !fake.turnedOff {
+		t.Fatal("Reconcile() did not apply auto-off using the supplied clock")
 	}
 }
 
@@ -599,7 +609,7 @@ func TestPlanSync(t *testing.T) {
 		},
 	}
 
-	plan := PlanSync(PlanInput{
+	plan := planSync(planInput{
 		IP:          "1.2.3.4",
 		Cfg:         cfg,
 		MatteConfig: matteCfg,
@@ -607,6 +617,7 @@ func TestPlanSync(t *testing.T) {
 		TVContent:   tvContent,
 		LocalFiles:  localFiles,
 		Logger:      slog.Default(),
+		Now:         time.Now(),
 	})
 
 	if plan.IP != "1.2.3.4" {
@@ -631,6 +642,28 @@ func TestPlanSync(t *testing.T) {
 
 	if !plan.HasChanges {
 		t.Error("expected HasChanges to be true")
+	}
+}
+
+func TestPlanSyncUsesExplicitTime(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		AutoOffTime:       "22:00",
+		AutoOffGraceHours: 1,
+		Timezone:          "UTC",
+	}
+	insideWindow := time.Date(2026, time.July, 11, 22, 30, 0, 0, time.UTC)
+	outsideWindow := time.Date(2026, time.July, 11, 21, 30, 0, 0, time.UTC)
+	base := planInput{Cfg: cfg, Logger: slog.Default()}
+
+	base.Now = insideWindow
+	if plan := planSync(base); !plan.TurnOff {
+		t.Fatal("plan did not use supplied time inside auto-off window")
+	}
+	base.Now = outsideWindow
+	if plan := planSync(base); plan.TurnOff {
+		t.Fatal("plan did not use supplied time outside auto-off window")
 	}
 }
 

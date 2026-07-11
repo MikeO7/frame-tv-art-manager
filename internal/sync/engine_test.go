@@ -269,7 +269,7 @@ func TestEngine_OptimizationFlow(t *testing.T) {
 	}
 
 	e := NewEngine(cfg, slog.Default(), nil)
-	_, _ = optimize.OptimizeCatalog(context.Background(), cfg.ArtworkDir, e.catalog, cfg.OptimizeOptions(), nil, slog.Default())
+	_, _ = optimize.OptimizeCatalog(context.Background(), cfg.ArtworkDir, e.collection.catalog, cfg.OptimizeOptions(), nil, slog.Default())
 }
 
 func TestEngine_UpdateMappingsAfterRename(t *testing.T) {
@@ -300,6 +300,23 @@ func TestEngine_UpdateMappingsAfterRename(t *testing.T) {
 	m2, _ := LoadMapping(tmpDir, "1.2.3.4")
 	if cid, ok := m2.GetContentID("new.jpg"); !ok || cid != "id1" {
 		t.Errorf("expected new.jpg to have id1, got %s", cid)
+	}
+}
+
+func TestEngine_ObserveCatalogRenameReturnsMappingFailure(t *testing.T) {
+	t.Parallel()
+
+	tokenPath := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(tokenPath, []byte("blocked"), 0o600); err != nil {
+		t.Fatalf("create blocked token path: %v", err)
+	}
+	e := NewEngine(&config.Config{
+		TVIPs:    []string{"1.2.3.4"},
+		TokenDir: tokenPath,
+	}, slog.Default(), nil)
+
+	if err := e.collection.observeRename("old.jpg", "new.jpg"); err == nil {
+		t.Fatal("observeRename() error = nil, want mapping load failure")
 	}
 }
 
@@ -336,7 +353,7 @@ func TestEngine_DownloadSources_Error(t *testing.T) {
 
 	e := NewEngine(cfg, slog.Default(), nil)
 	// Sync will fail because of invalid prefix
-	_, _ = e.downloadSources(context.Background(), slog.Default())
+	_, _ = e.collection.prepare(context.Background())
 }
 
 func TestEngine_Backoff(t *testing.T) {

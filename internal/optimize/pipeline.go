@@ -2,6 +2,8 @@ package optimize
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"runtime"
@@ -16,14 +18,44 @@ type Catalog interface {
 	NoteFileRename(oldName, newName string)
 }
 
+// RenameObserver persists effects of an artwork filename change outside the
+// local catalog. Returning an error makes failed durable propagation part of
+// the collection transformation outcome.
+type RenameObserver func(oldName, newName string) error
+
 type optContext struct {
 	artworkDir string
 	localFiles map[string]struct{}
 	cfg        Config
-	onRename   func(oldName, newName string)
+	onRename   RenameObserver
 	catalog    Catalog
 	logger     *slog.Logger
 	mu         sync.Mutex
+	errs       []error
+}
+
+func (o *optContext) recordError(err error) {
+	if err == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.errs = append(o.errs, err)
+}
+
+func (o *optContext) errors() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return errors.Join(o.errs...)
+}
+
+func (o *optContext) observeRename(oldName, newName string) {
+	if o.onRename == nil {
+		return
+	}
+	if err := o.onRename(oldName, newName); err != nil {
+		o.recordError(fmt.Errorf("observe artwork rename %s to %s: %w", oldName, newName, err))
+	}
 }
 
 func (o *optContext) recordDelete(filename string) {
@@ -58,7 +90,7 @@ func OptimizeCatalog(
 	artworkDir string,
 	catalog Catalog,
 	cfg Config,
-	onRename func(oldName, newName string),
+	onRename RenameObserver,
 	logger *slog.Logger,
 ) (int, error) {
 	localFiles, err := catalog.SupportedFiles()
@@ -75,7 +107,7 @@ func OptimizeCatalog(
 	//
 	// Remote source images (Unsplash, NASA, etc.) default to crop mode and are
 	// excluded from auto-collage unless PORTRAIT_MODE=collage is set.
-	processCollages(collageBatch{
+	collageErr := processCollages(collageBatch{
 		artworkDir:     artworkDir,
 		localFiles:     localFiles,
 		cfg:            cfg,
@@ -97,9 +129,9 @@ func OptimizeCatalog(
 	runOptimizeWorkers(ctx, enqueueOptimizeJobs(localFiles), o, &optimizedCount)
 
 	if err := ctx.Err(); err != nil {
-		return int(optimizedCount), err
+		return int(optimizedCount), errors.Join(err, collageErr, o.errors())
 	}
-	return int(optimizedCount), nil
+	return int(optimizedCount), errors.Join(collageErr, o.errors())
 }
 
 // enqueueOptimizeJobs buffers each eligible filename onto a closed channel,
@@ -173,9 +205,7 @@ func handleSingleOptimization(filename string, o *optContext) (bool, bool) {
 	}
 
 	if modified && newFilename != filename {
-		if o.onRename != nil {
-			o.onRename(filename, newFilename)
-		}
+		o.observeRename(filename, newFilename)
 		o.catalog.NoteFileRename(filename, newFilename)
 		o.recordRename(filename, newFilename)
 	}
