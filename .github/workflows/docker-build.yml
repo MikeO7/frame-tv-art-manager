@@ -20,7 +20,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
@@ -90,9 +89,11 @@ jobs:
     - name: Log in to GitHub Container Registry
       if: github.event_name != 'pull_request'
       shell: bash
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         for attempt in 1 2 3 4 5; do
-          if echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${{ env.REGISTRY }}" -u "${GITHUB_ACTOR}" --password-stdin; then
+          if printf '%s' "$GHCR_TOKEN" | docker login "${{ env.REGISTRY }}" -u "$GITHUB_ACTOR" --password-stdin; then
             exit 0
           fi
           echo "GHCR login attempt ${attempt} failed, retrying in 10s..."
@@ -191,9 +192,11 @@ jobs:
 
     - name: Log in to GitHub Container Registry
       shell: bash
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         for attempt in 1 2 3 4 5; do
-          if echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${{ env.REGISTRY }}" -u "${GITHUB_ACTOR}" --password-stdin; then
+          if printf '%s' "$GHCR_TOKEN" | docker login "${{ env.REGISTRY }}" -u "$GITHUB_ACTOR" --password-stdin; then
             exit 0
           fi
           echo "GHCR login attempt ${attempt} failed, retrying in 10s..."
