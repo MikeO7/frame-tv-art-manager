@@ -60,7 +60,7 @@ func TestLoader_Sync_Direct(t *testing.T) {
 		SourcesFile: sourcesFile,
 		ArtworkDir:  artworkDir,
 	}, slog.Default())
-	downloaded, err := l.Sync()
+	downloaded, err := l.Sync(context.Background())
 	if err != nil {
 		t.Fatalf("Sync failed: %v", err)
 	}
@@ -193,9 +193,9 @@ func TestLoader_Sync_Failures(t *testing.T) {
 		SourcesFile: sourcesFile,
 		ArtworkDir:  artworkDir,
 	}, slog.Default())
-	downloaded, err := l.Sync()
-	if err != nil {
-		t.Fatalf("Sync should not fail on download error: %v", err)
+	downloaded, err := l.Sync(context.Background())
+	if err == nil {
+		t.Fatal("Sync should report a degraded cycle on download error")
 	}
 
 	if downloaded != 0 {
@@ -250,9 +250,9 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	}, slog.Default())
 	setMockProviderURLs(l, server.URL)
 
-	_, err := l.Sync()
-	if err != nil {
-		t.Fatalf("Sync with providers failed: %v", err)
+	_, err := l.Sync(context.Background())
+	if err == nil {
+		t.Fatal("Sync should report provider failures")
 	}
 }
 
@@ -293,7 +293,7 @@ sources:
 	defer server.Close()
 	setMockProviderURLs(l, server.URL)
 
-	_, _ = l.Sync()
+	_, _ = l.Sync(context.Background())
 }
 
 func TestLoader_UtilityMethods(t *testing.T) {

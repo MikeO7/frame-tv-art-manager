@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # This script runs the validation checks, attempts to auto-fix minor issues,
 # and guides AI agents or developers to iterate until all issues are resolved.

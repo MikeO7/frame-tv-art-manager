@@ -357,7 +357,7 @@ func TestTVReconciler_ExecuteSyncPlan(t *testing.T) {
 	// Test delete error
 	transportDeleteFail := &mockTVTransportExecution{deleteErr: errors.New("fail")}
 	_, err = reconciler.ExecuteSyncPlan(ctx, plan, transportDeleteFail, mapping, policy)
-	if err != nil {
-		t.Errorf("expected no error from execution itself when delete fails, got: %v", err)
+	if err == nil {
+		t.Error("expected tracked deletion failure to be returned")
 	}
 }

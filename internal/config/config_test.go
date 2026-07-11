@@ -118,6 +118,18 @@ func TestEnvHelpers(t *testing.T) {
 	if envBoolWithDefault("BOOL_DEFAULT", true) != true {
 		t.Error("envBoolWithDefault invalid should return default")
 	}
+	t.Setenv("BOOL_DEFAULT", "0")
+	if envBoolWithDefault("BOOL_DEFAULT", true) {
+		t.Error("envBoolWithDefault 0 should be false")
+	}
+	t.Setenv("BOOL_DEFAULT", "NO")
+	if envBoolWithDefault("BOOL_DEFAULT", true) {
+		t.Error("envBoolWithDefault should be case insensitive")
+	}
+	t.Setenv("FLOAT_INVALID", "not-a-float")
+	if envFloat("FLOAT_INVALID", 9.5) != 9.5 {
+		t.Error("envFloat invalid should return default")
+	}
 }
 
 func TestLoad_ValidationErrors(t *testing.T) {
@@ -147,6 +159,25 @@ func TestLoad_ValidationErrors(t *testing.T) {
 	t.Setenv("TV_IPS", " , , ")
 	if _, err := Load(); err == nil {
 		t.Error("expected error when TV_IPS has no valid entries")
+	}
+
+	for _, tc := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "invalid latitude", key: "LOCATION_LATITUDE", value: "north"},
+		{name: "invalid longitude", key: "LOCATION_LONGITUDE", value: "west"},
+		{name: "invalid portrait mode", key: "PORTRAIT_MODE", value: "stretch"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			os.Clearenv()
+			t.Setenv("TV_IPS", "127.0.0.1")
+			t.Setenv(tc.key, tc.value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load accepted %s=%q", tc.key, tc.value)
+			}
+		})
 	}
 }
 

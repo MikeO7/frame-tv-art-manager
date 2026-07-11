@@ -198,10 +198,14 @@ const uploadHTML = `<!DOCTYPE html>
                 const file = files[i];
                 const item = document.createElement('div');
                 item.className = 'file-item';
-                item.innerHTML = '<span class=\"file-name\">' + file.name + '</span><span class=\"file-status status-uploading\">Uploading...</span>';
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'file-name';
+                nameSpan.textContent = file.name;
+                const statusSpan = document.createElement('span');
+                statusSpan.className = 'file-status status-uploading';
+                statusSpan.textContent = 'Uploading...';
+                item.append(nameSpan, statusSpan);
                 fileList.insertBefore(item, fileList.firstChild);
-
-                const statusSpan = item.querySelector('.file-status');
 
                 const formData = new FormData();
                 formData.append('file', file);

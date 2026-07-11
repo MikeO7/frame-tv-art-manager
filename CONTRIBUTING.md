@@ -7,12 +7,12 @@ Thank you for contributing! This project maintains high standards to ensure reli
 1. **Install Tools**: Run `make tools` to install required linters and scanners.
 2. **Format Code**: Run `make fmt` before committing.
 3. **Run Tests**: Run `make test` to ensure everything works.
-4. **Check Coverage**: Run `make coverage-check`. We require at least **50% code coverage**.
+4. **Check Coverage**: Run `make coverage-check`. We require at least **90% code coverage**.
 5. **Full Audit**: Run `make check` to run all tests, linters, and security scanners.
 
 ## Engineering Standards
 
-- **Go Version**: 1.22+
+- **Go Version**: Use the exact patched version declared by `go.mod`.
 - **Linting**: We use `golangci-lint` with the configuration in `.golangci.yml`.
 - **Security**: Authentication tokens must be handled with restricted permissions (`0600`).
 - **Dependencies**: Minimize external dependencies. We prefer the Go standard library.
@@ -23,6 +23,8 @@ Thank you for contributing! This project maintains high standards to ensure reli
 - Use descriptive, imperative commit messages.
 - Reference issue numbers if applicable.
 
-## AI / LLM Instructions
+## Repository Instructions
 
-If you are an AI assistant helping with this repository, please refer to [AI.md](./AI.md) for specific engineering directives. This file contains the master rules for this project.
+Humans and AI assistants follow the same engineering rules in
+[AGENTS.md](./AGENTS.md). Reusable, vendor-neutral workflows are stored under
+[`.agents/skills`](./.agents/skills).

@@ -1,3 +1,4 @@
+//nolint:revive // reconciliation execution is kept in one cohesive implementation file
 package sync
 
 import (
@@ -39,15 +40,24 @@ func (s *TVReconciler) ExecuteSyncPlan(
 
 	// Purge mappings whose content IDs no longer exist on the TV. These point
 	// at nothing; locally-present files are re-uploaded (and re-mapped) below.
-	if len(plan.StaleFiles) > 0 {
-		mapping.DeleteBatch(plan.StaleFiles)
+	if len(plan.StaleFiles) > 0 && !policy.DryRun {
+		if err := mapping.DeleteBatch(plan.StaleFiles); err != nil {
+			return result, fmt.Errorf("persist stale mapping cleanup: %w", err)
+		}
 	}
 
 	if err := s.processUploads(eCtx); err != nil {
 		return result, err
 	}
 
-	s.processDeletions(eCtx)
+	if err := s.processDeletions(eCtx); err != nil {
+		return result, err
+	}
+	if policy.DryRun {
+		result.TotalImages = plan.TrackedFilesCount + result.Uploaded - result.Deleted
+		result.Status = "projected"
+		return result, nil
+	}
 
 	finalMapping := mapping.AllContentIDs()
 	s.applySelectionAndSlideshowPlan(ctx, plan, transport, finalMapping)
@@ -69,6 +79,7 @@ type executionContext struct {
 	result    *TVSyncResult
 }
 
+//nolint:gocognit // retry and persistence failure classifications are intentionally explicit
 func (s *TVReconciler) processUploads(eCtx *executionContext) error {
 	uploadsDone := 0
 	for _, job := range eCtx.plan.ToUpload {
@@ -102,7 +113,9 @@ func (s *TVReconciler) processUploads(eCtx *executionContext) error {
 			return fmt.Errorf("upload %s: %w", job.Filename, uploadErr)
 		}
 
-		eCtx.mapping.Set(job.Filename, contentID)
+		if err := eCtx.mapping.Set(job.Filename, contentID); err != nil {
+			return fmt.Errorf("persist uploaded content ID for %s: %w", job.Filename, err)
+		}
 		eCtx.result.NewUploads[job.Filename] = contentID
 		s.logger.Info("uploaded", "file", job.Filename, "content_id", contentID, "matte", job.Matte)
 		eCtx.result.Uploaded++
@@ -111,21 +124,23 @@ func (s *TVReconciler) processUploads(eCtx *executionContext) error {
 	return nil
 }
 
-func (s *TVReconciler) processDeletions(eCtx *executionContext) {
-	s.deleteTrackedImages(eCtx)
-	s.deleteUnknownImages(eCtx)
+func (s *TVReconciler) processDeletions(eCtx *executionContext) error {
+	if err := s.deleteTrackedImages(eCtx); err != nil {
+		return err
+	}
+	return s.deleteUnknownImages(eCtx)
 }
 
-func (s *TVReconciler) deleteTrackedImages(eCtx *executionContext) {
+func (s *TVReconciler) deleteTrackedImages(eCtx *executionContext) error {
 	count := len(eCtx.plan.ToDeleteIDs)
 	if count == 0 {
-		return
+		return nil
 	}
 
 	if eCtx.policy.DryRun {
 		s.logger.Info("[DRY RUN] would delete tracked images", "count", count)
 		eCtx.result.Deleted = count
-		return
+		return nil
 	}
 
 	s.logger.Info("deleting tracked images", "count", count)
@@ -133,30 +148,34 @@ func (s *TVReconciler) deleteTrackedImages(eCtx *executionContext) {
 		// The images remain on the TV and the mapping is left intact so the
 		// next cycle retries; do not report them as deleted.
 		s.logger.Error("batch delete failed", "error", err)
-		return
+		return fmt.Errorf("delete tracked images: %w", err)
 	}
 
 	eCtx.result.DeletedFiles = append(eCtx.result.DeletedFiles, eCtx.plan.ToDeleteFiles...)
-	eCtx.mapping.DeleteBatch(eCtx.plan.ToDeleteFiles)
+	if err := eCtx.mapping.DeleteBatch(eCtx.plan.ToDeleteFiles); err != nil {
+		return fmt.Errorf("persist tracked image deletion: %w", err)
+	}
 	s.logger.Info("deleted tracked images", "count", count)
 	eCtx.result.Deleted = count
+	return nil
 }
 
-func (s *TVReconciler) deleteUnknownImages(eCtx *executionContext) {
+func (s *TVReconciler) deleteUnknownImages(eCtx *executionContext) error {
 	count := len(eCtx.plan.ToDeleteUnknownIDs)
 	if count == 0 {
-		return
+		return nil
 	}
 
 	if eCtx.policy.DryRun {
 		s.logger.Info("[DRY RUN] would delete unknown images", "count", count)
-		return
+		return nil
 	}
 
 	s.logger.Info("deleting unknown images", "count", count)
 	if err := eCtx.transport.DeleteImages(eCtx.ctx, eCtx.plan.ToDeleteUnknownIDs); err != nil {
-		s.logger.Error("delete unknown images failed", "error", err)
+		return fmt.Errorf("delete unknown images: %w", err)
 	}
+	return nil
 }
 
 func (s *TVReconciler) uploadWithRetry(

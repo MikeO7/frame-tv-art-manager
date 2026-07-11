@@ -32,7 +32,7 @@ FORBIDDEN_PATTERNS=(
 )
 
 # Files to check: Go, Shell scripts, Dockerfiles, YAML files, JSON files.
-# Exclude: AI.md, AGENTS.md, .cursorrules, .pre-commit-config.yaml, this script, and build artifacts.
+# Exclude repository instructions, reusable skills, hook configuration, this script, and build artifacts.
 
 VIOLATIONS=0
 GREP_OUT=$(mktemp)
@@ -59,11 +59,9 @@ find . -type f \( \
 \) \
 -not -path "*/.git/*" \
 -not -path "*/.venv/*" \
--not -path "*/.jules/*" \
--not -path "*/.gemini/*" \
+-not -path "*/.agents/skills/*" \
 -not -path "*/scripts/check-anti-slop.sh" \
 -not -path "*/.pre-commit-config.yaml" \
--not -path "*/.cursorrules" \
 -not -path "*/.golangci.yml" \
 -not -name "package-lock.json" \
 -not -name "go.sum" \
@@ -74,8 +72,8 @@ if [ -s "$GREP_OUT" ]; then
     echo "------------------------------------------------------------------------"
     cat "$GREP_OUT"
     echo "------------------------------------------------------------------------"
-    echo "👉 Anti-slop rules are defined in AI.md."
-    echo "👉 AI Agents and developers must write complete, compiling, production-grade code."
+    echo "👉 Repository rules are defined in AGENTS.md."
+    echo "👉 Assistants and developers must write complete, compiling, production-grade code."
     echo "👉 Please remove all placeholders and stubs before proceeding."
     exit 1
 else

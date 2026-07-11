@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -16,6 +19,22 @@ import (
 	"testing"
 	"time"
 )
+
+func encodedTestImage(t *testing.T, format string) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	var err error
+	if format == "png" {
+		err = png.Encode(&out, img)
+	} else {
+		err = jpeg.Encode(&out, img, nil)
+	}
+	if err != nil {
+		t.Fatalf("encode test image: %v", err)
+	}
+	return out.Bytes()
+}
 
 func TestHealthEndpoint(t *testing.T) {
 	status := NewStatus()
@@ -319,13 +338,7 @@ func TestUpload_SuccessAndDeduplication(t *testing.T) {
 	tmpDir := t.TempDir()
 	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-	// Valid JPEG header is FFD8
-	jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
-
-	// Add some padding to make it a mock JPEG image
-	for i := 0; i < 500; i++ {
-		jpegContent = append(jpegContent, 0x00)
-	}
+	jpegContent := encodedTestImage(t, "jpeg")
 
 	req, err := createMultipartRequest("photo.jpg", jpegContent)
 	if err != nil {
@@ -387,11 +400,7 @@ func TestUpload_SuccessRawBinary(t *testing.T) {
 	tmpDir := t.TempDir()
 	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-	// Valid JPEG header is FFD8
-	jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
-	for i := 0; i < 500; i++ {
-		jpegContent = append(jpegContent, 0x00)
-	}
+	jpegContent := encodedTestImage(t, "jpeg")
 
 	// Create request with raw body and content type
 	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(jpegContent))
@@ -477,10 +486,7 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 		tmpDir := t.TempDir()
 		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-		jpegContent := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
-		for i := 0; i < 100; i++ {
-			jpegContent = append(jpegContent, 0x00)
-		}
+		jpegContent := encodedTestImage(t, "jpeg")
 
 		req, err := createMultipartRequest("shortcut_favorite.jpg", jpegContent)
 		if err != nil {
@@ -520,10 +526,7 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 		tmpDir := t.TempDir()
 		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
 
-		pngContent := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
-		for i := 0; i < 100; i++ {
-			pngContent = append(pngContent, 0x00)
-		}
+		pngContent := encodedTestImage(t, "png")
 
 		req, err := createMultipartRequest("shortcut_fav.png", pngContent)
 		if err != nil {

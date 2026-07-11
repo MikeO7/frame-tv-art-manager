@@ -1,3 +1,4 @@
+//nolint:errcheck // setup mutations are followed by explicit state assertions
 package sync
 
 import (
@@ -290,7 +291,7 @@ func TestEngine_UpdateMappingsAfterRename(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		if mapping.Rename("old.jpg", "new.jpg") {
+		if renamed, err := mapping.Rename("old.jpg", "new.jpg"); err == nil && renamed {
 			_ = mapping.Save()
 		}
 	}
@@ -335,7 +336,7 @@ func TestEngine_DownloadSources_Error(t *testing.T) {
 
 	e := NewEngine(cfg, slog.Default(), nil)
 	// Sync will fail because of invalid prefix
-	_, _ = e.downloadSources(slog.Default())
+	_, _ = e.downloadSources(context.Background(), slog.Default())
 }
 
 func TestEngine_Backoff(t *testing.T) {

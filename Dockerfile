@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 RUN apk add --no-cache tzdata
 
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /frame-tv-art-manager ./cmd/frame-tv-art-manager
 
 # Runtime stage — minimal distroless image.
-FROM gcr.io/distroless/static-debian12:latest
+FROM gcr.io/distroless/static-debian12:latest@sha256:22fd79fd75eab2372585b44517f8a094349938919dc613aafc37e4bdc9967c82
 
 # Copy the binary.
 COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
@@ -41,7 +41,11 @@ COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
 # Create default directories.
 VOLUME ["/data"]
 
-# Enable container self-healing.
+# The entrypoint starts as root so it can create/chown bind-mounted data paths
+# for PUID/PGID deployments. Operators that pre-own /data should set `user:`
+# in Compose to run the process without root privileges.
+
+# Report container health. Restart behavior is controlled by the runtime or orchestrator.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD ["/frame-tv-art-manager", "-healthcheck"]
 

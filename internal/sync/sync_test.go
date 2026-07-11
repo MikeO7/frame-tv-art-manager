@@ -1,3 +1,4 @@
+//nolint:errcheck // setup mutations are followed by explicit state assertions
 package sync
 
 import (
@@ -204,7 +205,10 @@ func TestMapping_Rename(t *testing.T) {
 	}
 
 	// Successful rename
-	ok := m.Rename("old.jpg", "new.jpg")
+	ok, err := m.Rename("old.jpg", "new.jpg")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
 	if !ok {
 		t.Error("expected rename to return true")
 	}
@@ -216,7 +220,10 @@ func TestMapping_Rename(t *testing.T) {
 	}
 
 	// Unsuccessful rename
-	ok = m.Rename("missing.jpg", "other.jpg")
+	ok, err = m.Rename("missing.jpg", "other.jpg")
+	if err != nil {
+		t.Fatalf("Rename missing: %v", err)
+	}
 	if ok {
 		t.Error("expected rename of missing file to return false")
 	}

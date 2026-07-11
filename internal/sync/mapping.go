@@ -3,7 +3,6 @@ package sync
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +37,10 @@ func LoadMapping(dir, tvIP string) (*Mapping, error) {
 	}
 
 	if err := json.Unmarshal(raw, &m.data); err != nil {
-		return nil, fmt.Errorf("parse mapping %s: %w", path, err)
+		backupRaw, backupErr := os.ReadFile(path + ".bak")
+		if backupErr != nil || json.Unmarshal(backupRaw, &m.data) != nil {
+			return nil, fmt.Errorf("parse mapping %s and recover backup: %w", path, err)
+		}
 	}
 
 	return m, nil
@@ -57,7 +59,51 @@ func (m *Mapping) saveLocked() error {
 		return fmt.Errorf("marshal mapping: %w", err)
 	}
 
-	return os.WriteFile(m.path, raw, 0o600)
+	return atomicWriteWithBackup(m.path, raw, 0o600)
+}
+
+func atomicWriteWithBackup(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".mapping-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create mapping temporary file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod mapping temporary file: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write mapping temporary file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync mapping temporary file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close mapping temporary file: %w", err)
+	}
+	if current, err := os.ReadFile(path); err == nil {
+		if err := os.WriteFile(path+".bak", current, perm); err != nil { //nolint:gosec // path is derived from validated internal state
+			return fmt.Errorf("write mapping backup: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read mapping for backup: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace mapping: %w", err)
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("open mapping directory: %w", err)
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		return fmt.Errorf("sync mapping directory: %w", err)
+	}
+	return nil
 }
 
 // Save writes the mapping to disk as formatted JSON.
@@ -68,39 +114,59 @@ func (m *Mapping) Save() error {
 }
 
 // Set records a filename→content_id association.
-func (m *Mapping) Set(filename string, contentID string) {
+func (m *Mapping) Set(filename string, contentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	old, existed := m.data[filename]
 	m.data[filename] = contentID
 	if err := m.saveLocked(); err != nil {
-		slog.Error("failed to auto-save mapping Set", "file", filename, "error", err)
+		if existed {
+			m.data[filename] = old
+		} else {
+			delete(m.data, filename)
+		}
+		return err
 	}
+	return nil
 }
 
 // Delete removes a filename from the mapping.
-func (m *Mapping) Delete(filename string) {
+func (m *Mapping) Delete(filename string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	old, existed := m.data[filename]
 	delete(m.data, filename)
 	if err := m.saveLocked(); err != nil {
-		slog.Error("failed to auto-save mapping Delete", "file", filename, "error", err)
+		if existed {
+			m.data[filename] = old
+		}
+		return err
 	}
+	return nil
 }
 
 // DeleteBatch removes multiple filenames from the mapping under a single lock.
-func (m *Mapping) DeleteBatch(filenames []string) {
+func (m *Mapping) DeleteBatch(filenames []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	old := make(map[string]string, len(filenames))
 	for _, filename := range filenames {
+		if value, ok := m.data[filename]; ok {
+			old[filename] = value
+		}
 		delete(m.data, filename)
 	}
 	if err := m.saveLocked(); err != nil {
-		slog.Error("failed to auto-save mapping DeleteBatch", "error", err)
+		for filename, value := range old {
+			m.data[filename] = value
+		}
+		return err
 	}
+	return nil
 }
 
 // Rename updates a filename in the mapping while preserving its content_id.
-func (m *Mapping) Rename(oldName, newName string) bool {
+func (m *Mapping) Rename(oldName, newName string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if id, ok := m.data[oldName]; ok {
@@ -109,11 +175,13 @@ func (m *Mapping) Rename(oldName, newName string) bool {
 			m.data[newName] = id
 		}
 		if err := m.saveLocked(); err != nil {
-			slog.Error("failed to auto-save mapping Rename", "old", oldName, "new", newName, "error", err)
+			delete(m.data, newName)
+			m.data[oldName] = id
+			return false, err
 		}
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
 // GetContentID returns the content_id for a filename, and whether it exists.

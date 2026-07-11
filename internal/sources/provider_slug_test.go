@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func TestCapSlugBoundsLongInput(t *testing.T) {
+	long := strings.Repeat("a", maxSlugLen+25)
+	if got := capSlug(long); len(got) != maxSlugLen {
+		t.Fatalf("capSlug length = %d, want %d", len(got), maxSlugLen)
+	}
+	if got := capSlug("short"); got != "short" {
+		t.Fatalf("capSlug(short) = %q", got)
+	}
+}
+
 func TestSlugFromArticURL(t *testing.T) {
 	slug := slugFromArticURL("https://www.artic.edu/iiif/2/12345/full/843,/0/default.jpg")
 	if slug == "" || slug == "direct-source" {

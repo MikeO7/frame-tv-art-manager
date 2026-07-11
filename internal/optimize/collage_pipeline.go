@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
-	_ "image/png"
+	"image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -71,7 +71,7 @@ type collageJob struct {
 	logger     *slog.Logger
 }
 
-//nolint:funlen // functional length is necessary for this fixed image-processing pipeline
+//nolint:funlen,gocognit,gocyclo // the ordered transactional image pipeline keeps cleanup local
 func processCollagePair(job collageJob) (string, error) {
 	artworkDir := job.artworkDir
 	f1, f2 := job.f1, job.f2
@@ -116,20 +116,39 @@ func processCollagePair(job collageJob) (string, error) {
 
 	// 0o644 is intentional — artwork files must be world-readable so they
 	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
-	out, err := os.OpenFile(collagePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	out, err := os.CreateTemp(artworkDir, ".collage-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("create collage output: %w", err)
 	}
-	defer out.Close()
+	tmpPath := out.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
 
-	err = jpeg.Encode(out, collage, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+	if ext == extPNG {
+		err = png.Encode(out, collage)
+	} else {
+		err = jpeg.Encode(out, collage, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+	}
 	if err != nil {
+		_ = out.Close()
 		return "", fmt.Errorf("encode collage: %w", err)
 	}
-	_ = out.Close()
-	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
-	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
-	_ = os.Chmod(collagePath, 0o644)
+	if err := out.Chmod(0o644); err != nil {
+		_ = out.Close()
+		return "", fmt.Errorf("chmod collage: %w", err)
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return "", fmt.Errorf("sync collage: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		return "", fmt.Errorf("close collage: %w", err)
+	}
+	if err := ValidateImage(tmpPath); err != nil {
+		return "", fmt.Errorf("validate collage: %w", err)
+	}
+	if err := os.Rename(tmpPath, collagePath); err != nil {
+		return "", fmt.Errorf("commit collage: %w", err)
+	}
 
 	// Delete source raw files
 	_ = os.Remove(p1)

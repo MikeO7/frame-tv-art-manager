@@ -111,7 +111,7 @@ func (e *Engine) RunOnce(ctx context.Context) (err error) {
 		"tvs", len(e.cfg.TVIPs),
 	)
 
-	srcDownloaded, cycleWarnings := e.downloadSources(cycleLog)
+	srcDownloaded, cycleWarnings := e.downloadSources(ctx, cycleLog)
 
 	optimized, optErr := e.optimizeCatalog(ctx)
 	if optErr != nil {
@@ -188,11 +188,11 @@ func (e *Engine) syncTV(
 	return reconciler.Reconcile(ctx, client, localFiles)
 }
 
-func (e *Engine) downloadSources(cycleLog *slog.Logger) (int, []string) {
+func (e *Engine) downloadSources(ctx context.Context, cycleLog *slog.Logger) (int, []string) {
 	if e.health != nil {
 		e.health.SetStage("downloading sources")
 	}
-	srcDownloaded, srcErr := e.srcLoader.Sync()
+	srcDownloaded, srcErr := e.srcLoader.Sync(ctx)
 	var cycleWarnings []string
 	if srcErr != nil {
 		cycleLog.Warn("source download error", "error", srcErr)
@@ -209,7 +209,7 @@ func (e *Engine) optimizeCatalog(ctx context.Context) (int, error) {
 			if err != nil {
 				continue
 			}
-			_ = m.Rename(oldName, newName)
+			_, _ = m.Rename(oldName, newName)
 		}
 	}, e.logger)
 	if optErr != nil {

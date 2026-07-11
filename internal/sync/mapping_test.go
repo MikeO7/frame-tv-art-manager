@@ -1,3 +1,4 @@
+//nolint:errcheck // individual persistence-error cases assert results separately
 package sync
 
 import (
@@ -39,7 +40,10 @@ func TestMapping_Lifecycle(t *testing.T) {
 	}
 
 	// Case 3: Rename
-	renamed := m2.Rename("monet.jpg", "monet_new.jpg")
+	renamed, err := m2.Rename("monet.jpg", "monet_new.jpg")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
 	if !renamed {
 		t.Errorf("expected Rename to return true")
 	}
@@ -51,14 +55,20 @@ func TestMapping_Lifecycle(t *testing.T) {
 	}
 
 	// Rename non-existent
-	renamedNonExistent := m2.Rename("nonexistent.jpg", "other.jpg")
+	renamedNonExistent, err := m2.Rename("nonexistent.jpg", "other.jpg")
+	if err != nil {
+		t.Fatalf("Rename nonexistent: %v", err)
+	}
 	if renamedNonExistent {
 		t.Errorf("expected Rename of nonexistent file to return false")
 	}
 
 	// Rename to empty
 	m2.Set("to_delete.jpg", "ID2")
-	renamedEmpty := m2.Rename("to_delete.jpg", "")
+	renamedEmpty, err := m2.Rename("to_delete.jpg", "")
+	if err != nil {
+		t.Fatalf("Rename empty: %v", err)
+	}
 	if !renamedEmpty {
 		t.Errorf("expected Rename to empty to return true")
 	}

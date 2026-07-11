@@ -2,9 +2,41 @@ package brightness
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 )
+
+func TestJulianCenturyJanuaryAndJune(t *testing.T) {
+	j2000 := time.Date(2000, time.January, 1, 12, 0, 0, 0, time.UTC)
+	if got := julianCentury(j2000); got < -0.001 || got > 0.001 {
+		t.Fatalf("julianCentury(J2000) = %v, want near 0", got)
+	}
+	if january, june := julianCentury(time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)),
+		julianCentury(time.Date(2025, time.June, 1, 0, 0, 0, 0, time.UTC)); january >= june {
+		t.Fatalf("January century %v should precede June %v", january, june)
+	}
+}
+
+func TestGetTargetValueLoggingPaths(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	manual := 4
+	if got := GetTargetValue(nil, 2, 10, &manual, logger); got == nil || *got != manual {
+		t.Fatalf("manual brightness = %v", got)
+	}
+	lat, lon := 40.0, -105.0
+	valid := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
+	if got := GetTargetValue(valid, 2, 10, nil, logger); got == nil {
+		t.Fatal("expected logged solar brightness")
+	}
+	invalid := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "invalid"}
+	if got := GetTargetValue(invalid, 2, 10, nil, logger); got != nil {
+		t.Fatalf("invalid timezone returned %v", *got)
+	}
+	if got := trySolarBrightness(&SolarLocation{Latitude: &lat}, 2, 10, logger); got != nil {
+		t.Fatalf("incomplete location returned %v", *got)
+	}
+}
 
 func TestBrightnessFromElevation(t *testing.T) {
 	t.Parallel()

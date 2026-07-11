@@ -190,6 +190,8 @@ type rewriteParams struct {
 
 // rewriteImage handles the actual decoding, pixel modifications (cropping, sharpening, dithering),
 // and re-encoding of the image back to disk.
+//
+//nolint:funlen,gocognit,gocyclo // the ordered transactional image pipeline keeps cleanup local
 func rewriteImage(params rewriteParams) (int, int, error) {
 	f := params.f
 	cfg := params.cfg
@@ -229,26 +231,37 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 		rgba = dither(rgba)
 	}
 
-	// Close original file so we can overwrite or rename it.
-	_ = f.Close()
-
-	// Save back to disk.
-	// 0o644 is intentional — artwork files must be world-readable so they
-	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
-	out, err := os.OpenFile(params.path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return 0, 0, fmt.Errorf("create optimized file: %w", err)
+	if err := f.Close(); err != nil {
+		return 0, 0, fmt.Errorf("close source image: %w", err)
 	}
-	defer func() { _ = out.Close() }()
-
-	err = jpeg.Encode(out, rgba, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+	out, err := os.CreateTemp(filepath.Dir(params.path), ".optimize-*.tmp")
 	if err != nil {
+		return 0, 0, fmt.Errorf("create optimized temporary file: %w", err)
+	}
+	tmpPath := out.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if err := jpeg.Encode(out, rgba, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality}); err != nil {
+		_ = out.Close()
 		return 0, 0, fmt.Errorf("encode jpeg: %w", err)
 	}
-	_ = out.Close()
-	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
-	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
-	_ = os.Chmod(params.path, 0o644)
+	if err := out.Chmod(0o644); err != nil {
+		_ = out.Close()
+		return 0, 0, fmt.Errorf("chmod optimized image: %w", err)
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return 0, 0, fmt.Errorf("sync optimized image: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		return 0, 0, fmt.Errorf("close optimized image: %w", err)
+	}
+	if err := ValidateImage(tmpPath); err != nil {
+		return 0, 0, fmt.Errorf("validate optimized image: %w", err)
+	}
+	if err := os.Rename(tmpPath, params.path); err != nil {
+		return 0, 0, fmt.Errorf("replace optimized image: %w", err)
+	}
 
 	newBounds := rgba.Bounds()
 	return newBounds.Dx(), newBounds.Dy(), nil

@@ -5,6 +5,9 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
@@ -21,6 +24,12 @@ const defaultMaxUploadBytes = 20 << 20 // 20 MiB
 // HandleUpload routes artwork upload requests: GET serves the upload UI and
 // POST persists an image. All other methods and the disabled state short-circuit.
 func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
+	const uploadCSP = "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; " +
+		"object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+	w.Header().Set("Content-Security-Policy", uploadCSP)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Cache-Control", "no-store")
 	if s.cfg == nil || !s.cfg.UploadEnabled {
 		writeJSONError(w, http.StatusForbidden, "Upload endpoint is disabled")
 		return
@@ -33,6 +42,7 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		s.processUpload(w, r)
 	default:
+		w.Header().Set("Allow", "GET, POST")
 		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
 }
@@ -55,8 +65,29 @@ func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, uerr.code, uerr.msg)
 		return
 	}
+	if err := validateUploadedImage(payload.Bytes()); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "Invalid or unsafe image: "+err.Error())
+		return
+	}
 
 	s.persistImage(w, payload.Bytes(), ext)
+}
+
+func validateUploadedImage(payload []byte) error {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("decode header: %w", err)
+	}
+	const maxDimension = 16384
+	const maxPixels = 80_000_000
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxDimension || cfg.Height > maxDimension ||
+		int64(cfg.Width)*int64(cfg.Height) > maxPixels {
+		return fmt.Errorf("dimensions %dx%d exceed limits", cfg.Width, cfg.Height)
+	}
+	if _, _, err := image.Decode(bytes.NewReader(payload)); err != nil {
+		return fmt.Errorf("decode pixels: %w", err)
+	}
+	return nil
 }
 
 // maxUploadBytes resolves the configured per-upload limit, falling back to a
@@ -137,21 +168,45 @@ func (s *Server) persistImage(w http.ResponseWriter, payload []byte, ext string)
 		return
 	}
 
-	// 0o644 is intentional: artwork must be world-readable for SMB/NFS shares.
-	if err := os.WriteFile(destPath, payload, 0o644); err != nil { //nolint:gosec // world-readable artwork is required for network shares
+	if err := atomicWriteArtwork(destPath, payload); err != nil {
 		s.logger.Error("Failed to write uploaded file", "path", destPath, "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "Failed to save uploaded file")
 		return
 	}
-	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
-	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
-	_ = os.Chmod(destPath, 0o644)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		fieldStatus: statusOK,
 		"message":   "File uploaded successfully",
 		"filename":  filename,
 	})
+}
+
+func atomicWriteArtwork(path string, payload []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".upload-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary upload: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod temporary upload: %w", err)
+	}
+	if _, err := tmp.Write(payload); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temporary upload: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temporary upload: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary upload: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("commit upload: %w", err)
+	}
+	return nil
 }
 
 // isTooLarge reports whether err was caused by the request body exceeding the

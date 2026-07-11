@@ -34,11 +34,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    name: Verified Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Check out code
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - name: Set up Go
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      with:
+        go-version: '1.26.5'
+        cache: true
+        cache-dependency-path: go.sum
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      with:
+        python-version: '3.14'
+    - name: Install verification tools
+      run: make tools
+    - name: Run complete verification
+      run: make agent-fix
+
   # On pull requests we only validate the native linux/amd64 build to keep
   # feedback fast; the full multi-arch matrix (arm64 on a native ARM runner,
   # arm/v7 via QEMU) runs on pushes to main and tags where images are pushed.
   build:
     name: Build ${{ matrix.platform }}
+    needs: [verify]
     runs-on: ${{ matrix.runs-on }}
     permissions:
       contents: read
@@ -47,19 +71,21 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ github.event_name == 'pull_request' && fromJSON('[{"platform":"linux/amd64","runs-on":"ubuntu-latest"}]') || fromJSON('[{"platform":"linux/amd64","runs-on":"ubuntu-latest"},{"platform":"linux/arm64","runs-on":"ubuntu-24.04-arm"},{"platform":"linux/arm/v7","runs-on":"ubuntu-latest"}]') }}
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
 
     steps:
     - name: Check out code
-      uses: actions/checkout@v7
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
     - name: Set up QEMU
       if: matrix.platform == 'linux/arm/v7'
-      uses: docker/setup-qemu-action@v4
+      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
       with:
         cache-image: false
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
     - name: Log in to GitHub Container Registry
       if: github.event_name != 'pull_request'
@@ -77,13 +103,16 @@ jobs:
     - name: Extract metadata (tags, labels)
       if: github.event_name != 'pull_request'
       id: meta
-      uses: docker/metadata-action@v6
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
           type=sha,format=short
           type=ref,event=branch
           type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
 
     - name: Set build metadata
       id: build-meta
@@ -93,7 +122,7 @@ jobs:
     - name: Build and push by digest
       if: github.event_name != 'pull_request'
       id: build
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
         context: .
         platforms: ${{ matrix.platform }}
@@ -104,12 +133,12 @@ jobs:
           BUILD_DATE=${{ steps.build-meta.outputs.date }}
         cache-from: type=gha,scope=${{ matrix.platform }}
         cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
-        provenance: false
-        sbom: false
+        provenance: mode=max
+        sbom: true
 
     - name: Build (PR validation)
       if: github.event_name == 'pull_request'
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
         context: .
         platforms: linux/amd64
@@ -133,7 +162,7 @@ jobs:
 
     - name: Upload digest
       if: github.event_name != 'pull_request'
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: digests-${{ strategy.job-index }}
         path: /tmp/digests/*
@@ -151,14 +180,14 @@ jobs:
       packages: write
     steps:
     - name: Download digests
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         path: /tmp/digests
         pattern: digests-*
         merge-multiple: true
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
     - name: Log in to GitHub Container Registry
       shell: bash
@@ -175,7 +204,10 @@ jobs:
     - name: Create manifest list and push
       working-directory: /tmp/digests
       run: |
-        TAGS=("--tag" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest")
+        TAGS=()
+        while IFS= read -r tag; do
+          [ -n "$tag" ] && TAGS+=("--tag" "$tag")
+        done <<< '${{ needs.build.outputs.tags }}'
 
         SOURCES=()
         for f in *; do

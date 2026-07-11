@@ -149,6 +149,8 @@ Use the built-in **Shortcuts** app to send photos to your TV in one tap.
 7. Run it — or attach it to an iOS **Automation** to push photos automatically (e.g. nightly).
 
 Duplicate photos are detected automatically, so re-running the shortcut is safe.
+For macOS automation, album exports, and complete Shortcut instructions, see
+[the Apple Photos sync guide](docs/apple-photos-sync.md).
 
 ---
 
@@ -231,7 +233,16 @@ When the health server is running, two JSON endpoints are available:
 - `GET /health` — uptime, last sync result, current stage.
 - `GET /status` — the above plus per-TV details (art mode, image count, reachability).
 
-The Docker image also ships a built-in `-healthcheck` command used by the container `HEALTHCHECK`, so orchestrators can self-heal automatically.
+The Docker image ships a built-in `-healthcheck` command used by its
+`HEALTHCHECK`. This reports health but does not restart a container by itself.
+Use a runtime restart policy, such as the provided Compose
+`restart: unless-stopped`, or an orchestrator health policy when automatic
+recovery is required.
+
+The image starts as root only to create and optionally change ownership of
+bind-mounted data directories through `PUID`/`PGID`. For a rootless runtime,
+pre-create `/data/artwork` and `/data/tokens` with the desired ownership and set
+Compose `user: "<uid>:<gid>"`; leave `PUID` and `PGID` unset in that mode.
 
 ---
 

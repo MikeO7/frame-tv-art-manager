@@ -3,7 +3,6 @@ package sources
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -11,8 +10,8 @@ import (
 )
 
 const (
-	// Worker bounds for concurrent catalog indexing, clamped around NumCPU.
-	minCatalogWorkers = 4
+	// Worker bounds for concurrent catalog indexing.
+	minCatalogWorkers = 1
 	maxCatalogWorkers = 16
 )
 
@@ -51,7 +50,7 @@ func (c *ArtworkCatalog) processFilesConcurrent(entries []os.DirEntry) chan inde
 	jobs := make(chan string, len(entries))
 	results := make(chan indexEntry, len(entries))
 
-	numWorkers := min(max(runtime.NumCPU(), minCatalogWorkers), maxCatalogWorkers)
+	numWorkers := min(max(len(entries), minCatalogWorkers), maxCatalogWorkers)
 
 	var wg sync.WaitGroup
 	for w := 0; w < numWorkers; w++ {
@@ -65,7 +64,8 @@ func (c *ArtworkCatalog) processFilesConcurrent(entries []os.DirEntry) chan inde
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() ||
+			!artwork.IsSupportedExtension(filepath.Ext(entry.Name())) {
 			continue
 		}
 		jobs <- entry.Name()
@@ -104,8 +104,8 @@ func (c *ArtworkCatalog) processResult(res indexEntry) {
 			// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
 			_ = os.Chmod(path, 0o644)
 			c.registerPrefix(cleanIdentity, filename)
+			c.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:hashPrefixLen])
 		}
-		c.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:hashPrefixLen])
 	}
 
 	c.mu.Lock()
@@ -114,9 +114,7 @@ func (c *ArtworkCatalog) processResult(res indexEntry) {
 		_ = os.Remove(path)
 	} else {
 		c.hashIndex[hash] = filename
-		if artwork.IsSupportedExtension(filepath.Ext(filename)) {
-			c.catalog[filename] = struct{}{}
-		}
+		c.catalog[filename] = struct{}{}
 	}
 	c.mu.Unlock()
 }

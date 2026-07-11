@@ -1,3 +1,4 @@
+//nolint:errcheck // setup mutations are followed by reconciliation assertions
 package sync
 
 import (

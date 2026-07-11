@@ -1,5 +1,5 @@
 # Binaries
-frame-tv-art-manager
+/frame-tv-art-manager
 *.exe
 *.exe~
 *.dll
@@ -20,6 +20,7 @@ go.work.sum
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 *~
@@ -34,3 +35,11 @@ tokens/
 
 tmp/
 .venv/
+
+# Vendor-specific AI state and duplicate instruction files
+.claude/
+.gemini/
+.cursorrules
+CLAUDE.md
+GEMINI.md
+.github/copilot-instructions.md
