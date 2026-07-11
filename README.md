@@ -1,262 +1,288 @@
-# 🎨 Samsung Frame TV Art Manager
+# Frame TV Art Manager
 
-[![CI Status](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MikeO7/frame-tv-art-manager/actions)
+[![CI](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml)
 
-Getting your own photos and artwork onto a Samsung Frame TV with the official SmartThings app is slow and fiddly. **Frame TV Art Manager** is a self-hosted background service that does it for you: it connects to your TV over your local network, processes your images so they look like real framed art, and keeps your gallery in sync — completely hands-free.
+Frame TV Art Manager is a small, self-hosted service that keeps a folder of
+JPEG and PNG images in sync with one or more Samsung Frame TVs. It was built
+for the ordinary home-server case: put pictures in a directory, let a container
+run in the background, and stop fighting the SmartThings upload flow every time
+you want to change the art.
 
-Point it at a folder, drop photos in from your phone, or let it auto-curate fresh artwork from Unsplash, NASA, and museum collections. It runs quietly in Docker and just works.
+The manager can also download images from a source file, resize them for a 4K
+Frame, handle portrait photographs, apply Samsung mattes, and adjust a few Art
+Mode settings. It talks directly to the TV over the local network. There is no
+Samsung cloud account involved.
 
----
+The current target is Samsung Frame hardware running Tizen 8.0 or newer. Other
+firmware may work, but Samsung's private Art Mode protocol changes between
+models and releases.
 
-## ✨ What It Does
+## What it actually does
 
-### 📱 Drag-and-drop Web Uploader (+ Apple Photos)
-Put a photo on the TV in seconds, from any device on your network.
-- **Web UI:** open `http://<server-ip>:8080/upload` in any browser and drag in your JPEGs or PNGs. There's a clean, mobile-friendly drop zone with live upload progress.
-- **Apple Photos / iOS Shortcuts:** build a one-tap iOS Shortcut that POSTs your favorite photos to the same `/upload` endpoint — great for sending iPhone photos to the living room automatically. (See [Syncing Apple Photos](#-syncing-apple-photos-from-ios).)
-- **Automatic de-duplication:** uploads are hashed by content, so sending the same picture twice never clutters your gallery.
+Each sync cycle follows the same basic path:
 
-> The uploader is opt-in — set `UPLOAD_ENABLED=true` to turn it on.
+1. Read the optional sources file and download anything missing.
+2. Build a catalog from supported images in the artwork directory.
+3. Validate and, when enabled, optimize those images.
+4. Connect to each configured TV and read its current Art Mode inventory.
+5. Upload missing files and remove tracked files that no longer exist locally.
+6. Apply explicitly configured slideshow, brightness, and auto-off settings.
 
-### 🖼️ Auto-Curate from Unsplash, NASA & Museums
-Stop downloading and resizing files by hand. Give the manager a small list of sources and it pulls fresh, high-resolution art on every sync cycle:
-- **Unsplash** — sync an entire collection or a single photo.
-- **NASA** — wake up to the Astronomy Picture of the Day, or search the NASA image library.
-- **Art Institute of Chicago** — rotate through masterpieces by searching for `monet`, `van gogh`, etc., or pull a specific artwork by ID.
-- **Pexels** — search, curated picks, full collections, or a single photo.
-- **Pixabay** — search, editor's choice, a specific photo, or an artist's full gallery.
-- **Direct URLs** — point at any JPEG/PNG link.
+The local artwork directory is the desired collection. Files such as JSON,
+YAML, hidden files, temporary files, and symlinks are not treated as artwork.
+Remote-source cleanup is conservative: if any source fails to resolve or
+download during a cycle, the previous source collection is retained instead of
+being pruned from an incomplete result.
 
-Images that disappear from your source list are automatically removed from the local collection, so your gallery always matches your config.
+Images already present on the TV are tracked in per-TV mapping files under the
+token directory. Those mappings are written atomically and keep a backup. The
+application does not normally delete TV images it does not own. Enabling
+`REMOVE_UNKNOWN_IMAGES` changes that rule and should be treated as a destructive
+option.
 
-### 🎨 "Museum Mode" & Smart Image Processing
-The manager doesn't just crop — it runs a real image pipeline so a digital screen reads like physical art:
-- **4K optimization:** oversized images are downscaled to crisp 4K (3840×2160) with high-quality resampling. *(On by default.)*
-- **Director's Cut smart crop:** content-aware saliency analysis (edges, faces, color contrast, rule-of-thirds) finds the real subject and crops the 16:9 frame around it instead of blindly cutting the center. *(Opt-in.)*
-- **Museum Mode:** layers canvas weave, impasto brush shading, gentle warming, and paper grain for a tangible, matte gallery look, with adjustable intensity. *(Opt-in.)*
-- **Portrait handling:** choose how vertical phone photos fill the wide screen — `collage` (two portraits side-by-side), `pad` (blurred backdrop bars), or `crop`.
-- **Mattes:** add a Frame-style border in any of Samsung's matte styles and colors (or `none` for full-screen).
+## Quick start with Docker Compose
 
-### ☀️ Smart Brightness, Auto-Off & Slideshow
-- **Sun-aware brightness:** give it your latitude/longitude and it dims and brightens the TV as the sun moves — or set a fixed brightness instead.
-- **Nightly auto-off:** set a time (e.g. `22:00`) to power down Art Mode and save energy. TVs being used for other content (apps, HDMI) are left untouched.
-- **Slideshow control:** preserve your TV's existing slideshow settings by default, or take over the shuffle/sequential timing yourself.
-- **Wake-on-LAN, multiple TVs & monitoring:** wake sleeping TVs by MAC address, sync several Frames at once from one server, and expose `/health` and `/status` endpoints for Uptime Kuma, Home Assistant, or Docker health checks.
+Create a directory for the service and add this `compose.yaml`:
 
----
-
-## 🚀 Quick Start (Docker)
-
-### 1. Create a `docker-compose.yml`
 ```yaml
 services:
   frame-tv-art-manager:
     image: ghcr.io/mikeo7/frame-tv-art-manager:latest
     container_name: frame-tv-art-manager
     restart: unless-stopped
-    ports:
-      - "8080:8080" # Web uploader + health checks
     environment:
-      TV_IPS: "192.168.1.150"        # REPLACE with your TV's IP
-      CLIENT_NAME: "Home Server"
-      UPLOAD_ENABLED: "true"         # Enable the drag-and-drop uploader
-      SMART_CROP_ENABLED: "true"     # Subject-aware cropping
-      IMAGE_MUSEUM_MODE: "true"      # Canvas/impasto "real art" look
+      TV_IPS: "192.168.1.150"
+      CLIENT_NAME: "Frame Art Manager"
+    ports:
+      - "8080:8080"
     volumes:
-      # One mount is enough — the app creates artwork/ and tokens/ inside it.
       - ./data:/data
 ```
 
-### 2. Spin it up
+Replace the example address with the TV's stable LAN address, then start it:
+
 ```bash
 docker compose up -d
+docker compose logs -f frame-tv-art-manager
 ```
 
-### 3. Authenticate (one time)
-With `UPLOAD_ENABLED=true`, open `http://<server-ip>:8080/upload` and upload an image. Look at your TV — a prompt will ask you to authorize **"Home Server"**. Press **Allow** on the remote. The token is saved to `./data/tokens`, and the service runs silently from then on.
+On the first connection, the TV should show an Allow/Deny prompt for the value
+of `CLIENT_NAME`. Choose **Allow** with the remote. The returned token is stored
+under `./data/tokens`, so keep that directory between container upgrades.
 
-> Image optimization is on by default. Set `IMAGE_OPTIMIZE_ENABLED=false` to upload images untouched.
+Put `.jpg`, `.jpeg`, or `.png` files in `./data/artwork`. The first sync runs at
+startup; later cycles use `SYNC_INTERVAL_MINUTES`, which defaults to five
+minutes.
 
----
+If the container cannot write to the bind mount, pre-create the directories and
+give them to the account used by the container:
 
-## 🌍 Auto-Curating from Unsplash & Feeds
-
-Tell the manager where your sources config lives, then list what you want.
-
-### docker-compose.yml
-```yaml
-    environment:
-      ARTWORK_SOURCES_FILE: "/data/sources.yaml"
-      UNSPLASH_ACCESS_KEY: "your_unsplash_access_key"   # only the Access Key is needed
-      PEXELS_API_KEY: "your_pexels_key"                 # optional
-      PIXABAY_API_KEY: "your_pixabay_key"               # optional
+```bash
+mkdir -p data/artwork data/tokens
 ```
 
-### sources.yaml
-Group sources under a `providers:` map. Each entry is a `command` for that provider:
+The image starts as root so it can create and optionally `chown` bind-mounted
+directories using `PUID` and `PGID`. To run rootless, pre-own both directories,
+set Compose `user: "<uid>:<gid>"`, and leave `PUID` and `PGID` unset.
+
+## Supplying artwork
+
+### A local folder
+
+The simplest setup is the one above. Copy supported images into
+`data/artwork`; remove them when you no longer want the manager to track them.
+Content hashes are used to avoid duplicate local files.
+
+### The web uploader
+
+Set `UPLOAD_ENABLED=true`, publish the health port, and open:
+
+```text
+http://<server-address>:8080/upload
+```
+
+The page accepts JPEG and PNG files. Uploads are size-limited, fully decoded
+before being accepted, written atomically, and deduplicated by content hash.
+The same endpoint accepts a multipart `POST` with a field named `file`, which is
+useful from iOS Shortcuts.
+
+The uploader does **not** implement authentication. Enable it only on a trusted
+network, and do not expose port 8080 directly to the public internet. See
+[the Apple Photos guide](docs/apple-photos-sync.md) for an example Shortcut and
+macOS workflows.
+
+### Remote sources
+
+Set `ARTWORK_SOURCES_FILE=/data/sources.yaml` and mount that file inside the
+container. A structured file looks like this:
 
 ```yaml
 providers:
-  # 📸 Unsplash — needs UNSPLASH_ACCESS_KEY
   unsplash:
-    - "collection:225444"     # every photo in a collection
-    - "photo:L9W_5q57_V8"     # one specific photo
+    - collection:225444
+    - photo:L9W_5q57_V8
 
-  # 🚀 NASA — works with the built-in DEMO_KEY (set NASA_API_KEY for higher limits)
   nasa:
-    - "apod"                  # today's Astronomy Picture of the Day
-    - "search:james webb"     # top results from the NASA image library
+    - apod
+    - search:james webb
 
-  # 🎨 Art Institute of Chicago — no key required
   art_institute_of_chicago:
-    - "search:monet"          # masterpieces matching a query
-    - "photo:20684"           # a specific artwork by ID
+    - search:monet
+    - photo:20684
 
-  # 🌿 Pexels — needs PEXELS_API_KEY
   pexels:
-    - "search:nature"
-    - "curated"
+    - curated
+    - search:architecture
 
-  # 🍃 Pixabay — needs PIXABAY_API_KEY
   pixabay:
-    - "search:mountains"
-    - "editors_choice"
+    - editors_choice
+    - search:mountains
 
-  # 🔗 Any direct image link
   direct:
-    - "https://example.com/artwork.jpg"
+    - https://example.com/image.jpg
 ```
 
-If the file doesn't exist yet, the app writes a fully-commented starter `sources.yaml` for you on first run. A plain `.txt` file (one source per line, `#` for comments) also works.
+Supported providers and credentials are:
 
-*Get free Unsplash keys at [unsplash.com/developers](https://unsplash.com/developers), Pexels at [pexels.com/api](https://www.pexels.com/api/), and Pixabay at [pixabay.com/api/docs](https://pixabay.com/api/docs/).*
+| Provider | Commands used by the application | Credential |
+| --- | --- | --- |
+| Unsplash | `collection`, `photo` | `UNSPLASH_ACCESS_KEY` |
+| NASA | `apod`, `search` | `NASA_API_KEY` (`DEMO_KEY` by default) |
+| Art Institute of Chicago | `search`, `photo` | none |
+| Pexels | `search`, `curated`, `collection`, `photo` | `PEXELS_API_KEY` |
+| Pixabay | `search`, `editors_choice`, `photo`, `user` | `PIXABAY_API_KEY` |
+| Direct URL | an HTTP or HTTPS image URL | none |
 
----
+The loader also accepts YAML with a top-level `sources:` list, a plain YAML
+list, or a text file containing one source expression per line. Blank lines and
+lines beginning with `#` are ignored in text files.
 
-## 📱 Syncing Apple Photos from iOS
+If a configured YAML source file does not exist, the application writes a
+commented starter file during startup. API providers are subject to their own
+rate limits and terms.
 
-Use the built-in **Shortcuts** app to send photos to your TV in one tap.
+## Image processing
 
-1. Make sure `UPLOAD_ENABLED=true` and port `8080` is mapped.
-2. In **Shortcuts**, create a new shortcut.
-3. Add **Find Photos** → filter by `Favorite is Yes` and `Media Type is Image` (limit to a sensible count).
-4. Add **Repeat with Each**.
-5. Inside the loop, add **Convert Image** → `JPEG` (Frame TVs don't support HEIC).
-6. Inside the loop, add **Get Contents of URL**:
-   - URL: `http://<server-ip>:8080/upload`
-   - Method: `POST`
-   - Request Body: `Form`, with a field named **`file`** set to the converted image.
-7. Run it — or attach it to an iOS **Automation** to push photos automatically (e.g. nightly).
+Optimization is enabled by default. Images larger than the configured target
+are resized, while already suitable images take a fast path. The defaults are
+3840×2160 and JPEG quality 95.
 
-Duplicate photos are detected automatically, so re-running the shortcut is safe.
-For macOS automation, album exports, and complete Shortcut instructions, see
-[the Apple Photos sync guide](docs/apple-photos-sync.md).
+Portrait images can be handled in three ways:
 
----
+- `crop` fills the screen by cropping to the target aspect ratio;
+- `pad` places the portrait over a padded background;
+- `collage` combines portrait images into a landscape composition.
 
-## ⚙️ Configuration
+`SMART_CROP_ENABLED` uses the project's content-aware crop path instead of a
+simple center crop. `IMAGE_MUSEUM_MODE` applies the optional texture and color
+treatment implemented by the optimizer. Both are off by default.
 
-Everything is configured through environment variables. **Only `TV_IPS` is required.**
+Samsung mattes are selected with `MATTE_STYLE`. Use `none` for full-screen art
+or a value such as `shadowbox_polar`. A `mattes.json` file in the artwork
+directory can override the matte per filename; it is treated as a control file
+and never uploaded as artwork.
 
-### Core
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `TV_IPS` | *required* | TV IP address(es), comma-separated for multiple Frames. |
-| `CLIENT_NAME` | `Frame Art Manager` | Connection name shown by the TV. A stable name avoids repeat Allow/Deny prompts. |
-| `SYNC_INTERVAL_MINUTES` | `5` | Minutes between sync cycles. |
-| `MATTE_STYLE` | `none` | Frame border as `{style}_{color}` (e.g. `shadowbox_polar`). Styles: `modernthin`, `modern`, `modernwide`, `flexible`, `shadowbox`, `panoramic`, `triptych`, `mix`, `squares`. |
-| `REMOVE_UNKNOWN_IMAGES` | `false` | Delete images on the TV that this service doesn't manage. |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
+## Configuration
 
-### Web Uploader & Sources
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `UPLOAD_ENABLED` | `false` | Enable the drag-and-drop uploader and `POST /upload` on port 8080. |
-| `ARTWORK_SOURCES_FILE` | *(empty)* | Path to your sources list (e.g. `/data/sources.yaml`). |
-| `UNSPLASH_APP_ID` | *(empty)* | Unsplash Application ID. |
-| `UNSPLASH_ACCESS_KEY` | *(empty)* | Unsplash API Access Key. |
-| `UNSPLASH_SECRET_KEY` | *(empty)* | Unsplash API Secret Key. |
-| `PEXELS_API_KEY` | *(empty)* | Pexels API key. |
-| `PIXABAY_API_KEY` | *(empty)* | Pixabay API key. |
-| `NASA_API_KEY` | `DEMO_KEY` | NASA API key (the demo key works, with lower rate limits). |
-| `MAX_ARTWORK_IMAGES` | `0` | Cap on synced images (`0` = fill to the TV's storage limit). |
-| `MAX_DOWNLOAD_SIZE_MB` | `20` | Max size per downloaded/uploaded image. |
+`TV_IPS` is the only required setting. It accepts a comma-separated list. The
+complete, annotated configuration reference is [`.env.example`](.env.example);
+the table below covers the settings most people change.
 
-### Image Processing
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `IMAGE_OPTIMIZE_ENABLED` | `true` | Downscale oversized images to crisp 4K. |
-| `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | `3840` / `2160` | Target resolution. |
-| `IMAGE_JPEG_QUALITY` | `95` | JPEG encode quality (1–100). |
-| `SMART_CROP_ENABLED` | `false` | Subject-aware "Director's Cut" cropping. |
-| `IMAGE_MUSEUM_MODE` | `false` | Canvas texture, impasto, warming, grain. |
-| `IMAGE_MUSEUM_INTENSITY` | `5` | Strength of Museum Mode (1–10). |
-| `PORTRAIT_MODE` | `crop` | Vertical photos: `collage`, `pad`, or `crop`. |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TV_IPS` | required | Comma-separated TV addresses |
+| `ARTWORK_DIR` | `/data/artwork` | Local desired artwork collection |
+| `TOKEN_DIR` | `/data/tokens` | Pairing tokens, mappings, and TV state |
+| `SYNC_INTERVAL_MINUTES` | `5` | Time between sync cycles |
+| `CLIENT_NAME` | `Frame Art Manager` | Name shown in the TV authorization prompt |
+| `MATTE_STYLE` | `none` | Global Samsung matte style and color |
+| `MAX_ARTWORK_IMAGES` | `0` | Local/source image cap; zero means no configured cap |
+| `MAX_DOWNLOAD_SIZE_MB` | `20` | Per-image download and upload body limit |
+| `IMAGE_OPTIMIZE_ENABLED` | `true` | Enable validation and resize pipeline |
+| `IMAGE_MAX_WIDTH` | `3840` | Target maximum width |
+| `IMAGE_MAX_HEIGHT` | `2160` | Target maximum height |
+| `IMAGE_JPEG_QUALITY` | `95` | JPEG encoding quality |
+| `PORTRAIT_MODE` | `crop` | `crop`, `pad`, or `collage` |
+| `SMART_CROP_ENABLED` | `false` | Enable content-aware cropping |
+| `IMAGE_MUSEUM_MODE` | `false` | Enable the texture/color treatment |
+| `UPLOAD_ENABLED` | `false` | Enable `GET` and `POST /upload` |
+| `HEALTH_PORT` | `8080` | HTTP server port; zero disables it |
+| `DRY_RUN` | `false` | Plan/log TV reconciliation without TV mutations |
+| `REMOVE_UNKNOWN_IMAGES` | `false` | Delete TV art not known to this manager |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 
-### Smart Home & Automation
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `BRIGHTNESS` | *(empty)* | Fixed brightness (0–50), applied each cycle. |
-| `SOLAR_BRIGHTNESS_ENABLED` | `false` | Auto-adjust brightness by sun elevation (takes precedence over `BRIGHTNESS`). |
-| `LOCATION_LATITUDE` / `LOCATION_LONGITUDE` | *(empty)* | Required when solar brightness is on. |
-| `LOCATION_TIMEZONE` | `UTC` | IANA timezone (e.g. `America/New_York`). Required for auto-off. |
-| `BRIGHTNESS_MIN` / `BRIGHTNESS_MAX` | `2` / `10` | Brightness range for solar mode. |
-| `AUTO_OFF_TIME` | *(empty)* | Power off Art Mode at this 24h time (e.g. `22:00`). |
-| `AUTO_OFF_GRACE_HOURS` | `2` | How long after `AUTO_OFF_TIME` to keep trying. |
-| `SLIDESHOW_ENABLED` / `SLIDESHOW_INTERVAL` / `SLIDESHOW_TYPE` | *(unset)* | Override slideshow (`shuffle`/`sequential`). If unset, the TV's own settings are preserved. |
-| `TV_MAC` | *(empty)* | MAC address for Wake-on-LAN. |
+Malformed numeric and boolean values currently fall back to their defaults.
+Cross-field and enumerated values such as log level, slideshow type, portrait
+mode, and solar coordinates are validated at startup.
 
-### System
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `HEALTH_PORT` | `8080` | Port for `/health`, `/status`, and `/upload`. `0` disables the server. |
-| `ENABLE_REST_GATE` | `false` | Probe port 8001 to skip TVs busy with other content (firmware-dependent). |
-| `PUID` / `PGID` | `0` | Owner UID/GID for created data directories. |
-| `DRY_RUN` | `false` | Process images locally without touching the TV. |
-| `VERIFY_TLS` | `false` | Enable TLS/SSL certificate verification. |
-| `SKIP_TLS_VERIFY` | `false` | Skip TLS verification regardless of VERIFY_TLS setting. |
-| `CONNECTION_TIMEOUT_SECONDS` | `60` | Connection timeout for WSS handshake. |
-| `API_TIMEOUT_SECONDS` | `60` | API timeout for art API responses. |
-| `UPLOAD_DELAY_MS` | `3000` | Pause between consecutive image uploads. |
-| `UPLOAD_ATTEMPTS` | `3` | Number of times to retry a failed upload. |
-| `GATE_TIMEOUT_MS` | `10000` | HTTP timeout for the REST gate probe. |
-| `ARTWORK_DIR` | `/data/artwork` | Path to store artwork images. |
-| `TOKEN_DIR` | `/data/tokens` | Path to store TV auth tokens. |
+### TV behavior
 
-A full annotated list lives in [`.env.example`](.env.example).
+- Set `BRIGHTNESS` for a fixed value, or enable solar brightness with
+  `SOLAR_BRIGHTNESS_ENABLED`, latitude, longitude, timezone, and min/max values.
+- Setting any `SLIDESHOW_*` variable opts into slideshow override. If none is
+  set, the manager preserves the TV's current slideshow configuration.
+- `AUTO_OFF_TIME` uses a 24-hour local time and only acts during its configured
+  grace window.
+- `TV_MAC` enables Wake-on-LAN before connection attempts.
+- `ENABLE_REST_GATE` probes the TV's REST endpoint before synchronization. This
+  is firmware-dependent and disabled by default.
+- TLS verification is off by default because local Frame certificates are
+  commonly self-signed. Set `VERIFY_TLS=true` only when the TV endpoint can be
+  verified; `SKIP_TLS_VERIFY=true` takes precedence.
 
----
+`DRY_RUN` prevents upload, deletion, selection, brightness, slideshow, and
+power mutations on the TV. Local source resolution and image preparation still
+run, so it should not be treated as a promise that the local data directory is
+unchanged.
 
-## 📈 Monitoring
+## Monitoring
 
-When the health server is running, two JSON endpoints are available:
-- `GET /health` — uptime, last sync result, current stage.
-- `GET /status` — the above plus per-TV details (art mode, image count, reachability).
+The HTTP server exposes:
 
-The Docker image ships a built-in `-healthcheck` command used by its
-`HEALTHCHECK`. This reports health but does not restart a container by itself.
-Use a runtime restart policy, such as the provided Compose
-`restart: unless-stopped`, or an orchestrator health policy when automatic
-recovery is required.
+- `GET /health` — returns 200 before the first cycle and after a successful
+  cycle; returns 503 when the most recently completed cycle failed.
+- `GET /status` — returns process timing, current stage, last error, cycle
+  count, and the latest per-TV status.
+- `GET /upload` and `POST /upload` — available only when uploads are enabled.
 
-The image starts as root only to create and optionally change ownership of
-bind-mounted data directories through `PUID`/`PGID`. For a rootless runtime,
-pre-create `/data/artwork` and `/data/tokens` with the desired ownership and set
-Compose `user: "<uid>:<gid>"`; leave `PUID` and `PGID` unset in that mode.
+The container healthcheck calls the application's `-healthcheck` command,
+which reads `/health` on `HEALTH_PORT`. Set `HEALTH_PORT=0` only if you also
+override or disable the image healthcheck in your runtime configuration.
 
----
+A failed healthcheck does not restart a container by itself. Use a Docker
+restart policy or an orchestrator policy if automatic recovery is required.
 
-## 🛠️ Development
+## Running without Docker
 
-Built with Go (see [`go.mod`](go.mod)).
+Go uses the toolchain declared in [`go.mod`](go.mod):
 
 ```bash
-make build   # Build the binary
-make test    # Run the test suite with coverage
-make check   # Tests, linters, vuln scan, formatting — the full pipeline
-make fix     # Auto-format and auto-fix lint issues
-make docker  # Build the Docker image locally
+go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
+TV_IPS=192.168.1.150 \
+ARTWORK_DIR="$PWD/data/artwork" \
+TOKEN_DIR="$PWD/data/tokens" \
+./frame-tv-art-manager
 ```
 
-## 📄 License
-Licensed under the **PolyForm Noncommercial License 1.0.0**. Run it at home and modify it freely; commercial use requires separate licensing.
+The binary also supports `--help`, `--version`, and `-healthcheck`.
+
+## Development
+
+The repository keeps its verification commands in the Makefile:
+
+```bash
+make tools       # install the pinned local tools
+make test        # tests with shuffled order and a coverage profile
+make agent-fix   # formatting, Actions validation, lint, hooks, tests, coverage, vuln scan
+make docker      # build the local container image
+```
+
+`make agent-fix` is the required gate for changes. Aggregate statement coverage
+must remain at or above 90 percent. More detail is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## License
+
+The project is licensed under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). Personal and other permitted
+noncommercial uses are allowed under that license; commercial use is not.
