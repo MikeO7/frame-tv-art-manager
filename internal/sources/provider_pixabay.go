@@ -92,7 +92,7 @@ func (p *pixabayProvider) fetchAllPages(ctx context.Context, baseURL string) ([]
 
 	for {
 		u := fmt.Sprintf("%s&per_page=%d&page=%d", baseURL, pixabayPageSize, page)
-		p.logger.Debug("fetching pixabay page", "url", u, "page", page)
+		p.logger.Debug("fetching pixabay page", "page", page)
 
 		urls, err := p.fetchPhotoList(ctx, u)
 		if err != nil {

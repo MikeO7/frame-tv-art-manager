@@ -122,6 +122,27 @@ func TestPixabayClient_Search(t *testing.T) {
 	}
 }
 
+func TestPixabayClient_SearchDoesNotLogAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(struct {
+			Hits []pixabayPhoto `json:"hits"`
+		}{})
+	}))
+	defer server.Close()
+
+	logger, logs := newTestLogger()
+	const apiKey = "codeql-secret-api-key"
+	provider := newPixabayProvider(apiKey, logger)
+	provider.BaseURL = server.URL
+
+	if _, err := provider.Search(context.Background(), "nature"); err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if strings.Contains(logs.String(), apiKey) {
+		t.Fatalf("debug log exposed Pixabay API key: %s", logs.String())
+	}
+}
+
 func TestArticClient_FetchPhoto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
