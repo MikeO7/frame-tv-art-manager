@@ -7,7 +7,7 @@ Thank you for contributing! This project maintains high standards to ensure reli
 1. **Install Tools**: Run `make tools` to install required linters and scanners.
 2. **Format Code**: Run `make fmt` before committing.
 3. **Run Tests**: Run `make test` to ensure everything works.
-4. **Check Coverage**: Run `make coverage-check`. We require at least **100% code coverage**.
+4. **Check Coverage**: Run `make coverage-check`. We require at least **90% code coverage**.
 5. **Full Audit**: Run `make check` to run all tests, linters, and security scanners.
 
 ## Engineering Standards

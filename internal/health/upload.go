@@ -21,6 +21,14 @@ import (
 // invalid, guarding the endpoint against unbounded request bodies.
 const defaultMaxUploadBytes = 20 << 20 // 20 MiB
 
+type atomicWriteOperations struct {
+	createTemp func(string, string) (*os.File, error)
+	chmod      func(*os.File, os.FileMode) error
+	sync       func(*os.File) error
+	close      func(*os.File) error
+	remove     func(string) error
+}
+
 // HandleUpload routes artwork upload requests: GET serves the upload UI and
 // POST persists an image. All other methods and the disabled state short-circuit.
 func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
@@ -182,25 +190,35 @@ func (s *Server) persistImage(w http.ResponseWriter, payload []byte, ext string)
 }
 
 func atomicWriteArtwork(path string, payload []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".upload-*.tmp")
+	return atomicWriteArtworkWithOperations(path, payload, atomicWriteOperations{
+		createTemp: os.CreateTemp,
+		chmod:      func(file *os.File, mode os.FileMode) error { return file.Chmod(mode) },
+		sync:       func(file *os.File) error { return file.Sync() },
+		close:      func(file *os.File) error { return file.Close() },
+		remove:     os.Remove,
+	})
+}
+
+func atomicWriteArtworkWithOperations(path string, payload []byte, operations atomicWriteOperations) error {
+	tmp, err := operations.createTemp(filepath.Dir(path), ".upload-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temporary upload: %w", err)
 	}
 	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
+	defer func() { _ = operations.remove(tmpName) }()
+	if err := operations.chmod(tmp, 0o644); err != nil {
+		_ = operations.close(tmp)
 		return fmt.Errorf("chmod temporary upload: %w", err)
 	}
 	if _, err := tmp.Write(payload); err != nil {
-		_ = tmp.Close()
+		_ = operations.close(tmp)
 		return fmt.Errorf("write temporary upload: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
+	if err := operations.sync(tmp); err != nil {
+		_ = operations.close(tmp)
 		return fmt.Errorf("sync temporary upload: %w", err)
 	}
-	if err := tmp.Close(); err != nil {
+	if err := operations.close(tmp); err != nil {
 		return fmt.Errorf("close temporary upload: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {

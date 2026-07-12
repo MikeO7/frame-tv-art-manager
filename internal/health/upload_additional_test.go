@@ -147,6 +147,53 @@ func TestAtomicWriteArtwork_InvalidPath(t *testing.T) {
 	})
 }
 
+func TestAtomicWriteArtwork_FailureBranches(t *testing.T) {
+	operations := atomicWriteOperations{
+		createTemp: os.CreateTemp,
+		chmod:      func(file *os.File, mode os.FileMode) error { return file.Chmod(mode) },
+		sync:       func(file *os.File) error { return file.Sync() },
+		close:      func(file *os.File) error { return file.Close() },
+		remove:     os.Remove,
+	}
+
+	t.Run("chmod failure", func(t *testing.T) {
+		artifact := t.TempDir()
+		path := filepath.Join(artifact, "chmod-failure.jpg")
+		operations.chmod = func(*os.File, os.FileMode) error { return errors.New("chmod failed") }
+		if err := atomicWriteArtworkWithOperations(path, []byte("payload"), operations); err == nil {
+			t.Fatal("expected chmod error")
+		} else if !strings.Contains(err.Error(), "chmod temporary upload") {
+			t.Fatalf("expected chmod temporary upload, got %v", err)
+		}
+	})
+
+	t.Run("sync failure", func(t *testing.T) {
+		artifact := t.TempDir()
+		path := filepath.Join(artifact, "sync-failure.jpg")
+		operations.chmod = func(file *os.File, mode os.FileMode) error { return file.Chmod(mode) }
+		operations.sync = func(*os.File) error { return errors.New("sync failed") }
+		operations.close = func(file *os.File) error { return file.Close() }
+		if err := atomicWriteArtworkWithOperations(path, []byte("payload"), operations); err == nil {
+			t.Fatal("expected sync error")
+		} else if !strings.Contains(err.Error(), "sync temporary upload") {
+			t.Fatalf("expected sync temporary upload, got %v", err)
+		}
+	})
+
+	t.Run("close failure", func(t *testing.T) {
+		artifact := t.TempDir()
+		path := filepath.Join(artifact, "close-failure.jpg")
+		operations.chmod = func(file *os.File, mode os.FileMode) error { return file.Chmod(mode) }
+		operations.sync = func(file *os.File) error { return file.Sync() }
+		operations.close = func(*os.File) error { return errors.New("close failed") }
+		if err := atomicWriteArtworkWithOperations(path, []byte("payload"), operations); err == nil {
+			t.Fatal("expected close error")
+		} else if !strings.Contains(err.Error(), "close temporary upload") {
+			t.Fatalf("expected close temporary upload, got %v", err)
+		}
+	})
+}
+
 func TestProcessUpload_InvalidImagePayload(t *testing.T) {
 	cfg := testConfig(0, true, t.TempDir())
 	srv := NewServer(cfg, NewStatus(), silentLogger())
