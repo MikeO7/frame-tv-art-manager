@@ -12,6 +12,7 @@
 # Output of go coverage
 *.out
 coverage.html
+.gocache
 
 # Go workspace
 go.work

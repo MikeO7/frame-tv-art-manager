@@ -32,6 +32,10 @@ type CapacityManager struct {
 	path string
 }
 
+var capacityMarshalState = func(state *CapacityState) ([]byte, error) {
+	return json.MarshalIndent(state, "", "  ")
+}
+
 // NewCapacityManager creates a manager for the given TV IP.
 func NewCapacityManager(dir, tvIP string) *CapacityManager {
 	safeIP := strings.ReplaceAll(tvIP, ".", "_")
@@ -117,7 +121,7 @@ func (cm *CapacityManager) Save(state *CapacityState) error {
 		return fmt.Errorf("create capacity dir: %w", err)
 	}
 
-	raw, err := json.MarshalIndent(state, "", "  ")
+	raw, err := capacityMarshalState(state)
 	if err != nil {
 		return fmt.Errorf("marshal capacity state: %w", err)
 	}

@@ -28,6 +28,10 @@ type Engine struct {
 	clients map[string]TVTransport
 }
 
+var engineSyncInterval = func(cfg *config.Config) time.Duration {
+	return time.Duration(cfg.SyncIntervalMin) * time.Minute
+}
+
 func defaultNewClient(ip string, cfg *config.Config, logger *slog.Logger) TVTransport {
 	return samsung.NewClient(ip, cfg.TVConnectOptions(), logger)
 }
@@ -71,7 +75,7 @@ func (e *Engine) RunLoop(ctx context.Context) error {
 		e.logger.Error("sync cycle failed", "error", err)
 	}
 
-	ticker := time.NewTicker(time.Duration(e.cfg.SyncIntervalMin) * time.Minute)
+	ticker := time.NewTicker(engineSyncInterval(e.cfg))
 	defer ticker.Stop()
 
 	for {

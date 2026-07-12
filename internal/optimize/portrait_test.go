@@ -145,6 +145,20 @@ func TestPadPortrait(t *testing.T) {
 	}
 }
 
+func TestPadPortrait_WidthClamp(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 3000, 700))
+	for y := 0; y < 700; y++ {
+		for x := 0; x < 3000; x++ {
+			src.Set(x, y, color.RGBA{uint8(x / 8), uint8(y / 4), 100, 255})
+		}
+	}
+
+	padded := padPortrait(src, 1280, 720)
+	if padded.Bounds().Dx() != 1280 || padded.Bounds().Dy() != 720 {
+		t.Fatalf("expected padded dimensions 1280x720, got %dx%d", padded.Bounds().Dx(), padded.Bounds().Dy())
+	}
+}
+
 func TestCreateCollage(t *testing.T) {
 	img1 := image.NewRGBA(image.Rect(0, 0, 1000, 2000))
 	img2 := image.NewRGBA(image.Rect(0, 0, 1000, 2000))

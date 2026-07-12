@@ -280,3 +280,123 @@ func TestOptimizeFileFastAndUnsupportedPaths(t *testing.T) {
 		t.Fatal("missing image did not return an error")
 	}
 }
+
+func TestOptContextHelpers(t *testing.T) {
+	o := &optContext{
+		artworkDir: t.TempDir(),
+		localFiles: map[string]struct{}{"alpha.jpg": {}, "beta.jpg": {}},
+		cfg:        DefaultConfig(),
+		logger:     discardLogger(),
+	}
+	o.recordDelete("beta.jpg")
+	o.recordRename("alpha.jpg", "alpha.h_renamed.jpg")
+	if _, ok := o.localFiles["alpha.jpg"]; ok {
+		t.Fatalf("recordRename failed to remove old name")
+	}
+	if _, ok := o.localFiles["alpha.h_renamed.jpg"]; !ok {
+		t.Fatalf("recordRename failed to add new name")
+	}
+
+	if got := o.errors(); got != nil {
+		t.Fatalf("errors() should be nil before recordError, got %v", got)
+	}
+	o.recordError(nil)
+	if got := o.errors(); got != nil {
+		t.Fatalf("recordError(nil) should not record error: %v", got)
+	}
+
+	sentinel := errors.New("observer failed")
+	o.recordError(sentinel)
+	if got := o.errors(); got == nil || !strings.Contains(got.Error(), "observer failed") {
+		t.Fatalf("recorded error = %v", got)
+	}
+}
+
+func TestOptContextObserveRename(t *testing.T) {
+	o := &optContext{logger: discardLogger()}
+	o.observeRename("old.jpg", "new.jpg")
+	if got := o.errors(); got != nil {
+		t.Fatalf("observeRename should be no-op when callback is nil: %v", got)
+	}
+
+	var calls int
+	o.onRename = func(oldName, newName string) error {
+		calls++
+		return errors.New("notify failed")
+	}
+	o.observeRename("old.jpg", "new.jpg")
+	if calls != 1 {
+		t.Fatalf("expected observeRename callback call, got %d", calls)
+	}
+	if got := o.errors(); got == nil || !strings.Contains(got.Error(), "observe artwork rename") {
+		t.Fatalf("expected callback failure to be recorded, got %v", got)
+	}
+}
+
+func TestRunOptimizeWorkersRespectsCancelledContext(t *testing.T) {
+	dir := t.TempDir()
+	o := &optContext{
+		artworkDir: dir,
+		localFiles: map[string]struct{}{"alpha.jpg": {}},
+		cfg:        DefaultConfig(),
+		logger:     discardLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runOptimizeWorkers(ctx, enqueueOptimizeJobs(o.localFiles), o, new(int64))
+	if len(o.localFiles) != 1 {
+		t.Fatalf("canceled run should not mutate local file map, got %d entries", len(o.localFiles))
+	}
+}
+
+func TestEnqueueOptimizeJobsDropsAppleDouble(t *testing.T) {
+	files := map[string]struct{}{
+		"upload.jpg": {}, "._drop.txt": {}, "remote.jpg": {},
+	}
+	jobs := enqueueOptimizeJobs(files)
+	var got []string
+	for name := range jobs {
+		got = append(got, name)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(got))
+	}
+	if _, ok := files["._drop.txt"]; ok {
+		t.Fatal("enqueueOptimizeJobs should remove AppleDouble files")
+	}
+}
+
+func TestHandleSingleOptimizationBranches(t *testing.T) {
+	dir := t.TempDir()
+
+	invalid := filepath.Join(dir, "invalid.jpg")
+	if err := os.WriteFile(invalid, []byte("not-an-image"), 0o600); err != nil {
+		t.Fatalf("write invalid image: %v", err)
+	}
+
+	o := &optContext{
+		artworkDir: dir,
+		localFiles: map[string]struct{}{"invalid.jpg": {}, "missing.jpg": {}},
+		cfg:        func() Config { c := DefaultConfig(); c.Enabled = false; return c }(),
+		logger:     discardLogger(),
+	}
+
+	modified, ok := handleSingleOptimization("invalid.jpg", o)
+	if ok || modified {
+		t.Fatalf("handleSingleOptimization(invalid, disabled) = (%v, %v), want false,false", modified, ok)
+	}
+	if _, exists := o.localFiles["invalid.jpg"]; exists {
+		t.Fatalf("invalid file should be removed on validation failure")
+	}
+
+	missingCfg := DefaultConfig()
+	o.cfg = missingCfg
+	modified, ok = handleSingleOptimization("missing.jpg", o)
+	if ok || modified {
+		t.Fatalf("handleSingleOptimization(missing, enabled) = (%v, %v), want false,false", modified, ok)
+	}
+	if _, exists := o.localFiles["missing.jpg"]; exists {
+		t.Fatalf("missing file should be removed after failed optimization")
+	}
+}

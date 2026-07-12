@@ -27,6 +27,13 @@ type localCollection struct {
 	catalog *sources.ArtworkCatalog
 }
 
+var (
+	prepareOptimizeCatalog       = optimize.OptimizeCatalog
+	prepareCatalogSupportedFiles = func(catalog *sources.ArtworkCatalog) (map[string]struct{}, error) {
+		return catalog.SupportedFiles()
+	}
+)
+
 func newLocalCollection(cfg *config.Config, logger *slog.Logger, healthStatus *health.Status) *localCollection {
 	catalog := sources.NewArtworkCatalog(cfg.ArtworkDir, logger)
 	return &localCollection{
@@ -50,7 +57,7 @@ func (c *localCollection) prepare(ctx context.Context) (preparedCollection, erro
 	if c.health != nil {
 		c.health.SetStage("optimizing artwork")
 	}
-	optimized, err := optimize.OptimizeCatalog(
+	optimized, err := prepareOptimizeCatalog(
 		ctx, c.cfg.ArtworkDir, c.catalog, c.cfg.OptimizeOptions(), c.observeRename, c.logger,
 	)
 	if err != nil {
@@ -60,7 +67,7 @@ func (c *localCollection) prepare(ctx context.Context) (preparedCollection, erro
 	if optimized > 0 {
 		c.catalog.InvalidateCache()
 	}
-	result.files, err = c.catalog.SupportedFiles()
+	result.files, err = prepareCatalogSupportedFiles(c.catalog)
 	if err != nil {
 		return result, err
 	}

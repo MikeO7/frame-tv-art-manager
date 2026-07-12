@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -70,6 +71,36 @@ func TestUploadHelpersAndPersistenceFailure(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("upload to invalid artwork directory returned %d, want 500: %s", w.Code, w.Body.String())
 	}
+}
+
+func TestUploadHelpers(t *testing.T) {
+	t.Run("readFailure", func(t *testing.T) {
+		if got := readFailure(&http.MaxBytesError{Limit: 10}, "read body"); got.code != http.StatusBadRequest {
+			t.Fatalf("expected too-large error, got %q", got.Error())
+		}
+
+		if got := readFailure(io.ErrUnexpectedEOF, "read body"); got.code != http.StatusInternalServerError {
+			t.Fatalf("expected internal error code, got %d", got.code)
+		}
+	})
+
+	t.Run("parseUploadedFile_invalidMultipart", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader([]byte("not multipart")))
+		req.Header.Set("Content-Type", "multipart/form-data; boundary=bad")
+
+		_, err := parseUploadedFile(req, 1<<10)
+		if err == nil || err.Error() != "file too large or invalid request" {
+			t.Fatalf("parseUploadedFile() error = %v", err)
+		}
+	})
+}
+
+func TestAtomicWriteArtwork_InvalidPath(t *testing.T) {
+	t.Run("create temp failure", func(t *testing.T) {
+		if err := atomicWriteArtwork("/this/path/does/not/exist/out.jpg", []byte("boom")); err == nil {
+			t.Fatal("expected temporary-write failure")
+		}
+	})
 }
 
 func TestHealthEndpointFailedCycle(t *testing.T) {

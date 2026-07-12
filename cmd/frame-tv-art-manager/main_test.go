@@ -17,6 +17,19 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
+func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create test listener: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(handler)
+	ts.Listener = ln
+	ts.Start()
+	t.Cleanup(func() { ts.Close() })
+	return ts
+}
+
 func TestSetupLogger(t *testing.T) {
 	for _, level := range []string{"debug", "info", "warn", "error", "unknown"} {
 		logger := setupLogger(level)
@@ -126,7 +139,7 @@ func TestHandleCLIArgs_Healthcheck(t *testing.T) {
 	}
 
 	// Spin up a mock HTTP server.
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -173,11 +186,10 @@ func TestPerformHealthCheckResponses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.statusCode)
 				_, _ = w.Write([]byte(tt.body))
 			}))
-			defer server.Close()
 			u, err := url.Parse(server.URL)
 			if err != nil {
 				t.Fatal(err)

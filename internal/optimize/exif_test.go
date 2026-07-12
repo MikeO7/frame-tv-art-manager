@@ -3,6 +3,10 @@ package optimize
 import (
 	"bytes"
 	"encoding/binary"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"os"
 	"strings"
 	"testing"
 )
@@ -104,8 +108,128 @@ func TestParseExifValidationAndMissingTag(t *testing.T) {
 		t.Fatalf("parseExif missing orientation = (%d, %v)", got, err)
 	}
 
+	noEntries := []byte{
+		'I', 'I', 0x2a, 0x00, 8, 0, 0, 0,
+		0, 0, // no IFD entries
+		0, 0, 0, 0, // no next IFD
+	}
+	if got, err := parseExif(noEntries); err != nil || got != 1 {
+		t.Fatalf("parseExif no entries = (%d, %v)", got, err)
+	}
+
 	badTypeJPEG := exifJPEG(binary.LittleEndian, 9, 1)
 	if _, err := ReadOrientation(bytes.NewReader(badTypeJPEG)); err == nil || !strings.Contains(err.Error(), "unexpected") {
 		t.Fatalf("unexpected orientation type error = %v", err)
+	}
+}
+
+func TestProcessMarker_App1PayloadWithoutExif(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	_, _ = buf.Write([]byte{0x00, 0x08})
+	_, _ = buf.WriteString("NOTEXI")
+
+	gotOrientation, stop, err := processMarker(buf, 0xe1)
+	if err != nil {
+		t.Fatalf("processMarker() = %v", err)
+	}
+	if gotOrientation != 0 {
+		t.Fatalf("expected orientation 0 from App1 payload without EXIF, got %d", gotOrientation)
+	}
+	if !stop {
+		t.Fatal("expected stop=true after App1 payload")
+	}
+}
+
+func TestProcessMarker_DiscardPayloadPath(t *testing.T) {
+	// App0 marker, 2-byte payload: [0x01 0x02]
+	buf := bytes.NewBuffer(nil)
+	_, _ = buf.Write([]byte{0x00, 0x04})
+	_, _ = buf.Write([]byte{0x01, 0x02})
+
+	gotOrientation, stop, err := processMarker(buf, 0xe0)
+	if err != nil {
+		t.Fatalf("processMarker() = %v", err)
+	}
+	if gotOrientation != 0 {
+		t.Fatalf("expected zero orientation, got %d", gotOrientation)
+	}
+	if stop {
+		t.Fatal("expected stop=false for non-App1 marker")
+	}
+}
+
+func TestReadOrientation_ShortMarkerAfterSOI(t *testing.T) {
+	orientation, err := ReadOrientation(bytes.NewReader([]byte{0xff, 0xd8}))
+	if err == nil || orientation != 1 {
+		t.Fatalf("ReadOrientation() = (%d, %v)", orientation, err)
+	}
+}
+
+func TestReadOrientation_TruncatedFillBytes(t *testing.T) {
+	orientation, err := ReadOrientation(bytes.NewReader([]byte{0xff, 0xd8, 0xff, 0xff}))
+	if err == nil || orientation != 1 {
+		t.Fatalf("ReadOrientation() = (%d, %v)", orientation, err)
+	}
+}
+
+func TestReadOrientation_SkipsFFFillersAndNonExifApp1(t *testing.T) {
+	// SOI, 0xFF fill byte, fake APP0, App1 without EXIF marker, then EOI.
+	raw := []byte{
+		0xff, 0xd8,
+		0xff, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
+		0xff, 0xe1, 0x00, 0x08, 'N', 'O', 'T', 'E', 'X', 'I',
+		0xff, 0xd9,
+	}
+	got, err := ReadOrientation(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("ReadOrientation() = %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("expected default orientation 1, got %d", got)
+	}
+}
+
+func TestParseExif_DefaultOnOffsetOutOfRange(t *testing.T) {
+	// TIFF header with a valid IFD offset but missing a valid IFD entry.
+	tiff := []byte{
+		'I', 'I', 0x2a, 0x00, 8, 0, 0, 0,
+		1, 0, // one entry
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0,
+	}
+	got, err := parseExif(tiff)
+	if err != nil {
+		t.Fatalf("parseExif() = %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("expected default orientation, got %d", got)
+	}
+}
+
+func writeJPEGWithExifOrientation(t *testing.T, path string, width, height int, orientation uint32) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: 40, A: 255})
+		}
+	}
+
+	var baseBuf bytes.Buffer
+	if err := jpeg.Encode(&baseBuf, img, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatalf("encode image: %v", err)
+	}
+
+	exifSegment := exifJPEG(binary.LittleEndian, 3, orientation)
+	exifPayload := exifSegment[2 : len(exifSegment)-2] // keep just marker+len+Exif payload, drop SOI/EOI
+
+	encoded := baseBuf.Bytes()
+	withEXIF := make([]byte, 0, len(encoded)+len(exifPayload))
+	withEXIF = append(withEXIF, encoded[:2]...)
+	withEXIF = append(withEXIF, exifPayload...)
+	withEXIF = append(withEXIF, encoded[2:]...)
+
+	if err := os.WriteFile(path, withEXIF, 0o600); err != nil {
+		t.Fatalf("write JPEG with EXIF: %v", err)
 	}
 }

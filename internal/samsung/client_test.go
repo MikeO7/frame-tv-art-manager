@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -17,6 +18,32 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/coder/websocket"
 )
+
+func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create test listener: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(handler)
+	ts.Listener = ln
+	ts.Start()
+	t.Cleanup(func() { ts.Close() })
+	return ts
+}
+
+func newIPv4TLSWebSocketServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create test listener: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(handler)
+	ts.Listener = ln
+	ts.StartTLS()
+	t.Cleanup(func() { ts.Close() })
+	return ts
+}
 
 const (
 	testType        = "type"
@@ -106,7 +133,7 @@ func TestSendWOL_ValidFormat(_ *testing.T) {
 }
 
 func TestEnsureToken(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TLSWebSocketServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			InsecureSkipVerify: true,
 		})
@@ -211,7 +238,7 @@ func TestCheckArtModeGate_Timeout(t *testing.T) {
 }
 
 func TestTurnOff(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TLSWebSocketServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			InsecureSkipVerify: true,
 		})
@@ -291,7 +318,7 @@ func TestClientWrapperMethods(t *testing.T) {
 	// means we manually inject the internal fields for testing.
 
 	// Create a mock WS server for ArtAPI so we can test the wrappers.
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TLSWebSocketServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			InsecureSkipVerify: true,
 		})
@@ -450,7 +477,7 @@ func TestClientWrapperMethods(t *testing.T) {
 
 func TestClientUpload(t *testing.T) {
 	// Create mock server representing both Art API and D2D file server (for simplicity they run on the same IP but different port)
-	d2dServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	d2dServer := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Just simulate accepting file and immediately confirm image_added over websocket
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -460,7 +487,7 @@ func TestClientUpload(t *testing.T) {
 	d2dHost := d2dU.Hostname()
 	d2dPort := d2dU.Port()
 
-	wsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newIPv4TLSWebSocketServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			InsecureSkipVerify: true,
 		})
@@ -581,7 +608,7 @@ func TestSaveMetadata_NoDir(t *testing.T) {
 	c := NewClient("127.0.0.1", (&config.Config{TokenDir: "/root/forbidden/path"}).TVConnectOptions(), slog.Default())
 
 	// Needs a valid artAPI mock connection or it panics in SaveMetadata's internal call to getSlideshowStatus
-	server := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	server := newIPv4TLSWebSocketServer(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	defer server.Close()
 
 	u, _ := neturl.Parse(server.URL)
@@ -661,7 +688,7 @@ func TestClient_Model_Empty(t *testing.T) {
 }
 
 func TestClient_PublicTransportMethods(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TLSWebSocketServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			InsecureSkipVerify: true,
 		})

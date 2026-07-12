@@ -254,3 +254,181 @@ func TestOptimizeFile_MuseumModeSkipsDither(t *testing.T) {
 		t.Errorf("normal mode output is invalid: %v", err)
 	}
 }
+
+func TestOptimizeFile_DisabledAndUnsupported(t *testing.T) {
+	tmpDir := t.TempDir()
+	pathDisabled := filepath.Join(tmpDir, "disabled.jpg")
+	f, err := os.Create(filepath.Clean(pathDisabled))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = jpeg.Encode(f, image.NewRGBA(image.Rect(0, 0, 100, 100)), nil)
+	_ = f.Close()
+
+	cfg := DefaultConfig()
+	cfg.Enabled = false
+	gotName, mod, err := OptimizeFile(pathDisabled, cfg, slog.Default())
+	if err != nil || gotName != "disabled.jpg" || mod {
+		t.Fatalf("OptimizeFile disabled = (%s, %v, %v)", gotName, mod, err)
+	}
+
+	pathPNG := filepath.Join(tmpDir, "image.png")
+	if err := os.WriteFile(pathPNG, []byte("not an image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Enabled = true
+	gotName, mod, err = OptimizeFile(pathPNG, cfg, slog.Default())
+	if err != nil || gotName != "image.png" || mod {
+		t.Fatalf("OptimizeFile unsupported extension = (%s, %v, %v)", gotName, mod, err)
+	}
+}
+
+func TestHandleRename_NoChange(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 4
+	cfg.MaxHeight = 4
+	path := filepath.Join(t.TempDir(), "upload_4x4_opt.h_aa.jpg")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	// ensure handleRename reports no rename when filename already matches target
+	_, changed, err := handleRename(renameRequest{
+		path:     path,
+		filename: "upload_4x4_opt.h_aa.jpg",
+		dir:      filepath.Dir(path),
+		modified: false,
+		finalW:   4,
+		finalH:   4,
+		logger:   slog.Default(),
+	})
+	if err != nil || changed {
+		t.Fatalf("handleRename() = (%v, %v, %v)", changed, err, path)
+	}
+}
+
+func TestHandleRename_NoChangeWhenAlreadyOptimizedButModified(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upload_4x4_opt.h_aa.jpg")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	_, changed, err := handleRename(renameRequest{
+		path:     path,
+		filename: "upload_4x4_opt.h_aa.jpg",
+		dir:      filepath.Dir(path),
+		modified: true,
+		finalW:   4,
+		finalH:   4,
+		logger:   slog.Default(),
+	})
+	if err != nil {
+		t.Fatalf("handleRename() = %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected changed=true to preserve modified state")
+	}
+}
+
+func TestCheckFastPath(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 3840
+	cfg.MaxHeight = 2160
+
+	if !checkFastPath("photo_3840x2160_opt.h_abc123.jpg", cfg, slog.Default()) {
+		t.Fatal("expected fast path for matching optimized dimensions")
+	}
+	if checkFastPath("photo_1920x1080_opt.h_abc123.jpg", cfg, slog.Default()) {
+		t.Fatal("expected no fast path for mismatched optimized dimensions")
+	}
+	if checkFastPath("photo.jpg", cfg, slog.Default()) {
+		t.Fatal("expected no fast path for non-optimized filename")
+	}
+}
+
+func TestHandleRename_RenamesWhenNeeded(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "source.jpg")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	newName, changed, err := handleRename(renameRequest{
+		path:     path,
+		filename: "source.jpg",
+		dir:      dir,
+		modified: true,
+		finalW:   1280,
+		finalH:   720,
+		logger:   slog.Default(),
+	})
+	if err != nil || !changed {
+		t.Fatalf("handleRename() = (%s, %v, %v), want rename success", newName, changed, err)
+	}
+	if newName == "source.jpg" {
+		t.Fatal("expected filename to change after rename")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("expected source file to be renamed")
+	}
+	if _, err := os.Stat(filepath.Join(dir, newName)); err != nil {
+		t.Fatalf("expected renamed output to exist: %v", err)
+	}
+}
+
+func TestHandleRename_RenameErrorPropagated(t *testing.T) {
+	dir := t.TempDir()
+	_, _, err := handleRename(renameRequest{
+		path:     filepath.Join(dir, "missing.jpg"),
+		filename: "missing.jpg",
+		dir:      dir,
+		modified: false,
+		finalW:   4,
+		finalH:   4,
+		logger:   slog.Default(),
+	})
+	if err == nil {
+		t.Fatalf("expected rename failure error")
+	}
+}
+
+func TestValidateImage_OpenError(t *testing.T) {
+	err := ValidateImage(filepath.Join(t.TempDir(), "does-not-exist.jpg"))
+	if err == nil {
+		t.Fatalf("expected ValidateImage open error")
+	}
+}
+
+func TestOptimizeFile_DecodeImageErrorAfterConfig(t *testing.T) {
+	dir := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	valid := filepath.Join(dir, "valid.jpg")
+	f, err := os.Create(valid)
+	if err != nil {
+		t.Fatalf("create valid image: %v", err)
+	}
+	if err := jpeg.Encode(f, img, &jpeg.Options{Quality: 90}); err != nil {
+		_ = f.Close()
+		t.Fatalf("encode image: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close image: %v", err)
+	}
+
+	raw, err := os.ReadFile(valid)
+	if err != nil {
+		t.Fatalf("read image: %v", err)
+	}
+	corrupt := filepath.Join(dir, "corrupt.jpg")
+	if err := os.WriteFile(corrupt, raw[:len(raw)-6], 0o600); err != nil {
+		t.Fatalf("write corrupt image: %v", err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 16
+	cfg.MaxHeight = 16
+	_, _, err = OptimizeFile(corrupt, cfg, slog.Default())
+	if err == nil || !strings.Contains(err.Error(), "decode image") {
+		t.Fatalf("OptimizeFile() = %v", err)
+	}
+}

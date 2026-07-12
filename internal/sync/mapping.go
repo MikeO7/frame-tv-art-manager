@@ -17,6 +17,20 @@ type Mapping struct {
 	data map[string]string // filename → content_id
 }
 
+var (
+	marshalMappingState = func(state interface{}) ([]byte, error) {
+		return json.MarshalIndent(state, "", "  ")
+	}
+	createStateTempFile  = os.CreateTemp
+	chmodStateFile       = func(file *os.File, perm os.FileMode) error { return file.Chmod(perm) }
+	writeStateFile       = func(file *os.File, data []byte) (int, error) { return file.Write(data) }
+	syncStateFile        = func(file *os.File) error { return file.Sync() }
+	closeStateFileHandle = func(file *os.File) error { return file.Close() }
+	openStateDirectory   = os.Open
+	syncStateDirectory   = func(file *os.File) error { return file.Sync() }
+	closeStateDirectory  = func(file *os.File) error { return file.Close() }
+)
+
 // LoadMapping reads the per-TV filename→content_id mapping from disk, keyed by
 // the TV's IP. A missing file yields an empty (but usable) mapping; a malformed
 // file returns an error.
@@ -55,7 +69,7 @@ func (m *Mapping) saveLocked() error {
 		return fmt.Errorf("create mapping dir: %w", err)
 	}
 
-	raw, err := json.MarshalIndent(m.data, "", "  ")
+	raw, err := marshalMappingState(m.data)
 	if err != nil {
 		return fmt.Errorf("marshal mapping: %w", err)
 	}
@@ -79,35 +93,35 @@ func atomicWriteWithBackup(path string, data []byte, perm os.FileMode) error {
 
 func atomicReplace(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".state-*.tmp")
+	tmp, err := createStateTempFile(dir, ".state-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create state temporary file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	if err := tmp.Chmod(perm); err != nil {
+	if err := chmodStateFile(tmp, perm); err != nil {
 		return closeStateFile(tmp, fmt.Errorf("chmod state temporary file: %w", err))
 	}
-	if _, err := tmp.Write(data); err != nil {
+	if _, err := writeStateFile(tmp, data); err != nil {
 		return closeStateFile(tmp, fmt.Errorf("write state temporary file: %w", err))
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := syncStateFile(tmp); err != nil {
 		return closeStateFile(tmp, fmt.Errorf("sync state temporary file: %w", err))
 	}
-	if err := tmp.Close(); err != nil {
+	if err := closeStateFileHandle(tmp); err != nil {
 		return fmt.Errorf("close state temporary file: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename state temporary file: %w", err)
 	}
-	d, err := os.Open(dir)
+	d, err := openStateDirectory(dir)
 	if err != nil {
 		return fmt.Errorf("open state directory: %w", err)
 	}
-	if err := d.Sync(); err != nil {
+	if err := syncStateDirectory(d); err != nil {
 		return closeStateFile(d, fmt.Errorf("sync state directory: %w", err))
 	}
-	if err := d.Close(); err != nil {
+	if err := closeStateDirectory(d); err != nil {
 		return fmt.Errorf("close state directory: %w", err)
 	}
 	return nil

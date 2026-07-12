@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,8 +13,21 @@ import (
 
 const testImageURL = "http://x.com/orig.jpg"
 
+func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create test listener: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(handler)
+	ts.Listener = ln
+	ts.Start()
+	t.Cleanup(func() { ts.Close() })
+	return ts
+}
+
 func TestNASAClient_FetchAPOD(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		resp := apodResponse{
@@ -40,7 +54,7 @@ func TestNASAClient_FetchAPOD(t *testing.T) {
 }
 
 func TestNASAClient_Search(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		if strings.Contains(r.URL.Path, "/search") {
@@ -75,7 +89,7 @@ func TestNASAClient_Search(t *testing.T) {
 }
 
 func TestArticClient_Search(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		result := struct {
@@ -99,7 +113,7 @@ func TestArticClient_Search(t *testing.T) {
 }
 
 func TestPixabayClient_Search(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		result := struct {
@@ -123,7 +137,7 @@ func TestPixabayClient_Search(t *testing.T) {
 }
 
 func TestPixabayClient_SearchDoesNotLogAPIKey(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(struct {
 			Hits []pixabayPhoto `json:"hits"`
 		}{})
@@ -144,7 +158,7 @@ func TestPixabayClient_SearchDoesNotLogAPIKey(t *testing.T) {
 }
 
 func TestArticClient_FetchPhoto(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		result := struct {
@@ -170,7 +184,7 @@ func TestArticClient_FetchPhoto(t *testing.T) {
 }
 
 func TestPexelsClient_FetchPhoto(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		photo := pexelsPhoto{ID: 123}
@@ -192,7 +206,7 @@ func TestPexelsClient_FetchPhoto(t *testing.T) {
 }
 
 func TestPixabayClient_FetchPhoto(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		result := struct {
@@ -217,7 +231,7 @@ func TestPixabayClient_FetchPhoto(t *testing.T) {
 }
 
 func TestPexelsClient_Search(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		result := struct {
@@ -244,7 +258,7 @@ func TestPexelsClient_Search(t *testing.T) {
 }
 
 func TestPexelsClient_Curated(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		result := struct {
