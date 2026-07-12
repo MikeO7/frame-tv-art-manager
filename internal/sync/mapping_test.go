@@ -203,10 +203,10 @@ func TestMapping_AtomicWriteErrorBranches(t *testing.T) {
 		t.Fatalf("failed to create blocker file: %v", err)
 	}
 
-	if err := atomicWriteWithBackup(filepath.Join(blocker, "mapping.json"), []byte("payload"), 0o600); err == nil {
+	if err := atomicWriteWithBackup(filepath.Join(blocker, "mapping.json"), []byte("payload")); err == nil {
 		t.Fatal("expected atomicWriteWithBackup error")
 	}
-	if err := atomicReplace(filepath.Join(blocker, "mapping.json"), []byte("payload"), 0o600); err == nil {
+	if err := atomicReplace(filepath.Join(blocker, "mapping.json"), []byte("payload")); err == nil {
 		t.Fatal("expected atomicReplace error")
 	}
 
@@ -218,7 +218,7 @@ func TestMapping_AtomicWriteErrorBranches(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(blockerDir, "mapping.json.bak"), 0o700); err != nil {
 		t.Fatalf("failed to create backup directory: %v", err)
 	}
-	if err := atomicWriteWithBackup(path, []byte(`{"kept":"value"}`), 0o600); err == nil {
+	if err := atomicWriteWithBackup(path, []byte(`{"kept":"value"}`)); err == nil {
 		t.Fatal("expected atomicWriteWithBackup backup replace error")
 	}
 
@@ -226,7 +226,7 @@ func TestMapping_AtomicWriteErrorBranches(t *testing.T) {
 	if err := os.Mkdir(badFinal, 0o700); err != nil {
 		t.Fatalf("failed to create final destination directory: %v", err)
 	}
-	if err := atomicReplace(badFinal, []byte("payload"), 0o600); err == nil {
+	if err := atomicReplace(badFinal, []byte("payload")); err == nil {
 		t.Fatal("expected atomicReplace final destination error")
 	}
 }
@@ -244,7 +244,7 @@ func TestMapping_CloseStateFileBehavior(t *testing.T) {
 	}
 
 	sentinel := errors.New("operation failed")
-	if err := closeStateFile(f, sentinel); err != sentinel {
+	if err := closeStateFile(f, sentinel); !errors.Is(err, sentinel) {
 		t.Fatalf("closeStateFile(uncached close) = %v, want %v", err, sentinel)
 	}
 
@@ -359,13 +359,13 @@ func TestMapping_AtomicWriteWithBackupCreatesStateAndBackup(t *testing.T) {
 	}
 
 	next := []byte(`{"kept":"new"}`)
-	if err := atomicWriteWithBackup(path, next, 0o600); err != nil {
+	if err := atomicWriteWithBackup(path, next); err != nil {
 		t.Fatalf("atomicWriteWithBackup() = %v", err)
 	}
 
 	var (
-		got      map[string]string
-		gotBack  map[string]string
+		got     map[string]string
+		gotBack map[string]string
 	)
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -417,20 +417,20 @@ func TestAtomicReplace_ErrorBranches(t *testing.T) {
 	createStateTempFile = func(string, string) (*os.File, error) {
 		return nil, errors.New("create state temp failed")
 	}
-	if err := atomicReplace(createFailPath, []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "create state temporary file") {
+	if err := atomicReplace(createFailPath, []byte("payload")); err == nil || !strings.Contains(err.Error(), "create state temporary file") {
 		t.Fatalf("expected create temporary file failure, got %v", err)
 	}
 
 	// Reuse working filesystem for the remaining branches.
-		makeTemp := func(_ string, _ string) (*os.File, error) {
-			return os.CreateTemp(tempDir, ".state-*.tmp")
-		}
+	makeTemp := func(_ string, _ string) (*os.File, error) {
+		return os.CreateTemp(tempDir, ".state-*.tmp")
+	}
 	createStateTempFile = makeTemp
 
 	chmodStateFile = func(*os.File, os.FileMode) error {
 		return errors.New("chmod state temporary file failed")
 	}
-	if err := atomicReplace(filepath.Join(tempDir, "chmod_fail.json"), []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "chmod state temporary file") {
+	if err := atomicReplace(filepath.Join(tempDir, "chmod_fail.json"), []byte("payload")); err == nil || !strings.Contains(err.Error(), "chmod state temporary file") {
 		t.Fatalf("expected chmod failure, got %v", err)
 	}
 
@@ -438,7 +438,7 @@ func TestAtomicReplace_ErrorBranches(t *testing.T) {
 	writeStateFile = func(*os.File, []byte) (int, error) {
 		return 0, errors.New("write state temporary file failed")
 	}
-	if err := atomicReplace(filepath.Join(tempDir, "write_fail.json"), []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "write state temporary file") {
+	if err := atomicReplace(filepath.Join(tempDir, "write_fail.json"), []byte("payload")); err == nil || !strings.Contains(err.Error(), "write state temporary file") {
 		t.Fatalf("expected write failure, got %v", err)
 	}
 
@@ -446,7 +446,7 @@ func TestAtomicReplace_ErrorBranches(t *testing.T) {
 	syncStateFile = func(*os.File) error {
 		return errors.New("sync state temporary file failed")
 	}
-	if err := atomicReplace(filepath.Join(tempDir, "sync_fail.json"), []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "sync state temporary file") {
+	if err := atomicReplace(filepath.Join(tempDir, "sync_fail.json"), []byte("payload")); err == nil || !strings.Contains(err.Error(), "sync state temporary file") {
 		t.Fatalf("expected sync failure, got %v", err)
 	}
 
@@ -454,7 +454,7 @@ func TestAtomicReplace_ErrorBranches(t *testing.T) {
 	closeStateFileHandle = func(*os.File) error {
 		return errors.New("close state temporary file failed")
 	}
-	if err := atomicReplace(filepath.Join(tempDir, "close_fail.json"), []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "close state temporary file") {
+	if err := atomicReplace(filepath.Join(tempDir, "close_fail.json"), []byte("payload")); err == nil || !strings.Contains(err.Error(), "close state temporary file") {
 		t.Fatalf("expected close temp file failure, got %v", err)
 	}
 
@@ -462,7 +462,7 @@ func TestAtomicReplace_ErrorBranches(t *testing.T) {
 	openStateDirectory = func(string) (*os.File, error) {
 		return nil, errors.New("open state directory failed")
 	}
-	if err := atomicReplace(filepath.Join(tempDir, "opendir_fail.json"), []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "open state directory") {
+	if err := atomicReplace(filepath.Join(tempDir, "opendir_fail.json"), []byte("payload")); err == nil || !strings.Contains(err.Error(), "open state directory") {
 		t.Fatalf("expected open directory failure, got %v", err)
 	}
 
@@ -470,7 +470,7 @@ func TestAtomicReplace_ErrorBranches(t *testing.T) {
 	syncStateDirectory = func(*os.File) error {
 		return errors.New("sync state directory failed")
 	}
-	if err := atomicReplace(filepath.Join(tempDir, "syncdir_fail.json"), []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "sync state directory") {
+	if err := atomicReplace(filepath.Join(tempDir, "syncdir_fail.json"), []byte("payload")); err == nil || !strings.Contains(err.Error(), "sync state directory") {
 		t.Fatalf("expected sync directory failure, got %v", err)
 	}
 
@@ -478,7 +478,7 @@ func TestAtomicReplace_ErrorBranches(t *testing.T) {
 	closeStateDirectory = func(*os.File) error {
 		return errors.New("close state directory failed")
 	}
-	if err := atomicReplace(filepath.Join(tempDir, "closedir_fail.json"), []byte("payload"), 0o600); err == nil || !strings.Contains(err.Error(), "close state directory") {
+	if err := atomicReplace(filepath.Join(tempDir, "closedir_fail.json"), []byte("payload")); err == nil || !strings.Contains(err.Error(), "close state directory") {
 		t.Fatalf("expected close directory failure, got %v", err)
 	}
 }
@@ -492,7 +492,7 @@ func TestMapping_AtomicReplaceSuccessPersistsFile(t *testing.T) {
 
 	path := filepath.Join(tempDir, "state.json")
 	payload := []byte(`{"done":true}`)
-	if err := atomicReplace(path, payload, 0o600); err != nil {
+	if err := atomicReplace(path, payload); err != nil {
 		t.Fatalf("atomicReplace() = %v", err)
 	}
 

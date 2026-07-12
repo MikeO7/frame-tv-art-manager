@@ -16,7 +16,7 @@ func TestTVReconciler_applyCapacityFilter_WhenTVFull(t *testing.T) {
 		t.Fatalf("seed capacity file: %v", err)
 	}
 
-		reconciler, err := NewTVReconciler("1.2.3.4", &config.Config{
+	reconciler, err := NewTVReconciler("1.2.3.4", &config.Config{
 		TokenDir: tmp,
 	}, &config.MatteConfig{}, slog.Default())
 	if err != nil {

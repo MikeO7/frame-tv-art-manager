@@ -28,7 +28,9 @@ type localCollection struct {
 }
 
 var (
-	prepareOptimizeCatalog       = optimize.OptimizeCatalog
+	//nolint:gochecknoglobals // fault-injection seam for collection tests
+	prepareOptimizeCatalog = optimize.OptimizeCatalog
+	//nolint:gochecknoglobals // fault-injection seam for collection tests
 	prepareCatalogSupportedFiles = func(catalog *sources.ArtworkCatalog) (map[string]struct{}, error) {
 		return catalog.SupportedFiles()
 	}

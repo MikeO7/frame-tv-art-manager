@@ -32,7 +32,7 @@ type CapacityManager struct {
 	path string
 }
 
-var capacityMarshalState = func(state *CapacityState) ([]byte, error) {
+var capacityMarshalState = func(state *CapacityState) ([]byte, error) { //nolint:gochecknoglobals // fault-injection seam for persistence error tests
 	return json.MarshalIndent(state, "", "  ")
 }
 
@@ -126,7 +126,7 @@ func (cm *CapacityManager) Save(state *CapacityState) error {
 		return fmt.Errorf("marshal capacity state: %w", err)
 	}
 
-	if err := atomicWriteWithBackup(cm.path, raw, 0o600); err != nil {
+	if err := atomicWriteWithBackup(cm.path, raw); err != nil {
 		return fmt.Errorf("write capacity state: %w", err)
 	}
 	return nil

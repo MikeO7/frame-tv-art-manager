@@ -40,7 +40,7 @@ func applyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 }
 
 func unifyCollection(src *image.RGBA) *image.RGBA {
-	_, rms := calculateRMSContrast(src)
+	rms := calculateRMSContrast(src)
 
 	// Target Gallery RMS (Rich Contrast)
 	const targetRMS = 58.0
@@ -56,7 +56,7 @@ func unifyCollection(src *image.RGBA) *image.RGBA {
 	return src
 }
 
-func calculateRMSContrast(src *image.RGBA) (float64, float64) {
+func calculateRMSContrast(src *image.RGBA) float64 {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	var sumSq, sum float64
@@ -99,7 +99,7 @@ func calculateRMSContrast(src *image.RGBA) (float64, float64) {
 	}
 	mean := sum / float64(width*height)
 	rms := math.Sqrt(sumSq/float64(width*height) - mean*mean)
-	return mean, rms
+	return rms
 }
 
 // rmsWork bundles the inputs for a single goroutine-partitioned slice of the

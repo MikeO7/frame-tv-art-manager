@@ -21,6 +21,9 @@ func TestProcessBMSThresholdInvalidDims(t *testing.T) {
 	if got[4] != 1.0 {
 		t.Fatalf("expected center pixel to remain enclosed foreground, got %f", got[4])
 	}
+	if got := processBMSThreshold([]uint8{0}, 128, 3, 3); got != nil {
+		t.Fatalf("expected nil for a short luminance map, got %v", got)
+	}
 }
 
 func TestGenerateBMSMap(t *testing.T) {

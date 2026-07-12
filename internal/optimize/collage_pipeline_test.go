@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
@@ -171,7 +171,7 @@ func TestLoadAndRotateImage_Errors(t *testing.T) {
 	}
 
 	_, err := loadAndRotateImage(path)
-	if err == nil || (!strings.Contains(err.Error(), "unknown format") && !strings.Contains(err.Error(), "image: ") ) {
+	if err == nil || (!strings.Contains(err.Error(), "unknown format") && !strings.Contains(err.Error(), "image: ")) {
 		t.Fatalf("loadAndRotateImage() = %v", err)
 	}
 
@@ -266,7 +266,7 @@ func TestProcessCollagePair_OnRenameErrorReturnedAsWrap(t *testing.T) {
 		onRename: func(_, _ string) error {
 			return errors.New("rename hook failed")
 		},
-		logger:     discardLogger(),
+		logger: discardLogger(),
 	})
 	if err == nil || !strings.Contains(err.Error(), "rename hook failed") {
 		t.Fatalf("expected wrapped rename hook error, got %v", err)
@@ -367,11 +367,11 @@ func TestProcessCollages_WithCollageModeIncludesNonUploadEntries(t *testing.T) {
 	cfg.PortraitMode = "collage"
 
 	localFiles := map[string]struct{}{
-		"remote_1.jpg":         {},
-		"upload_2.h_abc.jpg":   {},
-		"remote_3.jpg":         {},
-		"remote_4.jpg":         {},
-		"junk.txt":             {},
+		"remote_1.jpg":       {},
+		"upload_2.h_abc.jpg": {},
+		"remote_3.jpg":       {},
+		"remote_4.jpg":       {},
+		"junk.txt":           {},
 	}
 	var count int64
 	if err := processCollages(collageBatch{
@@ -425,31 +425,18 @@ func writeJPEGToFIFO(t *testing.T, path string, width, height int) {
 	if err != nil {
 		t.Fatalf("open fifo reader: %v", err)
 	}
-
-	done := make(chan error, 1)
-	go func() {
-		writer, openErr := os.OpenFile(path, syscall.O_WRONLY, 0o600)
-		if openErr != nil {
-			done <- openErr
-			return
-		}
-		defer func() {
-			if closeErr := writer.Close(); closeErr != nil && len(done) == 0 {
-				done <- closeErr
-			}
-		}()
-		if _, writeErr := io.Copy(writer, &payload); writeErr != nil {
-			done <- writeErr
-			return
-		}
-		done <- nil
-	}()
-
-	if writeErr := <-done; writeErr != nil {
+	writer, err := os.OpenFile(path, syscall.O_WRONLY, 0o600)
+	if err != nil {
 		_ = reader.Close()
-		t.Fatalf("write fifo payload: %v", writeErr)
+		t.Fatalf("open fifo writer: %v", err)
+	}
+	if _, err := io.Copy(writer, &payload); err != nil {
+		_ = writer.Close()
+		_ = reader.Close()
+		t.Fatalf("write fifo payload: %v", err)
 	}
 	t.Cleanup(func() {
+		_ = writer.Close()
 		_ = reader.Close()
 	})
 }

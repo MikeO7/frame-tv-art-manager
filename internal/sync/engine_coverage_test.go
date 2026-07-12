@@ -11,7 +11,7 @@ import (
 
 func TestEngine_syncAllTVs_CancelledContext(t *testing.T) {
 	engine := NewEngine(&config.Config{
-		TVIPs:      []string{"1.2.3.4"},
+		TVIPs:           []string{"1.2.3.4"},
 		SyncIntervalMin: 1,
 	}, slog.Default(), nil)
 	engine.newClient = func(string, *config.Config, *slog.Logger) TVTransport {
@@ -38,7 +38,7 @@ func TestEngine_handleSyncError_AppendsSummary(t *testing.T) {
 	if len(syncErrors) != 1 || len(summaries) != 1 {
 		t.Fatalf("expected one error and one summary, got %d errors %d summaries", len(syncErrors), len(summaries))
 	}
-	if summaries[0].Status != "failed" || !errors.Is(syncErrors[0], testErr) {
+	if summaries[0].Status != statusFailed || !errors.Is(syncErrors[0], testErr) {
 		t.Fatalf("unexpected summary/error = %#v / %v", summaries[0], syncErrors[0])
 	}
 }

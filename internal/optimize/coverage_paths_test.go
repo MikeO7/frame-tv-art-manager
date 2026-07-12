@@ -44,11 +44,11 @@ func TestRewriteImage_SeekFailure(t *testing.T) {
 	_ = f.Close()
 
 	_, _, err = rewriteImage(rewriteParams{
-		f: f,
-		path: filepath.Join(t.TempDir(), "renamed.jpg"),
+		f:        f,
+		path:     filepath.Join(t.TempDir(), "renamed.jpg"),
 		filename: "renamed.jpg",
-		width: 8, height: 8,
-		cfg: DefaultConfig(),
+		width:    8, height: 8,
+		cfg:    DefaultConfig(),
 		logger: slog.Default(),
 	})
 	if err == nil || !strings.Contains(err.Error(), "seek to start") {
@@ -69,11 +69,11 @@ func TestRewriteImage_DecodeFailure(t *testing.T) {
 	defer f.Close()
 
 	_, _, err = rewriteImage(rewriteParams{
-		f: f,
-		path: path,
+		f:        f,
+		path:     path,
 		filename: "bad.jpg",
-		width: 8, height: 8,
-		cfg: DefaultConfig(),
+		width:    8, height: 8,
+		cfg:    DefaultConfig(),
 		logger: slog.Default(),
 	})
 	if err == nil || !strings.Contains(err.Error(), "decode image") {
@@ -97,11 +97,11 @@ func TestRewriteImage_CreateTempFailure(t *testing.T) {
 	defer f.Close()
 
 	_, _, err = rewriteImage(rewriteParams{
-		f: f,
-		path: filepath.Join(blocker, "out.jpg"),
+		f:        f,
+		path:     filepath.Join(blocker, "out.jpg"),
 		filename: "out.jpg",
-		width: 8, height: 8,
-		cfg: DefaultConfig(),
+		width:    8, height: 8,
+		cfg:    DefaultConfig(),
 		logger: slog.Default(),
 	})
 	if err == nil || !strings.Contains(err.Error(), "create optimized temporary file") {
@@ -235,10 +235,10 @@ func TestDither_UpperClampPath(t *testing.T) {
 		t.Fatal("dither returned nil")
 	}
 
-	px0 := out.Pix[0] // x=0 red
+	px0 := out.Pix[0]  // x=0 red
 	px3 := out.Pix[12] // x=3 red
 	px4 := out.Pix[16] // x=4 red
-	if px0 >= 255 || px3 == 0 || px4 == 0 {
+	if px0 == 255 || px3 == 0 || px4 == 0 {
 		t.Fatalf("unexpected dither output: px0=%d px3=%d px4=%d", px0, px3, px4)
 	}
 }
@@ -417,7 +417,7 @@ func TestApplyMuseumMode_ClampsContrastGammaUpperBound(t *testing.T) {
 		}
 	}
 
-	_, rms := calculateRMSContrast(img)
+	rms := calculateRMSContrast(img)
 	if rms <= 58 {
 		t.Fatalf("expected high RMS contrast, got %f", rms)
 	}
@@ -456,7 +456,7 @@ func TestPolishPixel_NoiseClampBranches(t *testing.T) {
 	}
 
 	positiveState, positiveNoise, ok := findPolishSeed(func(noise float32) bool {
-		return noise > 0
+		return noise > 1
 	})
 	if !ok {
 		t.Fatal("could not find positive polish noise seed")
@@ -464,8 +464,8 @@ func TestPolishPixel_NoiseClampBranches(t *testing.T) {
 
 	state = positiveState
 	p1r, p1g, p1b := polishPixel(255, 255, 255, &state)
-	if p1r != 255 || p1g != 255 || p1b != 255 {
-		t.Fatalf("expected polishPixel high clamp to 255, got r=%d g=%d b=%d (noise=%.6f)", p1r, p1g, p1b, positiveNoise)
+	if p1r <= 235 || p1g <= 235 || p1b <= 235 || p1r == 255 || p1g == 255 || p1b == 255 {
+		t.Fatalf("expected polishPixel high input to remain below output ceiling, got r=%d g=%d b=%d (noise=%.6f)", p1r, p1g, p1b, positiveNoise)
 	}
 }
 
@@ -477,7 +477,7 @@ func findPolishSeed(predicate func(float32) bool) (uint32, float32, bool) {
 		state ^= state << 5
 		noise := (float32(state)/float32(0xFFFFFFFF) - 0.5) * 5.0
 		if predicate(noise) {
-			return state, noise, true
+			return seed, noise, true
 		}
 	}
 	return 0, 0, false

@@ -46,10 +46,12 @@ func (m *slowArtModeTransport) ListUploaded(context.Context) ([]samsung.ArtConte
 	time.Sleep(m.delay)
 	return nil, nil
 }
+
 func (m *slowArtModeTransport) Upload(context.Context, string, string, string) (string, error) {
 	time.Sleep(m.delay)
 	return "id", nil
 }
+
 func (m *slowArtModeTransport) DeleteImages(context.Context, []string) error {
 	time.Sleep(m.delay)
 	return nil
@@ -58,6 +60,7 @@ func (m *slowArtModeTransport) SelectImage(context.Context, string) error { retu
 func (m *slowArtModeTransport) SetSlideshow(context.Context, samsung.SlideshowStatus) error {
 	return nil
 }
+
 func (m *slowArtModeTransport) SlideshowStatus(context.Context) (*samsung.SlideshowStatus, error) {
 	time.Sleep(m.delay)
 	return &samsung.SlideshowStatus{Type: "random", Value: "none"}, nil
@@ -479,7 +482,7 @@ func TestMapping_AtomicWriteWithBackup_ReplaceFailure(t *testing.T) {
 	defer func() {
 		_ = os.Chmod(tmp, 0o700)
 	}()
-	if err := atomicWriteWithBackup(target, []byte(`{"ok":true}`), 0o600); err == nil {
+	if err := atomicWriteWithBackup(target, []byte(`{"ok":true}`)); err == nil {
 		t.Fatal("expected atomic write failure when replace cannot create temporary file")
 	}
 }
@@ -504,7 +507,7 @@ func TestMapping_AtomicWriteWithBackup_ReadStateFailure(t *testing.T) {
 		t.Fatalf("create blocking file: %v", err)
 	}
 
-	err := atomicWriteWithBackup(filepath.Join(blockingParent, "mapping.json"), []byte(`{"ok":true}`), 0o600)
+	err := atomicWriteWithBackup(filepath.Join(blockingParent, "mapping.json"), []byte(`{"ok":true}`))
 	if err == nil {
 		t.Fatal("expected atomicWriteWithBackup to fail when reading existing state fails")
 	}
@@ -517,7 +520,7 @@ func TestMapping_AtomicWriteWithBackup_ReadStateNotExistButNotDirectory(t *testi
 		t.Fatalf("make blocker dir: %v", err)
 	}
 
-	if err := atomicWriteWithBackup(blockerDir, []byte(`{"ok":true}`), 0o600); err == nil {
+	if err := atomicWriteWithBackup(blockerDir, []byte(`{"ok":true}`)); err == nil {
 		t.Fatal("expected atomicWriteWithBackup to fail when existing state path is a directory")
 	}
 }
@@ -707,7 +710,7 @@ func TestMapping_AtomicReplace_ErrorPaths(t *testing.T) {
 			tc.mutate()
 
 			path := filepath.Join(t.TempDir(), "state.json")
-			if err := atomicReplace(path, []byte("payload"), 0o600); err == nil {
+			if err := atomicReplace(path, []byte("payload")); err == nil {
 				t.Fatalf("expected atomicReplace() to fail for %s", tc.name)
 			}
 		})

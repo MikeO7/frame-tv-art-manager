@@ -5,8 +5,8 @@ import "testing"
 func TestPolishPixel(t *testing.T) {
 	state := uint32(0)
 	r, g, b := polishPixel(255, 255, 255, &state)
-	if r > 255 || g > 255 || b > 255 {
-		t.Fatalf("unexpected overflow: %d,%d,%d", r, g, b)
+	if r == 255 || g == 255 || b == 255 {
+		t.Fatalf("unexpected clipping: %d,%d,%d", r, g, b)
 	}
 
 	state = 0

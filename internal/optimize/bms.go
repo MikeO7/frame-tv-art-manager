@@ -98,10 +98,16 @@ func processBMSThreshold(lumMap []uint8, t uint8, w, h int) []float64 {
 	if w <= 0 || h <= 0 {
 		return nil
 	}
+	if len(lumMap) < w*h {
+		return nil
+	}
 	res := make([]float64, w*h)
 	boolMap := make([]bool, w*h)
-	for i := 0; i < w*h; i++ {
-		if lumMap[i] > t {
+	for i, luminance := range lumMap {
+		if i >= len(boolMap) {
+			break
+		}
+		if luminance > t {
 			boolMap[i] = true
 		}
 	}

@@ -578,7 +578,7 @@ func TestLogCycleSummary(t *testing.T) {
 				Brightness: "7", Slideshow: "15m shuffle",
 			},
 			{IP: "5.6.7.8", Status: statusBackoff},
-			{IP: "9.9.9.9", Status: "failed", ErrorMessage: "connection refused"},
+			{IP: "9.9.9.9", Status: statusFailed, ErrorMessage: "connection refused"},
 			{IP: "10.0.0.1", Status: "skipped (not art mode)"},
 		},
 		Warnings: []string{"Source download issue: timeout"},

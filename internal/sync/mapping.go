@@ -18,17 +18,26 @@ type Mapping struct {
 }
 
 var (
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
 	marshalMappingState = func(state interface{}) ([]byte, error) {
 		return json.MarshalIndent(state, "", "  ")
 	}
-	createStateTempFile  = os.CreateTemp
-	chmodStateFile       = func(file *os.File, perm os.FileMode) error { return file.Chmod(perm) }
-	writeStateFile       = func(file *os.File, data []byte) (int, error) { return file.Write(data) }
-	syncStateFile        = func(file *os.File) error { return file.Sync() }
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
+	createStateTempFile = os.CreateTemp
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
+	chmodStateFile = func(file *os.File, perm os.FileMode) error { return file.Chmod(perm) }
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
+	writeStateFile = func(file *os.File, data []byte) (int, error) { return file.Write(data) }
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
+	syncStateFile = func(file *os.File) error { return file.Sync() }
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
 	closeStateFileHandle = func(file *os.File) error { return file.Close() }
-	openStateDirectory   = os.Open
-	syncStateDirectory   = func(file *os.File) error { return file.Sync() }
-	closeStateDirectory  = func(file *os.File) error { return file.Close() }
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
+	openStateDirectory = os.Open
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
+	syncStateDirectory = func(file *os.File) error { return file.Sync() }
+	//nolint:gochecknoglobals // fault-injection seam for persistence error tests
+	closeStateDirectory = func(file *os.File) error { return file.Close() }
 )
 
 // LoadMapping reads the per-TV filename→content_id mapping from disk, keyed by
@@ -74,24 +83,24 @@ func (m *Mapping) saveLocked() error {
 		return fmt.Errorf("marshal mapping: %w", err)
 	}
 
-	return atomicWriteWithBackup(m.path, raw, 0o600)
+	return atomicWriteWithBackup(m.path, raw)
 }
 
-func atomicWriteWithBackup(path string, data []byte, perm os.FileMode) error {
+func atomicWriteWithBackup(path string, data []byte) error {
 	if current, err := os.ReadFile(path); err == nil {
-		if err := atomicReplace(path+".bak", current, perm); err != nil {
+		if err := atomicReplace(path+".bak", current); err != nil {
 			return fmt.Errorf("write state backup: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("read state for backup: %w", err)
 	}
-	if err := atomicReplace(path, data, perm); err != nil {
+	if err := atomicReplace(path, data); err != nil {
 		return fmt.Errorf("replace state: %w", err)
 	}
 	return nil
 }
 
-func atomicReplace(path string, data []byte, perm os.FileMode) error {
+func atomicReplace(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	tmp, err := createStateTempFile(dir, ".state-*.tmp")
 	if err != nil {
@@ -99,7 +108,7 @@ func atomicReplace(path string, data []byte, perm os.FileMode) error {
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	if err := chmodStateFile(tmp, perm); err != nil {
+	if err := chmodStateFile(tmp, 0o600); err != nil {
 		return closeStateFile(tmp, fmt.Errorf("chmod state temporary file: %w", err))
 	}
 	if _, err := writeStateFile(tmp, data); err != nil {

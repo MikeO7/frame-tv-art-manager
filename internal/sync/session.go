@@ -14,6 +14,7 @@ import (
 const (
 	statusBackoff           = "backoff"
 	statusError             = "error"
+	statusFailed            = "failed"
 	statusSkippedNotArtMode = "skipped (not art mode)"
 )
 

@@ -28,7 +28,7 @@ type Engine struct {
 	clients map[string]TVTransport
 }
 
-var engineSyncInterval = func(cfg *config.Config) time.Duration {
+var engineSyncInterval = func(cfg *config.Config) time.Duration { //nolint:gochecknoglobals // fault-injection seam for loop timing tests
 	return time.Duration(cfg.SyncIntervalMin) * time.Minute
 }
 
@@ -244,5 +244,5 @@ func (e *Engine) handleSyncError(tvIP string, err error, syncErrors *[]error, tv
 	if e.health != nil {
 		e.health.SetTVStatus(tvIP, health.TVStatus{IP: tvIP, Status: "unreachable"})
 	}
-	*tvSummaries = append(*tvSummaries, TVSyncResult{IP: tvIP, Status: "failed", ErrorMessage: err.Error()})
+	*tvSummaries = append(*tvSummaries, TVSyncResult{IP: tvIP, Status: statusFailed, ErrorMessage: err.Error()})
 }

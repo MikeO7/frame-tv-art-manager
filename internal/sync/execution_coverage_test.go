@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"time"
 	"testing"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
@@ -134,18 +134,18 @@ func TestTVReconciler_deleteTrackedImages_AndDeleteUnknownImages_ErrorPaths(t *t
 	}
 
 	plan := &SyncPlan{
-		ToDeleteIDs:  []string{"id-keep"},
+		ToDeleteIDs:   []string{"id-keep"},
 		ToDeleteFiles: []string{"old.jpg"},
 	}
 	execCtx := &executionContext{
-		ctx: context.Background(),
+		ctx:  context.Background(),
 		plan: plan,
 		transport: &mockTVTransportExecution{
 			deleteErr: errors.New("delete failed"),
 		},
-		mapping:  mapNoOp(),
-		policy:   config.SyncPolicy{UploadAttempts: 1},
-		result:   &TVSyncResult{},
+		mapping: mapNoOp(),
+		policy:  config.SyncPolicy{UploadAttempts: 1},
+		result:  &TVSyncResult{},
 	}
 	if err := reconciler.deleteTrackedImages(execCtx); err == nil {
 		t.Fatal("expected tracked deletion error")
