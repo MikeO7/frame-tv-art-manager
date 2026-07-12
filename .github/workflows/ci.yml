@@ -61,7 +61,7 @@ jobs:
       - name: actionlint
         uses: reviewdog/action-actionlint@be0761e4c1bab7cfdfca56cd03d4bb6253e39a4a # v1.72.0
 
-  # Lane 2: Test, build, coverage, and security (govulncheck runs in parallel with tests)
+  # Lane 2: Test, build, and coverage
   test-build:
     name: Test and Build
     runs-on: ubuntu-latest
@@ -72,22 +72,8 @@ jobs:
           go-version: '1.26.5'
           cache: true
           cache-dependency-path: go.sum
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-      - name: Test, Coverage & Security
-        run: |
-          set +e
-          govulncheck ./... &
-          vuln_pid=$!
-          make coverage-check GO_TEST_FLAGS="-race -count=1 -shuffle=on" GO_TEST_VERBOSE=
-          test_status=$?
-          wait "$vuln_pid"
-          vuln_status=$?
-          set -e
-          if [ "$test_status" -ne 0 ]; then
-            exit "$test_status"
-          fi
-          exit "$vuln_status"
+      - name: Test and coverage
+        run: make coverage-check GO_TEST_FLAGS="-count=1 -shuffle=on" GO_TEST_VERBOSE=
       - name: Upload Coverage
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -96,3 +82,18 @@ jobs:
           path: coverage.out
       - name: Build
         run: go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
+
+  # Keep vulnerability scanning blocking, but isolate it from test CPU and
+  # memory contention. Race testing runs separately on a scheduled/manual lane.
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.5'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
