@@ -278,7 +278,7 @@ make docker      # build the local container image
 ```
 
 `make agent-fix` is the required gate for changes. Aggregate statement coverage
-must remain at or above 90 percent. More detail is in
+must remain at or above 100 percent. More detail is in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License

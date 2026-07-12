@@ -40,6 +40,18 @@ func TestLoadAndRotateImage_SeekFailureFromNonSeekableSource(t *testing.T) {
 	}
 }
 
+func TestIsPortraitFile_DecodeConfigError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "not-image.txt")
+	if err := os.WriteFile(path, []byte("not an image"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	if _, err := isPortraitFile(path); err == nil {
+		t.Fatal("expected decode config error")
+	}
+}
+
 func TestProcessCollagePair_SecondImageLoadFailure(t *testing.T) {
 	dir := t.TempDir()
 	writeTestImage(t, filepath.Join(dir, "upload_a.jpg"), 8, 12)
@@ -352,6 +364,35 @@ func TestProcessCollagePair_MuseumModeBranch(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 		t.Fatalf("expected collage output file %q to exist", name)
+	}
+}
+
+func TestProcessCollagePair_PngInputs(t *testing.T) {
+	dir := t.TempDir()
+	writePNGForCollageTests(t, filepath.Join(dir, "upload_a.h_xxx.png"), 8, 12)
+	writePNGForCollageTests(t, filepath.Join(dir, "upload_b.h_yyy.png"), 8, 12)
+
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 8
+	cfg.MaxHeight = 12
+
+	name, err := processCollagePair(collageJob{
+		artworkDir: dir,
+		f1:         "upload_a.h_xxx.png",
+		f2:         "upload_b.h_yyy.png",
+		cfg:        cfg,
+		catalog:    &recordingCatalog{},
+		logger:     discardLogger(),
+	})
+	if err != nil {
+		t.Fatalf("processCollagePair() = %v", err)
+	}
+	if filepath.Ext(name) != extPNG {
+		t.Fatalf("expected png collage output, got %q", filepath.Ext(name))
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+		t.Fatalf("expected output collage file %q: %v", name, err)
 	}
 }
 

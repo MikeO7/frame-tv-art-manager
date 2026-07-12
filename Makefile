@@ -22,6 +22,7 @@ GOLANGCI_LINT_VERSION := 2.12.2
 GOVULNCHECK_VERSION := 1.1.4
 ACTIONLINT_VERSION := 1.7.12
 PRE_COMMIT_VERSION := 4.6.0
+COVERAGE_THRESHOLD ?= 97
 
 all: check build
 
@@ -35,11 +36,11 @@ coverage: test
 	go tool cover -html=coverage.out
 
 coverage-check: test
-	@echo "📈 Checking coverage threshold (90%)..."
+	@echo "📈 Checking coverage threshold ($(COVERAGE_THRESHOLD)%)..."
 	@TOTAL_COVERAGE=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $$3); print $$3}'); \
 	echo "Total coverage: $$TOTAL_COVERAGE%"; \
-	if awk "BEGIN { exit !($$TOTAL_COVERAGE < 90) }"; then \
-		echo "❌ Coverage is below 90%"; \
+	if awk "BEGIN { exit !($$TOTAL_COVERAGE < $(COVERAGE_THRESHOLD)) }"; then \
+		echo "❌ Coverage is below $(COVERAGE_THRESHOLD)%"; \
 		exit 1; \
 	fi
 	@echo "✅ Coverage check passed!"

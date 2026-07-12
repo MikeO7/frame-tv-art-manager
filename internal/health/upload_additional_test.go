@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"image"
+	"image/color"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
@@ -70,6 +72,48 @@ func TestUploadHelpersAndPersistenceFailure(t *testing.T) {
 	srv.HandleUpload(w, req)
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("upload to invalid artwork directory returned %d, want 500: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestValidateUploadedImage_DecodePixelsError(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	for y := 0; y < 32; y++ {
+		for x := 0; x < 32; x++ {
+			img.SetRGBA(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: 80, A: 255})
+		}
+	}
+
+	var payload bytes.Buffer
+	if err := jpeg.Encode(&payload, img, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatalf("encode image: %v", err)
+	}
+
+	full := payload.Bytes()
+	for cut := len(full) - 1; cut > len(full)/2; cut-- {
+		err := validateUploadedImage(full[:cut])
+		if err == nil {
+			t.Fatalf("expected truncated image to be rejected at cut=%d", cut)
+		}
+		if strings.Contains(err.Error(), "decode pixels") {
+			return
+		}
+		if strings.Contains(err.Error(), "decode header") || strings.Contains(err.Error(), "dimensions") {
+			continue
+		}
+		t.Fatalf("unexpected validateUploadedImage error at cut=%d: %v", cut, err)
+	}
+
+	t.Fatal("could not exercise validateUploadedImage decode pixels branch")
+}
+
+func TestAtomicWriteArtwork_CommitFailure(t *testing.T) {
+	target := t.TempDir()
+	err := atomicWriteArtwork(target, []byte("x"))
+	if err == nil {
+		t.Fatal("expected atomicWriteArtwork to fail when target is a directory")
+	}
+	if !strings.Contains(err.Error(), "commit upload") {
+		t.Fatalf("expected commit upload failure, got: %v", err)
 	}
 }
 

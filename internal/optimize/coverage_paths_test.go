@@ -243,6 +243,32 @@ func TestDither_UpperClampPath(t *testing.T) {
 	}
 }
 
+func TestApplyContrastAndGamut_NegativeContrastClampsLookupToMax(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.SetRGBA(0, 0, color.RGBA{R: 1, G: 1, B: 1, A: 255})
+
+	applyContrastAndGamut(img, -3.0)
+	if got := img.Pix[0]; got != 255 {
+		t.Fatalf("expected red channel to clamp high from negative contrast path, got %d", got)
+	}
+	if got := img.Pix[1]; got != 255 {
+		t.Fatalf("expected green channel to clamp high from negative contrast path, got %d", got)
+	}
+	if got := img.Pix[2]; got != 255 {
+		t.Fatalf("expected blue channel to clamp high from negative contrast path, got %d", got)
+	}
+}
+
+func TestCiede2000_ExtremeValuesCanExceedOneHundred(t *testing.T) {
+	c := ciede2000(
+		labColor{l: 1000, a: 1000, b: 1000},
+		labColor{l: -1000, a: -1000, b: -1000},
+	)
+	if c <= 100 {
+		t.Fatalf("expected extreme CIEDE2000 result > 100, got %f", c)
+	}
+}
+
 func TestCenterCrop_SmartWideUsesSmartBranch(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 400, 200))
 	for y := 0; y < 200; y++ {

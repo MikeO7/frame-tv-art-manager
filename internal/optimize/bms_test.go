@@ -3,6 +3,7 @@ package optimize
 import (
 	"image"
 	"image/color"
+	"reflect"
 	"testing"
 )
 
@@ -23,6 +24,32 @@ func TestProcessBMSThresholdInvalidDims(t *testing.T) {
 	}
 	if got := processBMSThreshold([]uint8{0}, 128, 3, 3); got != nil {
 		t.Fatalf("expected nil for a short luminance map, got %v", got)
+	}
+}
+
+func TestProcessBMSThreshold_IgnoresExtraLuminance(t *testing.T) {
+	const width, height = 4, 4
+	baseMap := []uint8{0, 255, 0, 255, 255, 0, 255, 0, 0, 255, 0, 255, 255, 0, 255, 0}
+	baseResult := processBMSThreshold(baseMap, 128, width, height)
+
+	oversizedMap := make([]uint8, len(baseMap)+6)
+	copy(oversizedMap, baseMap)
+	for i := len(baseMap); i < len(oversizedMap); i++ {
+		oversizedMap[i] = 255
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("processBMSThreshold panicked: %v", r)
+		}
+	}()
+
+	gotResult := processBMSThreshold(oversizedMap, 128, width, height)
+	if len(gotResult) != len(baseMap) {
+		t.Fatalf("expected %d results, got %d", len(baseMap), len(gotResult))
+	}
+	if !reflect.DeepEqual(baseResult, gotResult) {
+		t.Fatalf("expected oversized input to be ignored beyond w*h elements")
 	}
 }
 
