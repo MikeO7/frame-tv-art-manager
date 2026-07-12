@@ -147,6 +147,26 @@ func TestAtomicWriteArtwork_InvalidPath(t *testing.T) {
 	})
 }
 
+func TestProcessUpload_InvalidImagePayload(t *testing.T) {
+	cfg := testConfig(0, true, t.TempDir())
+	srv := NewServer(cfg, NewStatus(), silentLogger())
+
+	truncatedJPEG := []byte{0xff, 0xd8, 0xff, 0xe0}
+	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(truncatedJPEG))
+	req.Header.Set("Content-Type", "image/jpeg")
+
+	w := httptest.NewRecorder()
+	srv.processUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("processUpload() status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Invalid or unsafe image") {
+		t.Fatalf("unexpected processUpload body: %s", body)
+	}
+}
+
 func TestHealthEndpointFailedCycle(t *testing.T) {
 	status := NewStatus()
 	status.RecordSync(false, os.ErrDeadlineExceeded)
