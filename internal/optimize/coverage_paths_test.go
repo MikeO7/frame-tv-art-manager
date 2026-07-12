@@ -404,3 +404,81 @@ func TestApplyMuseumMode_ClampsIntensity(t *testing.T) {
 		t.Fatal("unexpected nil output")
 	}
 }
+
+func TestApplyMuseumMode_ClampsContrastGammaUpperBound(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 6, 6))
+	for y := 0; y < 6; y++ {
+		for x := 0; x < 6; x++ {
+			if (x+y)%2 == 0 {
+				img.SetRGBA(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+			} else {
+				img.SetRGBA(x, y, color.RGBA{R: 0, G: 0, B: 0, A: 255})
+			}
+		}
+	}
+
+	_, rms := calculateRMSContrast(img)
+	if rms <= 58 {
+		t.Fatalf("expected high RMS contrast, got %f", rms)
+	}
+
+	out := applyMuseumMode(img, 2)
+	if out == nil {
+		t.Fatal("expected output image")
+	}
+	if len(out.Pix) != len(img.Pix) {
+		t.Fatalf("expected unchanged pixel buffer length, got %d, want %d", len(out.Pix), len(img.Pix))
+	}
+	changed := false
+	for i := range out.Pix {
+		if out.Pix[i] != img.Pix[i] {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		t.Fatal("expected museum mode to modify at least one pixel")
+	}
+}
+
+func TestPolishPixel_NoiseClampBranches(t *testing.T) {
+	negativeState, negativeNoise, ok := findPolishSeed(func(noise float32) bool {
+		return noise < 0
+	})
+	if !ok {
+		t.Fatal("could not find negative polish noise seed")
+	}
+
+	state := negativeState
+	p0r, p0g, p0b := polishPixel(0, 0, 0, &state)
+	if p0r != 0 || p0g != 0 || p0b != 0 {
+		t.Fatalf("expected polishPixel low clamp to zero, got r=%d g=%d b=%d (noise=%.6f)", p0r, p0g, p0b, negativeNoise)
+	}
+
+	positiveState, positiveNoise, ok := findPolishSeed(func(noise float32) bool {
+		return noise > 0
+	})
+	if !ok {
+		t.Fatal("could not find positive polish noise seed")
+	}
+
+	state = positiveState
+	p1r, p1g, p1b := polishPixel(255, 255, 255, &state)
+	if p1r != 255 || p1g != 255 || p1b != 255 {
+		t.Fatalf("expected polishPixel high clamp to 255, got r=%d g=%d b=%d (noise=%.6f)", p1r, p1g, p1b, positiveNoise)
+	}
+}
+
+func findPolishSeed(predicate func(float32) bool) (uint32, float32, bool) {
+	for seed := uint32(0); seed < 1<<20; seed++ {
+		state := seed
+		state ^= state << 13
+		state ^= state >> 17
+		state ^= state << 5
+		noise := (float32(state)/float32(0xFFFFFFFF) - 0.5) * 5.0
+		if predicate(noise) {
+			return state, noise, true
+		}
+	}
+	return 0, 0, false
+}

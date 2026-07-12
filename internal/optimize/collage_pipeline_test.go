@@ -1,16 +1,123 @@
 package optimize
 
 import (
+	"bytes"
+	"errors"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
-	"errors"
+	"strings"
+	"syscall"
 	"sync/atomic"
 	"testing"
-	"strings"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
+
+func TestIsPortraitFile_SeekFailureFromNonSeekableSource(t *testing.T) {
+	dir := t.TempDir()
+	portraitPath := filepath.Join(dir, "portrait.jpg")
+	writeJPEGToFIFO(t, portraitPath, 2, 4)
+
+	_, err := isPortraitFile(portraitPath)
+	if err == nil || !strings.Contains(err.Error(), "seek") {
+		t.Fatalf("isPortraitFile() = %v, expected seek error", err)
+	}
+}
+
+func TestLoadAndRotateImage_SeekFailureFromNonSeekableSource(t *testing.T) {
+	dir := t.TempDir()
+	portraitPath := filepath.Join(dir, "portrait.jpg")
+	writeJPEGToFIFO(t, portraitPath, 2, 4)
+
+	_, err := loadAndRotateImage(portraitPath)
+	if err == nil || !strings.Contains(err.Error(), "seek") {
+		t.Fatalf("loadAndRotateImage() = %v, expected seek error", err)
+	}
+}
+
+func TestProcessCollagePair_SecondImageLoadFailure(t *testing.T) {
+	dir := t.TempDir()
+	writeTestImage(t, filepath.Join(dir, "upload_a.jpg"), 8, 12)
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 8
+	cfg.MaxHeight = 12
+	_, err := processCollagePair(collageJob{
+		artworkDir: dir,
+		f1:         "upload_a.jpg",
+		f2:         "missing.jpg",
+		cfg:        cfg,
+		catalog:    &recordingCatalog{},
+		logger:     discardLogger(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "load/rotate missing.jpg") {
+		t.Fatalf("expected second-image load failure, got %v", err)
+	}
+}
+
+func TestProcessCollagePair_CreateTempFailure(t *testing.T) {
+	dir := t.TempDir()
+	writeTestImage(t, filepath.Join(dir, "upload_a.jpg"), 8, 12)
+	writeTestImage(t, filepath.Join(dir, "upload_b.jpg"), 8, 12)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("chmod readonly source dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(dir, 0o700)
+	})
+
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 8
+	cfg.MaxHeight = 12
+	_, err := processCollagePair(collageJob{
+		artworkDir: dir,
+		f1:         "upload_a.jpg",
+		f2:         "upload_b.jpg",
+		cfg:        cfg,
+		catalog:    &recordingCatalog{},
+		logger:     discardLogger(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "create collage output") {
+		t.Fatalf("expected create temp failure, got %v", err)
+	}
+}
+
+func TestProcessCollagePair_CommitCollisionIsError(t *testing.T) {
+	dir := t.TempDir()
+	writeTestImage(t, filepath.Join(dir, "upload_a.h_a.jpg"), 8, 12)
+	writeTestImage(t, filepath.Join(dir, "upload_b.h_b.jpg"), 8, 12)
+
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 8
+	cfg.MaxHeight = 12
+
+	stem1, hash1, ext1 := artwork.ExtractStemAndHash("upload_a.h_a.jpg")
+	stem2, hash2, _ := artwork.ExtractStemAndHash("upload_b.h_b.jpg")
+	ext := strings.ToLower(ext1)
+	if ext != extJPG && ext != extJPEG && ext != extPNG {
+		ext = extJPG
+	}
+	collageName := artwork.BuildOptimizedName("collage_"+stem1+"_"+stem2, cfg.MaxWidth, cfg.MaxHeight, hash1+"_"+hash2, ext)
+	if err := os.Mkdir(filepath.Join(dir, collageName), 0o700); err != nil {
+		t.Fatalf("create output collision target: %v", err)
+	}
+
+	_, err := processCollagePair(collageJob{
+		artworkDir: dir,
+		f1:         "upload_a.h_a.jpg",
+		f2:         "upload_b.h_b.jpg",
+		cfg:        cfg,
+		catalog:    &recordingCatalog{},
+		logger:     discardLogger(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "commit collage") {
+		t.Fatalf("expected commit collision error, got %v", err)
+	}
+}
 
 func TestCollageUtilsPortraitDetectionAndRotation(t *testing.T) {
 	dir := t.TempDir()
@@ -295,6 +402,56 @@ func writePNGForCollageTests(t *testing.T, path string, width, height int) {
 	if err := pngEncode(f, img); err != nil {
 		t.Fatalf("encode test image: %v", err)
 	}
+}
+
+func writeJPEGToFIFO(t *testing.T, path string, width, height int) {
+	t.Helper()
+
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+	imageData := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			imageData.SetRGBA(x, y, color.RGBA{R: uint8(16 * x), G: uint8(32 * y), B: 80, A: 255})
+		}
+	}
+	var payload bytes.Buffer
+	if err := jpeg.Encode(&payload, imageData, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatalf("encode fifo payload: %v", err)
+	}
+
+	reader, err := os.OpenFile(path, syscall.O_RDONLY|syscall.O_NONBLOCK, 0o600)
+	if err != nil {
+		t.Fatalf("open fifo reader: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		writer, openErr := os.OpenFile(path, syscall.O_WRONLY, 0o600)
+		if openErr != nil {
+			done <- openErr
+			return
+		}
+		defer func() {
+			if closeErr := writer.Close(); closeErr != nil && len(done) == 0 {
+				done <- closeErr
+			}
+		}()
+		if _, writeErr := io.Copy(writer, &payload); writeErr != nil {
+			done <- writeErr
+			return
+		}
+		done <- nil
+	}()
+
+	if writeErr := <-done; writeErr != nil {
+		_ = reader.Close()
+		t.Fatalf("write fifo payload: %v", writeErr)
+	}
+	t.Cleanup(func() {
+		_ = reader.Close()
+	})
 }
 
 func pngEncode(file *os.File, img image.Image) error {

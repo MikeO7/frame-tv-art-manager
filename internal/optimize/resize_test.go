@@ -432,3 +432,64 @@ func TestOptimizeFile_DecodeImageErrorAfterConfig(t *testing.T) {
 		t.Fatalf("OptimizeFile() = %v", err)
 	}
 }
+
+func TestRewriteImage_PortraitModePadsInsteadOfCrop(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "portrait.jpg")
+	writeJPEGTestImage(t, src, 3, 5)
+
+	f, err := os.Open(src)
+	if err != nil {
+		t.Fatalf("open source image: %v", err)
+	}
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 8
+	cfg.MaxHeight = 10
+	cfg.PortraitMode = "pad"
+
+	newW, newH, err := rewriteImage(rewriteParams{
+		f:        f,
+		path:     src,
+		filename: "portrait.jpg",
+		width:    3,
+		height:   5,
+		cfg:      cfg,
+		logger:   slog.Default(),
+	})
+	if err != nil {
+		t.Fatalf("rewriteImage() = %v", err)
+	}
+	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
+		t.Fatalf("expected rewritten dimensions %dx%d, got %dx%d", cfg.MaxWidth, cfg.MaxHeight, newW, newH)
+	}
+	if err := ValidateImage(src); err != nil {
+		t.Fatalf("rewritten image invalid: %v", err)
+	}
+}
+
+func TestRewriteImage_ReplaceFailureReturnsRenameError(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "source.jpg")
+	writeJPEGTestImage(t, src, 4, 4)
+	target := filepath.Join(dir, "blocked")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatalf("create blocked target: %v", err)
+	}
+
+	f, err := os.Open(src)
+	if err != nil {
+		t.Fatalf("open source image: %v", err)
+	}
+	_, _, err = rewriteImage(rewriteParams{
+		f:        f,
+		path:     target,
+		filename: "source.jpg",
+		width:    4,
+		height:   4,
+		cfg:      DefaultConfig(),
+		logger:   slog.Default(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "replace optimized image") {
+		t.Fatalf("expected replace failure, got %v", err)
+	}
+}

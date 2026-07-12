@@ -58,6 +58,13 @@ func TestCalculateScharrImpastoAndSoftLight(t *testing.T) {
 	}
 }
 
+func TestApplySoftLight_NegativeInputClampsToZero(t *testing.T) {
+	clamped := applySoftLight(-0.42, 0.5, 1.0)
+	if clamped != 0 {
+		t.Fatalf("applySoftLight(-0.42, 0.5, 1.0) = %d, want 0", clamped)
+	}
+}
+
 func TestApplyCanvasTexture_IntensityClamps(t *testing.T) {
 	imgLow := image.NewRGBA(image.Rect(0, 0, 10, 10))
 	imgHigh := image.NewRGBA(image.Rect(0, 0, 10, 10))
