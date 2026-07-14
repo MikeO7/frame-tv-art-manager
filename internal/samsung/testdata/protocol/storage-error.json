@@ -1,0 +1,6 @@
+{
+  "event": "send_image",
+  "request_id": "sanitized-request",
+  "id": "sanitized-request",
+  "error_code": 507
+}

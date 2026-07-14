@@ -1,33 +1,25 @@
 package health
 
 import (
-	"bytes"
-	"crypto/sha256"
+	"context"
+	"crypto/subtle"
 	"errors"
-	"fmt"
-	"image"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
+	"net/url"
 	"strings"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
 // defaultMaxUploadBytes caps an upload when MAX_DOWNLOAD_SIZE_MB is unset or
 // invalid, guarding the endpoint against unbounded request bodies.
 const defaultMaxUploadBytes = 20 << 20 // 20 MiB
 
-type atomicWriteOperations struct {
-	createTemp func(string, string) (*os.File, error)
-	chmod      func(*os.File, os.FileMode) error
-	sync       func(*os.File) error
-	close      func(*os.File) error
-	remove     func(string) error
-}
+const (
+	fieldMessage  = "message"
+	fieldFilename = "filename"
+)
 
 // HandleUpload routes artwork upload requests: GET serves the upload UI and
 // POST persists an image. All other methods and the disabled state short-circuit.
@@ -42,12 +34,25 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusForbidden, "Upload endpoint is disabled")
 		return
 	}
+	if s.cfg.DryRun {
+		writeJSONError(w, http.StatusForbidden, "Upload endpoint is unavailable during dry-run")
+		return
+	}
+	if s.cfg.UploadToken != "" && !validUploadCredentials(r, s.cfg.UploadToken) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Frame TV artwork upload", charset="UTF-8"`)
+		writeJSONError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(uploadHTML))
 	case http.MethodPost:
+		if !validUploadOrigin(r) {
+			writeJSONError(w, http.StatusForbidden, "Cross-origin uploads are not allowed")
+			return
+		}
 		s.processUpload(w, r)
 	default:
 		w.Header().Set("Allow", "GET, POST")
@@ -55,9 +60,33 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func validUploadOrigin(request *http.Request) bool {
+	origin := request.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return false
+	}
+	return strings.EqualFold(parsed.Host, request.Host)
+}
+
+func validUploadCredentials(request *http.Request, token string) bool {
+	username, password, ok := request.BasicAuth()
+	return ok && username == "frame" && subtle.ConstantTimeCompare([]byte(password), []byte(token)) == 1
+}
+
 // processUpload reads, validates, and persists a single POSTed image, bounding
 // the request body to mitigate denial-of-service via oversized payloads.
 func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
+	select {
+	case s.imports <- struct{}{}:
+		defer func() { <-s.imports }()
+	default:
+		writeJSONError(w, http.StatusTooManyRequests, "Another artwork import is in progress")
+		return
+	}
 	maxSize := s.maxUploadBytes()
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 
@@ -67,35 +96,12 @@ func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = fileData.Close() }()
-
-	payload, ext, uerr := readImagePayload(fileData)
-	if uerr != nil {
-		writeJSONError(w, uerr.code, uerr.msg)
+	if s.importer == nil {
+		s.logger.Error("artwork import rejected without authoritative collection")
+		writeJSONError(w, http.StatusServiceUnavailable, "Artwork collection is unavailable")
 		return
 	}
-	if err := validateUploadedImage(payload.Bytes()); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Invalid or unsafe image: "+err.Error())
-		return
-	}
-
-	s.persistImage(w, payload.Bytes(), ext)
-}
-
-func validateUploadedImage(payload []byte) error {
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("decode header: %w", err)
-	}
-	const maxDimension = 16384
-	const maxPixels = 80_000_000
-	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxDimension || cfg.Height > maxDimension ||
-		int64(cfg.Width)*int64(cfg.Height) > maxPixels {
-		return fmt.Errorf("dimensions %dx%d exceed limits", cfg.Width, cfg.Height)
-	}
-	if _, _, err := image.Decode(bytes.NewReader(payload)); err != nil {
-		return fmt.Errorf("decode pixels: %w", err)
-	}
-	return nil
+	s.persistWithImporter(r.Context(), w, fileData)
 }
 
 // maxUploadBytes resolves the configured per-upload limit, falling back to a
@@ -107,131 +113,36 @@ func (s *Server) maxUploadBytes() int64 {
 	return defaultMaxUploadBytes
 }
 
-// uploadError pairs an HTTP status code with a client-facing message so payload
-// parsing can report precise failures without writing the response itself.
-type uploadError struct {
-	code int
-	msg  string
-}
-
-func (e *uploadError) Error() string { return e.msg }
-
-// readImagePayload buffers the upload, verifying via content sniffing that it is
-// a supported image and that it stayed within the body-size limit.
-func readImagePayload(r io.Reader) (*bytes.Buffer, string, *uploadError) {
-	// io.ReadFull fills the 512-byte sniff buffer across multiple reads; a short
-	// stream yields EOF/ErrUnexpectedEOF, expected for small images and not a failure.
-	header := make([]byte, 512)
-	n, err := io.ReadFull(r, header)
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return nil, "", readFailure(err, "Failed to read upload stream")
-	}
-
-	ext, ok := imageExtension(http.DetectContentType(header[:n]))
-	if !ok {
-		return nil, "", &uploadError{http.StatusBadRequest, "Unsupported file type (only JPEG and PNG are allowed)"}
-	}
-
-	body := bytes.NewBuffer(header[:n:n])
-	if _, err := io.Copy(body, r); err != nil {
-		return nil, "", readFailure(err, "Failed to read upload payload")
-	}
-	return body, ext, nil
-}
-
-// readFailure classifies a read error as either an oversized-body rejection
-// (400) or an internal read failure (500) with the supplied message.
-func readFailure(err error, internalMsg string) *uploadError {
-	if isTooLarge(err) {
-		return &uploadError{http.StatusBadRequest, "file too large (exceeds upload size limit)"}
-	}
-	return &uploadError{http.StatusInternalServerError, internalMsg}
-}
-
-// imageExtension maps a sniffed MIME type to a supported file extension.
-func imageExtension(contentType string) (string, bool) {
-	switch contentType {
-	case "image/jpeg":
-		return ".jpg", true
-	case "image/png":
-		return ".png", true
-	default:
-		return "", false
-	}
-}
-
-// persistImage writes the buffered payload under a content-addressed filename,
-// short-circuiting with a deduplication response when the file already exists.
-func (s *Server) persistImage(w http.ResponseWriter, payload []byte, ext string) {
-	sum := sha256.Sum256(payload)
-	filename := artwork.BuildHashName("upload", fmt.Sprintf("%x", sum)[:12], ext)
-	destPath := filepath.Join(s.cfg.ArtworkDir, filename)
-
-	if _, err := os.Stat(destPath); err == nil {
-		writeJSON(w, http.StatusOK, map[string]any{
-			fieldStatus: statusOK,
-			"message":   "File already exists (deduplicated)",
-			"filename":  filename,
-		})
-		return
-	}
-
-	if err := atomicWriteArtwork(destPath, payload); err != nil {
-		s.logger.Error("Failed to write uploaded file", "path", destPath, "error", err)
+func (s *Server) persistWithImporter(ctx context.Context, w http.ResponseWriter, reader io.Reader) {
+	snapshot, err := s.importer.Import(ctx, collection.ImportRequest{
+		Reader: reader, Hint: "upload", MaxBytes: s.maxUploadBytes(),
+	})
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeJSONError(w, http.StatusBadRequest, "file too large (exceeds upload size limit)")
+			return
+		}
+		if errors.Is(err, collection.ErrInvalidImport) {
+			writeJSONError(w, http.StatusBadRequest, "Invalid or unsafe image")
+			return
+		}
+		s.logger.Error("artwork import failed", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "Failed to save uploaded file")
 		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		fieldStatus: statusOK,
-		"message":   "File uploaded successfully",
-		"filename":  filename,
-	})
-}
-
-func atomicWriteArtwork(path string, payload []byte) error {
-	return atomicWriteArtworkWithOperations(path, payload, atomicWriteOperations{
-		createTemp: os.CreateTemp,
-		chmod:      func(file *os.File, mode os.FileMode) error { return file.Chmod(mode) },
-		sync:       func(file *os.File) error { return file.Sync() },
-		close:      func(file *os.File) error { return file.Close() },
-		remove:     os.Remove,
-	})
-}
-
-func atomicWriteArtworkWithOperations(path string, payload []byte, operations atomicWriteOperations) error {
-	tmp, err := operations.createTemp(filepath.Dir(path), ".upload-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temporary upload: %w", err)
+	if len(snapshot.Changes) == 1 && snapshot.Changes[0].Name != "" {
+		message := "File imported successfully"
+		if snapshot.Changes[0].Kind == collection.ChangeDuplicate {
+			message = "File already exists (deduplicated)"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			fieldStatus: statusOK, fieldMessage: message, fieldFilename: snapshot.Changes[0].Name,
+		})
+		return
 	}
-	tmpName := tmp.Name()
-	defer func() { _ = operations.remove(tmpName) }()
-	if err := operations.chmod(tmp, 0o644); err != nil {
-		_ = operations.close(tmp)
-		return fmt.Errorf("chmod temporary upload: %w", err)
-	}
-	if _, err := tmp.Write(payload); err != nil {
-		_ = operations.close(tmp)
-		return fmt.Errorf("write temporary upload: %w", err)
-	}
-	if err := operations.sync(tmp); err != nil {
-		_ = operations.close(tmp)
-		return fmt.Errorf("sync temporary upload: %w", err)
-	}
-	if err := operations.close(tmp); err != nil {
-		return fmt.Errorf("close temporary upload: %w", err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("commit upload: %w", err)
-	}
-	return nil
-}
-
-// isTooLarge reports whether err was caused by the request body exceeding the
-// configured upload size limit (via http.MaxBytesReader).
-func isTooLarge(err error) bool {
-	var maxBytesErr *http.MaxBytesError
-	return errors.As(err, &maxBytesErr)
+	s.logger.Error("artwork import returned no matching committed item")
+	writeJSONError(w, http.StatusInternalServerError, "Failed to verify uploaded file")
 }
 
 // parseUploadedFile extracts the uploaded file payload from either a multipart form or raw request body.

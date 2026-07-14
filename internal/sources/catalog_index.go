@@ -1,9 +1,11 @@
 package sources
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"sort"
 	"sync"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
@@ -19,23 +21,7 @@ type indexEntry struct {
 	filename      string
 	hash          string
 	cleanIdentity string
-	identity      string
 	err           error
-}
-
-func (c *ArtworkCatalog) isCacheValid() bool {
-	info, statErr := os.Stat(c.artworkDir)
-	if statErr != nil {
-		return false
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if info.ModTime().Equal(c.lastDirModTime) && len(c.hashIndex) > 0 {
-		return true
-	}
-	c.lastDirModTime = info.ModTime()
-	return false
 }
 
 func (c *ArtworkCatalog) resetState() {
@@ -43,6 +29,7 @@ func (c *ArtworkCatalog) resetState() {
 	c.hashIndex = make(map[string]string)
 	c.prefixMap = make(map[string]string)
 	c.catalog = make(map[string]struct{})
+	c.cacheValid = false
 	c.mu.Unlock()
 }
 
@@ -80,81 +67,66 @@ func (c *ArtworkCatalog) processFilesConcurrent(entries []os.DirEntry) chan inde
 	return results
 }
 
-func (c *ArtworkCatalog) processResult(res indexEntry) {
+func (c *ArtworkCatalog) processResult(res indexEntry) error {
 	if res.err != nil {
-		return
-	}
-
-	filename := res.filename
-	path := filepath.Join(c.artworkDir, filename)
-	hash := res.hash
-	identity := res.identity
-	cleanIdentity := res.cleanIdentity
-
-	c.registerPrefix(cleanIdentity, filename)
-
-	if !strings.Contains(filename, ".h_"+hash[:hashPrefixLen]) && !strings.Contains(filename, "__"+hash[:hashPrefixLen]) {
-		ext := filepath.Ext(filename)
-		newName := artwork.BuildHashName(identity, hash[:hashPrefixLen], ext)
-		newPath := filepath.Join(c.artworkDir, newName)
-		if err := os.Rename(path, newPath); err == nil {
-			filename = newName
-			path = newPath
-			// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
-			// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
-			_ = os.Chmod(path, 0o644)
-			c.registerPrefix(cleanIdentity, filename)
-			c.logger.Debug("migrated file to hash-based name", "original", identity, "hash", hash[:hashPrefixLen])
-		}
+		return res.err
 	}
 
 	c.mu.Lock()
-	if existing, ok := c.hashIndex[hash]; ok {
-		c.logger.Info("found existing duplicate content, removing", "file", filename, "matches", existing)
-		_ = os.Remove(path)
-	} else {
-		c.hashIndex[hash] = filename
-		c.catalog[filename] = struct{}{}
+	defer c.mu.Unlock()
+	if _, duplicate := c.hashIndex[res.hash]; duplicate {
+		return nil
 	}
-	c.mu.Unlock()
+	c.hashIndex[res.hash] = res.filename
+	c.catalog[res.filename] = struct{}{}
+	c.prefixMap[res.cleanIdentity] = res.filename
+	return nil
 }
 
 // Rebuild scans the artwork directory and rebuilds hash and prefix indexes.
-func (c *ArtworkCatalog) Rebuild() {
-	if c.isCacheValid() {
-		return
-	}
-
+func (c *ArtworkCatalog) Rebuild() error {
 	c.resetState()
 
 	entries, err := os.ReadDir(c.artworkDir)
 	if err != nil {
-		return
+		return fmt.Errorf("read artwork directory: %w", err)
 	}
 
 	results := c.processFilesConcurrent(entries)
 
+	indexed := make([]indexEntry, 0, len(entries))
 	for res := range results {
-		c.processResult(res)
+		indexed = append(indexed, res)
 	}
+	sort.Slice(indexed, func(i, j int) bool { return indexed[i].filename < indexed[j].filename })
+
+	var rebuildErrors []error
+	for _, res := range indexed {
+		if err := c.processResult(res); err != nil {
+			rebuildErrors = append(rebuildErrors, err)
+		}
+	}
+	if err := errors.Join(rebuildErrors...); err != nil {
+		c.resetState()
+		return fmt.Errorf("build artwork inventory: %w", err)
+	}
+	c.mu.Lock()
+	c.cacheValid = true
+	c.mu.Unlock()
+	return nil
 }
 
 func (c *ArtworkCatalog) processFile(filename string) indexEntry {
 	path := filepath.Join(c.artworkDir, filename)
-	identity, cleanIdentity, hash := artwork.ParseIdentity(filename)
-
-	if hash == "" {
-		h, err := fileHash(path)
-		if err != nil {
-			return indexEntry{err: err}
-		}
-		hash = h
+	_, cleanIdentity, _ := artwork.ParseIdentity(filename)
+	hash, err := fileHash(path)
+	if err != nil {
+		return indexEntry{err: fmt.Errorf("hash artwork %s: %w", filename, err)}
 	}
 
 	return indexEntry{
 		filename:      filename,
 		hash:          hash,
 		cleanIdentity: cleanIdentity,
-		identity:      identity,
 	}
 }

@@ -150,7 +150,7 @@ func (p *pexelsProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]s
 func (p *pexelsProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid pexels format: %s", line)
+		return nil, fmt.Errorf("invalid pexels format")
 	}
 
 	var urls []string
@@ -179,7 +179,7 @@ func (p *pexelsProvider) Resolve(ctx context.Context, line string, globalIndex *
 			urls = []string{photoURL}
 		}
 	default:
-		return nil, fmt.Errorf("unknown pexels type: %s", parts[1])
+		return nil, fmt.Errorf("unknown pexels type")
 	}
 
 	if err != nil {

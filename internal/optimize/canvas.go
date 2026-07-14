@@ -4,10 +4,13 @@ import (
 	"image"
 	std_draw "image/draw"
 	"math"
-	"sync"
 )
 
 func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
+	return applyCanvasTextureWithWorkers(src, intensity, defaultPixelWorkers())
+}
+
+func applyCanvasTextureWithWorkers(src *image.RGBA, intensity, workerLimit int) *image.RGBA {
 	lutCraquelureOnce.Do(initializeCraquelure)
 
 	opacity := 0.04 * math.Pow(1.32, float64(intensity-1))
@@ -21,25 +24,20 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
 
-	var wg sync.WaitGroup
-	workers := pixelWorkers
-	chunk := (height - 2 + workers - 1) / workers
+	chunk := (height - 2 + pixelPartitions - 1) / pixelPartitions
 
 	srcStride := src.Stride
-	for j := 0; j < workers; j++ {
+	runPixelTasks(workerLimit, func(j int) {
 		startY := 1 + j*chunk
 		endY := startY + chunk
 		if endY > height-1 {
 			endY = height - 1
 		}
 		if startY >= height-1 {
-			break
+			return
 		}
 
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
-
+		func(sy, ey int) {
 			//nolint:gosec // sy is a positive chunk offset, conversion is mathematically safe
 			state := uint32(sy + 42) // Seed based on row
 
@@ -50,9 +48,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 				}
 			}
 		}(startY, endY)
-	}
-
-	wg.Wait()
+	})
 	return dst
 }
 

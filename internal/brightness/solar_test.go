@@ -21,19 +21,20 @@ func TestJulianCenturyJanuaryAndJune(t *testing.T) {
 func TestGetTargetValueLoggingPaths(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	manual := 4
-	if got := GetTargetValue(nil, 2, 10, &manual, logger); got == nil || *got != manual {
+	now := time.Date(2025, time.June, 21, 19, 0, 0, 0, time.UTC)
+	if got := GetTargetValueAt(TargetOptions{Min: 2, Max: 10, Manual: &manual, Now: now}, logger); got == nil || *got != manual {
 		t.Fatalf("manual brightness = %v", got)
 	}
 	lat, lon := 40.0, -105.0
 	valid := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
-	if got := GetTargetValue(valid, 2, 10, nil, logger); got == nil {
+	if got := GetTargetValueAt(TargetOptions{Location: valid, Min: 2, Max: 10, Now: now}, logger); got == nil {
 		t.Fatal("expected logged solar brightness")
 	}
 	invalid := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "invalid"}
-	if got := GetTargetValue(invalid, 2, 10, nil, logger); got != nil {
+	if got := GetTargetValueAt(TargetOptions{Location: invalid, Min: 2, Max: 10, Now: now}, logger); got != nil {
 		t.Fatalf("invalid timezone returned %v", *got)
 	}
-	if got := trySolarBrightness(&SolarLocation{Latitude: &lat}, 2, 10, logger); got != nil {
+	if got := trySolarBrightnessAt(&SolarLocation{Latitude: &lat}, 2, 10, logger, now); got != nil {
 		t.Fatalf("incomplete location returned %v", *got)
 	}
 }
@@ -131,7 +132,7 @@ func TestSunElevation_KnownValues(t *testing.T) {
 func TestCalculate_NilCoords(t *testing.T) {
 	t.Parallel()
 
-	result, err := Calculate(nil, nil, "UTC", 2, 10)
+	result, err := CalculateAt(&SolarLocation{Timezone: "UTC"}, 2, 10, time.Time{})
 	if err == nil {
 		t.Fatal("expected error ErrSolarDisabled, got nil")
 	}
@@ -146,7 +147,7 @@ func TestCalculate_NilCoords(t *testing.T) {
 func TestCalculate_InvalidTimezone(t *testing.T) {
 	lat := 40.0
 	lon := -70.0
-	_, err := Calculate(&lat, &lon, "Invalid/Zone", 2, 10)
+	_, err := CalculateAt(&SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"}, 2, 10, time.Time{})
 	if err == nil {
 		t.Error("expected error for invalid timezone")
 	}
@@ -158,10 +159,11 @@ func TestGetTargetValue(t *testing.T) {
 	lat := 40.7128
 	lon := -74.0060
 	manual := 5
+	now := time.Date(2025, time.June, 21, 12, 0, 0, 0, time.UTC)
 
 	t.Run("solar enabled", func(t *testing.T) {
 		loc := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
-		val := GetTargetValue(loc, 2, 10, nil, nil)
+		val := GetTargetValueAt(TargetOptions{Location: loc, Min: 2, Max: 10, Now: now}, nil)
 		if val == nil {
 			t.Fatal("expected solar brightness value")
 		}
@@ -171,7 +173,7 @@ func TestGetTargetValue(t *testing.T) {
 	})
 
 	t.Run("manual fallback", func(t *testing.T) {
-		val := GetTargetValue(nil, 0, 0, &manual, nil)
+		val := GetTargetValueAt(TargetOptions{Manual: &manual, Now: now}, nil)
 		if val == nil || *val != 5 {
 			t.Errorf("expected manual brightness 5, got %v", val)
 		}
@@ -179,14 +181,14 @@ func TestGetTargetValue(t *testing.T) {
 
 	t.Run("solar invalid timezone falls back to manual", func(t *testing.T) {
 		loc := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"}
-		val := GetTargetValue(loc, 2, 10, &manual, nil)
+		val := GetTargetValueAt(TargetOptions{Location: loc, Min: 2, Max: 10, Manual: &manual, Now: now}, nil)
 		if val == nil || *val != 5 {
 			t.Errorf("expected manual fallback, got %v", val)
 		}
 	})
 
 	t.Run("nil when unset", func(t *testing.T) {
-		if val := GetTargetValue(nil, 0, 0, nil, nil); val != nil {
+		if val := GetTargetValueAt(TargetOptions{Now: now}, nil); val != nil {
 			t.Errorf("expected nil, got %d", *val)
 		}
 	})

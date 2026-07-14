@@ -8,9 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 func TestCheckArtErrorClassifiesResponses(t *testing.T) {
@@ -20,7 +17,7 @@ func TestCheckArtErrorClassifiesResponses(t *testing.T) {
 		want error
 	}{
 		{name: "success", code: 0},
-		{name: "forbidden storage response", code: 403, want: ErrStorageFull},
+		{name: "forbidden response", code: 403, want: ErrArtAPIError},
 		{name: "insufficient storage", code: 507, want: ErrStorageFull},
 		{name: "Samsung storage code", code: 11001, want: ErrStorageFull},
 		{name: "generic API error", code: 42, want: ErrArtAPIError},
@@ -59,27 +56,15 @@ func TestParsePolyStringVariants(t *testing.T) {
 	}
 }
 
-func TestClientGateAndExistingTokenFastPaths(t *testing.T) {
-	c := NewClient("127.0.0.1", (&config.Config{}).TVConnectOptions(), slog.Default())
-	if err := c.checkGate(context.Background()); err != nil {
-		t.Fatalf("disabled checkGate: %v", err)
-	}
-	tokenFile := filepath.Join(t.TempDir(), "token.txt")
-	if err := os.WriteFile(tokenFile, []byte("existing"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-	defer cancel()
-	if err := c.setupToken(ctx, tokenFile); err != nil {
-		t.Fatalf("setupToken existing token: %v", err)
-	}
-}
-
 func TestExtractAndSaveTokenErrorPaths(t *testing.T) {
 	logger := slog.Default()
 	c := newConnection(connConfig{tokenFile: filepath.Join(t.TempDir(), "token.txt"), logger: logger})
-	c.extractAndSaveToken(json.RawMessage(`{`))
-	c.extractAndSaveToken(json.RawMessage(`{"token":""}`))
+	if err := c.extractAndSaveToken(context.Background(), json.RawMessage(`{`)); err != nil {
+		t.Fatalf("malformed token payload: %v", err)
+	}
+	if err := c.extractAndSaveToken(context.Background(), json.RawMessage(`{"token":""}`)); err != nil {
+		t.Fatalf("empty token payload: %v", err)
+	}
 	if _, err := os.Stat(c.tokenFile); !os.IsNotExist(err) {
 		t.Fatalf("invalid or empty tokens created a file: %v", err)
 	}
@@ -89,5 +74,7 @@ func TestExtractAndSaveTokenErrorPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.tokenFile = filepath.Join(blocked, "token.txt")
-	c.extractAndSaveToken(json.RawMessage(`{"token":"abcdefghijk"}`))
+	if err := c.extractAndSaveToken(context.Background(), json.RawMessage(`{"token":"abcdefghijk"}`)); err == nil {
+		t.Fatal("blocked token path error = nil")
+	}
 }

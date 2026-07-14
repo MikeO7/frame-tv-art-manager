@@ -1,42 +1,71 @@
 package sources
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
 func newTestLoader(cfg *config.Config, logger *slog.Logger) *Loader {
 	idx := NewArtworkCatalog(cfg.ArtworkDir, logger)
-	return NewLoader(cfg, logger, idx)
+	store, err := collection.New(collection.Config{
+		Root: cfg.ArtworkDir, MaxItems: cfg.MaxArtworkImages,
+		MaxImportBytes: int64(cfg.MaxDownloadSizeMB) * bytesPerMB,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return NewLoader(cfg, logger, idx, store)
+}
+
+func testJPEGBytes(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	if err := jpeg.Encode(&buffer, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil); err != nil {
+		t.Fatalf("encode JPEG fixture: %v", err)
+	}
+	return buffer.Bytes()
+}
+
+func testPNGBytes(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatalf("encode PNG fixture: %v", err)
+	}
+	return buffer.Bytes()
 }
 
 func setMockProviderURLs(l *Loader, baseURL string) {
-	if p, ok := l.Provider("unsplash").(*unsplashProvider); ok {
-		p.BaseURL = baseURL
-	}
-	if p, ok := l.Provider("nasa").(*nasaProvider); ok {
-		p.BaseURL = baseURL
-		p.SearchURL = baseURL
-	}
-	if p, ok := l.Provider("artic").(*articProvider); ok {
-		p.BaseURL = baseURL
-		p.IIIFBaseURL = baseURL
-	}
-	if p, ok := l.Provider("pexels").(*pexelsProvider); ok {
-		p.BaseURL = baseURL
-	}
-	if p, ok := l.Provider("pixabay").(*pixabayProvider); ok {
-		p.BaseURL = baseURL
+	for _, provider := range l.providers {
+		switch value := provider.(type) {
+		case *unsplashProvider:
+			value.BaseURL = baseURL
+		case *nasaProvider:
+			value.BaseURL, value.SearchURL = baseURL, baseURL
+		case *articProvider:
+			value.BaseURL, value.IIIFBaseURL = baseURL, baseURL
+		case *pexelsProvider:
+			value.BaseURL = baseURL
+		case *pixabayProvider:
+			value.BaseURL = baseURL
+		}
 	}
 }
 
@@ -45,11 +74,12 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
 
 	// Mock server for direct downloads
+	imageData := testJPEGBytes(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
 		w.Header().Set("Content-Type", "image/jpeg")
-		_, _ = w.Write([]byte("fake-image-data"))
+		_, _ = w.Write(imageData)
 	}))
 	defer server.Close()
 
@@ -70,9 +100,32 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	}
 
 	// Verify file exists
-	files, _ := os.ReadDir(artworkDir)
-	if len(files) != 1 {
-		t.Errorf("expected 1 file in artwork dir, got %d", len(files))
+	files, catalogErr := l.index.SupportedFiles()
+	if catalogErr != nil || len(files) != 1 {
+		t.Errorf("expected 1 artwork file, got %v (%v)", files, catalogErr)
+	}
+}
+
+func TestLoaderSyncDoesNotExposeRawSourceCredentials(t *testing.T) {
+	artworkDir := t.TempDir()
+	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
+	const sensitiveLine = "unsplash:unknown?api_key=source-secret"
+	if err := os.WriteFile(sourcesFile, []byte(sensitiveLine+"\n"), 0o600); err != nil {
+		t.Fatalf("write sources: %v", err)
+	}
+	logger, logs := newTestLogger()
+	loader := newTestLoader(&config.Config{
+		SourcesFile: sourcesFile, ArtworkDir: artworkDir, UnsplashAccessKey: "configured-key",
+	}, logger)
+	_, err := loader.Sync(context.Background())
+	if err == nil {
+		t.Fatal("expected invalid source error")
+	}
+	combined := logs.String() + err.Error()
+	for _, secret := range []string{sensitiveLine, "source-secret", "api_key"} {
+		if strings.Contains(combined, secret) {
+			t.Fatalf("source diagnostics exposed %q: %s", secret, combined)
+		}
 	}
 }
 
@@ -115,13 +168,14 @@ providers:
 	_ = os.WriteFile(path, []byte(yamlContent), 0o600)
 
 	l := &Loader{sourcesFile: path}
-	urls, err := l.loadSources()
+	urls, err := l.loadSources(context.Background())
 	if err != nil {
 		t.Fatalf("loadSources YAML failed: %v", err)
 	}
 
-	if len(urls) != 3 {
-		t.Errorf("expected 3 URLs, got %d", len(urls))
+	want := []string{"nasa:apod", "unsplash:photo:123", "unsplash:collection:abc"}
+	if !slices.Equal(urls, want) {
+		t.Errorf("YAML sources = %v, want deterministic %v", urls, want)
 	}
 }
 
@@ -133,13 +187,34 @@ func TestLoadSources_Txt(t *testing.T) {
 	_ = os.WriteFile(path, []byte(txtContent), 0o600)
 
 	l := &Loader{sourcesFile: path}
-	urls, err := l.loadSources()
+	urls, err := l.loadSources(context.Background())
 	if err != nil {
 		t.Fatalf("loadSources TXT failed: %v", err)
 	}
 
 	if len(urls) != 2 {
 		t.Errorf("expected 2 URLs, got %d", len(urls))
+	}
+}
+
+func TestLoadSourcesDoesNotCacheFailedRevision(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sources.yaml")
+	if err := os.WriteFile(path, []byte("sources:\n  - https://example.com/art.jpg\n"), 0o600); err != nil {
+		t.Fatalf("write valid sources: %v", err)
+	}
+	loader := &Loader{sourcesFile: path}
+	if _, err := loader.loadSources(context.Background()); err != nil {
+		t.Fatalf("load valid sources: %v", err)
+	}
+
+	if err := os.WriteFile(path, []byte("sources: [unterminated"), 0o600); err != nil {
+		t.Fatalf("write invalid sources: %v", err)
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		if got, err := loader.loadSources(context.Background()); err == nil {
+			t.Fatalf("attempt %d returned stale sources %v instead of parse error", attempt, got)
+		}
 	}
 }
 
@@ -150,27 +225,23 @@ func TestLoader_InternalMethods(t *testing.T) {
 	_ = os.WriteFile(path, []byte("some-data"), 0o600)
 
 	idx := NewArtworkCatalog(artworkDir, slog.Default())
-	idx.Rebuild()
+	if err := idx.Rebuild(); err != nil {
+		t.Fatalf("rebuild catalog: %v", err)
+	}
 
 	if _, ok := idx.LookupPrefix("test"); !ok {
 		t.Error("expected prefix entry for test identity")
 	}
 
 	idx.MarkVisited("test__1234567890ab.jpg")
-	for _, filename := range idx.UnusedManagedFiles() {
-		_ = os.Remove(filepath.Join(artworkDir, filename))
-	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Error("visited file was accidentally deleted")
 	}
 
 	unvisitedPath := filepath.Join(artworkDir, "002__unvisited__hash.jpg")
 	_ = os.WriteFile(unvisitedPath, []byte("x"), 0o600)
-	for _, filename := range idx.UnusedManagedFiles() {
-		_ = os.Remove(filepath.Join(artworkDir, filename))
-	}
-	if _, err := os.Stat(unvisitedPath); err == nil {
-		t.Error("unvisited file was not deleted")
+	if _, err := os.Stat(unvisitedPath); err != nil {
+		t.Errorf("unvisited operator file was not preserved: %v", err)
 	}
 }
 
@@ -327,6 +398,7 @@ func TestLoader_syncLine_ArticSearch(t *testing.T) {
 		ArtworkDir: artworkDir,
 	}, slog.Default())
 
+	imageData := testJPEGBytes(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = w
 		_ = r
@@ -339,7 +411,7 @@ func TestLoader_syncLine_ArticSearch(t *testing.T) {
 			})
 		} else {
 			w.Header().Set("Content-Type", "image/jpeg")
-			_, _ = w.Write([]byte("fake-image-data"))
+			_, _ = w.Write(imageData)
 		}
 	}))
 	defer server.Close()
@@ -362,9 +434,10 @@ func TestLoader_executeDownload(t *testing.T) {
 		MaxDownloadSizeMB: 1,
 	}, slog.Default())
 
+	imageData := testPNGBytes(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a})
+		_, _ = w.Write(imageData)
 	}))
 	defer server.Close()
 
@@ -376,15 +449,14 @@ func TestLoader_executeDownload(t *testing.T) {
 		t.Error("expected downloaded=true")
 	}
 
-	entries, err := os.ReadDir(artworkDir)
-	if err != nil {
-		t.Fatal(err)
+	entries, err := l.index.SupportedFiles()
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("expected 1 artwork file, got %v (%v)", entries, err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 file, got %d", len(entries))
-	}
-	if !strings.HasSuffix(entries[0].Name(), ".png") {
-		t.Errorf("expected png extension, got %q", entries[0].Name())
+	for name := range entries {
+		if !strings.HasSuffix(name, ".png") {
+			t.Errorf("expected png extension, got %q", name)
+		}
 	}
 }
 
@@ -394,7 +466,12 @@ func TestLoader_downloadWithIdentity_MaxReached(t *testing.T) {
 		ArtworkDir:       artworkDir,
 		MaxArtworkImages: 1,
 	}, slog.Default())
-	l.index.MarkVisited("existing.jpg")
+	if err := os.WriteFile(filepath.Join(artworkDir, "operator.jpg"), []byte("operator bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.index.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
 
 	downloaded, err := l.downloadWithIdentity(context.Background(), "http://example.com/x.jpg", "001__direct__x")
 	if err != nil {
@@ -412,8 +489,70 @@ func TestLoader_loadYamlSources_Invalid(t *testing.T) {
 	}
 	l := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
 	l.sourcesFile = path
-	_, err := l.loadYamlSources()
+	_, err := l.loadSources(context.Background())
 	if err == nil {
 		t.Error("expected error for invalid yaml format")
 	}
+}
+
+func TestLoaderLoadYAMLSourcesRejectsOversizedManifest(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "sources.yaml")
+	if err := os.WriteFile(path, []byte("sources: []"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, maxSourcesManifestBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+	loader.sourcesFile = path
+	if _, err := loader.loadSources(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("loadYamlSources() error = %v, want bounded manifest rejection", err)
+	}
+}
+
+func TestLoaderLoadTXTSourcesRejectsUnsafeManifestReads(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	valid := filepath.Join(directory, "valid.txt")
+	if err := os.WriteFile(valid, []byte("https://example.com/art.jpg\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+
+	t.Run("oversized", func(t *testing.T) {
+		path := filepath.Join(directory, "oversized.txt")
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Truncate(path, maxSourcesManifestBytes+1); err != nil {
+			t.Fatal(err)
+		}
+		loader.sourcesFile = path
+		if _, err := loader.loadSources(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("loadTxtSources() error = %v, want bounded manifest rejection", err)
+		}
+	})
+
+	t.Run("symlink", func(t *testing.T) {
+		path := filepath.Join(directory, "sources-link.txt")
+		if err := os.Symlink(valid, path); err != nil {
+			t.Fatal(err)
+		}
+		loader.sourcesFile = path
+		if _, err := loader.loadSources(context.Background()); err == nil || !strings.Contains(err.Error(), "non-symlink") {
+			t.Fatalf("loadTxtSources() error = %v, want symlink rejection", err)
+		}
+	})
+
+	t.Run("canceled", func(t *testing.T) {
+		loader.sourcesFile = valid
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, err := loader.loadSources(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatalf("loadTxtSources() error = %v, want canceled", err)
+		}
+	})
 }

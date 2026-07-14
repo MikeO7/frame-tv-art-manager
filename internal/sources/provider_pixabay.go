@@ -75,7 +75,7 @@ func (p *pixabayProvider) FetchPhoto(ctx context.Context, photoID string) (strin
 		return "", err
 	}
 	if len(urls) == 0 {
-		return "", fmt.Errorf("pixabay photo not found: %s", photoID)
+		return "", fmt.Errorf("pixabay photo not found")
 	}
 	return urls[0], nil
 }
@@ -147,7 +147,7 @@ func (p *pixabayProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]
 func (p *pixabayProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid pixabay format: %s", line)
+		return nil, fmt.Errorf("invalid pixabay format")
 	}
 
 	var urls []string
@@ -156,14 +156,14 @@ func (p *pixabayProvider) Resolve(ctx context.Context, line string, globalIndex 
 	switch parts[1] {
 	case cmdSearch:
 		if len(parts) < 3 {
-			return nil, fmt.Errorf("pixabay search requires a query: %s", line)
+			return nil, fmt.Errorf("pixabay search requires a query")
 		}
 		urls, err = p.Search(ctx, parts[2])
 	case "editors_choice":
 		urls, err = p.EditorsChoice(ctx)
 	case cmdPhoto:
 		if len(parts) < 3 {
-			return nil, fmt.Errorf("pixabay photo requires an ID: %s", line)
+			return nil, fmt.Errorf("pixabay photo requires an ID")
 		}
 		var photoURL string
 		photoURL, err = p.FetchPhoto(ctx, parts[2])
@@ -172,11 +172,11 @@ func (p *pixabayProvider) Resolve(ctx context.Context, line string, globalIndex 
 		}
 	case "user":
 		if len(parts) < 3 {
-			return nil, fmt.Errorf("pixabay user requires an ID: %s", line)
+			return nil, fmt.Errorf("pixabay user requires an ID")
 		}
 		urls, err = p.User(ctx, parts[2])
 	default:
-		return nil, fmt.Errorf("unknown pixabay type: %s", parts[1])
+		return nil, fmt.Errorf("unknown pixabay type")
 	}
 
 	if err != nil {

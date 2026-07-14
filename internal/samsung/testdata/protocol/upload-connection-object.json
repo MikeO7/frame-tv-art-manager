@@ -1,0 +1,11 @@
+{
+  "event": "send_image",
+  "request_id": "sanitized-request",
+  "id": "sanitized-request",
+  "conn_info": {
+    "ip": "192.0.2.20",
+    "port": 12345,
+    "key": "sanitized-key",
+    "secured": true
+  }
+}

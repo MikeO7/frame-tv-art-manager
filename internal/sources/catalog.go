@@ -7,33 +7,36 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
-)
-
-var reManagedIndex = regexp.MustCompile(`^[0-9]{3}__`)
-
-const (
-	// hashPrefixLen is the number of hex chars from a file's SHA-256 used as the
-	// content-addressing suffix in artwork filenames.
-	hashPrefixLen = 12
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
 // ArtworkCatalog manages local image files, content-based indexing,
 // parallel image optimization, and catalog pruning.
 type ArtworkCatalog struct {
-	artworkDir     string
-	logger         *slog.Logger
-	mu             sync.Mutex
-	hashIndex      map[string]string
-	prefixMap      map[string]string
-	visited        map[string]bool
-	catalog        map[string]struct{}
-	lastDirModTime time.Time
+	artworkDir string
+	logger     *slog.Logger
+	mu         sync.Mutex
+	hashIndex  map[string]string
+	prefixMap  map[string]string
+	visited    map[string]bool
+	catalog    map[string]struct{}
+	cacheValid bool
+}
+
+// NoteImported records a source item already committed by the Collection
+// Store. It changes only the in-memory source index.
+func (c *ArtworkCatalog) NoteImported(identity string, item collection.Item) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	hash := fmt.Sprintf("%x", item.Digest)
+	cleanIdentity := artwork.StripIndexPrefix(identity)
+	c.hashIndex[hash] = item.Name
+	c.prefixMap[cleanIdentity] = item.Name
+	c.catalog[item.Name] = struct{}{}
+	c.visited[item.Name] = true
 }
 
 // NewArtworkCatalog instantiates a new local catalog manager.
@@ -52,43 +55,20 @@ func NewArtworkCatalog(artworkDir string, logger *slog.Logger) *ArtworkCatalog {
 func (c *ArtworkCatalog) InvalidateCache() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.lastDirModTime = time.Time{}
 	c.catalog = make(map[string]struct{})
-}
-
-// NoteFileRename updates catalog and prefix maps after an on-disk rename.
-func (c *ArtworkCatalog) NoteFileRename(oldName, newName string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delete(c.catalog, oldName)
-	if newName != "" {
-		c.catalog[newName] = struct{}{}
-	}
-	if _, ok := c.visited[oldName]; ok {
-		delete(c.visited, oldName)
-		if newName != "" {
-			c.visited[newName] = true
-		}
-	}
-	c.updateMap(c.prefixMap, oldName, newName)
-	c.updateMap(c.hashIndex, oldName, newName)
-}
-
-func (c *ArtworkCatalog) updateMap(m map[string]string, oldVal, newVal string) {
-	for k, v := range m {
-		if v == oldVal {
-			if newVal != "" {
-				m[k] = newVal
-			} else {
-				delete(m, k)
-			}
-		}
-	}
+	c.cacheValid = false
 }
 
 // SupportedFiles returns supported image filenames from the catalog cache.
 func (c *ArtworkCatalog) SupportedFiles() (map[string]struct{}, error) {
-	c.Rebuild()
+	c.mu.Lock()
+	valid := c.cacheValid
+	c.mu.Unlock()
+	if !valid {
+		if err := c.Rebuild(); err != nil {
+			return nil, err
+		}
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -133,118 +113,16 @@ func (c *ArtworkCatalog) LookupPrefix(identity string) (string, bool) {
 	return filename, ok
 }
 
-// registerPrefix associates a source identity with a filename.
-func (c *ArtworkCatalog) registerPrefix(identity, filename string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.prefixMap[artwork.StripIndexPrefix(identity)] = filename
-}
-
-// registerHash records a content hash. Returns existing filename and whether it was a duplicate.
-func (c *ArtworkCatalog) registerHash(hash, filename string) (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	existing, ok := c.hashIndex[hash]
-	if ok {
-		return existing, true
-	}
-	c.hashIndex[hash] = filename
-	return "", false
-}
-
-// setHash associates a hash with a filename, replacing any prior entry.
-func (c *ArtworkCatalog) setHash(hash, filename string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.hashIndex[hash] = filename
-}
-
-// RegisterDownload hashes a downloaded file, checks for duplicates,
-// renames it to a hash-based filename, registers it in index maps, and marks it visited.
-// It returns the final filename, whether it was newly added (not a duplicate), and any error.
-func (c *ArtworkCatalog) RegisterDownload(tempPath, filename, identity string) (string, bool, error) {
-	hash, err := fileHash(tempPath)
-	if err != nil {
-		return "", false, fmt.Errorf("hash file: %w", err)
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Check if this content is already in the catalog
-	if existing, duplicate := c.hashIndex[hash]; duplicate {
-		c.visited[existing] = true
-		_ = os.Remove(tempPath)
-		return existing, false, nil
-	}
-
-	ext := filepath.Ext(filename)
-	cleanIdentity := artwork.StripIndexPrefix(identity)
-
-	// Normalize identity by removing potential .h_ suffix if present
-	if parts := strings.Split(cleanIdentity, ".h_"); len(parts) == 2 {
-		cleanIdentity = parts[0]
-	}
-
-	finalName := artwork.BuildHashName(cleanIdentity, hash[:hashPrefixLen], ext)
-	finalPath := filepath.Join(c.artworkDir, finalName)
-
-	if err := os.Rename(tempPath, finalPath); err != nil {
-		c.hashIndex[hash] = filename
-		c.prefixMap[cleanIdentity] = filename
-		c.catalog[filename] = struct{}{}
-		c.visited[filename] = true
-		return filename, true, fmt.Errorf("rename to final hash name: %w", err)
-	}
-	// Explicit chmod to 0o644 is required to override restrictive system umasks (e.g. 0077)
-	// so files are readable over SMB/NFS network shares. Do NOT tighten to 0o600.
-	_ = os.Chmod(finalPath, 0o644)
-
-	c.hashIndex[hash] = finalName
-	c.prefixMap[cleanIdentity] = finalName
-	c.catalog[finalName] = struct{}{}
-	c.visited[finalName] = true
-
-	return finalName, true, nil
-}
-
-// MaxReached reports whether the visited file count hit the configured limit.
+// MaxReached reports whether the complete Artwork Collection catalog has hit
+// the configured limit. Operator artwork and sources not yet visited in the
+// current cycle still consume capacity.
 func (c *ArtworkCatalog) MaxReached(limit int) bool {
 	if limit <= 0 {
 		return false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return len(c.visited) >= limit
-}
-
-// UnusedManagedFiles returns managed source filenames not visited this cycle.
-func (c *ArtworkCatalog) UnusedManagedFiles() []string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	entries, err := os.ReadDir(c.artworkDir)
-	if err != nil {
-		return nil
-	}
-
-	var unused []string
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		filename := entry.Name()
-		if c.visited[filename] {
-			continue
-		}
-
-		if reManagedIndex.MatchString(filename) {
-			unused = append(unused, filename)
-		}
-	}
-
-	return unused
+	return len(c.catalog) >= limit
 }
 
 func fileHash(path string) (string, error) {

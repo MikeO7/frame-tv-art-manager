@@ -3,8 +3,12 @@ package samsung
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
+	"sync/atomic"
+	"time"
 )
 
 // recvLoop reads messages from the WebSocket and routes them to pending
@@ -28,8 +32,6 @@ func (c *connection) recvLoop() {
 			}
 			return
 		}
-
-		c.logger.Debug("WS RECV", "payload", string(msg))
 
 		var resp wsResponse
 		if err := json.Unmarshal(msg, &resp); err != nil {
@@ -62,7 +64,7 @@ func (c *connection) routeD2DEvent(dataRaw json.RawMessage) {
 		Event     string `json:"event"`
 	}
 	if err := json.Unmarshal(dataToParse, &inner); err != nil {
-		c.logger.Debug("d2d event: parse failed", "error", err, "raw", string(dataRaw))
+		c.logger.Debug("d2d event: parse failed", "error", err)
 		return
 	}
 
@@ -119,9 +121,19 @@ func artAppRequest(data map[string]any) ([]byte, error) {
 }
 
 // newRequestID generates a new UUID string for art API request correlation.
+var requestIDFallbackSequence atomic.Uint64 //nolint:gochecknoglobals // monotonic fallback prevents correlation collisions
+
 func newRequestID() string {
+	return requestIDFrom(rand.Reader)
+}
+
+func requestIDFrom(random io.Reader) string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	if _, err := io.ReadFull(random, b); err != nil {
+		seed := fmt.Sprintf("%d:%d", time.Now().UnixNano(), requestIDFallbackSequence.Add(1))
+		digest := sha256.Sum256([]byte(seed))
+		copy(b, digest[:16])
+	}
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])

@@ -1,0 +1,6 @@
+{
+  "event": "get_content_list",
+  "request_id": "sanitized-request",
+  "id": "sanitized-request",
+  "content_list": "[{\"content_id\":\"MY_F0001\",\"category_id\":\"MY-C0002\"}]"
+}

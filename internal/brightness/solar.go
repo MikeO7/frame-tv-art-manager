@@ -117,22 +117,19 @@ func brightnessFromElevation(elevation float64, minVal, maxVal int) int {
 	return brightness
 }
 
-// Calculate returns the brightness value for the current time and location,
-// or ErrSolarDisabled if solar brightness is not applicable.
-//
-// Parameters lat and lon may be nil if solar is disabled.
-func Calculate(lat, lon *float64, tz string, minVal, maxVal int) (*int, error) {
-	if lat == nil || lon == nil {
+// CalculateAt returns the solar brightness for an explicit instant.
+func CalculateAt(location *SolarLocation, minVal, maxVal int, now time.Time) (*int, error) {
+	if location == nil || location.Latitude == nil || location.Longitude == nil {
 		return nil, ErrSolarDisabled
 	}
 
-	loc, err := time.LoadLocation(tz)
+	loc, err := time.LoadLocation(location.Timezone)
 	if err != nil {
 		return nil, err
 	}
 
-	now := time.Now().In(loc)
-	elevation := sunElevation(*lat, *lon, now)
+	now = now.In(loc)
+	elevation := sunElevation(*location.Latitude, *location.Longitude, now)
 	b := brightnessFromElevation(elevation, minVal, maxVal)
 	return &b, nil
 }
@@ -144,36 +141,42 @@ type SolarLocation struct {
 	Timezone  string
 }
 
-// GetTargetValue calculates the final target brightness using solar elevation,
-// falling back to manual brightness or nil if neither is configured.
-func GetTargetValue(
-	loc *SolarLocation,
-	minVal, maxVal int,
-	manualBrightness *int,
-	logger *slog.Logger,
-) *int {
-	if b := trySolarBrightness(loc, minVal, maxVal, logger); b != nil {
+// TargetOptions contains deterministic brightness policy inputs.
+type TargetOptions struct {
+	Location *SolarLocation
+	Min      int
+	Max      int
+	Manual   *int
+	Now      time.Time
+}
+
+// GetTargetValueAt calculates the target brightness for an explicit instant.
+func GetTargetValueAt(options TargetOptions, logger *slog.Logger) *int {
+	if b := trySolarBrightnessAt(options.Location, options.Min, options.Max, logger, options.Now); b != nil {
 		return b
 	}
 
-	if manualBrightness != nil {
+	if options.Manual != nil {
 		if logger != nil {
-			logger.Info("manual brightness", "value", *manualBrightness)
+			logger.Info("manual brightness", "value", *options.Manual)
 		}
-		return manualBrightness
+		return options.Manual
 	}
 
 	return nil
 }
 
-// trySolarBrightness computes solar brightness when a complete location is
-// configured, returning nil when solar is unavailable or the calculation fails.
-func trySolarBrightness(loc *SolarLocation, minVal, maxVal int, logger *slog.Logger) *int {
+func trySolarBrightnessAt(
+	loc *SolarLocation,
+	minVal, maxVal int,
+	logger *slog.Logger,
+	now time.Time,
+) *int {
 	if loc == nil || loc.Latitude == nil || loc.Longitude == nil {
 		return nil
 	}
 
-	b, err := Calculate(loc.Latitude, loc.Longitude, loc.Timezone, minVal, maxVal)
+	b, err := CalculateAt(loc, minVal, maxVal, now)
 	if err != nil {
 		if !errors.Is(err, ErrSolarDisabled) && logger != nil {
 			logger.Warn("solar brightness calculation failed", "error", err)

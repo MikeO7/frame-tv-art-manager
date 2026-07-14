@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"net/url"
-	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +27,8 @@ type connection struct {
 	timeout       time.Duration
 	skipTLSVerify bool
 	logger        *slog.Logger
+	persistToken  func(context.Context, string, string) error
+	httpClient    *http.Client
 
 	mu       sync.Mutex
 	conn     *websocket.Conn
@@ -38,24 +41,46 @@ type connection struct {
 	pending   map[string]chan json.RawMessage
 }
 
+func (c *connection) registerPending(key string) (<-chan json.RawMessage, func(), error) {
+	ch := make(chan json.RawMessage, 1)
+	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
+	if _, exists := c.pending[key]; exists {
+		return nil, nil, fmt.Errorf("listener %q is already registered", key)
+	}
+	if c.pending == nil {
+		c.pending = make(map[string]chan json.RawMessage)
+	}
+	c.pending[key] = ch
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() { c.unregisterPending(key, ch) })
+	}
+	return ch, cleanup, nil
+}
+
+func (c *connection) unregisterPending(key string, registered chan json.RawMessage) {
+	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
+	if current := c.pending[key]; current == registered {
+		delete(c.pending, key)
+	}
+}
+
 // SendAndWait sends a JSON payload and waits for a response matching the
 // given request ID. Returns the raw d2d event data JSON.
 func (c *connection) SendAndWait(ctx context.Context, payload []byte, requestID string, timeout time.Duration) (json.RawMessage, error) {
-	ch := make(chan json.RawMessage, 1)
-
-	c.pendingMu.Lock()
-	c.pending[requestID] = ch
-	c.pendingMu.Unlock()
-
-	defer func() {
-		c.pendingMu.Lock()
-		delete(c.pending, requestID)
-		c.pendingMu.Unlock()
-	}()
+	ch, cleanup, err := c.registerPending(requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
 
 	if err := c.Send(ctx, payload); err != nil {
 		return nil, err
 	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 
 	select {
 	case data, ok := <-ch:
@@ -63,17 +88,11 @@ func (c *connection) SendAndWait(ctx context.Context, payload []byte, requestID 
 			return nil, ErrNotConnected
 		}
 		return data, nil
-	case <-time.After(timeout):
+	case <-timer.C:
 		return nil, fmt.Errorf("%w: waiting for response %s", ErrTimeout, requestID)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-}
-
-// SendAndWaitEvent sends a payload and waits for a response matching
-// a specific event name (e.g. "image_added") instead of a request ID.
-func (c *connection) SendAndWaitEvent(ctx context.Context, payload []byte, eventName string, timeout time.Duration) (json.RawMessage, error) {
-	return c.SendAndWait(ctx, payload, eventName, timeout)
 }
 
 // Send writes a JSON text message to the WebSocket.
@@ -85,7 +104,7 @@ func (c *connection) Send(ctx context.Context, payload []byte) error {
 		return ErrNotConnected
 	}
 
-	c.logger.Debug("WS SEND", "payload", string(payload))
+	c.logger.Debug("sending WebSocket message", "bytes", len(payload))
 	return c.conn.Write(ctx, websocket.MessageText, payload)
 }
 
@@ -94,7 +113,7 @@ func (c *connection) formatURL(token string) string {
 	b64Name := base64.StdEncoding.EncodeToString([]byte(c.name))
 	u := url.URL{
 		Scheme: "wss",
-		Host:   fmt.Sprintf("%s:%d", c.host, c.port),
+		Host:   net.JoinHostPort(c.host, fmt.Sprint(c.port)),
 		Path:   fmt.Sprintf("/api/v2/channels/%s", c.endpoint),
 	}
 	q := u.Query()
@@ -107,31 +126,30 @@ func (c *connection) formatURL(token string) string {
 }
 
 // readToken reads the saved auth token from the token file.
-func (c *connection) readToken() string {
-	data, err := os.ReadFile(c.tokenFile)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
+func (c *connection) readToken() (string, error) {
+	return loadAuthenticationToken(c.tokenFile)
 }
 
-// extractAndSaveToken pulls the token from a ms.channel.connect response
-// and writes it to the token file.
-func (c *connection) extractAndSaveToken(data json.RawMessage) {
+// extractAndSaveToken pulls the token from a ms.channel.connect response and
+// publishes it durably with sensitive permissions.
+func (c *connection) extractAndSaveToken(ctx context.Context, data json.RawMessage) error {
 	var d struct {
 		Token string `json:"token"`
 	}
 	if err := json.Unmarshal(data, &d); err != nil {
-		c.logger.Debug("failed to parse token from data", "error", err, "data", string(data))
-		return
+		c.logger.Debug("failed to parse token from handshake", "error", err)
+		return nil
 	}
 	if d.Token == "" {
-		c.logger.Debug("token field is empty in handshake data", "data", string(data))
-		return
+		c.logger.Debug("token field is empty in handshake data")
+		return nil
 	}
-
-	c.logger.Info("new auth token received", "token", d.Token[:min(len(d.Token), 8)]+"...")
-	if err := os.WriteFile(c.tokenFile, []byte(d.Token), 0o600); err != nil {
-		c.logger.Error("failed to save token", "error", err, "file", c.tokenFile)
+	if c.persistToken == nil {
+		return errors.New("token persistence is not configured")
 	}
+	if err := c.persistToken(ctx, c.tokenFile, d.Token); err != nil {
+		return fmt.Errorf("save authentication token: %w", err)
+	}
+	c.logger.Info("new authentication token saved")
+	return nil
 }

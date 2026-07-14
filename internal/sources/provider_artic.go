@@ -96,7 +96,7 @@ func (p *articProvider) FetchPhoto(ctx context.Context, id string) (string, erro
 	}
 
 	if result.Data.ImageID == "" {
-		return "", fmt.Errorf("artwork %s has no image_id", id)
+		return "", fmt.Errorf("artwork has no image_id")
 	}
 
 	return p.iiifImageURL(result.Data.ImageID), nil
@@ -105,7 +105,7 @@ func (p *articProvider) FetchPhoto(ctx context.Context, id string) (string, erro
 func (p *articProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 3 {
-		return nil, fmt.Errorf("invalid art_institute_of_chicago format: %s", line)
+		return nil, fmt.Errorf("invalid art_institute_of_chicago format")
 	}
 
 	var urls []string
@@ -121,7 +121,7 @@ func (p *articProvider) Resolve(ctx context.Context, line string, globalIndex *i
 		}
 		err = fetchErr
 	default:
-		return nil, fmt.Errorf("unknown artic type: %s", parts[1])
+		return nil, fmt.Errorf("unknown artic type")
 	}
 
 	if err != nil {

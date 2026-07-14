@@ -4,24 +4,35 @@ package sources
 
 import (
 	"bufio"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	_ "image/jpeg"
 	_ "image/png"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 	"gopkg.in/yaml.v3"
 )
 
+const maxSourcesManifestBytes int64 = 4 << 20
+
 const (
-	extJPG = ".jpg"
-	extPNG = ".png"
+	extJPG      = ".jpg"
+	extPNG      = ".png"
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
 
 	cmdPhoto  = "photo"
 	cmdSearch = "search"
@@ -32,30 +43,40 @@ const (
 	defaultDownloadCapBytes = 100 * bytesPerMB
 
 	userAgent = "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)"
-
-	// maxConcurrentSourceLines caps simultaneous source-line processing so we
-	// don't trip provider rate limits with a burst of parallel requests.
-	maxConcurrentSourceLines = 5
 )
 
 // Loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
 type Loader struct {
-	cfg                *config.Config
-	sourcesFile        string
-	artworkDir         string
-	logger             *slog.Logger
-	client             *http.Client
-	providers          []SourceProvider
-	maxImages          int
-	maxSizeMB          int
-	index              *ArtworkCatalog
-	lastSourcesModTime time.Time
-	cachedUrls         []string
+	cfg               *config.Config
+	sourcesFile       string
+	artworkDir        string
+	logger            *slog.Logger
+	client            *http.Client
+	providers         []SourceProvider
+	maxImages         int
+	maxSizeMB         int
+	index             *ArtworkCatalog
+	importer          CollectionImporter
+	lastSourcesDigest [sha256.Size]byte
+	hasSourcesDigest  bool
+	cachedUrls        []string
+}
+
+// CollectionImporter is the narrow collection seam used to transactionally
+// publish a validated source download. The source module never writes a final
+// artwork path directly.
+type CollectionImporter interface {
+	Import(context.Context, collection.ImportRequest) (collection.Snapshot, error)
 }
 
 // NewLoader creates a new sources loader from application config.
-func NewLoader(cfg *config.Config, logger *slog.Logger, index *ArtworkCatalog) *Loader {
+func NewLoader(
+	cfg *config.Config,
+	logger *slog.Logger,
+	index *ArtworkCatalog,
+	importer CollectionImporter,
+) *Loader {
 	if index == nil {
 		index = NewArtworkCatalog(cfg.ArtworkDir, logger)
 	}
@@ -81,17 +102,8 @@ func NewLoader(cfg *config.Config, logger *slog.Logger, index *ArtworkCatalog) *
 		},
 		providers: providers,
 		index:     index,
+		importer:  importer,
 	}
-}
-
-// Provider returns a registered source provider by name.
-func (l *Loader) Provider(name string) SourceProvider {
-	for _, p := range l.providers {
-		if p.Name() == name {
-			return p
-		}
-	}
-	return nil
 }
 
 // resolveProvider returns the first provider that can handle a source line.
@@ -105,42 +117,35 @@ func (l *Loader) resolveProvider(line string) SourceProvider {
 }
 
 // loadSources reads the sources file (TXT or YAML) and returns a list of source strings.
-func (l *Loader) loadSources() ([]string, error) {
-	info, statErr := os.Stat(l.sourcesFile)
-	if statErr == nil {
-		if info.ModTime().Equal(l.lastSourcesModTime) && l.cachedUrls != nil {
-			return l.cachedUrls, nil
-		}
-		l.lastSourcesModTime = info.ModTime()
+func (l *Loader) loadSources(ctx context.Context) ([]string, error) {
+	data, err := l.readSourcesManifest(ctx)
+	if err != nil || data == nil {
+		return nil, err
+	}
+	digest := sha256.Sum256(data)
+	if l.hasSourcesDigest && digest == l.lastSourcesDigest && l.cachedUrls != nil {
+		return append([]string(nil), l.cachedUrls...), nil
 	}
 
 	var urls []string
-	var err error
 	ext := strings.ToLower(filepath.Ext(l.sourcesFile))
 	if ext == ".yaml" || ext == ".yml" {
-		urls, err = l.loadYamlSources()
+		urls, err = parseYamlSources(data)
 	} else {
-		urls, err = l.loadTxtSources()
+		urls, err = parseTxtSources(data)
 	}
 
 	if err == nil {
-		l.cachedUrls = urls
+		l.cachedUrls = append([]string(nil), urls...)
+		l.lastSourcesDigest = digest
+		l.hasSourcesDigest = true
 	}
 	return urls, err
 }
 
-func (l *Loader) loadTxtSources() ([]string, error) {
-	f, err := os.Open(l.sourcesFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
+func parseTxtSources(data []byte) ([]string, error) {
 	var urls []string
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -151,24 +156,8 @@ func (l *Loader) loadTxtSources() ([]string, error) {
 	return urls, scanner.Err()
 }
 
-func (l *Loader) loadYamlSources() ([]string, error) {
-	data, err := os.ReadFile(l.sourcesFile)
-	if err != nil {
-		return nil, err
-	}
-
-	var urls []string
-
-	// Try structured format with "providers" map (DRY)
-	var dry struct {
-		Providers map[string][]string `yaml:"providers"`
-	}
-	if err := yaml.Unmarshal(data, &dry); err == nil && len(dry.Providers) > 0 {
-		for provider, commands := range dry.Providers {
-			for _, cmd := range commands {
-				urls = append(urls, fmt.Sprintf("%s:%s", provider, cmd))
-			}
-		}
+func parseYamlSources(data []byte) ([]string, error) {
+	if urls, ok := decodeProviderSources(data); ok {
 		return urls, nil
 	}
 
@@ -187,6 +176,40 @@ func (l *Loader) loadYamlSources() ([]string, error) {
 	}
 
 	return nil, fmt.Errorf("invalid YAML sources format (expected 'providers:' map or 'sources:' list)")
+}
+
+func (l *Loader) readSourcesManifest(ctx context.Context) ([]byte, error) {
+	data, err := durablefs.ReadStable(ctx, l.sourcesFile, durablefs.StableReadOptions{MaxBytes: maxSourcesManifestBytes})
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read sources manifest: %w", err)
+	}
+	return data, nil
+}
+
+func decodeProviderSources(data []byte) ([]string, bool) {
+	var dry struct {
+		Providers map[string][]string `yaml:"providers"`
+	}
+	if err := yaml.Unmarshal(data, &dry); err != nil || len(dry.Providers) == 0 {
+		return nil, false
+	}
+
+	providers := make([]string, 0, len(dry.Providers))
+	for provider := range dry.Providers {
+		providers = append(providers, provider)
+	}
+	sort.Strings(providers)
+
+	var urls []string
+	for _, provider := range providers {
+		for _, command := range dry.Providers[provider] {
+			urls = append(urls, fmt.Sprintf("%s:%s", provider, command))
+		}
+	}
+	return urls, true
 }
 
 // deduplicateStrings returns a new slice containing only unique strings from the input.

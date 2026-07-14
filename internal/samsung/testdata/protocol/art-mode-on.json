@@ -1,0 +1,6 @@
+{
+  "event": "get_artmode_status",
+  "request_id": "sanitized-request",
+  "id": "sanitized-request",
+  "value": "on"
+}

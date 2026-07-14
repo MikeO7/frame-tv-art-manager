@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"time"
@@ -26,10 +28,16 @@ type connConfig struct {
 	timeout       time.Duration
 	skipTLSVerify bool
 	logger        *slog.Logger
+	persistToken  func(context.Context, string, string) error
+	httpClient    *http.Client
 }
 
 // newConnection creates a new WebSocket connection manager.
 func newConnection(cfg connConfig) *connection {
+	persistToken := cfg.persistToken
+	if persistToken == nil {
+		persistToken = persistAuthenticationToken
+	}
 	return &connection{
 		host:          cfg.host,
 		port:          cfg.port,
@@ -39,6 +47,8 @@ func newConnection(cfg connConfig) *connection {
 		timeout:       cfg.timeout,
 		skipTLSVerify: cfg.skipTLSVerify,
 		logger:        cfg.logger,
+		persistToken:  persistToken,
+		httpClient:    cfg.httpClient,
 		pending:       make(map[string]chan json.RawMessage),
 	}
 }
@@ -48,11 +58,15 @@ func newConnection(cfg connConfig) *connection {
 const maxMessageSize = 16 * 1024 * 1024 // 16 MB
 
 func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, error) {
-	client := &http.Client{
-		Transport: &http.Transport{
-			//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
-		},
+	client := c.httpClient
+	if client == nil {
+		client = &http.Client{
+			Transport: &http.Transport{
+				//nolint:gosec // Samsung TVs use self-signed certs for local WSS.
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: c.skipTLSVerify},
+			},
+		}
+		defer client.CloseIdleConnections()
 	}
 
 	dialCtx, cancel := context.WithTimeout(ctx, c.timeout)
@@ -80,7 +94,6 @@ func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) er
 		return fmt.Errorf("read handshake: %w", err)
 	}
 
-	c.logger.Debug("handshake message received", "msg", string(msg))
 	var resp wsResponse
 	if err := json.Unmarshal(msg, &resp); err != nil {
 		return fmt.Errorf("parse handshake: %w", err)
@@ -88,7 +101,9 @@ func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) er
 
 	switch resp.Event {
 	case EventChannelConnect:
-		c.extractAndSaveToken(resp.Data)
+		if err := c.extractAndSaveToken(ctx, resp.Data); err != nil {
+			return err
+		}
 	case "ms.channel.unauthorized":
 		return ErrUnauthorized
 	case "ms.channel.timeOut":
@@ -127,9 +142,12 @@ func (c *connection) Open(ctx context.Context) error {
 		return nil // already connected
 	}
 
-	token := c.readToken()
+	token, err := c.readToken()
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("load authentication token: %w", err)
+	}
 	wsURL := c.formatURL(token)
-	c.logger.Debug("dialing WebSocket", "url", wsURL)
+	c.logger.Debug("dialing WebSocket", "endpoint", c.endpoint, "port", c.port)
 
 	conn, err := c.dial(ctx, wsURL)
 	if err != nil {
@@ -154,28 +172,35 @@ func (c *connection) Open(ctx context.Context) error {
 	//nolint:contextcheck,gosec // background reader goroutine intentionally uses its own long-lived context, not Open's transient handshake context
 	go c.recvLoop()
 
-	c.logger.Info("WebSocket connected", "endpoint", c.endpoint, "host", c.host)
+	c.logger.Info("WebSocket connected", "endpoint", c.endpoint)
 	return nil
 }
 
-// Close shuts down the WebSocket connection and waits for the recv loop to exit.
-func (c *connection) Close() error {
+// CloseContext shuts down the socket and bounds the background-reader join by
+// both the caller's deadline and the protocol shutdown grace period.
+func (c *connection) CloseContext(ctx context.Context) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.conn == nil {
+		c.mu.Unlock()
 		return nil
 	}
-
 	c.closed.Store(true)
-	err := c.conn.Close(websocket.StatusNormalClosure, "")
+	conn := c.conn
+	recvDone := c.recvDone
 	c.conn = nil
+	c.mu.Unlock()
 
-	if c.recvDone != nil {
+	err := conn.Close(websocket.StatusNormalClosure, "")
+
+	if recvDone != nil {
+		timer := time.NewTimer(recvLoopShutdownGrace)
+		defer timer.Stop()
 		select {
-		case <-c.recvDone:
-		case <-time.After(recvLoopShutdownGrace):
+		case <-recvDone:
+		case <-timer.C:
 			c.logger.Debug("recv loop did not exit quickly, continuing", "endpoint", c.endpoint)
+		case <-ctx.Done():
+			err = errors.Join(err, ctx.Err())
 		}
 	}
 

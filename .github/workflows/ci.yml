@@ -84,7 +84,7 @@ jobs:
         run: go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
 
   # Keep vulnerability scanning blocking, but isolate it from test CPU and
-  # memory contention. Race testing runs separately on a scheduled/manual lane.
+  # memory contention. Race testing runs in its own required pull-request lane.
   security:
     name: Security
     runs-on: ubuntu-latest

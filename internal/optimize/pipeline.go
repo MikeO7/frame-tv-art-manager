@@ -73,11 +73,11 @@ func (o *optContext) recordRename(oldName, newName string) {
 	}
 }
 
-// Worker-pool bounds: enough parallelism to saturate disk + CPU on typical
-// hosts without oversubscribing on very large machines.
+// Full-resolution decodes are serialized. Pixel-level work remains bounded by
+// the shared Controller, avoiding multiple 4K image buffers in memory.
 const (
-	minOptimizeWorkers = 4
-	maxOptimizeWorkers = 16
+	minOptimizeWorkers = 1
+	maxOptimizeWorkers = 1
 )
 
 // OptimizeCatalog resizes, validates, and (optionally) collages the catalog's
@@ -107,7 +107,9 @@ func OptimizeCatalog(
 	//
 	// Remote source images (Unsplash, NASA, etc.) default to crop mode and are
 	// excluded from auto-collage unless PORTRAIT_MODE=collage is set.
+	//nolint:contextcheck // the batch carries this exact context into every collage filesystem operation
 	collageErr := processCollages(collageBatch{
+		ctx:            ctx,
 		artworkDir:     artworkDir,
 		localFiles:     localFiles,
 		cfg:            cfg,
@@ -165,7 +167,7 @@ func runOptimizeWorkers(ctx context.Context, jobs <-chan string, o *optContext, 
 					return
 				default:
 				}
-				if wasModified, ok := handleSingleOptimization(filename, o); ok && wasModified {
+				if wasModified, ok := handleSingleOptimizationContext(ctx, filename, o); ok && wasModified {
 					atomic.AddInt64(optimizedCount, 1)
 				}
 			}
@@ -185,7 +187,7 @@ func clampWorkers(n int) int {
 	return n
 }
 
-func handleSingleOptimization(filename string, o *optContext) (bool, bool) {
+func handleSingleOptimizationContext(ctx context.Context, filename string, o *optContext) (bool, bool) {
 	path := filepath.Join(o.artworkDir, filename)
 
 	if !o.cfg.Enabled {
@@ -197,7 +199,7 @@ func handleSingleOptimization(filename string, o *optContext) (bool, bool) {
 		return false, true
 	}
 
-	newFilename, modified, err := OptimizeFile(path, o.cfg, o.logger)
+	newFilename, modified, err := optimizeFile(ctx, path, o.cfg, o.logger, defaultPixelWorkers())
 	if err != nil {
 		o.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
 		o.recordDelete(filename)

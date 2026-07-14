@@ -1,9 +1,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"math"
+	"net"
 	"os"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -11,155 +14,25 @@ import (
 // Load reads configuration from environment variables, applies defaults,
 // and validates the result. Returns an error if required values are missing
 // or constraints are violated.
-//
-// Example:
-//
-//	cfg, err := config.Load()
-//	if err != nil {
-//	    log.Fatal("Invalid configuration:", err)
-//	}
-//	fmt.Println("Artwork directory:", cfg.ArtworkDir)
 func Load() (*Config, error) {
-	cfg := loadDefaults()
-
-	for _, parse := range []func(*Config) error{
-		parseTVIPs,
-		parseManualBrightness,
-		parseSolarCoordinates,
-	} {
-		if err := parse(cfg); err != nil {
-			return nil, err
-		}
-	}
-
-	cfg.SlideshowOverride = slideshowOverridden()
-
-	if err := validate(cfg); err != nil {
-		return nil, err
-	}
-	return cfg, nil
+	cfg, _, err := LoadWithWarnings()
+	return cfg, err
 }
 
-// loadDefaults builds a Config from environment variables, falling back to
-// documented defaults. It performs no validation and never fails; dynamic
-// fields that can error (IPs, coordinates) are parsed by dedicated helpers.
-func loadDefaults() *Config {
-	return &Config{
-		ArtworkDir:        envStr("ARTWORK_DIR", "/data/artwork"),
-		MaxArtworkImages:  envInt("MAX_ARTWORK_IMAGES", 0),
-		MaxDownloadSizeMB: envInt("MAX_DOWNLOAD_SIZE_MB", 20),
-		TokenDir:          envStr("TOKEN_DIR", "/data/tokens"),
-		SyncIntervalMin:   envInt("SYNC_INTERVAL_MINUTES", 5),
-		MatteStyle:        envStr("MATTE_STYLE", "none"),
-		ClientName:        envStr("CLIENT_NAME", "Frame Art Manager"),
-		DryRun:            envBool("DRY_RUN"),
-		LogLevel:          strings.ToLower(envStr("LOG_LEVEL", "info")),
-
-		SlideshowEnabled:  envBool("SLIDESHOW_ENABLED"),
-		SlideshowInterval: envInt("SLIDESHOW_INTERVAL", 15),
-		SlideshowType:     strings.ToLower(envStr("SLIDESHOW_TYPE", "shuffle")),
-
-		SolarEnabled:        envBool("SOLAR_BRIGHTNESS_ENABLED"),
-		Timezone:            envStr("LOCATION_TIMEZONE", "UTC"),
-		BrightnessMin:       envInt("BRIGHTNESS_MIN", 2),
-		BrightnessMax:       envInt("BRIGHTNESS_MAX", 10),
-		RemoveUnknownImages: envBool("REMOVE_UNKNOWN_IMAGES"),
-		AutoOffTime:         envStr("AUTO_OFF_TIME", ""),
-		AutoOffGraceHours:   envFloat("AUTO_OFF_GRACE_HOURS", 2),
-		TVMAC:               envStr("TV_MAC", ""),
-		EnableRESTGate:      envBool("ENABLE_REST_GATE"),
-		// SKIP_TLS_VERIFY, when true, forces verification off regardless of VERIFY_TLS.
-		VerifyTLS:           envBool("VERIFY_TLS") && !envBool("SKIP_TLS_VERIFY"),
-		SourcesFile:         envStr("ARTWORK_SOURCES_FILE", ""),
-		UnsplashAppID:       envStr("UNSPLASH_APP_ID", ""),
-		UnsplashAccessKey:   envStr("UNSPLASH_ACCESS_KEY", ""),
-		UnsplashSecretKey:   envStr("UNSPLASH_SECRET_KEY", ""),
-		NasaAPIKey:          envStr("NASA_API_KEY", "DEMO_KEY"),
-		PexelsAPIKey:        envStr("PEXELS_API_KEY", ""),
-		PixabayAPIKey:       envStr("PIXABAY_API_KEY", ""),
-		OptimizeEnabled:     envBoolWithDefault("IMAGE_OPTIMIZE_ENABLED", true),
-		SmartCropEnabled:    envBoolWithDefault("SMART_CROP_ENABLED", false),
-		OptimizeMaxWidth:    envInt("IMAGE_MAX_WIDTH", 3840),
-		OptimizeMaxHeight:   envInt("IMAGE_MAX_HEIGHT", 2160),
-		OptimizeJPEGQuality: envInt("IMAGE_JPEG_QUALITY", 95),
-		MuseumModeEnabled:   envBoolWithDefault("IMAGE_MUSEUM_MODE", false),
-		MuseumModeIntensity: envInt("IMAGE_MUSEUM_INTENSITY", 5),
-		HealthPort:          envInt("HEALTH_PORT", 8080),
-		UploadEnabled:       envBool("UPLOAD_ENABLED"),
-		ConnectionTimeout:   time.Duration(envInt("CONNECTION_TIMEOUT_SECONDS", 60)) * time.Second,
-		APITimeout:          time.Duration(envInt("API_TIMEOUT_SECONDS", 60)) * time.Second,
-		UploadDelay:         time.Duration(envInt("UPLOAD_DELAY_MS", 3000)) * time.Millisecond,
-		UploadAttempts:      envInt("UPLOAD_ATTEMPTS", 3),
-		GateTimeout:         time.Duration(envInt("GATE_TIMEOUT_MS", 10000)) * time.Millisecond,
-		PUID:                envInt("PUID", 0),
-		PGID:                envInt("PGID", 0),
-		PortraitMode:        strings.ToLower(envStr("PORTRAIT_MODE", "crop")),
-	}
-}
-
-// parseTVIPs extracts the required, comma-separated TV_IPS list, trimming
-// whitespace and rejecting an empty result.
-func parseTVIPs(cfg *Config) error {
-	raw := os.Getenv("TV_IPS")
-	if raw == "" {
-		return fmt.Errorf("TV_IPS environment variable is required")
-	}
-	for _, ip := range strings.Split(raw, ",") {
-		if ip = strings.TrimSpace(ip); ip != "" {
-			cfg.TVIPs = append(cfg.TVIPs, ip)
-		}
-	}
-	if len(cfg.TVIPs) == 0 {
-		return fmt.Errorf("TV_IPS must contain at least one non-empty IP address")
-	}
-	return nil
-}
-
-// parseManualBrightness reads the optional BRIGHTNESS override into a pointer
-// so an explicit value is distinguishable from "unset".
-func parseManualBrightness(cfg *Config) error {
-	v := os.Getenv("BRIGHTNESS")
-	if v == "" {
-		return nil
-	}
-	b, err := strconv.Atoi(v)
-	if err != nil {
-		return fmt.Errorf("invalid BRIGHTNESS value %q: %w", v, err)
-	}
-	cfg.ManualBrightness = &b
-	return nil
-}
-
-// parseSolarCoordinates reads optional latitude/longitude overrides. Presence
-// is enforced later by validate when solar brightness is enabled.
-func parseSolarCoordinates(cfg *Config) error {
-	if v := os.Getenv("LOCATION_LATITUDE"); v != "" {
-		lat, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return fmt.Errorf("invalid LOCATION_LATITUDE %q: %w", v, err)
-		}
-		cfg.Latitude = &lat
-	}
-	if v := os.Getenv("LOCATION_LONGITUDE"); v != "" {
-		lon, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return fmt.Errorf("invalid LOCATION_LONGITUDE %q: %w", v, err)
-		}
-		cfg.Longitude = &lon
-	}
-	return nil
-}
-
-// slideshowOverridden reports whether any slideshow env var was explicitly set,
-// in which case the manager overrides the TV's current slideshow settings.
-func slideshowOverridden() bool {
-	return os.Getenv("SLIDESHOW_ENABLED") != "" ||
-		os.Getenv("SLIDESHOW_INTERVAL") != "" ||
-		os.Getenv("SLIDESHOW_TYPE") != ""
+// LoadWithWarnings reads and validates the process environment and returns
+// compatibility warnings for the composition root to report.
+func LoadWithWarnings() (*Config, []Warning, error) {
+	return LoadEnviron(os.Environ())
 }
 
 // validate enforces cross-field constraints and enumerated value membership.
 func validate(cfg *Config) error {
+	if err := validateRanges(cfg); err != nil {
+		return err
+	}
+	if err := validateLocations(cfg); err != nil {
+		return err
+	}
 	if cfg.BrightnessMin >= cfg.BrightnessMax {
 		return fmt.Errorf(
 			"BRIGHTNESS_MIN (%d) must be less than BRIGHTNESS_MAX (%d)",
@@ -172,7 +45,31 @@ func validate(cfg *Config) error {
 			"LOCATION_LATITUDE and LOCATION_LONGITUDE are required when SOLAR_BRIGHTNESS_ENABLED=true",
 		)
 	}
+	if err := validateSecuritySettings(cfg); err != nil {
+		return err
+	}
+	return validateEnums(cfg)
+}
 
+func validateSecuritySettings(cfg *Config) error {
+	if cfg.UploadEnabled && len(cfg.UploadToken) < 16 {
+		return fmt.Errorf("UPLOAD_TOKEN must contain at least 16 characters when UPLOAD_ENABLED=true")
+	}
+	if cfg.SourcesFile == "" {
+		return nil
+	}
+	switch strings.ToLower(filepath.Ext(cfg.SourcesFile)) {
+	case ".jpg", ".jpeg", ".png":
+		return fmt.Errorf("ARTWORK_SOURCES_FILE must not use a supported artwork extension")
+	default:
+		return nil
+	}
+}
+
+func validateEnums(cfg *Config) error {
+	if !supportedSlideshowInterval(cfg.SlideshowInterval) {
+		return fmt.Errorf("SLIDESHOW_INTERVAL must be one of 3, 15, 60, 720, or 1440; got %d", cfg.SlideshowInterval)
+	}
 	switch cfg.SlideshowType {
 	case "shuffle", "sequential":
 	default:
@@ -192,4 +89,132 @@ func validate(cfg *Config) error {
 	}
 
 	return nil
+}
+
+func supportedSlideshowInterval(value int) bool {
+	switch value {
+	case 3, 15, 60, 720, 1440:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizePaths(cfg *Config) error {
+	paths := []*string{&cfg.ArtworkDir, &cfg.TokenDir}
+	if cfg.SourcesFile != "" {
+		paths = append(paths, &cfg.SourcesFile)
+	}
+	for _, path := range paths {
+		absolute, err := filepath.Abs(*path)
+		if err != nil {
+			return fmt.Errorf("normalize path %q: %w", *path, err)
+		}
+		*path = filepath.Clean(absolute)
+	}
+	return nil
+}
+
+func validateRanges(cfg *Config) error {
+	tests := []struct {
+		valid bool
+		name  string
+	}{
+		{cfg.MaxArtworkImages >= 0, "MAX_ARTWORK_IMAGES must be non-negative"},
+		{cfg.MaxArtworkImages <= 100_000, "MAX_ARTWORK_IMAGES must not exceed 100000"},
+		{between(cfg.MaxDownloadSizeMB, 1, 100), "MAX_DOWNLOAD_SIZE_MB must be between 1 and 100"},
+		{between(cfg.SyncIntervalMin, 1, 43_200), "SYNC_INTERVAL_MINUTES must be between 1 and 43200"},
+		{cfg.ShutdownTimeout > 0 && cfg.ShutdownTimeout <= 10*time.Minute, "SHUTDOWN_TIMEOUT_SECONDS must be between 1 and 600"},
+		{between(cfg.SlideshowInterval, 1, 1440), "SLIDESHOW_INTERVAL must be between 1 and 1440"},
+		{cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours <= 168, "AUTO_OFF_GRACE_HOURS must be between 0 and 168"},
+		{between(cfg.OptimizeMaxWidth, 1, 16384), "IMAGE_MAX_WIDTH must be between 1 and 16384"},
+		{between(cfg.OptimizeMaxHeight, 1, 16384), "IMAGE_MAX_HEIGHT must be between 1 and 16384"},
+		{between(cfg.OptimizeJPEGQuality, 1, 100), "IMAGE_JPEG_QUALITY must be between 1 and 100"},
+		{between(cfg.MuseumModeIntensity, 1, 10), "IMAGE_MUSEUM_INTENSITY must be between 1 and 10"},
+		{between(cfg.HealthPort, 0, 65535), "HEALTH_PORT must be between 0 and 65535"},
+		{cfg.ConnectionTimeout > 0 && cfg.ConnectionTimeout <= 10*time.Minute, "CONNECTION_TIMEOUT_SECONDS must be between 1 and 600"},
+		{cfg.APITimeout > 0 && cfg.APITimeout <= 30*time.Minute, "API_TIMEOUT_SECONDS must be between 1 and 1800"},
+		{cfg.UploadDelay >= 0 && cfg.UploadDelay <= 5*time.Minute, "UPLOAD_DELAY_MS must be between 0 and 300000"},
+		{between(cfg.UploadAttempts, 1, 10), "UPLOAD_ATTEMPTS must be between 1 and 10"},
+		{cfg.GateTimeout > 0 && cfg.GateTimeout <= time.Minute, "GATE_TIMEOUT_MS must be between 1 and 60000"},
+		{cfg.PUID >= 0, "PUID must be non-negative"},
+		{cfg.PGID >= 0, "PGID must be non-negative"},
+	}
+	for _, test := range tests {
+		if !test.valid {
+			return errors.New(test.name)
+		}
+	}
+	return validateBrightnessRanges(cfg)
+}
+
+func validateBrightnessRanges(cfg *Config) error {
+	if cfg.ManualBrightness != nil && (*cfg.ManualBrightness < 0 || *cfg.ManualBrightness > 50) {
+		return fmt.Errorf("BRIGHTNESS must be between 0 and 50")
+	}
+	if cfg.BrightnessMin < 0 || cfg.BrightnessMax > 50 {
+		return fmt.Errorf("BRIGHTNESS_MIN and BRIGHTNESS_MAX must be between 0 and 50")
+	}
+	return nil
+}
+
+func validateLocations(cfg *Config) error {
+	if err := validateAddresses(cfg); err != nil {
+		return err
+	}
+	if err := validateCoordinates(cfg); err != nil {
+		return err
+	}
+	if _, err := time.LoadLocation(cfg.Timezone); err != nil {
+		return fmt.Errorf("LOCATION_TIMEZONE %q: %w", cfg.Timezone, err)
+	}
+	if cfg.AutoOffTime != "" {
+		if _, err := time.Parse("15:04", cfg.AutoOffTime); err != nil {
+			return fmt.Errorf("AUTO_OFF_TIME %q: %w", cfg.AutoOffTime, err)
+		}
+	}
+	if cfg.TVMAC != "" {
+		if _, err := net.ParseMAC(cfg.TVMAC); err != nil {
+			return fmt.Errorf("TV_MAC %q: %w", cfg.TVMAC, err)
+		}
+	}
+	return nil
+}
+
+func validateAddresses(cfg *Config) error {
+	if net.ParseIP(cfg.HealthBindAddress) == nil {
+		return fmt.Errorf("HEALTH_BIND_ADDRESS must be an IP address")
+	}
+	seen := make(map[string]struct{}, len(cfg.TVIPs))
+	for index, address := range cfg.TVIPs {
+		parsed := net.ParseIP(address)
+		if parsed == nil {
+			return fmt.Errorf("TV_IPS contains invalid IP address %q", address)
+		}
+		canonical := parsed.String()
+		if _, duplicate := seen[canonical]; duplicate {
+			return fmt.Errorf("TV_IPS contains duplicate address %q", canonical)
+		}
+		seen[canonical] = struct{}{}
+		cfg.TVIPs[index] = canonical
+	}
+	return nil
+}
+
+func validateCoordinates(cfg *Config) error {
+	if cfg.Latitude != nil && (!isFinite(*cfg.Latitude) || *cfg.Latitude < -90 || *cfg.Latitude > 90) {
+		return fmt.Errorf("LOCATION_LATITUDE must be between -90 and 90")
+	}
+	if cfg.Longitude != nil && (!isFinite(*cfg.Longitude) || *cfg.Longitude < -180 || *cfg.Longitude > 180) {
+		return fmt.Errorf("LOCATION_LONGITUDE must be between -180 and 180")
+	}
+	return nil
+}
+
+func isFinite(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func between(value, minimum, maximum int) bool {
+	return value >= minimum && value <= maximum
 }

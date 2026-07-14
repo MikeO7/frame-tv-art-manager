@@ -3,7 +3,9 @@ package sources
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 )
 
@@ -21,7 +23,7 @@ type providerJSONRequest struct {
 func fetchProviderJSON(ctx context.Context, request providerJSONRequest, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, request.url, nil)
 	if err != nil {
-		return fmt.Errorf("create %s request: %w", request.statusLabel, err)
+		return providerRequestError(ctx, "create "+request.statusLabel, err)
 	}
 	for name, value := range request.headers {
 		req.Header.Set(name, value)
@@ -29,7 +31,7 @@ func fetchProviderJSON(ctx context.Context, request providerJSONRequest, out any
 
 	resp, err := request.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request %s: %w", request.statusLabel, err)
+		return providerRequestError(ctx, "request "+request.statusLabel, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -42,4 +44,15 @@ func fetchProviderJSON(ctx context.Context, request providerJSONRequest, out any
 		return fmt.Errorf("decode %s response: %w", request.decodeLabel, err)
 	}
 	return nil
+}
+
+func providerRequestError(ctx context.Context, operation string, err error) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return fmt.Errorf("%s: %w", operation, contextErr)
+	}
+	var networkErr net.Error
+	if errors.As(err, &networkErr) {
+		return fmt.Errorf("%s failed (network timeout=%t)", operation, networkErr.Timeout())
+	}
+	return fmt.Errorf("%s failed", operation)
 }

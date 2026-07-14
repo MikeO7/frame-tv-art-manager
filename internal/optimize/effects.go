@@ -3,15 +3,9 @@ package optimize
 import (
 	"image"
 	std_draw "image/draw"
-	"sync"
 
 	"golang.org/x/image/draw"
 )
-
-// pixelWorkers is the fixed goroutine count used to partition per-pixel image
-// kernels by row. Eight maps well to common multi-core CPUs without the
-// overhead of spawning one goroutine per core on very large machines.
-const pixelWorkers = 8
 
 // toRGBA converts any image type to a standard RGBA image for processing.
 // This also serves as a color normalization step, flattening different
@@ -63,32 +57,30 @@ func cropRectForAspect(src *image.RGBA, targetAspect float64, smart bool) image.
 }
 
 // dither applies a subtle random jitter to pixel values to break up banding in gradients.
-//
-//nolint:gocognit,funlen // per-pixel xorshift jitter + channel clamps kept inline across goroutine-partitioned rows to avoid call overhead
 func dither(src *image.RGBA) *image.RGBA {
+	return ditherWithWorkers(src, defaultPixelWorkers())
+}
+
+//nolint:gocognit // per-pixel xorshift jitter + channel clamps kept inline across bounded row partitions to avoid call overhead
+func ditherWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	var wg sync.WaitGroup
-	workers := pixelWorkers
-	chunk := (height + workers - 1) / workers
+	chunk := (height + pixelPartitions - 1) / pixelPartitions
 	stride := src.Stride
 	pix := src.Pix
 
-	for i := 0; i < workers; i++ {
+	runPixelTasks(workerLimit, func(i int) {
 		startY := i * chunk
 		endY := startY + chunk
 		if endY > height {
 			endY = height
 		}
 		if startY >= height {
-			break
+			return
 		}
 
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
-
+		func(sy, ey int) {
 			// Fast thread-local PRNG (Xorshift32)
 			state := uint32(sy + 1) //nolint:gosec // Seed based on row
 
@@ -134,15 +126,17 @@ func dither(src *image.RGBA) *image.RGBA {
 				}
 			}
 		}(startY, endY)
-	}
-	wg.Wait()
+	})
 	return src
 }
 
 // sharpen applies a high-performance 3x3 sharpening kernel to the image.
-//
-//nolint:gocyclo,gocognit,funlen // Highly optimized, performance-critical loops are manually unrolled
 func sharpen(src *image.RGBA) *image.RGBA {
+	return sharpenWithWorkers(src, defaultPixelWorkers())
+}
+
+//nolint:gocyclo,gocognit,funlen // performance-critical kernel is manually unrolled across bounded row partitions
+func sharpenWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 	bounds := src.Bounds()
 	dst := image.NewRGBA(bounds)
 	width, height := bounds.Dx(), bounds.Dy()
@@ -152,9 +146,7 @@ func sharpen(src *image.RGBA) *image.RGBA {
 		return dst
 	}
 
-	var wg sync.WaitGroup
-	workers := pixelWorkers
-	chunk := (height - 2) / workers
+	chunk := (height - 2) / pixelPartitions
 	if chunk == 0 {
 		chunk = 1
 	}
@@ -164,19 +156,17 @@ func sharpen(src *image.RGBA) *image.RGBA {
 	dstStride := dst.Stride
 	dstPix := dst.Pix
 
-	for i := 0; i < workers; i++ {
+	runPixelTasks(workerLimit, func(i int) {
 		startY := 1 + i*chunk
 		endY := startY + chunk
-		if i == workers-1 {
+		if i == pixelPartitions-1 {
 			endY = height - 1
 		}
 		if startY >= height-1 {
-			break
+			return
 		}
 
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
+		func(sy, ey int) {
 			for y := sy; y < ey; y++ {
 				srcOffset := y * srcStride
 				dstOffset := y * dstStride
@@ -223,8 +213,7 @@ func sharpen(src *image.RGBA) *image.RGBA {
 				}
 			}
 		}(startY, endY)
-	}
-	wg.Wait()
+	})
 
 	// Copy borders
 	for x := 0; x < width; x++ {

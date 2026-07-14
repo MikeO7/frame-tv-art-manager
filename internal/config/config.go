@@ -29,6 +29,9 @@ type Config struct {
 	// SyncIntervalMin is the number of minutes between sync cycles.
 	SyncIntervalMin int
 
+	// ShutdownTimeout bounds graceful shutdown of application children and resources.
+	ShutdownTimeout time.Duration
+
 	// MatteStyle is the matte/border style applied to uploaded artwork.
 	// Use "none" for full-screen, or "style_color" (e.g. "shadowbox_polar").
 	MatteStyle string
@@ -166,9 +169,13 @@ type Config struct {
 	// HealthPort is the HTTP port for /health and /status endpoints.
 	// 0 disables the health server.
 	HealthPort int
+	// HealthBindAddress is the local IP address used by the HTTP listener.
+	HealthBindAddress string
 
 	// UploadEnabled enables the HTTP upload endpoint on the health server when true.
 	UploadEnabled bool
+	// UploadToken is the HTTP Basic-auth password for the upload endpoint.
+	UploadToken string
 
 	// --- Timeouts ---
 
@@ -178,10 +185,12 @@ type Config struct {
 	// APITimeout is the max time to wait for art API responses.
 	APITimeout time.Duration
 
-	// UploadDelay is the pause between consecutive image uploads.
+	// UploadDelay is the pause between consecutive TV mutations. The legacy
+	// environment name is retained for compatibility.
 	UploadDelay time.Duration
 
-	// UploadAttempts is how many times to retry a failed upload.
+	// UploadAttempts bounds retries proven not to have reached the TV. Ambiguous
+	// or definitely applied outcomes are never retried.
 	UploadAttempts int
 
 	// GateTimeout is the HTTP timeout for the REST gate probe.

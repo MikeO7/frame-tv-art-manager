@@ -1,7 +1,6 @@
 package samsung
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -53,6 +52,19 @@ func TestNewRequestID(t *testing.T) {
 	}
 	if len(id1) < 30 {
 		t.Errorf("expected UUID-like string, got %s", id1)
+	}
+}
+
+func TestConnectionFormatURLBracketsIPv6Host(t *testing.T) {
+	connection := newConnection(connConfig{
+		host: "2001:db8::1", port: portArtWSS, endpoint: endpointArtApp, name: "Frame Manager",
+	})
+	parsed, err := url.Parse(connection.formatURL("token"))
+	if err != nil {
+		t.Fatalf("parse formatted URL: %v", err)
+	}
+	if parsed.Host != "[2001:db8::1]:8002" || parsed.Hostname() != "2001:db8::1" {
+		t.Fatalf("formatted host = %q", parsed.Host)
 	}
 }
 
@@ -142,7 +154,7 @@ func TestConnection_SendAndWait(t *testing.T) {
 	port, _ := strconv.Atoi(u.Port())
 
 	// Use a temporary token file
-	tokenFile := filepath.Join(t.TempDir(), "token.txt")
+	tokenFile := filepath.Join(secureTokenDirectory(t), "token.txt")
 
 	c := newConnection(connConfig{
 		host:          u.Hostname(),
@@ -158,7 +170,7 @@ func TestConnection_SendAndWait(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
-	defer func() { _ = c.Close() }()
+	defer func() { _ = c.CloseContext(context.Background()) }()
 
 	payload := []byte(`{"id":"123"}`)
 	resp, err := c.SendAndWait(context.Background(), payload, "123", 5*time.Second)
@@ -168,76 +180,5 @@ func TestConnection_SendAndWait(t *testing.T) {
 	}
 	if string(resp) != `{"result":"ok"}` {
 		t.Errorf("unexpected response: %s", string(resp))
-	}
-}
-
-func TestConnection_SendAndWaitEvent(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-			InsecureSkipVerify: true,
-		})
-		if err != nil {
-			return
-		}
-		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
-
-		writeJSON := func(ctx context.Context, v any) error {
-			b, err := json.Marshal(v)
-			if err != nil {
-				return err
-			}
-			return conn.Write(ctx, websocket.MessageText, b)
-		}
-
-		_ = writeJSON(r.Context(), map[string]any{
-			keyEvent: EventChannelConnect,
-			keyData:  map[string]any{"token": "test-token"},
-		})
-		_ = writeJSON(r.Context(), map[string]any{keyEvent: "ms.channel.ready"})
-		time.Sleep(50 * time.Millisecond)
-
-		_, msg, err := conn.Read(r.Context())
-		if err != nil {
-			return
-		}
-		_ = msg
-
-		added := map[string]any{
-			keyEvent: "d2d_service_message",
-			keyData: map[string]any{
-				"event":      "image_added",
-				"content_id": "new-id",
-			},
-		}
-		_ = writeJSON(r.Context(), added)
-		time.Sleep(50 * time.Millisecond)
-	}))
-	defer server.Close()
-
-	u, _ := url.Parse(server.URL)
-	port, _ := strconv.Atoi(u.Port())
-	tokenFile := filepath.Join(t.TempDir(), "token.txt")
-
-	c := newConnection(connConfig{
-		host:          u.Hostname(),
-		port:          port,
-		endpoint:      "com.samsung.art-app",
-		name:          "TestClient",
-		tokenFile:     tokenFile,
-		timeout:       1 * time.Second,
-		skipTLSVerify: true,
-		logger:        slog.Default(),
-	})
-	if err := c.Open(context.Background()); err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	resp, err := c.SendAndWaitEvent(context.Background(), []byte(`{"id":"upload"}`), "image_added", 3*time.Second)
-	if err != nil {
-		t.Fatalf("SendAndWaitEvent failed: %v", err)
-	}
-	if !bytes.Contains(resp, []byte("new-id")) {
-		t.Errorf("unexpected event payload: %s", string(resp))
 	}
 }

@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
-	"sync/atomic"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 // SourceLoader downloads remote artwork into the local collection.
@@ -21,14 +19,12 @@ var _ SourceLoader = (*Loader)(nil)
 // Sync reads the sources file and downloads any new images. Returns the
 // number of newly downloaded images. Skips URLs that have already been
 // downloaded.
-//
-//nolint:funlen,gocognit,gocyclo // cycle staging, cancellation, and conservative pruning are intentionally colocated
 func (l *Loader) Sync(ctx context.Context) (int, error) {
-	if l.sourcesFile == "" {
+	if l.disabled() {
 		return 0, nil
 	}
 
-	urls, err := l.loadSources()
+	urls, err := l.loadSources(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -43,56 +39,34 @@ func (l *Loader) Sync(ctx context.Context) (int, error) {
 	urls = deduplicateStrings(urls)
 
 	// Build content index to avoid duplicates.
-	l.index.Rebuild()
+	if err := l.index.Rebuild(); err != nil {
+		return 0, fmt.Errorf("inventory existing artwork: %w", err)
+	}
 
 	l.index.ResetVisited()
-	var downloaded int32
+	var downloaded int
 	var globalIndex int32 = 1
-
-	var wg sync.WaitGroup
-	var errorMu sync.Mutex
 	var cycleErrors []error
-	semaphore := make(chan struct{}, maxConcurrentSourceLines)
 
-	for _, line := range urls {
+	for sourceIndex, line := range urls {
 		if err := ctx.Err(); err != nil {
-			return int(downloaded), err
+			return downloaded, err
 		}
-		wg.Add(1)
-		semaphore <- struct{}{}
-		go func(lne string) {
-			defer wg.Done()
-			defer func() { <-semaphore }()
-
-			count, syncErr := l.syncLine(ctx, lne, &globalIndex)
-			if syncErr != nil {
-				l.logger.Warn("source resolve failed", "line", lne, "error", syncErr)
-				errorMu.Lock()
-				cycleErrors = append(cycleErrors, fmt.Errorf("sync source %q: %w", lne, syncErr))
-				errorMu.Unlock()
-				return
-			}
-
-			if count > 0 {
-				//nolint:gosec // per-line download count is bounded by MaxArtworkImages
-				atomic.AddInt32(&downloaded, int32(count))
-			}
-		}(line)
+		count, syncErr := l.syncLine(ctx, line, &globalIndex)
+		downloaded += count
+		if syncErr != nil {
+			l.logger.Warn("source resolve failed", "source_index", sourceIndex+1, "error", syncErr)
+			cycleErrors = append(cycleErrors, fmt.Errorf("sync source %d: %w", sourceIndex+1, syncErr))
+		}
 	}
-	wg.Wait()
 	if err := ctx.Err(); err != nil {
-		return int(downloaded), err
+		return downloaded, err
 	}
 
-	// Remove managed images that are no longer in sources.
-	if len(cycleErrors) == 0 {
-		for _, filename := range l.index.UnusedManagedFiles() {
-			l.logger.Info("removing unused source image", "file", filename)
-			if err := os.Remove(filepath.Join(l.artworkDir, filename)); err != nil {
-				cycleErrors = append(cycleErrors, fmt.Errorf("remove unused source image %s: %w", filename, err))
-			}
-		}
-	} else {
+	// Every successful addition is already committed with its Source Origin by
+	// the Collection Store. An incomplete provider view is never authority to
+	// remove an earlier committed item.
+	if len(cycleErrors) != 0 {
 		l.logger.Warn("retaining previous source collection because resolution was incomplete", "errors", len(cycleErrors))
 	}
 
@@ -100,14 +74,18 @@ func (l *Loader) Sync(ctx context.Context) (int, error) {
 		l.logger.Info("downloaded new source images", "count", downloaded)
 	}
 
-	return int(downloaded), errors.Join(cycleErrors...)
+	return downloaded, errors.Join(cycleErrors...)
+}
+
+func (l *Loader) disabled() bool {
+	return l.sourcesFile == "" || (l.cfg != nil && l.cfg.DryRun)
 }
 
 // syncLine resolves and downloads all images for one sources-file line.
 func (l *Loader) syncLine(ctx context.Context, line string, globalIndex *int32) (int, error) {
 	provider := l.resolveProvider(line)
 	if provider == nil {
-		return 0, fmt.Errorf("no provider found for line: %s", line)
+		return 0, errors.New("no provider found for source")
 	}
 
 	images, err := provider.Resolve(ctx, line, globalIndex)
@@ -118,10 +96,11 @@ func (l *Loader) syncLine(ctx context.Context, line string, globalIndex *int32) 
 	var count int
 	var downloadErrors []error
 	for _, img := range images {
-		ok, dErr := l.downloadWithIdentity(ctx, img.URL, img.Identity)
+		originKey := "source:" + artwork.StripIndexPrefix(img.Identity)
+		ok, dErr := l.downloadWithIdentity(ctx, img.URL, img.Identity, originKey)
 		if dErr != nil {
-			l.logger.Warn("source download failed", "url", img.URL, "error", dErr)
-			downloadErrors = append(downloadErrors, fmt.Errorf("download %s: %w", img.URL, dErr))
+			l.logger.Warn("source download failed", "url", truncateURL(img.URL), "error", dErr)
+			downloadErrors = append(downloadErrors, fmt.Errorf("download %s: %w", truncateURL(img.URL), dErr))
 			continue
 		}
 		if !ok {

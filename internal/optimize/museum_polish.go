@@ -2,7 +2,6 @@ package optimize
 
 import (
 	"image"
-	"sync"
 )
 
 // polishPixel limits the maximum brightness and adds paper grain noise to a pixel.
@@ -66,27 +65,26 @@ func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 }
 
 func galleryMasterPolish(src *image.RGBA) *image.RGBA {
+	return galleryMasterPolishWithWorkers(src, defaultPixelWorkers())
+}
+
+func galleryMasterPolishWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
-	var wg sync.WaitGroup
-	workers := pixelWorkers
-	chunk := (height + workers - 1) / workers
+	chunk := (height + pixelPartitions - 1) / pixelPartitions
 
-	for j := 0; j < workers; j++ {
+	runPixelTasks(workerLimit, func(j int) {
 		startY := j * chunk
 		endY := startY + chunk
 		if endY > height {
 			endY = height
 		}
 		if startY >= height {
-			break
+			return
 		}
 
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
-
+		func(sy, ey int) {
 			//nolint:gosec // sy is a positive chunk offset, conversion is mathematically safe
 			state := uint32(sy + 1) // Seed based on row
 
@@ -105,7 +103,6 @@ func galleryMasterPolish(src *image.RGBA) *image.RGBA {
 				}
 			}
 		}(startY, endY)
-	}
-	wg.Wait()
+	})
 	return src
 }

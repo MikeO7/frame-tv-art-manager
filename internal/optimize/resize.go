@@ -1,12 +1,10 @@
-// Package optimize provides image resizing and quality optimization
-// for Samsung Frame TV artwork. Frame TVs are 4K (3840×2160), so
-// uploading larger images wastes bandwidth and transfer time.
+// Package optimize provides bounded image transformations for Frame TVs.
 package optimize
 
 import (
+	"context"
 	"fmt"
 	"image"
-	"image/jpeg"
 	_ "image/png" // Needed for decoding PNG images
 	"log/slog"
 	"os"
@@ -14,14 +12,15 @@ import (
 	"strings"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
-// Supported image extensions and the marker embedded in optimized filenames.
 const (
-	extJPG          = ".jpg"
-	extJPEG         = ".jpeg"
-	extPNG          = ".png"
-	optimizedMarker = "_opt.h_"
+	extJPG              = ".jpg"
+	extJPEG             = ".jpeg"
+	extPNG              = ".png"
+	optimizedMarker     = "_opt.h_"
+	portraitModeCollage = "collage"
 )
 
 type Config struct {
@@ -51,27 +50,19 @@ func DefaultConfig() Config {
 	}
 }
 
-// OptimizeFile resizes and enhances a JPEG in-place to the configured Frame TV
-// dimensions, writing an optimized copy adjacent to the original and applying
-// the hash-based "_opt.h_" naming convention.
-//
-// It returns the resulting filename (the renamed optimized file, or the
-// original when no work was needed), whether the file was modified, and any
-// I/O or decode error. Non-JPEG inputs and already-optimized files are skipped.
-func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
+func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Logger, pixelWorkerLimit int) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
+	if err := ctx.Err(); err != nil {
+		return filename, false, err
+	}
 	if !cfg.Enabled {
 		return filename, false, nil
 	}
 
 	// Only optimize JPEGs (Frame TV primary format).
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext != extJPG && ext != extJPEG {
-		return filename, false, nil
-	}
-
-	if checkFastPath(filename, cfg, logger) {
+	if !isOptimizableJPEG(ext) {
 		return filename, false, nil
 	}
 
@@ -81,12 +72,16 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 	}
 	defer func() { _ = f.Close() }()
 
-	imgCfg, _, err := image.DecodeConfig(f)
+	width, height, err := decodeInputConfig(f)
 	if err != nil {
-		return filename, false, fmt.Errorf("decode image config: %w", err)
+		return filename, false, err
 	}
-
-	width, height := imgCfg.Width, imgCfg.Height
+	if checkFastPath(filename, cfg, logger) {
+		if err := validateOptimizedPixels(f); err != nil {
+			return filename, false, err
+		}
+		return filename, false, nil
+	}
 	needsAdjustment := width != cfg.MaxWidth || height != cfg.MaxHeight
 
 	var finalW, finalH int
@@ -99,6 +94,7 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 		finalW, finalH, err = rewriteImage(rewriteParams{
 			f: f, path: path, filename: filename, width: width,
 			height: height, needsAdjustment: needsAdjustment, cfg: cfg, logger: logger,
+			ctx: ctx, pixelWorkers: pixelWorkerLimit,
 		})
 		if err != nil {
 			return filename, false, err
@@ -106,23 +102,43 @@ func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, e
 		modified = true
 	}
 
+	//nolint:contextcheck // the request carries this exact context into the durable rename
 	return handleRename(renameRequest{
 		path: path, filename: filename, dir: dir, modified: modified,
-		finalW: finalW, finalH: finalH, logger: logger,
+		finalW: finalW, finalH: finalH, logger: logger, ctx: ctx,
 	})
+}
+
+func isOptimizableJPEG(extension string) bool {
+	return extension == extJPG || extension == extJPEG
+}
+
+func validateOptimizedPixels(file *os.File) error {
+	if _, err := file.Seek(0, 0); err != nil {
+		return fmt.Errorf("seek optimized image: %w", err)
+	}
+	if _, _, err := image.Decode(file); err != nil {
+		return fmt.Errorf("validate optimized pixels: %w", err)
+	}
+	return nil
 }
 
 // checkFastPath returns true if the file is already optimized with matching dimensions.
 func checkFastPath(filename string, cfg Config, logger *slog.Logger) bool {
-	if !strings.Contains(filename, optimizedMarker) {
-		return false
-	}
-	w, h, ok := artwork.ParseDimensions(filename)
-	if ok && w == cfg.MaxWidth && h == cfg.MaxHeight {
+	if isConfiguredOptimizedName(filename, cfg) {
+		w, h, _ := artwork.ParseDimensions(filename)
 		logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
 		return true
 	}
 	return false
+}
+
+func isConfiguredOptimizedName(filename string, cfg Config) bool {
+	if !strings.Contains(filename, optimizedMarker) {
+		return false
+	}
+	w, h, ok := artwork.ParseDimensions(filename)
+	return ok && w == cfg.MaxWidth && h == cfg.MaxHeight
 }
 
 // renameRequest bundles the inputs needed to decide whether an optimized file
@@ -132,6 +148,7 @@ type renameRequest struct {
 	modified            bool
 	finalW, finalH      int
 	logger              *slog.Logger
+	ctx                 context.Context
 }
 
 // handleRename renames the file according to optimized names if needed.
@@ -156,7 +173,11 @@ func handleRename(req renameRequest) (string, bool, error) {
 	}
 
 	newPath := filepath.Join(dir, newFilename)
-	if err := os.Rename(path, newPath); err != nil {
+	ctx := req.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := durablefs.MoveExclusive(ctx, path, newPath); err != nil {
 		return filename, modified, fmt.Errorf("rename to optimized: %w", err)
 	}
 
@@ -175,94 +196,4 @@ func ValidateImage(path string) error {
 
 	_, _, err = image.DecodeConfig(f)
 	return err
-}
-
-// rewriteParams bundles the inputs needed to decode, transform, and re-encode
-// an image to its optimized form on disk.
-type rewriteParams struct {
-	f               *os.File
-	path, filename  string
-	width, height   int
-	needsAdjustment bool
-	cfg             Config
-	logger          *slog.Logger
-}
-
-// rewriteImage handles the actual decoding, pixel modifications (cropping, sharpening, dithering),
-// and re-encoding of the image back to disk.
-//
-//nolint:funlen,gocognit,gocyclo // the ordered transactional image pipeline keeps cleanup local
-func rewriteImage(params rewriteParams) (int, int, error) {
-	f := params.f
-	cfg := params.cfg
-	_ = params.needsAdjustment // recalculated after rotation
-
-	if _, err := f.Seek(0, 0); err != nil {
-		return 0, 0, fmt.Errorf("seek to start: %w", err)
-	}
-	orientation, _ := ReadOrientation(f)
-
-	if _, err := f.Seek(0, 0); err != nil {
-		return 0, 0, fmt.Errorf("seek to start: %w", err)
-	}
-	img, _, err := image.Decode(f)
-	if err != nil {
-		return 0, 0, fmt.Errorf("decode image: %w", err)
-	}
-
-	params.logger.Info("optimizing image", "file", params.filename, "original_dims", fmt.Sprintf("%dx%d", params.width, params.height))
-
-	img = RotateImage(img, orientation)
-	rgba := toRGBA(img)
-
-	newW, newH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
-	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
-		if newH > newW && cfg.PortraitMode != "crop" {
-			rgba = padPortrait(rgba, cfg.MaxWidth, cfg.MaxHeight)
-		} else {
-			rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
-		}
-	}
-
-	rgba = sharpen(rgba)
-	if cfg.MuseumModeEnabled {
-		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
-	} else {
-		rgba = dither(rgba)
-	}
-
-	if err := f.Close(); err != nil {
-		return 0, 0, fmt.Errorf("close source image: %w", err)
-	}
-	out, err := os.CreateTemp(filepath.Dir(params.path), ".optimize-*.tmp")
-	if err != nil {
-		return 0, 0, fmt.Errorf("create optimized temporary file: %w", err)
-	}
-	tmpPath := out.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-
-	if err := jpeg.Encode(out, rgba, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality}); err != nil {
-		_ = out.Close()
-		return 0, 0, fmt.Errorf("encode jpeg: %w", err)
-	}
-	if err := out.Chmod(0o644); err != nil {
-		_ = out.Close()
-		return 0, 0, fmt.Errorf("chmod optimized image: %w", err)
-	}
-	if err := out.Sync(); err != nil {
-		_ = out.Close()
-		return 0, 0, fmt.Errorf("sync optimized image: %w", err)
-	}
-	if err := out.Close(); err != nil {
-		return 0, 0, fmt.Errorf("close optimized image: %w", err)
-	}
-	if err := ValidateImage(tmpPath); err != nil {
-		return 0, 0, fmt.Errorf("validate optimized image: %w", err)
-	}
-	if err := os.Rename(tmpPath, params.path); err != nil {
-		return 0, 0, fmt.Errorf("replace optimized image: %w", err)
-	}
-
-	newBounds := rgba.Bounds()
-	return newBounds.Dx(), newBounds.Dy(), nil
 }

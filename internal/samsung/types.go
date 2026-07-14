@@ -1,7 +1,13 @@
 // Package samsung provides types shared across the Samsung Frame TV client.
 package samsung
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+)
 
 const (
 	EventD2DServiceMessage      = "d2d_service_message"
@@ -14,6 +20,9 @@ const (
 	methodRemoteControl = "ms.remote.control"
 	stringTrue          = "true"
 	stringFalse         = "false"
+	stringOn            = "on"
+	stringOff           = "off"
+	jsonNull            = "null"
 )
 
 // DeviceInfo holds metadata about a connected Samsung TV, retrieved via
@@ -32,7 +41,22 @@ func (d *DeviceInfo) IsFrameTV() bool {
 
 // IsOn returns true if the device is powered on.
 func (d *DeviceInfo) IsOn() bool {
-	return d.PowerState == "on"
+	return d.PowerState == stringOn
+}
+
+func validateFrameTVDevice(info DeviceInfo) error {
+	if strings.TrimSpace(info.ModelName) == "" {
+		return errors.New("device model is absent")
+	}
+	if strings.TrimSpace(info.FrameTVSupport) != stringTrue {
+		return fmt.Errorf("device does not report Frame TV support: %w", ErrConnectionFailure)
+	}
+	switch strings.TrimSpace(info.PowerState) {
+	case stringOn, stringOff:
+		return nil
+	default:
+		return fmt.Errorf("unrecognized device power state %q", info.PowerState)
+	}
 }
 
 // ArtContent represents a single artwork item on the TV, as returned by
@@ -49,18 +73,6 @@ type connInfo struct {
 	Port    json.Number `json:"port"`
 	Key     string      `json:"key"`
 	Secured bool        `json:"secured"`
-}
-
-// SlideshowStatus represents the slideshow configuration on the TV.
-type SlideshowStatus struct {
-	// Value is the slideshow interval in minutes, or "off".
-	Value string `json:"value"`
-
-	// Type is either "slideshow" or "shuffleslideshow".
-	Type string `json:"type"`
-
-	// CategoryID is the art category (e.g. "MY-C0002" for My Photos).
-	CategoryID string `json:"category_id"`
 }
 
 // deviceInfoResponse is the raw JSON envelope from GET /api/v2/.
@@ -81,10 +93,27 @@ type artResponse struct {
 	// return them as raw JSON objects/arrays directly inside the payload.
 	ContentListRaw json.RawMessage `json:"content_list,omitempty"`
 	ContentID      string          `json:"content_id,omitempty"`
-	Value          string          `json:"value,omitempty"`
+	Value          protocolString  `json:"value,omitempty"`
+	Type           protocolString  `json:"type,omitempty"`
 	ConnInfoRaw    json.RawMessage `json:"conn_info,omitempty"`
 	Status         string          `json:"status,omitempty"`
 	RequestData    string          `json:"request_data,omitempty"`
+}
+
+type protocolString string
+
+func (s *protocolString) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err == nil {
+		*s = protocolString(value)
+		return nil
+	}
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte(jsonNull)) || raw[0] == '{' || raw[0] == '[' {
+		return errors.New("protocol value is not a string or scalar")
+	}
+	*s = protocolString(raw)
+	return nil
 }
 
 // ContentList safely unwraps the content_list field whether it is a string or an array.
@@ -100,7 +129,7 @@ func (a *artResponse) ConnInfo() string {
 // parsePolyString extracts a JSON string if the raw bytes are an escaped JSON string.
 // If the bytes are already an object or array, it returns them as a raw JSON string.
 func parsePolyString(raw json.RawMessage) string {
-	if len(raw) == 0 || string(raw) == "null" {
+	if len(raw) == 0 || string(raw) == jsonNull {
 		return ""
 	}
 	// It might be a regular JSON string

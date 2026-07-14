@@ -10,56 +10,24 @@ import (
 	"testing"
 )
 
-func TestArtworkCatalog_InvalidateCacheAndRename(t *testing.T) {
+func TestArtworkCatalogInvalidateCache(t *testing.T) {
 	dir := t.TempDir()
 	idx := NewArtworkCatalog(dir, slog.Default())
-
 	idx.catalog["old.jpg"] = struct{}{}
-	idx.prefixMap["identity"] = "old.jpg"
-	idx.hashIndex["abc"] = "old.jpg"
+	idx.cacheValid = true
 
 	idx.InvalidateCache()
-
-	idx.NoteFileRename("old.jpg", "new.jpg")
-	if _, ok := idx.catalog["old.jpg"]; ok {
-		t.Error("old name should be removed from catalog")
-	}
-	if _, ok := idx.catalog["new.jpg"]; !ok {
-		t.Error("new name should be in catalog")
-	}
-	if idx.prefixMap["identity"] != "new.jpg" {
-		t.Errorf("prefix map = %q", idx.prefixMap["identity"])
-	}
-	if idx.hashIndex["abc"] != "new.jpg" {
-		t.Errorf("hash index = %q", idx.hashIndex["abc"])
+	if idx.cacheValid || len(idx.catalog) != 0 {
+		t.Fatalf("InvalidateCache() left cache valid: %+v", idx.catalog)
 	}
 }
 
-func TestArtworkCatalog_RegisterHashAndMaxReached(t *testing.T) {
+func TestArtworkCatalogMaxReached(t *testing.T) {
 	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
-
-	if existing, dup := idx.registerHash("hash1", "a.jpg"); dup || existing != "" {
-		t.Errorf("first register should not be duplicate: %q %v", existing, dup)
-	}
-	if existing, dup := idx.registerHash("hash1", "b.jpg"); !dup || existing != "a.jpg" {
-		t.Errorf("second register should be duplicate: %q %v", existing, dup)
-	}
-
-	idx.MarkVisited("a.jpg")
-	idx.MarkVisited("b.jpg")
-	if !idx.MaxReached(2) {
-		t.Error("expected MaxReached true at limit")
-	}
-	if idx.MaxReached(0) {
-		t.Error("expected MaxReached false when limit is 0")
-	}
-}
-
-func TestArtworkCatalog_SetHash(t *testing.T) {
-	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
-	idx.setHash("hash", "file.jpg")
-	if idx.hashIndex["hash"] != "file.jpg" {
-		t.Errorf("setHash failed: %q", idx.hashIndex["hash"])
+	idx.catalog["a.jpg"] = struct{}{}
+	idx.catalog["b.jpg"] = struct{}{}
+	if !idx.MaxReached(2) || idx.MaxReached(0) {
+		t.Fatal("MaxReached() did not enforce positive complete-catalog limit")
 	}
 }
 
@@ -75,24 +43,7 @@ func TestArtworkCatalog_UnsupportedPath(t *testing.T) {
 	}
 }
 
-func TestArtworkCatalog_UnusedManagedFiles(t *testing.T) {
-	dir := t.TempDir()
-	for _, name := range []string{"001__nasa__apod.h_abc.jpg", "002__direct__x.h_def.jpg", "manual.jpg"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("data"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	idx := NewArtworkCatalog(dir, slog.Default())
-	idx.MarkVisited("001__nasa__apod.h_abc.jpg")
-
-	unused := idx.UnusedManagedFiles()
-	if len(unused) != 1 || unused[0] != "002__direct__x.h_def.jpg" {
-		t.Errorf("unused managed = %v", unused)
-	}
-}
-
-func TestArtworkCatalog_RebuildMigratesHashName(t *testing.T) {
+func TestArtworkCatalog_RebuildDoesNotMutateArtworkNames(t *testing.T) {
 	dir := t.TempDir()
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	var buf bytes.Buffer
@@ -112,14 +63,15 @@ func TestArtworkCatalog_RebuildMigratesHashName(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatalf("expected 1 supported file after rebuild, got %d", len(files))
 	}
-	for name := range files {
-		if name == "plainphoto.jpg" {
-			t.Errorf("expected migration to hash-based name, still have %q", name)
-		}
+	if _, ok := files["plainphoto.jpg"]; !ok {
+		t.Fatalf("inventory changed operator filename: %v", files)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plainphoto.jpg")); err != nil {
+		t.Fatalf("inventory mutated artwork path: %v", err)
 	}
 }
 
-func TestArtworkCatalog_RebuildCacheHit(t *testing.T) {
+func TestArtworkCatalog_RebuildRepeatedScanIsStable(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("jpeg-data"), 0o600); err != nil {
 		t.Fatal(err)
@@ -130,15 +82,17 @@ func TestArtworkCatalog_RebuildCacheHit(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := len(idx.hashIndex)
-	idx.Rebuild()
+	if err := idx.Rebuild(); err != nil {
+		t.Fatalf("repeat rebuild: %v", err)
+	}
 	if len(idx.hashIndex) != before {
-		t.Error("expected cache hit to preserve hash index")
+		t.Error("expected repeated inventory to preserve hash index")
 	}
 }
 
 func TestArtworkCatalog_LookupAndRegisterPrefix(t *testing.T) {
 	idx := NewArtworkCatalog(t.TempDir(), slog.Default())
-	idx.registerPrefix("001__nasa__apod", "001__nasa__apod.h_abc.jpg")
+	idx.prefixMap["nasa__apod"] = "001__nasa__apod.h_abc.jpg"
 
 	got, ok := idx.LookupPrefix("001__nasa__apod")
 	if !ok || got != "001__nasa__apod.h_abc.jpg" {
@@ -148,44 +102,6 @@ func TestArtworkCatalog_LookupAndRegisterPrefix(t *testing.T) {
 	got, ok = idx.LookupPrefix("nasa__apod")
 	if !ok || got != "001__nasa__apod.h_abc.jpg" {
 		t.Errorf("LookupPrefix with stripped index = %q %v", got, ok)
-	}
-}
-
-func TestArtworkCatalog_RegisterDownload(t *testing.T) {
-	dir := t.TempDir()
-	idx := NewArtworkCatalog(dir, slog.Default())
-
-	tempPath := filepath.Join(dir, "temp.jpg")
-	if err := os.WriteFile(tempPath, []byte("image-data-1"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// First download
-	name, isNew, err := idx.RegisterDownload(tempPath, "image.jpg", "image")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !isNew {
-		t.Error("expected first register to be new")
-	}
-	if !idx.visited[name] {
-		t.Error("expected final filename to be visited")
-	}
-
-	// Duplicate download
-	tempPath2 := filepath.Join(dir, "temp2.jpg")
-	if err := os.WriteFile(tempPath2, []byte("image-data-1"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	name2, isNew2, err := idx.RegisterDownload(tempPath2, "image2.jpg", "image2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if isNew2 {
-		t.Error("expected duplicate to not be new")
-	}
-	if name2 != name {
-		t.Errorf("expected duplicate name %q to equal original %q", name2, name)
 	}
 }
 
@@ -204,14 +120,83 @@ func TestArtworkCatalog_FileHash(t *testing.T) {
 	}
 }
 
-func TestArtworkCatalog_ProcessFile_WithEmbeddedHash(t *testing.T) {
+func TestArtworkCatalog_ProcessFile_VerifiesBytesDespiteEmbeddedHash(t *testing.T) {
 	dir := t.TempDir()
 	idx := NewArtworkCatalog(dir, slog.Default())
-	entry := idx.processFile("001__photo.h_abc123def456.jpg")
-	if entry.hash != "abc123def456" {
-		t.Errorf("hash = %q", entry.hash)
+	name := "001__photo.h_abc123def456.jpg"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("verified bytes"), 0o644); err != nil {
+		t.Fatalf("write artwork: %v", err)
+	}
+	wantHash, err := fileHash(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("hash artwork: %v", err)
+	}
+	entry := idx.processFile(name)
+	if entry.hash != wantHash {
+		t.Errorf("hash = %q, want verified %q", entry.hash, wantHash)
 	}
 	if entry.err != nil {
 		t.Errorf("unexpected error: %v", entry.err)
+	}
+}
+
+func TestArtworkCatalog_RebuildPropagatesHashFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "unreadable.jpg")
+	if err := os.WriteFile(path, []byte("artwork"), 0o600); err != nil {
+		t.Fatalf("write artwork: %v", err)
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatalf("remove read permissions: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	if _, err := os.ReadFile(path); err == nil {
+		t.Skip("filesystem permits owner reads despite mode 000")
+	}
+
+	catalog := NewArtworkCatalog(dir, slog.Default())
+	if err := catalog.Rebuild(); err == nil {
+		t.Fatal("expected unreadable artwork to fail the complete inventory")
+	}
+	if len(catalog.catalog) != 0 || len(catalog.hashIndex) != 0 {
+		t.Fatalf("failed rebuild retained partial inventory: catalog=%v hashes=%v", catalog.catalog, catalog.hashIndex)
+	}
+}
+
+func TestArtworkCatalog_RebuildNeverDeletesCanonicalDuplicateSurvivor(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte("identical artwork bytes")
+	for _, name := range []string{"photo.jpg", "photo.h_stale.jpg"} {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	catalog := NewArtworkCatalog(dir, slog.Default())
+	if err := catalog.Rebuild(); err != nil {
+		t.Fatalf("rebuild catalog: %v", err)
+	}
+	files, err := catalog.SupportedFiles()
+	if err != nil {
+		t.Fatalf("SupportedFiles() error = %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("supported files = %v, want one survivor", files)
+	}
+	for name := range files {
+		got, readErr := os.ReadFile(filepath.Join(dir, name))
+		if readErr != nil {
+			t.Fatalf("read survivor %s: %v", name, readErr)
+		}
+		if !bytes.Equal(got, data) {
+			t.Fatalf("survivor %s has wrong bytes", name)
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read artwork directory: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("inventory deleted duplicate artwork: %v", entries)
 	}
 }

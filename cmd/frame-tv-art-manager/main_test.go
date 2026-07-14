@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
@@ -45,7 +46,9 @@ func TestValidateDirectories(t *testing.T) {
 		ArtworkDir: filepath.Join(tmp, "artwork"),
 		TokenDir:   filepath.Join(tmp, "tokens"),
 	}
-	validateDirectories(cfg, slog.Default())
+	if err := prepareDirectories(cfg); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, name := range []string{"artwork", "tokens"} {
 		path := filepath.Join(tmp, name)
@@ -65,7 +68,9 @@ func TestBootstrapSources(t *testing.T) {
 	t.Run("creates template when missing", func(t *testing.T) {
 		sourcesFile := filepath.Join(tmp, "new-sources.txt")
 		cfg := &config.Config{SourcesFile: sourcesFile}
-		bootstrapSources(cfg, slog.Default())
+		if err := bootstrapSources(context.Background(), cfg, slog.Default()); err != nil {
+			t.Fatal(err)
+		}
 
 		data, err := os.ReadFile(sourcesFile)
 		if err != nil {
@@ -82,7 +87,9 @@ func TestBootstrapSources(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := &config.Config{SourcesFile: sourcesFile}
-		bootstrapSources(cfg, slog.Default())
+		if err := bootstrapSources(context.Background(), cfg, slog.Default()); err != nil {
+			t.Fatal(err)
+		}
 
 		data, err := os.ReadFile(sourcesFile)
 		if err != nil {
@@ -94,7 +101,9 @@ func TestBootstrapSources(t *testing.T) {
 	})
 
 	t.Run("no-op when path empty", func(t *testing.T) {
-		bootstrapSources(&config.Config{}, slog.Default())
+		if err := bootstrapSources(context.Background(), &config.Config{}, slog.Default()); err != nil {
+			t.Fatal(err)
+		}
 	})
 }
 
@@ -106,7 +115,34 @@ func TestValidateDirectories_WithOwnership(t *testing.T) {
 		PUID:       os.Getuid(),
 		PGID:       os.Getgid(),
 	}
-	validateDirectories(cfg, slog.Default())
+	if err := prepareDirectories(cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPrepareDirectoryRejectsNonDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "occupied")
+	if err := os.WriteFile(path, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareDirectory(path, 0o700, 0, 0); err == nil {
+		t.Fatal("prepareDirectory accepted a regular file")
+	}
+}
+
+func TestPrepareDirectoryRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareDirectory(link, 0o700, 0, 0); err == nil {
+		t.Fatal("prepareDirectory accepted a symlink")
+	}
 }
 
 func TestHandleCLIArgs(t *testing.T) {
@@ -248,24 +284,64 @@ func TestBootstrapSourcesWriteFailure(t *testing.T) {
 	if err := os.WriteFile(parentFile, []byte("occupied"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bootstrapSources(&config.Config{SourcesFile: filepath.Join(parentFile, "sources.yaml")}, slog.Default())
+	if err := bootstrapSources(
+		context.Background(),
+		&config.Config{SourcesFile: filepath.Join(parentFile, "sources.yaml")},
+		slog.Default(),
+	); err == nil {
+		t.Fatal("bootstrapSources accepted an invalid parent path")
+	}
+}
+
+func TestValidateDryRunDirectoriesIsReadOnly(t *testing.T) {
+	root := t.TempDir()
+	artworkDir := filepath.Join(root, "artwork")
+	tokenDir := filepath.Join(root, "tokens")
+	if err := os.Mkdir(artworkDir, 0o755); err != nil {
+		t.Fatalf("create artwork directory: %v", err)
+	}
+	if err := os.Mkdir(tokenDir, 0o700); err != nil {
+		t.Fatalf("create token directory: %v", err)
+	}
+	cfg := &config.Config{ArtworkDir: artworkDir, TokenDir: tokenDir}
+	if err := validateDryRunDirectories(cfg); err != nil {
+		t.Fatalf("validateDryRunDirectories() error = %v", err)
+	}
+	for _, path := range []string{artworkDir, tokenDir} {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("dry-run preflight mutated %s: %v", path, entries)
+		}
+	}
+	if err := os.Chmod(tokenDir, 0o755); err != nil {
+		t.Fatalf("change token mode: %v", err)
+	}
+	if err := validateDryRunDirectories(cfg); err == nil {
+		t.Fatal("validateDryRunDirectories() accepted insecure token directory")
+	}
 }
 
 func TestMainLifecycle(t *testing.T) {
 	dataDir := t.TempDir()
+	artworkDir := filepath.Join(dataDir, "artwork")
+	tokenDir := filepath.Join(dataDir, "tokens")
+	if err := os.Mkdir(artworkDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(tokenDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("TV_IPS", "127.0.0.1")
-	t.Setenv("ARTWORK_DIR", filepath.Join(dataDir, "artwork"))
-	t.Setenv("TOKEN_DIR", filepath.Join(dataDir, "tokens"))
+	t.Setenv("ARTWORK_DIR", artworkDir)
+	t.Setenv("TOKEN_DIR", tokenDir)
 	t.Setenv("HEALTH_PORT", "0")
-	t.Setenv("CONNECTION_TIMEOUT_SECONDS", "1")
-	t.Setenv("API_TIMEOUT_SECONDS", "1")
-	t.Setenv("GATE_TIMEOUT_MS", "1")
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		process, err := os.FindProcess(os.Getpid())
-		if err == nil {
-			_ = process.Signal(os.Interrupt)
-		}
-	}()
-	main()
+	t.Setenv("DRY_RUN", "true")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := runMainContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("runMainContext() error = %v", err)
+	}
 }

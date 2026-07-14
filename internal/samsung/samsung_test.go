@@ -55,7 +55,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 	host, portStr, _ := net.SplitHostPort(u.Host)
 	port, _ := strconv.Atoi(portStr)
 
-	tokenDir := t.TempDir()
+	tokenDir := secureTokenDirectory(t)
 	tokenFile := tokenDir + "/token.txt"
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -76,7 +76,7 @@ func TestConnection_Open_Handshake(t *testing.T) {
 	if err := conn.Open(ctx); err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.CloseContext(context.Background()) }()
 
 	if !conn.IsAlive() {
 		t.Error("expected connection to be alive")
@@ -114,7 +114,7 @@ func TestConnection_Unauthorized(t *testing.T) {
 		port:          port,
 		endpoint:      "test",
 		name:          "TestClient",
-		tokenFile:     t.TempDir() + "/token.txt",
+		tokenFile:     secureTokenDirectory(t) + "/token.txt",
 		timeout:       1 * time.Second,
 		skipTLSVerify: true,
 		logger:        slog.Default(),

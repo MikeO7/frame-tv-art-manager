@@ -62,3 +62,18 @@ that supports repository skills should discover `*/SKILL.md` files there. Other
 assistants may read the relevant skill directly and follow it as a workflow.
 Skill-specific capabilities such as sub-agents are optional: when unavailable,
 perform the same steps sequentially without weakening verification or safety.
+
+### Issue tracker
+
+Issues, specs, and wayfinding maps live in GitHub Issues. See
+[`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Use the canonical triage-role label vocabulary. See
+[`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
+
+### Domain docs
+
+This is a single-context repository. See
+[`docs/agents/domain.md`](docs/agents/domain.md).

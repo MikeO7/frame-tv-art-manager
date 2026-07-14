@@ -1,6 +1,12 @@
 name: Race Check
 
 on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:

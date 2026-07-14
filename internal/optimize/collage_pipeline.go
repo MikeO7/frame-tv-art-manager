@@ -1,6 +1,7 @@
 package optimize
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
 func isPortraitFile(path string) (bool, error) {
@@ -25,6 +27,9 @@ func isPortraitFile(path string) (bool, error) {
 
 	imgCfg, _, err := image.DecodeConfig(f)
 	if err != nil {
+		return false, err
+	}
+	if err := validateInputDimensions(imgCfg.Width, imgCfg.Height); err != nil {
 		return false, err
 	}
 
@@ -47,6 +52,16 @@ func loadAndRotateImage(path string) (*image.RGBA, error) {
 	}
 	defer f.Close()
 
+	imgCfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateInputDimensions(imgCfg.Width, imgCfg.Height); err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return nil, err
+	}
 	orientation, _ := ReadOrientation(f)
 	if _, err := f.Seek(0, 0); err != nil {
 		return nil, err
@@ -64,6 +79,7 @@ func loadAndRotateImage(path string) (*image.RGBA, error) {
 // collageJob bundles the inputs needed to fuse a single pair of portrait
 // images into one landscape collage.
 type collageJob struct {
+	ctx        context.Context
 	artworkDir string
 	f1, f2     string
 	cfg        Config
@@ -80,6 +96,10 @@ func processCollagePair(job collageJob) (string, error) {
 	catalog := job.catalog
 	onRename := job.onRename
 	logger := job.logger
+	ctx := job.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	logger.Debug("starting processCollagePair", "f1", f1, "f2", f2)
 	p1 := filepath.Join(artworkDir, f1)
@@ -147,13 +167,18 @@ func processCollagePair(job collageJob) (string, error) {
 	if err := ValidateImage(tmpPath); err != nil {
 		return "", fmt.Errorf("validate collage: %w", err)
 	}
-	if err := os.Rename(tmpPath, collagePath); err != nil {
+	if err := durablefs.MoveExclusive(ctx, tmpPath, collagePath); err != nil {
 		return "", fmt.Errorf("commit collage: %w", err)
 	}
 
-	// Delete source raw files
-	_ = os.Remove(p1)
-	_ = os.Remove(p2)
+	// The durable collage is published before either input is removed, so a
+	// crash or deletion failure always leaves at least one complete artwork.
+	if err := durablefs.Remove(ctx, p1); err != nil {
+		return collageName, fmt.Errorf("remove first collage source: %w", err)
+	}
+	if err := durablefs.Remove(ctx, p2); err != nil {
+		return collageName, fmt.Errorf("remove second collage source: %w", err)
+	}
 
 	// Update the local catalog after the on-disk commit. Observer failures are
 	// reported without pretending the already-committed collection change did
@@ -197,6 +222,7 @@ func collectRawPortraits(artworkDir string, localFiles map[string]struct{}, want
 // collageBatch bundles the inputs needed to pair every eligible raw portrait
 // in a catalog into collages during a single optimization pass.
 type collageBatch struct {
+	ctx            context.Context
 	artworkDir     string
 	localFiles     map[string]struct{}
 	cfg            Config
@@ -216,7 +242,7 @@ func processCollages(batch collageBatch) error {
 	optimizedCount := batch.optimizedCount
 	var observerErrors []error
 
-	wantsCollageAll := cfg.PortraitMode == "collage"
+	wantsCollageAll := cfg.PortraitMode == portraitModeCollage
 	rawPortraits := collectRawPortraits(artworkDir, localFiles, wantsCollageAll)
 
 	// Sort for deterministic pairing: map iteration order is random, so without
@@ -229,6 +255,7 @@ func processCollages(batch collageBatch) error {
 
 		logger.Info("pairing portrait images into collage", "file1", f1, "file2", f2)
 		collageFilename, err := processCollagePair(collageJob{
+			ctx:        batch.ctx,
 			artworkDir: artworkDir,
 			f1:         f1,
 			f2:         f2,

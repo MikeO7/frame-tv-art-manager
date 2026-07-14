@@ -1,6 +1,6 @@
 services:
   frame-tv-art-manager:
-    image: mikeo/frame-tv-art-manager
+    image: ghcr.io/mikeo7/frame-tv-art-manager:latest
     build: .
     restart: unless-stopped
     ports:
@@ -59,7 +59,9 @@ services:
 
       # --- Optional: Health Check Port (Default 8080. Note: Setting this to 0 completely disables the health server) ---
       # HEALTH_PORT: "8080"
+      # HEALTH_BIND_ADDRESS: "0.0.0.0"
       # UPLOAD_ENABLED: "false" # Set to true to enable HTTP POST /upload endpoint for photo sync
+      # UPLOAD_TOKEN: "replace-with-a-long-random-secret" # Required when uploads are enabled
     volumes:
       # Mount a single data directory. The app will automatically create
       # frame-tv-art-manager/artwork and frame-tv-art-manager/tokens subfolders.

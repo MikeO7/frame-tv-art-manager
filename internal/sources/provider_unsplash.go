@@ -127,12 +127,12 @@ func (p *unsplashProvider) FetchPhoto(ctx context.Context, photoID string) (*uns
 func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation string) {
 	parsedURL, err := url.Parse(downloadLocation)
 	if err != nil {
-		p.logger.Warn("invalid unsplash download location URL format", "url", downloadLocation)
+		p.logger.Warn("invalid unsplash download location URL format", "url", truncateURL(downloadLocation))
 		return
 	}
 	baseURL, err := url.Parse(p.BaseURL)
 	if err != nil || parsedURL.Host != baseURL.Host || parsedURL.Scheme != baseURL.Scheme {
-		p.logger.Warn("invalid unsplash download location host or scheme", "url", downloadLocation)
+		p.logger.Warn("invalid unsplash download location host or scheme", "url", truncateURL(downloadLocation))
 		return
 	}
 
@@ -146,7 +146,7 @@ func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation s
 	resp, err := p.client.Do(req)
 	if err == nil {
 		_ = resp.Body.Close()
-		p.logger.Debug("unsplash download tracked", "url", downloadLocation)
+		p.logger.Debug("unsplash download tracked", "url", truncateURL(downloadLocation))
 	}
 }
 
@@ -157,7 +157,7 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string, globalIndex
 
 	parts := strings.Split(line, ":")
 	if len(parts) < 3 {
-		return nil, fmt.Errorf("invalid unsplash format: %s", line)
+		return nil, fmt.Errorf("invalid unsplash format")
 	}
 
 	var photos []unsplashPhoto
@@ -173,7 +173,7 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string, globalIndex
 		}
 		err = fetchErr
 	default:
-		return nil, fmt.Errorf("unknown unsplash type: %s", parts[1])
+		return nil, fmt.Errorf("unknown unsplash type")
 	}
 
 	if err != nil {

@@ -2,17 +2,18 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
-	"time"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/app"
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sync"
 )
@@ -24,47 +25,99 @@ var (
 	BuildDate = "unknown"
 )
 
+const (
+	directoryArtwork = "artwork"
+	directoryTokens  = "tokens"
+)
+
 func main() {
 	handleCLIArgs()
-
-	cfg, err := config.Load()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+	if err := runMain(); err != nil {
+		fmt.Fprintf(os.Stderr, "Frame TV Art Manager failed: %v\n", err)
 		os.Exit(1)
 	}
+}
 
+func runMain() error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return runMainContext(ctx)
+}
+
+func runMainContext(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("application context is required")
+	}
+	cfg, warnings, err := config.LoadWithWarnings()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
 	logger := setupLogger(cfg.LogLevel)
 	logger.Info("Frame TV Art Manager starting", "version", Version, "commit", Commit, "build_date", BuildDate)
-
-	validateDirectories(cfg, logger)
-	bootstrapSources(cfg, logger)
-
-	healthStatus := health.NewStatus()
-
-	engine := sync.NewEngine(cfg, logger, healthStatus)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-		_ = engine.RunLoop(ctx)
-	}()
-
-	healthServer := health.NewServer(cfg, healthStatus, logger)
-	go healthServer.Start()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	logger.Info("Shutting down gracefully...")
-	cancel()
-
-	// Wait for engine to finish current cycle
-	<-done
-	_ = healthServer.Shutdown(context.Background())
+	for _, warning := range warnings {
+		logger.Warn(warning.Message, "variable", warning.Variable, "fallback", warning.Fallback)
+	}
+	if err := preflight(ctx, cfg, logger); err != nil {
+		return err
+	}
+	application, err := buildApplication(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	if err := application.Run(ctx); err != nil {
+		return fmt.Errorf("run application: %w", err)
+	}
 	logger.Info("Shutdown complete")
+	return nil
+}
+
+func preflight(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
+	if cfg.DryRun {
+		if err := validateDryRunDirectories(cfg); err != nil {
+			return fmt.Errorf("dry-run preflight: %w", err)
+		}
+		return nil
+	}
+	if err := prepareDirectories(cfg); err != nil {
+		return err
+	}
+	return bootstrapSources(ctx, cfg, logger)
+}
+
+func buildApplication(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *slog.Logger,
+) (*app.Application, error) {
+	healthStatus := health.NewStatus()
+	engine, err := sync.NewManagedEngine(ctx, cfg, logger, healthStatus)
+	if err != nil {
+		return nil, fmt.Errorf("construct sync cycle: %w", err)
+	}
+	healthServer := health.NewServer(cfg, healthStatus, logger, engine)
+	applicationOptions := app.Options{
+		Prepare: func(ctx context.Context) error {
+			_, err := engine.Prepare(ctx, collection.PrepareRequest{DryRun: cfg.DryRun})
+			return err
+		},
+		RunCycle:        engine.RunLoop,
+		SetState:        func(state app.State) { healthStatus.SetLifecycle(string(state)) },
+		Closers:         []app.ResourceCloser{engine},
+		ShutdownTimeout: cfg.ShutdownTimeout,
+	}
+	if cfg.HealthPort != 0 {
+		applicationOptions.BindHTTP = func(ctx context.Context) (app.HTTPServer, error) {
+			if err := healthServer.Bind(ctx); err != nil {
+				return nil, err
+			}
+			return healthServer, nil
+		}
+	}
+	application, err := app.New(applicationOptions)
+	if err != nil {
+		return nil, fmt.Errorf("construct application: %w", err)
+	}
+	return application, nil
 }
 
 func handleCLIArgs() {
@@ -88,73 +141,6 @@ func handleCLIArgs() {
 	}
 }
 
-// Health check tuning for the container HEALTHCHECK probe.
-const (
-	defaultHealthPort     = 8080
-	healthCheckTimeout    = 5 * time.Second
-	healthCheckMaxBytes   = 1 << 20 // 1 MiB cap to bound the probe response
-	healthStatusHealthyOK = "ok"
-)
-
-// runHealthCheck performs the container health probe and exits with status 0
-// when healthy or 1 otherwise. All work is delegated to performHealthCheck so
-// resource cleanup runs via defer (os.Exit, used here, bypasses defers).
-func runHealthCheck() {
-	if err := performHealthCheck(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	//nolint:forbidigo // CLI success output
-	fmt.Println("Healthy")
-	os.Exit(0)
-}
-
-func performHealthCheck() error {
-	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
-	defer cancel()
-
-	url := fmt.Sprintf("http://127.0.0.1:%d/health", healthCheckPort())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("create health check request: %w", err)
-	}
-
-	client := &http.Client{Timeout: healthCheckTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("health check request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("health check failed: HTTP status %d", resp.StatusCode)
-	}
-
-	var status struct {
-		Status string `json:"status"`
-	}
-	// Enforce a hard limit on memory allocation to prevent DoS via excessively large payloads.
-	reader := http.MaxBytesReader(nil, resp.Body, healthCheckMaxBytes)
-	if err := json.NewDecoder(reader).Decode(&status); err != nil {
-		return fmt.Errorf("decode health check response: %w", err)
-	}
-
-	if status.Status != healthStatusHealthyOK {
-		return fmt.Errorf("health check returned status: %q", status.Status)
-	}
-	return nil
-}
-
-// healthCheckPort resolves the probe port from HEALTH_PORT, falling back to the default.
-func healthCheckPort() int {
-	if portStr := os.Getenv("HEALTH_PORT"); portStr != "" {
-		if p, err := strconv.Atoi(portStr); err == nil {
-			return p
-		}
-	}
-	return defaultHealthPort
-}
-
 func setupLogger(logLevel string) *slog.Logger {
 	var level slog.Level
 	switch logLevel {
@@ -175,48 +161,94 @@ func setupLogger(logLevel string) *slog.Logger {
 	}))
 }
 
-func validateDirectories(cfg *config.Config, logger *slog.Logger) {
+func prepareDirectories(cfg *config.Config) error {
 	dirs := []struct {
 		name string
 		path string
 		perm os.FileMode
 	}{
-		// 0o755 is intentional for artwork directory so that network shares
-		// like SMB/NFS can traverse and read the images. Do NOT tighten to 0o700.
-		{"artwork", cfg.ArtworkDir, 0o755},
-		{"tokens", cfg.TokenDir, 0o700},
+		// Artwork stays traversable and readable over SMB/NFS; do not tighten it to 0700.
+		{directoryArtwork, cfg.ArtworkDir, 0o755},
+		{directoryTokens, cfg.TokenDir, 0o700},
 	}
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir.path, dir.perm); err != nil {
-			logger.Error("Failed to create/access directory", "name", dir.name, "path", dir.path, "error", err)
-			os.Exit(1)
+		if err := prepareDirectory(dir.path, dir.perm, cfg.PUID, cfg.PGID); err != nil {
+			return fmt.Errorf("prepare %s directory %s: %w", dir.name, dir.path, err)
 		}
-		if err := os.Chmod(dir.path, dir.perm); err != nil {
-			logger.Warn("Failed to set directory permissions", "path", dir.path, "perm", dir.perm, "error", err)
-		}
-		if cfg.PUID != 0 || cfg.PGID != 0 {
-			if err := os.Chown(dir.path, cfg.PUID, cfg.PGID); err != nil {
-				logger.Warn("Failed to set directory ownership", "path", dir.path, "puid", cfg.PUID, "pgid", cfg.PGID, "error", err)
-			}
-		}
-		testFile := fmt.Sprintf("%s/.write_test", dir.path)
-		if err := os.WriteFile(testFile, []byte("ok"), 0o600); err != nil {
-			logger.Error("Directory is not writable", "name", dir.name, "path", dir.path, "error", err)
-			os.Exit(1)
-		}
-		_ = os.Remove(testFile)
 	}
+	return nil
 }
 
-func bootstrapSources(cfg *config.Config, logger *slog.Logger) {
-	if cfg.SourcesFile == "" {
-		return
+//nolint:gocyclo // ordered permission, ownership, and durability probes must fail at their exact boundary
+func prepareDirectory(path string, mode os.FileMode, uid, gid int) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(path, mode); err != nil {
+			return fmt.Errorf("create directory: %w", err)
+		}
+		info, err = os.Lstat(path)
 	}
-	if _, err := os.Stat(cfg.SourcesFile); !os.IsNotExist(err) {
-		return
+	if err != nil {
+		return fmt.Errorf("inspect directory: %w", err)
 	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return errors.New("path must be a non-symlink directory")
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return fmt.Errorf("set directory mode %04o: %w", mode, err)
+	}
+	if uid != 0 || gid != 0 {
+		if err := os.Chown(path, uid, gid); err != nil {
+			return fmt.Errorf("set directory ownership: %w", err)
+		}
+	}
+	probe, err := os.CreateTemp(path, ".write-test-*")
+	if err != nil {
+		return fmt.Errorf("create write probe: %w", err)
+	}
+	probePath := probe.Name()
+	if err := probe.Chmod(0o600); err != nil {
+		_ = probe.Close()
+		_ = os.Remove(probePath)
+		return fmt.Errorf("secure write probe: %w", err)
+	}
+	_, writeErr := probe.WriteString("ok")
+	syncErr := probe.Sync()
+	closeErr := probe.Close()
+	removeErr := os.Remove(probePath)
+	if err := errors.Join(writeErr, syncErr, closeErr, removeErr); err != nil {
+		return fmt.Errorf("verify directory writes: %w", err)
+	}
+	return nil
+}
 
-	logger.Info("Creating example sources file (all commented out)", "path", cfg.SourcesFile)
+func validateDryRunDirectories(cfg *config.Config) error {
+	for _, directory := range []struct {
+		name     string
+		path     string
+		required os.FileMode
+	}{
+		{name: directoryArtwork, path: cfg.ArtworkDir},
+		{name: directoryTokens, path: cfg.TokenDir, required: 0o700},
+	} {
+		info, err := os.Lstat(directory.path)
+		if err != nil {
+			return fmt.Errorf("inspect %s directory %s: %w", directory.name, directory.path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("%s path is not a non-symlink directory: %s", directory.name, directory.path)
+		}
+		if directory.required != 0 && info.Mode().Perm() != directory.required {
+			return fmt.Errorf("%s directory mode is %04o, require %04o", directory.name, info.Mode().Perm(), directory.required)
+		}
+	}
+	return nil
+}
+
+func bootstrapSources(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
+	if cfg.SourcesFile == "" {
+		return nil
+	}
 	template := "# ==========================================\n" +
 		"# Frame TV Art Manager - Source List\n" +
 		"# ==========================================\n" +
@@ -252,7 +284,14 @@ func bootstrapSources(cfg *config.Config, logger *slog.Logger) {
 		"# - Pixabay Photo/User: pixabay.com/.../name-123 -> 123\n" +
 		"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n"
 
-	if err := os.WriteFile(cfg.SourcesFile, []byte(template), 0o600); err != nil {
-		logger.Warn("Failed to bootstrap sources file", "error", err)
+	if err := durablefs.CreateExclusive(ctx, cfg.SourcesFile, 0o600, func(writer io.Writer) error {
+		_, err := io.WriteString(writer, template)
+		return err
+	}); errors.Is(err, os.ErrExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("persist sources template: %w", err)
 	}
+	logger.Info("created example sources file (all commented out)", "path", cfg.SourcesFile)
+	return nil
 }

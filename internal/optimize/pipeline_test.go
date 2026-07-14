@@ -22,6 +22,12 @@ type recordingCatalog struct {
 	renames [][2]string
 }
 
+// OptimizeFile preserves concise package-test setup without adding a
+// contextless production I/O surface.
+func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
+	return optimizeFile(context.Background(), path, cfg, logger, defaultPixelWorkers())
+}
+
 func (c *recordingCatalog) SupportedFiles() (map[string]struct{}, error) {
 	if c.err != nil {
 		return nil, c.err
@@ -210,7 +216,8 @@ func TestCollectRawPortraitsAndWorkerBounds(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("collectRawPortraits(all) = %v, want two portraits", got)
 	}
-	if clampWorkers(0) != minOptimizeWorkers || clampWorkers(8) != 8 || clampWorkers(100) != maxOptimizeWorkers {
+	if clampWorkers(0) != minOptimizeWorkers || clampWorkers(8) != maxOptimizeWorkers ||
+		clampWorkers(100) != maxOptimizeWorkers {
 		t.Fatal("clampWorkers did not enforce worker bounds")
 	}
 }
@@ -382,7 +389,7 @@ func TestHandleSingleOptimizationBranches(t *testing.T) {
 		logger:     discardLogger(),
 	}
 
-	modified, ok := handleSingleOptimization("invalid.jpg", o)
+	modified, ok := handleSingleOptimizationContext(context.Background(), "invalid.jpg", o)
 	if ok || modified {
 		t.Fatalf("handleSingleOptimization(invalid, disabled) = (%v, %v), want false,false", modified, ok)
 	}
@@ -392,7 +399,7 @@ func TestHandleSingleOptimizationBranches(t *testing.T) {
 
 	missingCfg := DefaultConfig()
 	o.cfg = missingCfg
-	modified, ok = handleSingleOptimization("missing.jpg", o)
+	modified, ok = handleSingleOptimizationContext(context.Background(), "missing.jpg", o)
 	if ok || modified {
 		t.Fatalf("handleSingleOptimization(missing, enabled) = (%v, %v), want false,false", modified, ok)
 	}

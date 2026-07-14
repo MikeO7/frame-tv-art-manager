@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -105,13 +106,15 @@ func (p *nasaProvider) SearchNASAImageLibrary(ctx context.Context, query string)
 	}
 
 	var imageUrls []string
+	var manifestErrors []error
 	maxItems := min(len(result.Collection.Items), nasaMaxSearchItems)
 
 	for i := 0; i < maxItems; i++ {
 		item := result.Collection.Items[i]
 		manifestURL, err := p.fetchNASAAssetManifest(ctx, item.Href)
 		if err != nil {
-			p.logger.Warn("failed to fetch nasa asset manifest", "href", item.Href, "error", err)
+			p.logger.Warn("failed to fetch nasa asset manifest", "href", truncateURL(item.Href), "error", err)
+			manifestErrors = append(manifestErrors, fmt.Errorf("resolve NASA asset %d: %w", i, err))
 			continue
 		}
 		if manifestURL != "" {
@@ -119,7 +122,7 @@ func (p *nasaProvider) SearchNASAImageLibrary(ctx context.Context, query string)
 		}
 	}
 
-	return imageUrls, nil
+	return imageUrls, errors.Join(manifestErrors...)
 }
 
 // fetchNASAAssetManifest resolves the actual high-res image link from a NASA manifest.
@@ -145,7 +148,7 @@ func (p *nasaProvider) fetchNASAAssetManifest(ctx context.Context, href string) 
 func (p *nasaProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid nasa format: %s", line)
+		return nil, fmt.Errorf("invalid nasa format")
 	}
 
 	var urls []string
@@ -170,7 +173,7 @@ func (p *nasaProvider) Resolve(ctx context.Context, line string, globalIndex *in
 		}
 		urls, err = p.SearchNASAImageLibrary(ctx, parts[2])
 	default:
-		return nil, fmt.Errorf("unknown nasa type: %s", parts[1])
+		return nil, fmt.Errorf("unknown nasa type")
 	}
 
 	if err != nil {

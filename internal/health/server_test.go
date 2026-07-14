@@ -10,15 +10,94 @@ import (
 	"image/png"
 	"log/slog"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
+	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
+
+func newTestServer(t *testing.T, cfg *config.Config, status *Status, logger *slog.Logger) *Server {
+	t.Helper()
+	var importer collection.Store
+	if cfg != nil && cfg.UploadEnabled {
+		if cfg.ArtworkDir == "" {
+			configured := *cfg
+			configured.ArtworkDir = t.TempDir()
+			cfg = &configured
+		}
+		var err error
+		importer, err = collection.New(collection.Config{
+			Root: cfg.ArtworkDir, MaxImportBytes: int64(cfg.MaxDownloadSizeMB) << 20,
+		})
+		if err != nil {
+			t.Fatalf("construct test Artwork Collection: %v", err)
+		}
+	}
+	return NewServer(cfg, status, logger, importer)
+}
+
+func TestBindRejectsUploadWithoutCollection(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(1, true, t.TempDir())
+	server := NewServer(cfg, NewStatus(), silentLogger(), nil)
+
+	err := server.Bind(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "authoritative artwork collection") {
+		t.Fatalf("Bind() error = %v, want missing collection error", err)
+	}
+}
+
+func TestServerBoundLifecycle(t *testing.T) {
+	t.Parallel()
+
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve local port: %v", err)
+	}
+	port := probe.Addr().(*net.TCPAddr).Port
+	if err := probe.Close(); err != nil {
+		t.Fatalf("release local port: %v", err)
+	}
+
+	cfg := testConfig(port, false, "")
+	cfg.HealthBindAddress = "127.0.0.1"
+	server := NewServer(cfg, NewStatus(), silentLogger(), nil)
+	if err := server.Bind(context.Background()); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- server.Serve() }()
+
+	response, err := http.Get("http://" + server.listener.Addr().String() + "/live")
+	if err != nil {
+		t.Fatalf("GET /live: %v", err)
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatalf("close /live response: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET /live status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+
+	shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdown); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+	if err := <-served; !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Serve() error = %v, want http.ErrServerClosed", err)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
 
 func encodedTestImage(t *testing.T, format string) []byte {
 	t.Helper()
@@ -38,6 +117,7 @@ func encodedTestImage(t *testing.T, format string) []byte {
 
 func TestHealthEndpoint(t *testing.T) {
 	status := NewStatus()
+	status.SetLifecycle("ready")
 	status.RecordSync(true, nil)
 	status.SetTVStatus("192.168.1.1", TVStatus{
 		IP:         "192.168.1.1",
@@ -47,7 +127,7 @@ func TestHealthEndpoint(t *testing.T) {
 		Status:     "ok",
 	})
 
-	srv := NewServer(testConfig(0, false, ""), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, false, ""), status, silentLogger())
 	// Use httptest directly instead of starting a real listener.
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -76,14 +156,14 @@ func TestHealthEndpoint(t *testing.T) {
 func TestServer_Routes(t *testing.T) {
 	status := NewStatus()
 	logger := silentLogger()
-	server := NewServer(testConfig(0, false, ""), status, logger) // Port 0 doesn't actually start, but we can call handlers.
+	server := newTestServer(t, testConfig(0, false, ""), status, logger) // Port 0 doesn't actually start, but we can call handlers.
 
 	// Test handleHealth
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
 	server.handleHealth(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusOK)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusServiceUnavailable)
 	}
 
 	// Test handleStatus
@@ -95,27 +175,11 @@ func TestServer_Routes(t *testing.T) {
 	}
 }
 
-func TestServer_Shutdown(t *testing.T) {
-	status := NewStatus()
-	logger := silentLogger()
-	server := NewServer(testConfig(12345, false, ""), status, logger)
-
-	// Start server in background
-	server.Start()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		t.Errorf("Shutdown failed: %v", err)
-	}
-}
-
 func TestStatusEndpoint(t *testing.T) {
 	status := NewStatus()
 	status.RecordSync(false, nil)
 
-	srv := NewServer(testConfig(0, false, ""), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, false, ""), status, silentLogger())
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
 	w := httptest.NewRecorder()
 	srv.handleStatus(w, req)
@@ -145,18 +209,9 @@ func TestStatus_SetStage(t *testing.T) {
 	}
 }
 
-func TestServer_Start_DisabledPort(t *testing.T) {
-	status := NewStatus()
-	server := NewServer(testConfig(0, false, ""), status, silentLogger())
-	server.Start()
-	if server.server != nil {
-		t.Error("expected no http.Server when port is 0")
-	}
-}
-
 func TestShutdown_NilServer(t *testing.T) {
 	// Shutdown on a server that was never started should not panic.
-	srv := NewServer(testConfig(0, false, ""), NewStatus(), silentLogger())
+	srv := newTestServer(t, testConfig(0, false, ""), NewStatus(), silentLogger())
 	if err := srv.Shutdown(t.Context()); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -177,60 +232,12 @@ func TestRecordSync_WithError(t *testing.T) {
 	}
 }
 
-// safeBuffer is a thread-safe wrapper around bytes.Buffer to prevent data races during testing.
-type safeBuffer struct {
-	b  bytes.Buffer
-	mu sync.Mutex
-}
-
-func (s *safeBuffer) Write(p []byte) (n int, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Write(p)
-}
-
-func (s *safeBuffer) Bytes() []byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Bytes()
-}
-
-func (s *safeBuffer) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.String()
-}
-
-func TestServer_StartAndServe(t *testing.T) {
+func TestSetTVStatusPreservesLastKnownSeenTime(t *testing.T) {
 	status := NewStatus()
-
-	// Use a thread-safe buffer for slog to prevent data races between the logger goroutine and the test poller.
-	var buf safeBuffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
-
-	// Port -1 is invalid and will cause ListenAndServe to fail immediately.
-	srv := NewServer(testConfig(-1, false, ""), status, logger)
-	srv.Start()
-
-	// Wait for the goroutine to log the error, with a timeout
-	timeout := time.After(2 * time.Second)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-timeout:
-			t.Fatal("timed out waiting for server error log")
-		case <-ticker.C:
-			if bytes.Contains(buf.Bytes(), []byte("health server error")) {
-				// We found the error log, the goroutine executed the failure path successfully.
-				// Assert that the specific error we expect is present.
-				if !bytes.Contains(buf.Bytes(), []byte("invalid port")) {
-					t.Errorf("expected 'invalid port' in log output, got: %s", buf.String())
-				}
-				return
-			}
-		}
+	status.SetTVStatus("192.0.2.10", TVStatus{IP: "192.0.2.10", LastSeen: "known", Status: "ok"})
+	status.SetTVStatus("192.0.2.10", TVStatus{IP: "192.0.2.10", Status: "backoff"})
+	if got := status.snapshot().TVStatuses["192.0.2.10"].LastSeen; got != "known" {
+		t.Fatalf("LastSeen = %q, want known", got)
 	}
 }
 
@@ -257,7 +264,7 @@ func createMultipartRequest(filename string, content []byte) (*http.Request, err
 
 func TestUpload_Disabled(t *testing.T) {
 	status := NewStatus()
-	srv := NewServer(testConfig(0, false, ""), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, false, ""), status, silentLogger())
 
 	req, err := createMultipartRequest("test.jpg", []byte("fake content"))
 	if err != nil {
@@ -274,7 +281,7 @@ func TestUpload_Disabled(t *testing.T) {
 
 func TestUpload_MethodNotAllowed(t *testing.T) {
 	status := NewStatus()
-	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, true, ""), status, silentLogger())
 
 	req := httptest.NewRequest(http.MethodPut, "/upload", nil)
 	w := httptest.NewRecorder()
@@ -287,7 +294,7 @@ func TestUpload_MethodNotAllowed(t *testing.T) {
 
 func TestUpload_GETHTML(t *testing.T) {
 	status := NewStatus()
-	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, true, ""), status, silentLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/upload", nil)
 	w := httptest.NewRecorder()
@@ -304,7 +311,7 @@ func TestUpload_GETHTML(t *testing.T) {
 
 func TestUpload_InvalidMultipart(t *testing.T) {
 	status := NewStatus()
-	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, true, ""), status, silentLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader([]byte("not multipart")))
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -318,7 +325,7 @@ func TestUpload_InvalidMultipart(t *testing.T) {
 
 func TestUpload_UnsupportedType(t *testing.T) {
 	status := NewStatus()
-	srv := NewServer(testConfig(0, true, ""), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, true, ""), status, silentLogger())
 
 	req, err := createMultipartRequest("test.txt", []byte("plain text content which is not an image"))
 	if err != nil {
@@ -336,7 +343,7 @@ func TestUpload_UnsupportedType(t *testing.T) {
 func TestUpload_SuccessAndDeduplication(t *testing.T) {
 	status := NewStatus()
 	tmpDir := t.TempDir()
-	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, true, tmpDir), status, silentLogger())
 
 	jpegContent := encodedTestImage(t, "jpeg")
 
@@ -398,7 +405,7 @@ func TestUpload_SuccessAndDeduplication(t *testing.T) {
 func TestUpload_SuccessRawBinary(t *testing.T) {
 	status := NewStatus()
 	tmpDir := t.TempDir()
-	srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+	srv := newTestServer(t, testConfig(0, true, tmpDir), status, silentLogger())
 
 	jpegContent := encodedTestImage(t, "jpeg")
 
@@ -439,7 +446,7 @@ func TestUpload_RawBinaryTooLarge(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := testConfig(0, true, tmpDir)
 	cfg.MaxDownloadSizeMB = 1
-	srv := NewServer(cfg, status, silentLogger())
+	srv := newTestServer(t, cfg, status, silentLogger())
 
 	// Valid JPEG header, but body exceeds the 1 MB limit.
 	largeContent := make([]byte, 1024*1024+100)
@@ -484,7 +491,7 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 	t.Run("Valid Form JPEG", func(t *testing.T) {
 		status := NewStatus()
 		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+		srv := newTestServer(t, testConfig(0, true, tmpDir), status, silentLogger())
 
 		jpegContent := encodedTestImage(t, "jpeg")
 
@@ -524,7 +531,7 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 	t.Run("Valid Form PNG", func(t *testing.T) {
 		status := NewStatus()
 		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+		srv := newTestServer(t, testConfig(0, true, tmpDir), status, silentLogger())
 
 		pngContent := encodedTestImage(t, "png")
 
@@ -565,7 +572,7 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 		tmpDir := t.TempDir()
 		cfg := testConfig(0, true, tmpDir)
 		cfg.MaxDownloadSizeMB = 1 // 1 MB max size
-		srv := NewServer(cfg, status, silentLogger())
+		srv := newTestServer(t, cfg, status, silentLogger())
 
 		// Create content larger than 1MB
 		largeContent := make([]byte, 1024*1024+100)
@@ -603,7 +610,7 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 	t.Run("Missing File Field", func(t *testing.T) {
 		status := NewStatus()
 		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+		srv := newTestServer(t, testConfig(0, true, tmpDir), status, silentLogger())
 
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
@@ -643,7 +650,7 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 	t.Run("Unsupported Format", func(t *testing.T) {
 		status := NewStatus()
 		tmpDir := t.TempDir()
-		srv := NewServer(testConfig(0, true, tmpDir), status, silentLogger())
+		srv := newTestServer(t, testConfig(0, true, tmpDir), status, silentLogger())
 
 		// Mock HEIC image simulator data
 		heicContent := []byte("heic image simulator data")
@@ -668,8 +675,8 @@ func TestUpload_iOSShortcutSimulator(t *testing.T) {
 			t.Errorf("expected status=error, got %v", resp["status"])
 		}
 
-		if !strings.Contains(resp["error"].(string), "Unsupported file type") {
-			t.Errorf("expected error message about unsupported file type, got %q", resp["error"])
+		if !strings.Contains(resp["error"].(string), "Invalid or unsafe image") {
+			t.Errorf("expected safe invalid-image message, got %q", resp["error"])
 		}
 	})
 }

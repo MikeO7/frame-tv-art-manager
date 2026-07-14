@@ -450,8 +450,8 @@ func TestNASAClient_SearchNASAImageLibrary_Errors(t *testing.T) {
 	c.SearchURL = server.URL
 
 	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if err == nil {
+		t.Fatal("expected incomplete NASA resolution to return an error")
 	}
 	if len(urls) != 0 {
 		t.Errorf("expected 0 URLs, got %v", urls)

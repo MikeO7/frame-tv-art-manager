@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	neturl "net/url"
 	"strings"
@@ -29,10 +30,10 @@ func (p *directProvider) Resolve(ctx context.Context, line string, globalIndex *
 
 	u, err := neturl.Parse(urlStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid direct URL format: %w", err)
+		return nil, errors.New("invalid direct URL format")
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("unsupported direct URL scheme: %s", u.Scheme)
+	if u.Scheme != schemeHTTP && u.Scheme != schemeHTTPS {
+		return nil, errors.New("unsupported direct URL scheme")
 	}
 
 	idx := atomic.AddInt32(globalIndex, 1) - 1

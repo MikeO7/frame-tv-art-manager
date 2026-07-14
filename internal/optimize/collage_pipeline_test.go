@@ -114,7 +114,8 @@ func TestProcessCollagePair_CommitCollisionIsError(t *testing.T) {
 		ext = extJPG
 	}
 	collageName := artwork.BuildOptimizedName("collage_"+stem1+"_"+stem2, cfg.MaxWidth, cfg.MaxHeight, hash1+"_"+hash2, ext)
-	if err := os.Mkdir(filepath.Join(dir, collageName), 0o700); err != nil {
+	collisionPath := filepath.Join(dir, collageName)
+	if err := os.WriteFile(collisionPath, []byte("operator artwork"), 0o644); err != nil {
 		t.Fatalf("create output collision target: %v", err)
 	}
 
@@ -128,6 +129,14 @@ func TestProcessCollagePair_CommitCollisionIsError(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "commit collage") {
 		t.Fatalf("expected commit collision error, got %v", err)
+	}
+	if got, err := os.ReadFile(collisionPath); err != nil || string(got) != "operator artwork" {
+		t.Fatalf("collision target was replaced: %q, %v", got, err)
+	}
+	for _, name := range []string{"upload_a.h_a.jpg", "upload_b.h_b.jpg"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("collage source %q was removed after collision: %v", name, err)
+		}
 	}
 }
 

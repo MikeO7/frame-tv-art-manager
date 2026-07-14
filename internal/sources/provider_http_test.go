@@ -168,8 +168,8 @@ func TestFetchProviderJSONContract(t *testing.T) {
 			client: client, url: "https://provider.invalid", maxBytes: 1024,
 			statusLabel: "provider", decodeLabel: "provider",
 		}, &struct{}{})
-		if !errors.Is(err, wantErr) {
-			t.Fatalf("fetchProviderJSON() error = %v, want %v", err, wantErr)
+		if err == nil || errors.Is(err, wantErr) {
+			t.Fatalf("fetchProviderJSON() error = %v, want sanitized transport failure", err)
 		}
 	})
 }

@@ -21,6 +21,10 @@ var (
 
 // applyMuseumMode orchestrates a suite of visual filters to simulate physical artwork.
 func applyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
+	return applyMuseumModeWithWorkers(src, intensity, defaultPixelWorkers())
+}
+
+func applyMuseumModeWithWorkers(src *image.RGBA, intensity, workerLimit int) *image.RGBA {
 	if intensity > 10 {
 		intensity = 10
 	}
@@ -28,19 +32,19 @@ func applyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 		intensity = 0
 	}
 
-	img := unifyCollection(src)
+	img := unifyCollectionWithWorkers(src, workerLimit)
 
 	if intensity > 0 {
-		img = applyCanvasTexture(img, intensity)
+		img = applyCanvasTextureWithWorkers(img, intensity, workerLimit)
 	}
 
-	img = galleryMasterPolish(img)
+	img = galleryMasterPolishWithWorkers(img, workerLimit)
 
 	return img
 }
 
-func unifyCollection(src *image.RGBA) *image.RGBA {
-	rms := calculateRMSContrast(src)
+func unifyCollectionWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
+	rms := calculateRMSContrastWithWorkers(src, workerLimit)
 
 	// Target Gallery RMS (Rich Contrast)
 	const targetRMS = 58.0
@@ -52,33 +56,34 @@ func unifyCollection(src *image.RGBA) *image.RGBA {
 		contrastGamma = 1.15
 	}
 
-	applyContrastAndGamut(src, contrastGamma)
+	applyContrastAndGamutWithWorkers(src, contrastGamma, workerLimit)
 	return src
 }
 
 func calculateRMSContrast(src *image.RGBA) float64 {
+	return calculateRMSContrastWithWorkers(src, defaultPixelWorkers())
+}
+
+func calculateRMSContrastWithWorkers(src *image.RGBA, workerLimit int) float64 {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	var sumSq, sum float64
 
-	var wg sync.WaitGroup
-	workers := pixelWorkers
-	chunk := (height + workers - 1) / workers
-	sums := make([]float64, workers)
-	sumSqs := make([]float64, workers)
+	chunk := (height + pixelPartitions - 1) / pixelPartitions
+	sums := make([]float64, pixelPartitions)
+	sumSqs := make([]float64, pixelPartitions)
 
-	for i := 0; i < workers; i++ {
+	runPixelTasks(workerLimit, func(i int) {
 		startY := i * chunk
 		endY := startY + chunk
 		if endY > height {
 			endY = height
 		}
 		if startY >= height {
-			break
+			return
 		}
 
-		wg.Add(1)
-		go func(workerIdx, sy, ey int) {
+		func(workerIdx, sy, ey int) {
 			calculateRMSWorker(rmsWork{
 				src:       src,
 				width:     width,
@@ -87,13 +92,11 @@ func calculateRMSContrast(src *image.RGBA) float64 {
 				workerIdx: workerIdx,
 				sums:      sums,
 				sumSqs:    sumSqs,
-				wg:        &wg,
 			})
 		}(i, startY, endY)
-	}
-	wg.Wait()
+	})
 
-	for i := 0; i < workers; i++ {
+	for i := range pixelPartitions {
 		sum += sums[i]
 		sumSq += sumSqs[i]
 	}
@@ -110,7 +113,6 @@ type rmsWork struct {
 	sy, ey       int
 	workerIdx    int
 	sums, sumSqs []float64
-	wg           *sync.WaitGroup
 }
 
 func calculateRMSWorker(work rmsWork) {
@@ -119,9 +121,6 @@ func calculateRMSWorker(work rmsWork) {
 	sy, ey := work.sy, work.ey
 	workerIdx := work.workerIdx
 	sums, sumSqs := work.sums, work.sumSqs
-	wg := work.wg
-
-	defer wg.Done()
 	var localSum, localSumSq uint64
 
 	// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
@@ -179,8 +178,12 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	return lutSrgb[idxR], lutSrgb[idxG], lutSrgb[idxB]
 }
 
-//nolint:gocognit // per-pixel contrast/gamut mapping across goroutine-partitioned rows kept inline for throughput
 func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
+	applyContrastAndGamutWithWorkers(src, contrastGamma, defaultPixelWorkers())
+}
+
+//nolint:gocognit // per-pixel mapping remains inline across bounded row partitions for throughput
+func applyContrastAndGamutWithWorkers(src *image.RGBA, contrastGamma float64, workerLimit int) {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 
@@ -203,24 +206,19 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 		}
 	})
 
-	var wg sync.WaitGroup
-	workers := pixelWorkers
-	chunk := (height + workers - 1) / workers
+	chunk := (height + pixelPartitions - 1) / pixelPartitions
 
-	for j := 0; j < workers; j++ {
+	runPixelTasks(workerLimit, func(j int) {
 		startY := j * chunk
 		endY := startY + chunk
 		if endY > height {
 			endY = height
 		}
 		if startY >= height {
-			break
+			return
 		}
 
-		wg.Add(1)
-		go func(sy, ey int) {
-			defer wg.Done()
-
+		func(sy, ey int) {
 			// OPTIMIZATION: Extracting pointer fields to local variables prevents continuous pointer indirection overhead in tight loops
 			pix := src.Pix
 			stride := src.Stride
@@ -235,6 +233,5 @@ func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
 				}
 			}
 		}(startY, endY)
-	}
-	wg.Wait()
+	})
 }

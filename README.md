@@ -34,11 +34,29 @@ Remote-source cleanup is conservative: if any source fails to resolve or
 download during a cycle, the previous source collection is retained instead of
 being pruned from an incomplete result.
 
-Images already present on the TV are tracked in per-TV mapping files under the
-token directory. Those mappings are written atomically and keep a backup. The
-application does not normally delete TV images it does not own. Enabling
+Removing a remote source does not delete its already-downloaded local file.
+Source ownership is never inferred from a numeric filename prefix; delete the
+local file explicitly when it is no longer wanted.
+
+Owned TV artwork is tracked in checksummed, transactionally replaced per-TV
+reconciliation state under the token directory. On upgrade, a valid legacy
+filename mapping is adopted once before any TV mutation; corrupt or ambiguous
+migration state fails closed. The application does not normally delete TV
+images it does not own. Enabling
 `REMOVE_UNKNOWN_IMAGES` changes that rule and should be treated as a destructive
 option.
+
+### Safety architecture
+
+The process is supervised as one bounded lifetime: HTTP bind failures stop
+startup, child failures reach the process result, and shutdown has a configured
+deadline. Artwork imports and cycle inventories pass through one transactional
+Collection Store with checksummed recovery state and immutable, fully verified
+snapshots. A cycle with an incomplete or corrupt inventory stops before TV
+planning. Per-TV observations require a verified Frame TV identity, explicit
+Art Mode and power facts, and an explicit inventory array; unknown state never
+authorizes deletion or display changes. Sensitive state is stored with `0600`
+file and `0700` directory modes.
 
 ## Quick start with Docker Compose
 
@@ -102,12 +120,15 @@ http://<server-address>:8080/upload
 ```
 
 The page accepts JPEG and PNG files. Uploads are size-limited, fully decoded
-before being accepted, written atomically, and deduplicated by content hash.
+before being accepted, committed through the transactional Collection Store,
+and deduplicated by content hash.
 The same endpoint accepts a multipart `POST` with a field named `file`, which is
 useful from iOS Shortcuts.
 
-The uploader does **not** implement authentication. Enable it only on a trusted
-network, and do not expose port 8080 directly to the public internet. See
+Uploads require HTTP Basic authentication. Use username `frame` and the value
+of `UPLOAD_TOKEN` as the password; the token must contain at least 16
+characters. Keep the endpoint on a trusted network and do not expose port 8080
+directly to the public internet. See
 [the Apple Photos guide](docs/apple-photos-sync.md) for an example Shortcut and
 macOS workflows.
 
@@ -180,7 +201,10 @@ treatment implemented by the optimizer. Both are off by default.
 Samsung mattes are selected with `MATTE_STYLE`. Use `none` for full-screen art
 or a value such as `shadowbox_polar`. A `mattes.json` file in the artwork
 directory can override the matte per filename; it is treated as a control file
-and never uploaded as artwork.
+and never uploaded as artwork. The file must contain one JSON object whose
+keys are artwork basenames (with optional `_default`) and whose values are
+normalized matte names. Invalid or unsafe matte control files stop the Sync
+Cycle before any TV work instead of being silently ignored.
 
 ## Configuration
 
@@ -192,7 +216,7 @@ the table below covers the settings most people change.
 | --- | --- | --- |
 | `TV_IPS` | required | Comma-separated TV addresses |
 | `ARTWORK_DIR` | `/data/artwork` | Local desired artwork collection |
-| `TOKEN_DIR` | `/data/tokens` | Pairing tokens, mappings, and TV state |
+| `TOKEN_DIR` | `/data/tokens` | Pairing tokens and checksummed reconciliation state |
 | `SYNC_INTERVAL_MINUTES` | `5` | Time between sync cycles |
 | `CLIENT_NAME` | `Frame Art Manager` | Name shown in the TV authorization prompt |
 | `MATTE_STYLE` | `none` | Global Samsung matte style and color |
@@ -206,8 +230,10 @@ the table below covers the settings most people change.
 | `SMART_CROP_ENABLED` | `false` | Enable content-aware cropping |
 | `IMAGE_MUSEUM_MODE` | `false` | Enable the texture/color treatment |
 | `UPLOAD_ENABLED` | `false` | Enable `GET` and `POST /upload` |
+| `UPLOAD_TOKEN` | required with uploads | HTTP Basic-auth password (minimum 16 characters) |
 | `HEALTH_PORT` | `8080` | HTTP server port; zero disables it |
-| `DRY_RUN` | `false` | Plan/log TV reconciliation without TV mutations |
+| `HEALTH_BIND_ADDRESS` | `0.0.0.0` | Local IP address for the HTTP listener |
+| `DRY_RUN` | `false` | Read-only collection and TV planning with no durable mutations |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Delete TV art not known to this manager |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 
@@ -221,26 +247,40 @@ mode, and solar coordinates are validated at startup.
   `SOLAR_BRIGHTNESS_ENABLED`, latitude, longitude, timezone, and min/max values.
 - Setting any `SLIDESHOW_*` variable opts into slideshow override. If none is
   set, the manager preserves the TV's current slideshow configuration.
+  Supported intervals are 3, 15, 60, 720, and 1440 minutes; unsupported
+  explicit intervals are rejected during startup.
 - `AUTO_OFF_TIME` uses a 24-hour local time and only acts during its configured
   grace window.
-- `TV_MAC` enables Wake-on-LAN before connection attempts.
+- The manager preserves the TV's current artwork selection. Selection is not
+  changed until the private protocol exposes an observable postcondition that
+  can be recovered safely after an interrupted command.
+- `TV_MAC` enables Wake-on-LAN only after the TV is positively observed as off.
+  Unknown power never authorizes a wake. With multiple TVs,
+  the single legacy MAC is ambiguous, so Wake-on-LAN is disabled with a startup
+  warning.
+- `SHUTDOWN_TIMEOUT_SECONDS` sets the bounded graceful-shutdown window and
+  defaults to 30 seconds.
+- Malformed numeric and Boolean environment values retain their documented
+  fallback for compatibility and emit a structured startup warning. A future
+  major release will reject explicitly malformed values.
 - `ENABLE_REST_GATE` probes the TV's REST endpoint before synchronization. This
   is firmware-dependent and disabled by default.
 - TLS verification is off by default because local Frame certificates are
   commonly self-signed. Set `VERIFY_TLS=true` only when the TV endpoint can be
   verified; `SKIP_TLS_VERIFY=true` takes precedence.
 
-`DRY_RUN` prevents upload, deletion, selection, brightness, slideshow, and
-power mutations on the TV. Local source resolution and image preparation still
-run, so it should not be treated as a promise that the local data directory is
-unchanged.
+`DRY_RUN` performs read-only collection and TV observation and planning. It
+does not create or modify local files, pair a TV, persist tokens or state, send
+Wake-on-LAN, expose the upload mutation, or change the TV.
 
 ## Monitoring
 
 The HTTP server exposes:
 
-- `GET /health` — returns 200 before the first cycle and after a successful
-  cycle; returns 503 when the most recently completed cycle failed.
+- `GET /live` — reports process liveness.
+- `GET /ready` and `GET /health` — return 200 only after supervised startup and
+  at least one successful cycle; return 503 while starting, stopping, failed,
+  or after an unsuccessful cycle.
 - `GET /status` — returns process timing, current stage, last error, cycle
   count, and the latest per-TV status.
 - `GET /upload` and `POST /upload` — available only when uploads are enabled.

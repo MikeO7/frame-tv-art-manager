@@ -98,9 +98,13 @@ func TestTruncateURL(t *testing.T) {
 	if short != "https://example.com" {
 		t.Errorf("short URL changed: %q", short)
 	}
-	long := truncateURL("https://example.com/" + string(make([]byte, 100)))
+	long := truncateURL("https://example.com/" + strings.Repeat("a", 100))
 	if len(long) != 80 {
 		t.Errorf("expected truncated length 80, got %d", len(long))
+	}
+	sensitive := truncateURL("https://user:password@example.com/art.jpg?api_key=secret#token")
+	if strings.Contains(sensitive, "password") || strings.Contains(sensitive, "secret") || strings.Contains(sensitive, "token") {
+		t.Fatalf("sanitized URL leaked credentials: %q", sensitive)
 	}
 }
 

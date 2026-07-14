@@ -1,6 +1,9 @@
 package optimize
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -9,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 func TestOptimizeFile(t *testing.T) {
@@ -346,6 +351,38 @@ func TestCheckFastPath(t *testing.T) {
 	}
 }
 
+func TestOptimizeFileFastPathFullyDecodesPixels(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 32, 32)), nil); err != nil {
+		t.Fatal(err)
+	}
+	data := encoded.Bytes()
+	var truncated []byte
+	for cut := len(data) - 1; cut > len(data)/2; cut-- {
+		candidate := data[:cut]
+		if _, err := jpeg.DecodeConfig(bytes.NewReader(candidate)); err != nil {
+			continue
+		}
+		if _, err := jpeg.Decode(bytes.NewReader(candidate)); err != nil {
+			truncated = candidate
+			break
+		}
+	}
+	if truncated == nil {
+		t.Fatal("could not construct a header-valid truncated JPEG")
+	}
+	path := filepath.Join(t.TempDir(), "photo_32x32_opt.h_abc123.jpg")
+	if err := os.WriteFile(path, truncated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = 32, 32
+	if _, _, err := optimizeFile(context.Background(), path, cfg, slog.Default(), 1); err == nil ||
+		!strings.Contains(err.Error(), "validate optimized pixels") {
+		t.Fatalf("optimizeFile() error = %v, want full-decode failure", err)
+	}
+}
+
 func TestHandleRename_RenamesWhenNeeded(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "source.jpg")
@@ -373,6 +410,38 @@ func TestHandleRename_RenamesWhenNeeded(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, newName)); err != nil {
 		t.Fatalf("expected renamed output to exist: %v", err)
+	}
+}
+
+func TestHandleRenamePreservesExistingOperatorDestination(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	source := filepath.Join(directory, "source.jpg")
+	if err := os.WriteFile(source, []byte("optimized bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	destinationName, changed := artwork.BuildOptimizedNameFromFile("source.jpg", 1280, 720)
+	if !changed {
+		t.Fatal("test name did not require optimization rename")
+	}
+	destination := filepath.Join(directory, destinationName)
+	if err := os.WriteFile(destination, []byte("operator bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := handleRename(renameRequest{
+		path: source, filename: "source.jpg", dir: directory, modified: true,
+		finalW: 1280, finalH: 720, logger: slog.Default(), ctx: context.Background(),
+	})
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("handleRename() error = %v, want destination collision", err)
+	}
+	if got, err := os.ReadFile(source); err != nil || string(got) != "optimized bytes" {
+		t.Fatalf("source = %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(destination); err != nil || string(got) != "operator bytes" {
+		t.Fatalf("destination = %q, %v", got, err)
 	}
 }
 
