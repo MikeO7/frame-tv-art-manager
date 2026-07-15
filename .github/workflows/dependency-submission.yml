@@ -32,7 +32,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Submit Dependencies
-        uses: actions/go-dependency-submission@bc8bc528058f8783a71277e474972be5d8dc4f94 # Node 24-compatible action revision
+        uses: actions/go-dependency-submission@2ca822d507c895fa434a7fe69cacd1cfe9b0aa45 # Node 24-compatible action revision
         with:
           go-mod-path: go.mod
           go-build-target: cmd/frame-tv-art-manager/main.go
