@@ -136,7 +136,9 @@ func handleCLIArgs() {
 			fmt.Printf("frame-tv-art-manager version %s (commit %s) built on %s\n", Version, Commit, BuildDate)
 			os.Exit(0)
 		case "-healthcheck", "--healthcheck":
-			runHealthCheck()
+			runHealthCheck("/health")
+		case "-livenesscheck", "--livenesscheck":
+			runHealthCheck("/live")
 		}
 	}
 }

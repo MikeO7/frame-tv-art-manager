@@ -96,6 +96,16 @@ func (store *recordingCollectionStore) Import(
 	return store.snapshot, nil
 }
 
+func (store *recordingCollectionStore) ImportBatch(
+	_ context.Context,
+	requests []collectionpkg.ImportRequest,
+) (collectionpkg.Snapshot, error) {
+	if len(requests) > 0 {
+		store.importRequest = requests[0]
+	}
+	return store.snapshot, nil
+}
+
 func (store *recordingCollectionStore) Apply(
 	_ context.Context,
 	request collectionpkg.ApplyRequest,

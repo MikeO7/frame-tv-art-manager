@@ -78,6 +78,93 @@ func (s *store) Import(ctx context.Context, request ImportRequest) (Snapshot, er
 	return s.publish(ctx, input, projected, change, duplicate)
 }
 
+type batchImportAddition struct {
+	input validatedImage
+	item  Item
+}
+
+// ImportBatch validates and commits multiple independent imports under one
+// collection mutation. It inventories and verifies the collection once for
+// the whole batch while preserving the ordered change result of each request.
+//
+//nolint:funlen,gocognit,gocyclo // Validation, projection, atomic commit, and verification are one collection transaction.
+func (s *store) ImportBatch(ctx context.Context, requests []ImportRequest) (Snapshot, error) {
+	if len(requests) == 0 {
+		return Snapshot{}, errors.New("import batch is empty")
+	}
+	dryRun := requests[0].DryRun
+	for _, request := range requests {
+		if request.Reader == nil {
+			return Snapshot{}, errors.New("import reader is nil")
+		}
+		if request.DryRun != dryRun {
+			return Snapshot{}, errors.New("import batch mixes dry-run and committed requests")
+		}
+	}
+	if err := s.acquire(ctx); err != nil {
+		return Snapshot{}, err
+	}
+	defer s.release()
+
+	inputs := make([]validatedImage, len(requests))
+	origins := make([]Origin, len(requests))
+	for index, request := range requests {
+		input, err := s.validateRequest(ctx, request)
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("validate import %d: %w", index+1, err)
+		}
+		origin, err := importOrigin(request.Origin, input)
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("validate import %d origin: %w", index+1, err)
+		}
+		inputs[index], origins[index] = input, origin
+	}
+	items, err := s.inventory(ctx, dryRun)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	projected := cloneItems(items)
+	changes := make([]Change, 0, len(requests))
+	additions := make([]batchImportAddition, 0, len(requests))
+	for index, input := range inputs {
+		next, change, duplicate := s.plan(projected, input, origins[index])
+		if !duplicate {
+			if s.maxItems > 0 && len(next) > s.maxItems {
+				return Snapshot{}, fmt.Errorf("collection item limit %d exceeded", s.maxItems)
+			}
+			for _, item := range next {
+				if item.Name == change.Name {
+					additions = append(additions, batchImportAddition{input: input, item: item})
+					break
+				}
+			}
+		}
+		projected = next
+		changes = append(changes, change)
+	}
+	if dryRun {
+		return buildSnapshot(s.root, items, changes, true), nil
+	}
+	if err := ensureLayout(s.root); err != nil {
+		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
+	}
+	if len(additions) == 0 {
+		if err := commitManifest(ctx, s.root, newManifest(projected)); err != nil {
+			return Snapshot{}, fmt.Errorf("commit import batch manifest: %w", err)
+		}
+	} else if err := s.commitImportBatch(ctx, additions, projected); err != nil {
+		return Snapshot{}, fmt.Errorf("commit import batch: %w", err)
+	}
+	committed, err := scan(ctx, s.root, s.maxImportBytes, s.maxPixels)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
+	}
+	if err := verifyExpected(projected, committed); err != nil {
+		return Snapshot{}, fmt.Errorf("verify committed manifest: %w", err)
+	}
+	return buildSnapshot(s.root, committed, changes, false), nil
+}
+
 func importOrigin(requested Origin, input validatedImage) (Origin, error) {
 	if requested == (Origin{}) {
 		return Origin{Key: "upload:" + fmt.Sprintf("%x", input.digest), Class: OriginOperatorUpload}, nil

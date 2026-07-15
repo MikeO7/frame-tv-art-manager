@@ -65,6 +65,75 @@ func TestApplicationPreparationFailureClosesOwnedResources(t *testing.T) {
 	waitClosed(t, closed, "resource cleanup")
 }
 
+func TestApplicationServesLivenessWhilePreparationRuns(t *testing.T) {
+	t.Parallel()
+
+	server := newBlockingHTTPServer()
+	allowPrepare := make(chan struct{})
+	prepareStarted := make(chan struct{})
+	cycleStarted := make(chan struct{})
+	application, err := app.New(app.Options{
+		Prepare: func(ctx context.Context) error {
+			close(prepareStarted)
+			select {
+			case <-allowPrepare:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		RunCycle: func(ctx context.Context) error {
+			close(cycleStarted)
+			<-ctx.Done()
+			return ctx.Err()
+		},
+		BindHTTP: func(context.Context) (app.HTTPServer, error) { return server, nil },
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() { result <- application.Run(ctx) }()
+	waitClosed(t, prepareStarted, "preparation start")
+	waitClosed(t, server.serveStarted, "HTTP serve during preparation")
+	select {
+	case <-cycleStarted:
+		t.Fatal("Sync Cycle started before preparation completed")
+	default:
+	}
+	close(allowPrepare)
+	waitClosed(t, cycleStarted, "Sync Cycle start")
+	cancel()
+	close(server.allowShutdown)
+	if err := <-result; err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+}
+
+func TestApplicationPreparationFailureShutsDownStartedHTTP(t *testing.T) {
+	t.Parallel()
+
+	prepareErr := errors.New("inventory failed")
+	server := newBlockingHTTPServer()
+	close(server.allowShutdown)
+	application, err := app.New(app.Options{
+		Prepare:  func(context.Context) error { return prepareErr },
+		RunCycle: func(context.Context) error { return nil },
+		BindHTTP: func(context.Context) (app.HTTPServer, error) { return server, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.Run(context.Background()); !errors.Is(err, prepareErr) {
+		t.Fatalf("Run() error = %v, want preparation error", err)
+	}
+	waitClosed(t, server.serveStarted, "HTTP serve start")
+	waitClosed(t, server.shutdownStarted, "HTTP shutdown")
+	waitClosed(t, server.serveStopped, "HTTP serve stop")
+}
+
 func TestApplicationBindFailurePreventsChildrenFromStarting(t *testing.T) {
 	t.Parallel()
 

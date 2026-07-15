@@ -39,6 +39,8 @@ func New(options Options) (*Application, error) {
 
 // Run starts and supervises the application until cancellation or a terminal
 // child error.
+//
+//nolint:funlen // Early HTTP liveness, preparation, child startup, and shared shutdown form one lifecycle.
 func (a *Application) Run(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("run context is required")
@@ -47,10 +49,7 @@ func (a *Application) Run(ctx context.Context) error {
 		return ErrAlreadyRun
 	}
 
-	if err := a.prepareStart(ctx); err != nil {
-		a.setState(StateFailed)
-		return a.startupFailure(ctx, err)
-	}
+	a.setState(StateStarting)
 	var server HTTPServer
 	if a.bindHTTP != nil {
 		var err error
@@ -63,7 +62,27 @@ func (a *Application) Run(ctx context.Context) error {
 
 	childCtx, cancelChildren := context.WithCancel(ctx)
 	defer cancelChildren()
-	results, childCount := a.startChildren(childCtx, server)
+	results := make(chan childResult, 2)
+	childCount := 0
+	if server != nil {
+		childCount++
+		go func() {
+			results <- childResult{kind: childHTTP, err: server.Serve()}
+		}()
+	}
+	if err := a.prepareStart(ctx); err != nil {
+		a.setState(StateFailed)
+		cancelChildren()
+		if server == nil {
+			return a.startupFailure(ctx, err)
+		}
+		shutdownErr := a.shutdown(ctx, server, results, childCount, make(map[childKind]error, childCount))
+		return errors.Join(err, shutdownErr)
+	}
+	childCount++
+	go func() {
+		results <- childResult{kind: childCycle, err: a.runCycle(childCtx)}
+	}()
 	a.setState(StateReady)
 
 	completed := make(map[childKind]error, childCount)
@@ -79,7 +98,6 @@ func (a *Application) Run(ctx context.Context) error {
 }
 
 func (a *Application) prepareStart(ctx context.Context) error {
-	a.setState(StateStarting)
 	if err := a.prepare(ctx); err != nil {
 		return fmt.Errorf("prepare application: %w", err)
 	}
@@ -95,26 +113,6 @@ func (a *Application) bindServer(ctx context.Context) (HTTPServer, error) {
 		return nil, errors.New("bind HTTP server: returned a nil server")
 	}
 	return server, nil
-}
-
-func (a *Application) startChildren(
-	ctx context.Context,
-	server HTTPServer,
-) (chan childResult, int) {
-	childCount := 1
-	if server != nil {
-		childCount++
-	}
-	results := make(chan childResult, childCount)
-	go func() {
-		results <- childResult{kind: childCycle, err: a.runCycle(ctx)}
-	}()
-	if server != nil {
-		go func() {
-			results <- childResult{kind: childHTTP, err: server.Serve()}
-		}()
-	}
-	return results, childCount
 }
 
 func (a *Application) waitForStop(

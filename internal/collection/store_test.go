@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -47,6 +48,135 @@ func TestImportPublishesValidatedArtworkAndManifest(t *testing.T) {
 	assertMode(t, filepath.Join(root, ".frame-tv-art-manager", "manifest.json"), 0o600)
 	if _, err := os.Stat(filepath.Join(root, ".frame-tv-art-manager", "transaction.json")); !os.IsNotExist(err) {
 		t.Fatalf("transaction journal remains: %v", err)
+	}
+}
+
+func TestImportBatchCommitsOrderedImportsTogether(t *testing.T) {
+	root := t.TempDir()
+	store := newStore(t, root)
+	first := encodeImage(t, "png", 3, 2)
+	second := encodeImage(t, "jpeg", 4, 3)
+	snapshot, err := store.ImportBatch(context.Background(), []collection.ImportRequest{
+		{Reader: bytes.NewReader(first), Hint: "first.png", Origin: collection.Origin{Key: "source:first", Class: collection.OriginSource}},
+		{Reader: bytes.NewReader(second), Hint: "second.jpg", Origin: collection.Origin{Key: "source:second", Class: collection.OriginSource}},
+		{Reader: bytes.NewReader(first), Hint: "again.png", Origin: collection.Origin{Key: "source:first-copy", Class: collection.OriginSource}},
+	})
+	if err != nil {
+		t.Fatalf("ImportBatch() error = %v", err)
+	}
+	if len(snapshot.Items) != 2 {
+		t.Fatalf("items = %d, want 2", len(snapshot.Items))
+	}
+	wantKinds := []collection.ChangeKind{collection.ChangeAdded, collection.ChangeAdded, collection.ChangeAdopted}
+	if len(snapshot.Changes) != len(wantKinds) {
+		t.Fatalf("changes = %+v", snapshot.Changes)
+	}
+	for index, kind := range wantKinds {
+		if snapshot.Changes[index].Kind != kind {
+			t.Fatalf("change %d = %s, want %s", index, snapshot.Changes[index].Kind, kind)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".frame-tv-art-manager", "transaction.json")); !os.IsNotExist(err) {
+		t.Fatalf("transaction journal remains: %v", err)
+	}
+}
+
+func TestImportBatchRejectsInvalidInputWithoutMutation(t *testing.T) {
+	root := t.TempDir()
+	store := newStore(t, root)
+	valid := encodeImage(t, "png", 3, 2)
+	_, err := store.ImportBatch(context.Background(), []collection.ImportRequest{
+		{Reader: bytes.NewReader(valid), Hint: "valid.png"},
+		{Reader: strings.NewReader("not an image"), Hint: "invalid.png"},
+	})
+	if !errors.Is(err, collection.ErrInvalidImport) {
+		t.Fatalf("ImportBatch() error = %v, want ErrInvalidImport", err)
+	}
+	entries, readErr := os.ReadDir(root)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed batch mutated collection: %v", entries)
+	}
+}
+
+func TestImportBatchRequestValidationAndDryRun(t *testing.T) {
+	data := encodeImage(t, "png", 3, 2)
+
+	t.Run("empty", func(t *testing.T) {
+		store := newStore(t, t.TempDir())
+		if _, err := store.ImportBatch(context.Background(), nil); err == nil {
+			t.Fatal("ImportBatch() accepted an empty batch")
+		}
+	})
+	t.Run("nil reader", func(t *testing.T) {
+		store := newStore(t, t.TempDir())
+		if _, err := store.ImportBatch(context.Background(), []collection.ImportRequest{{Hint: "nil.png"}}); err == nil {
+			t.Fatal("ImportBatch() accepted a nil reader")
+		}
+	})
+	t.Run("mixed dry run", func(t *testing.T) {
+		store := newStore(t, t.TempDir())
+		_, err := store.ImportBatch(context.Background(), []collection.ImportRequest{
+			{Reader: bytes.NewReader(data), Hint: "one.png", DryRun: true},
+			{Reader: bytes.NewReader(data), Hint: "two.png"},
+		})
+		if err == nil {
+			t.Fatal("ImportBatch() accepted mixed dry-run modes")
+		}
+	})
+	t.Run("dry run", func(t *testing.T) {
+		root := t.TempDir()
+		store := newStore(t, root)
+		snapshot, err := store.ImportBatch(context.Background(), []collection.ImportRequest{
+			{Reader: bytes.NewReader(data), Hint: "one.png", DryRun: true},
+		})
+		if err != nil || !snapshot.DryRun || len(snapshot.Changes) != 1 {
+			t.Fatalf("ImportBatch() = %+v, %v", snapshot, err)
+		}
+		entries, err := os.ReadDir(root)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("dry run mutated collection: %v, %v", entries, err)
+		}
+	})
+	t.Run("invalid origin", func(t *testing.T) {
+		store := newStore(t, t.TempDir())
+		_, err := store.ImportBatch(context.Background(), []collection.ImportRequest{{
+			Reader: bytes.NewReader(data), Hint: "one.png",
+			Origin: collection.Origin{Key: "bad", Class: collection.OriginClass("invalid")},
+		}})
+		if err == nil || !strings.Contains(err.Error(), "origin") {
+			t.Fatalf("ImportBatch() error = %v", err)
+		}
+	})
+}
+
+func TestImportBatchHandlesDuplicateOnlyAndItemLimit(t *testing.T) {
+	data := encodeImage(t, "png", 3, 2)
+	root := t.TempDir()
+	store := newStore(t, root)
+	if _, err := store.Import(context.Background(), collection.ImportRequest{Reader: bytes.NewReader(data), Hint: "one.png"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.ImportBatch(context.Background(), []collection.ImportRequest{
+		{Reader: bytes.NewReader(data), Hint: "duplicate.png"},
+	})
+	if err != nil || len(snapshot.Items) != 1 || snapshot.Changes[0].Kind != collection.ChangeDuplicate {
+		t.Fatalf("duplicate-only batch = %+v, %v", snapshot, err)
+	}
+
+	limited, err := collection.New(collection.Config{Root: t.TempDir(), MaxItems: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := encodeImage(t, "jpeg", 4, 3)
+	_, err = limited.ImportBatch(context.Background(), []collection.ImportRequest{
+		{Reader: bytes.NewReader(data), Hint: "one.png"},
+		{Reader: bytes.NewReader(second), Hint: "two.jpg"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "item limit") {
+		t.Fatalf("ImportBatch() error = %v, want item limit", err)
 	}
 }
 

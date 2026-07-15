@@ -23,51 +23,69 @@ const (
 	sourceMediaTypePNG  = "image/png"
 )
 
+type preparedDownload struct {
+	path      string
+	filename  string
+	originKey string
+	written   int64
+}
+
 func (l *Loader) checkExisting(identity string) bool {
 	_, exists := l.sourceOrigins["source:"+identity]
 	return exists
 }
 
 func (l *Loader) executeDownload(ctx context.Context, url, filename, identity string, originKeys ...string) (bool, error) {
+	prepared, err := l.prepareDownload(ctx, url, filename, identity, originKeys...)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = os.Remove(prepared.path) }()
+
+	item, isNew, err := l.importDownload(ctx, prepared.path, prepared.filename, prepared.originKey)
+	if err != nil {
+		return false, err
+	}
+	l.sourceOrigins[prepared.originKey] = struct{}{}
+	if isNew {
+		l.collectionSize++
+		l.logger.Info("downloaded source image", "file", item.Name, "size_bytes", prepared.written)
+	}
+	return isNew, nil
+}
+
+func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity string, originKeys ...string) (preparedDownload, error) {
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
 	resp, err := l.fetch(ctx, url)
 	if err != nil {
-		return false, err
+		return preparedDownload{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if err := validateSourceContentType(resp.Header.Get("Content-Type")); err != nil {
-		return false, err
+		return preparedDownload{}, err
 	}
 
 	filename = l.resolveDownloadName(resp, url, filename)
 
 	tmpPath, written, err := l.downloadToTemp(resp)
 	if err != nil {
-		return false, err
+		return preparedDownload{}, err
 	}
-	defer func() { _ = os.Remove(tmpPath) }()
 
 	if resp.ContentLength > 0 && written != resp.ContentLength {
-		return false, fmt.Errorf("incomplete download: expected %d bytes, got %d", resp.ContentLength, written)
+		_ = os.Remove(tmpPath)
+		return preparedDownload{}, fmt.Errorf("incomplete download: expected %d bytes, got %d", resp.ContentLength, written)
 	}
 	if err := validateDownloadedImage(tmpPath, filepath.Ext(filename)); err != nil {
-		return false, fmt.Errorf("validate downloaded image: %w", err)
+		_ = os.Remove(tmpPath)
+		return preparedDownload{}, fmt.Errorf("validate downloaded image: %w", err)
 	}
 	originKey := "source:" + identity
 	if len(originKeys) > 0 {
 		originKey = originKeys[0]
 	}
-	item, isNew, err := l.importDownload(ctx, tmpPath, filename, originKey)
-	if err != nil {
-		return false, err
-	}
-	l.sourceOrigins[originKey] = struct{}{}
-	if isNew {
-		l.collectionSize++
-		l.logger.Info("downloaded source image", "file", item.Name, "size_bytes", written)
-	}
-	return isNew, nil
+	return preparedDownload{path: tmpPath, filename: filename, originKey: originKey, written: written}, nil
 }
 
 func (l *Loader) importDownload(

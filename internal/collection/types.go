@@ -33,6 +33,7 @@ const (
 type Store interface {
 	Prepare(context.Context, PrepareRequest) (Snapshot, error)
 	Import(context.Context, ImportRequest) (Snapshot, error)
+	ImportBatch(context.Context, []ImportRequest) (Snapshot, error)
 	Apply(context.Context, ApplyRequest) (Snapshot, error)
 }
 

@@ -47,6 +47,6 @@ VOLUME ["/data"]
 
 # Report container health. Restart behavior is controlled by the runtime or orchestrator.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD ["/frame-tv-art-manager", "-healthcheck"]
+  CMD ["/frame-tv-art-manager", "-livenesscheck"]
 
 ENTRYPOINT ["/frame-tv-art-manager"]
