@@ -213,16 +213,10 @@ func (engine *convergenceEngine) publishTVHealth(summary TVSyncResult) {
 	if summary.Model != "" {
 		lastSeen = time.Now().Format(time.RFC3339)
 	}
-	status := health.TVStatus{
+	engine.health.SetTVStatus(summary.IP, health.TVStatus{
 		IP: summary.IP, LastSeen: lastSeen, ImageCount: summary.TotalImages,
 		ArtMode: summary.ArtMode, Status: summary.Status, LastErrorMessage: summary.ErrorMessage,
-	}
-	if summary.StorageKnown {
-		freeBytes, freePercent := summary.FreeSpaceBytes, summary.FreeSpacePercent
-		status.FreeSpaceBytes = &freeBytes
-		status.FreeSpacePercent = &freePercent
-	}
-	engine.health.SetTVStatus(summary.IP, status)
+	})
 }
 
 func (engine *convergenceEngine) finalizeCycle(cycleErr error, tvErrors []error) {

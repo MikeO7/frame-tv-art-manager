@@ -165,22 +165,12 @@ type Observation struct {
 	Power         PowerState
 	ArtMode       ArtModeState
 	Inventory     Inventory
-	Storage       StorageObservation
 	Slideshow     SlideshowObservation
 	Brightness    SettingObservation
 	Capabilities  Capabilities
 	ObservedAt    time.Time
 	Disposition   Disposition
 	Authorization Authorization
-}
-
-// StorageObservation is the total internal flash capacity reported by the Art
-// app. Samsung does not expose used or free bytes, so callers must combine this
-// fact with a fully accounted TV Inventory before deriving free space.
-type StorageObservation struct {
-	TotalBytes int64
-	Known      bool
-	ObservedAt time.Time
 }
 
 // SlideshowObservation is a complete slideshow value proven by a matched TV

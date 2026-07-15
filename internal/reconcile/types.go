@@ -177,7 +177,6 @@ type Binding struct {
 	Digest               string    `json:"digest"`
 	ContentID            string    `json:"content_id"`
 	Name                 string    `json:"name"`
-	ArtworkBytes         int64     `json:"artwork_bytes,omitempty"`
 	CollectionGeneration string    `json:"collection_generation"`
 	ConfirmedAt          time.Time `json:"confirmed_at"`
 }

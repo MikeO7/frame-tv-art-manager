@@ -2,8 +2,6 @@ package sync
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"log/slog"
 	"os"
@@ -109,58 +107,10 @@ func TestConvergenceSummaryReportsExactAppliedMutationCounts(t *testing.T) {
 			Brightness: samsung.SettingObservation{Value: 8, Known: true},
 		},
 	}
-	summary := convergenceSummary("192.0.2.10", result, collectionpkg.Snapshot{})
+	summary := convergenceSummary("192.0.2.10", result)
 	if summary.Uploaded != 1 || summary.Deleted != 2 || summary.TotalImages != 1 ||
 		summary.Brightness != "8" || summary.Status != "ok" {
 		t.Fatalf("summary = %+v", summary)
-	}
-}
-
-func TestConvergenceSummaryReportsFreeStorageWhenInventoryIsFullyAccounted(t *testing.T) {
-	result := reconcile.Result{
-		Status: reconcile.StatusComplete,
-		Observation: samsung.Observation{
-			Inventory: samsung.Inventory{ContentIDs: []string{"art-1", "art-2"}, Known: true},
-			Storage:   samsung.StorageObservation{TotalBytes: 16_000_000_000, Known: true},
-		},
-		State: reconcile.State{Bindings: map[string]reconcile.Binding{
-			"first":  {ContentID: "art-1", ArtworkBytes: 1_000_000_000},
-			"second": {ContentID: "art-2", ArtworkBytes: 3_000_000_000},
-		}},
-	}
-
-	summary := convergenceSummary("192.0.2.10", result, collectionpkg.Snapshot{})
-	if !summary.StorageKnown || summary.FreeSpaceBytes != 12_000_000_000 || summary.FreeSpacePercent != 75 {
-		t.Fatalf("storage summary = %+v", summary)
-	}
-
-	result.Observation.Inventory.ContentIDs = append(result.Observation.Inventory.ContentIDs, "unknown-art")
-	if got := convergenceSummary("192.0.2.10", result, collectionpkg.Snapshot{}); got.StorageKnown {
-		t.Fatalf("partially accounted storage reported as known: %+v", got)
-	}
-}
-
-func TestConvergenceSummaryUsesCurrentSnapshotForLegacyBindingSize(t *testing.T) {
-	digest := sha256.Sum256([]byte("legacy artwork"))
-	digestHex := hex.EncodeToString(digest[:])
-	result := reconcile.Result{
-		Status: reconcile.StatusComplete,
-		Observation: samsung.Observation{
-			Inventory: samsung.Inventory{ContentIDs: []string{"art-1"}, Known: true},
-			Storage:   samsung.StorageObservation{TotalBytes: 16_000_000_000, Known: true},
-		},
-		State: reconcile.State{Bindings: map[string]reconcile.Binding{
-			digestHex: {Digest: digestHex, ContentID: "art-1"},
-		}},
-	}
-	snapshot := collectionpkg.Snapshot{Items: []collectionpkg.Item{{
-		Digest: digest,
-		Size:   4_000_000_000,
-	}}}
-
-	summary := convergenceSummary("192.0.2.10", result, snapshot)
-	if !summary.StorageKnown || summary.FreeSpaceBytes != 12_000_000_000 || summary.FreeSpacePercent != 75 {
-		t.Fatalf("legacy storage summary = %+v", summary)
 	}
 }
 
@@ -224,7 +174,7 @@ func TestConvergenceStatusProjectionIsExhaustive(t *testing.T) {
 				Disposition: testCase.disposition,
 				Slideshow:   samsung.SlideshowObservation{Known: true, Setting: samsung.SlideshowSetting{}},
 			}}
-			if got := convergenceSummary("192.0.2.10", result, collectionpkg.Snapshot{}); got.Status != testCase.want || got.Slideshow != "off" {
+			if got := convergenceSummary("192.0.2.10", result); got.Status != testCase.want || got.Slideshow != "off" {
 				t.Fatalf("convergenceSummary() = %+v, want status %q and disabled slideshow", got, testCase.want)
 			}
 		})
@@ -232,7 +182,7 @@ func TestConvergenceStatusProjectionIsExhaustive(t *testing.T) {
 
 	active := convergenceSummary("192.0.2.10", reconcile.Result{Observation: samsung.Observation{
 		Slideshow: samsung.SlideshowObservation{Known: true, Setting: samsung.SlideshowSetting{Kind: "daily", Interval: 15}},
-	}}, collectionpkg.Snapshot{})
+	}})
 	if active.Slideshow != "daily every 15 min" {
 		t.Fatalf("active slideshow = %q", active.Slideshow)
 	}

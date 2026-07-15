@@ -10,7 +10,6 @@ const (
 	keyRequestID        = "request_id"
 	keyGetArtModeStatus = "get_artmode_status"
 	keyGetContentList   = "get_content_list"
-	keyGetDeviceInfo    = "get_device_info"
 	keyContentID        = "content_id"
 	keyCategoryID       = "category_id"
 	keyValue            = "value"
@@ -22,8 +21,6 @@ const (
 	remotePowerKey      = "KEY_POWER"
 	remoteSendKey       = "SendRemoteKey"
 )
-
-const bytesPerDecimalGB int64 = 1_000_000_000
 
 const (
 	endpointArtApp        = "com.samsung.art-app"

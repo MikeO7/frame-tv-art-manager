@@ -19,13 +19,11 @@ func TestHTTPStatusWireContract(t *testing.T) {
 	status.CurrentStage = "idle"
 	status.SetLifecycle("ready")
 	status.SetTVStatus("192.0.2.10", TVStatus{
-		IP:               "192.0.2.10",
-		LastSeen:         "2026-07-12T12:00:00Z",
-		ImageCount:       3,
-		ArtMode:          true,
-		Status:           "ok",
-		FreeSpaceBytes:   ptr(int64(12_000_000_000)),
-		FreeSpacePercent: ptr(75.0),
+		IP:         "192.0.2.10",
+		LastSeen:   "2026-07-12T12:00:00Z",
+		ImageCount: 3,
+		ArtMode:    true,
+		Status:     "ok",
 	})
 
 	server := newTestServer(t, testConfig(0, false, ""), status, silentLogger())
@@ -74,13 +72,10 @@ func TestHTTPStatusWireContract(t *testing.T) {
 	if !ok {
 		t.Fatalf("TV entry = %#v, want object", tvs["192.0.2.10"])
 	}
-	if len(tv) != 7 {
-		t.Fatalf("TV wire keys = %#v, want exactly seven non-empty fields", tv)
+	if len(tv) != 5 {
+		t.Fatalf("TV wire keys = %#v, want exactly five non-empty fields", tv)
 	}
-	if tv["image_count"] != float64(3) || tv["art_mode"] != true || tv["status"] != "ok" ||
-		tv["free_space_bytes"] != float64(12_000_000_000) || tv["free_space_percent"] != float64(75) {
+	if tv["image_count"] != float64(3) || tv["art_mode"] != true || tv["status"] != "ok" {
 		t.Fatalf("TV wire state = %#v", tv)
 	}
 }
-
-func ptr[T any](value T) *T { return &value }

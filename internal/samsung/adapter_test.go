@@ -32,11 +32,8 @@ type scriptedObservationTransport struct {
 	artModeErr     error
 	inventory      json.RawMessage
 	inventoryErr   error
-	storageBytes   int64
-	storageErr     error
 	connectCalls   int
 	artModeCalls   int
-	storageCalls   int
 	inventoryCalls int
 	closeCalls     int
 }
@@ -58,11 +55,6 @@ func (t *scriptedObservationTransport) ArtMode(context.Context) (string, error) 
 		return value, t.artModeErr
 	}
 	return t.artMode, t.artModeErr
-}
-
-func (t *scriptedObservationTransport) StorageCapacity(context.Context) (int64, error) {
-	t.storageCalls++
-	return t.storageBytes, t.storageErr
 }
 
 func (t *scriptedObservationTransport) Inventory(context.Context) (json.RawMessage, error) {
@@ -106,42 +98,6 @@ func TestAdapterObserveExplicitEmptyInventoryIsEligible(t *testing.T) {
 	}
 	if observation.ObservedAt != clock.now || observation.Inventory.ObservedAt != clock.now {
 		t.Fatalf("observation timestamps = %v / %v", observation.ObservedAt, observation.Inventory.ObservedAt)
-	}
-}
-
-func TestAdapterObserveReportsStorageCapacityWithoutMakingItMutationAuthority(t *testing.T) {
-	clock := &fakeClock{now: time.Date(2026, time.July, 15, 10, 0, 0, 0, time.UTC)}
-	transport := eligibleObservationTransport(json.RawMessage(`[]`))
-	adapter := newTestAdapter(t, clock, transport)
-
-	observation, err := adapter.Observe(context.Background(), ObserveRequest{
-		CycleID: "storage", CollectionGeneration: "collection",
-	})
-	if err != nil {
-		t.Fatalf("Observe() error = %v", err)
-	}
-	if !observation.Storage.Known || observation.Storage.TotalBytes != 16_000_000_000 ||
-		observation.Storage.ObservedAt != clock.now {
-		t.Fatalf("storage observation = %+v", observation.Storage)
-	}
-	if transport.storageCalls != 1 || observation.Authorization.isZero() {
-		t.Fatalf("storage calls/authorization = %d/%+v", transport.storageCalls, observation.Authorization)
-	}
-}
-
-func TestAdapterObserveKeepsStorageUnknownWhenSupplementalQueryFails(t *testing.T) {
-	transport := eligibleObservationTransport(json.RawMessage(`[]`))
-	transport.storageErr = errors.New("unsupported storage field")
-	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
-
-	observation, err := adapter.Observe(context.Background(), ObserveRequest{
-		CycleID: "storage-unsupported", CollectionGeneration: "collection",
-	})
-	if err != nil {
-		t.Fatalf("Observe() error = %v", err)
-	}
-	if observation.Storage.Known || observation.Disposition != DispositionEligible {
-		t.Fatalf("observation = %+v", observation)
 	}
 }
 
@@ -499,9 +455,8 @@ func eligibleObservationTransport(inventory json.RawMessage) *scriptedObservatio
 			FrameTVSupport: stringTrue,
 			PowerState:     "on",
 		},
-		artMode:      "on",
-		storageBytes: 16_000_000_000,
-		inventory:    inventory,
+		artMode:   "on",
+		inventory: inventory,
 	}
 }
 

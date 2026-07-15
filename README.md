@@ -347,17 +347,19 @@ The HTTP server exposes:
   at least one successful cycle; return 503 while starting, stopping, failed,
   or after an unsuccessful cycle.
 - `GET /status` — returns process timing, current stage, last error, cycle
-  count, and the latest per-TV status. When the TV reports its internal flash
-  capacity and every item in the observed TV Inventory has known byte-size
-  evidence, each TV also includes `free_space_bytes` and
-  `free_space_percent`; the cycle summary logs the same estimate in readable
-  units. Samsung exposes total flash capacity but not used/free bytes, so the
-  fields are omitted rather than guessed when any TV artwork is unaccounted.
+  count, and the latest per-TV status.
 - `GET /upload` and `POST /upload` — available only when uploads are enabled.
 
 The container healthcheck calls the application's `-healthcheck` command,
 which reads `/health` on `HEALTH_PORT`. Set `HEALTH_PORT=0` only if you also
 override or disable the image healthcheck in your runtime configuration.
+
+The manager does not estimate free TV storage or upload test files to probe it.
+If the TV rejects a real desired artwork upload because storage is full, the
+Sync Cycle reports `storage full`, preserves existing artwork, and stops later
+mutations. It then suppresses additional upload attempts for 24 hours. After
+that interval, one real pending artwork upload is retried so synchronization
+can resume if the operator or TV has freed space.
 
 A failed healthcheck does not restart a container by itself. Use a Docker
 restart policy or an orchestrator policy if automatic recovery is required.

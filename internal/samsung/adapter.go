@@ -213,12 +213,6 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 		return cloneObservation(observation), nil
 	}
 
-	storage, err := a.observeStorage(ctx, now)
-	if err != nil {
-		return a.failObservation(ctx, observation, request, "observe storage capacity", err)
-	}
-	observation.Storage = storage
-
 	rawInventory, err := a.transport.Inventory(ctx)
 	if err != nil {
 		return a.failObservation(ctx, observation, request, "observe inventory", err)

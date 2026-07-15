@@ -115,7 +115,10 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 			strings.TrimSpace(pending.Receipt.ContentID) == "" || !contains(pending.Receipt.ContentID) {
 			return state, false, ErrRecoveryRequired
 		}
-		result.Bindings[pending.Command.Digest] = uploadBinding(pending, now)
+		result.Bindings[pending.Command.Digest] = Binding{
+			Digest: pending.Command.Digest, ContentID: pending.Receipt.ContentID, Name: pending.Command.Name,
+			CollectionGeneration: pending.CollectionGen, ConfirmedAt: now,
+		}
 	case CommandDeleteOwned, CommandDeleteUnknown:
 		if !observation.Inventory.Known {
 			return state, false, ErrRecoveryRequired
@@ -167,7 +170,10 @@ func resolveAppliedReceipt(state State, now time.Time) (State, bool, error) {
 		if strings.TrimSpace(pending.Receipt.ContentID) == "" {
 			return state, false, ErrRecoveryRequired
 		}
-		state.Bindings[pending.Command.Digest] = uploadBinding(pending, now)
+		state.Bindings[pending.Command.Digest] = Binding{
+			Digest: pending.Command.Digest, ContentID: pending.Receipt.ContentID, Name: pending.Command.Name,
+			CollectionGeneration: pending.CollectionGen, ConfirmedAt: now,
+		}
 	case CommandDeleteOwned:
 		delete(state.Bindings, pending.Command.Digest)
 		delete(state.Tombstones, pending.Command.ContentID)
@@ -181,13 +187,6 @@ func resolveAppliedReceipt(state State, now time.Time) (State, bool, error) {
 	}
 	state.Pending = nil
 	return state, true, nil
-}
-
-func uploadBinding(pending *Pending, confirmedAt time.Time) Binding {
-	return Binding{
-		Digest: pending.Command.Digest, ContentID: pending.Receipt.ContentID, Name: pending.Command.Name,
-		ArtworkBytes: pending.Command.Size, CollectionGeneration: pending.CollectionGen, ConfirmedAt: confirmedAt,
-	}
 }
 
 func resolveSettingPending(

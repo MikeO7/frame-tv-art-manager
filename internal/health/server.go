@@ -51,14 +51,12 @@ type Status struct {
 
 // TVStatus tracks per-TV health information.
 type TVStatus struct {
-	IP               string   `json:"ip"`
-	LastSeen         string   `json:"last_seen"`
-	ImageCount       int      `json:"image_count"`
-	ArtMode          bool     `json:"art_mode"`
-	Status           string   `json:"status"` // "ok", "unreachable", "backoff"
-	LastErrorMessage string   `json:"last_error,omitempty"`
-	FreeSpaceBytes   *int64   `json:"free_space_bytes,omitempty"`
-	FreeSpacePercent *float64 `json:"free_space_percent,omitempty"`
+	IP               string `json:"ip"`
+	LastSeen         string `json:"last_seen"`
+	ImageCount       int    `json:"image_count"`
+	ArtMode          bool   `json:"art_mode"`
+	Status           string `json:"status"` // "ok", "unreachable", "backoff"
+	LastErrorMessage string `json:"last_error,omitempty"`
 }
 
 type statusSnapshot struct {
@@ -118,7 +116,7 @@ func (s *Status) SetTVStatus(ip string, status TVStatus) {
 	if status.LastSeen == "" {
 		status.LastSeen = s.TVStatuses[ip].LastSeen
 	}
-	s.TVStatuses[ip] = cloneTVStatus(status)
+	s.TVStatuses[ip] = status
 }
 
 func (s *Status) snapshot() statusSnapshot {
@@ -127,7 +125,7 @@ func (s *Status) snapshot() statusSnapshot {
 
 	tvs := make(map[string]TVStatus, len(s.TVStatuses))
 	for ip, tvStatus := range s.TVStatuses {
-		tvs[ip] = cloneTVStatus(tvStatus)
+		tvs[ip] = tvStatus
 	}
 	return statusSnapshot{
 		StartedAt:        s.StartedAt,
@@ -139,19 +137,6 @@ func (s *Status) snapshot() statusSnapshot {
 		Lifecycle:        s.Lifecycle,
 		TVStatuses:       tvs,
 	}
-}
-
-func cloneTVStatus(status TVStatus) TVStatus {
-	clone := status
-	if status.FreeSpaceBytes != nil {
-		value := *status.FreeSpaceBytes
-		clone.FreeSpaceBytes = &value
-	}
-	if status.FreeSpacePercent != nil {
-		value := *status.FreeSpacePercent
-		clone.FreeSpacePercent = &value
-	}
-	return clone
 }
 
 // Server runs a lightweight HTTP health check endpoint.

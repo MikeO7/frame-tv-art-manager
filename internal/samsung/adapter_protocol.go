@@ -137,21 +137,6 @@ func (t *protocolTransport) ArtMode(ctx context.Context) (string, error) {
 	return string(response.Value), nil
 }
 
-func (t *protocolTransport) StorageCapacity(ctx context.Context) (int64, error) {
-	response, err := t.send(ctx, keyGetDeviceInfo, nil)
-	if err != nil {
-		return 0, err
-	}
-	flashGB, err := response.TVFlashSize.Int64()
-	if err != nil {
-		return 0, fmt.Errorf("parse TV flash size %q: %w", response.TVFlashSize, err)
-	}
-	if flashGB <= 0 || flashGB > (1<<63-1)/bytesPerDecimalGB {
-		return 0, fmt.Errorf("TV flash size %d is out of range", flashGB)
-	}
-	return flashGB * bytesPerDecimalGB, nil
-}
-
 func (t *protocolTransport) Inventory(ctx context.Context) (json.RawMessage, error) {
 	response, err := t.send(ctx, keyGetContentList, map[string]any{keyCategoryID: userArtCategory})
 	if err != nil {
