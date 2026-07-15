@@ -220,35 +220,10 @@ func validateSnapshot(snapshot collection.Snapshot) error {
 		names[item.Name] = struct{}{}
 		digests[digest] = struct{}{}
 	}
-	if collectionGeneration(items) != snapshot.Generation {
+	if collection.SnapshotGeneration(items) != snapshot.Generation {
 		return errors.New("collection snapshot generation does not match its items")
 	}
 	return nil
-}
-
-func collectionGeneration(items []collection.Item) string {
-	type manifestItem struct {
-		Name      string                 `json:"name"`
-		Digest    string                 `json:"digest"`
-		Type      collection.FileType    `json:"type"`
-		Width     int                    `json:"width"`
-		Height    int                    `json:"height"`
-		OriginKey string                 `json:"origin_key"`
-		Class     collection.OriginClass `json:"class"`
-	}
-	entries := make([]manifestItem, 0, len(items))
-	for _, item := range items {
-		entries = append(entries, manifestItem{
-			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
-			Width: item.Width, Height: item.Height, OriginKey: item.Origin.Key, Class: item.Origin.Class,
-		})
-	}
-	data, err := json.Marshal(entries)
-	if err != nil {
-		return ""
-	}
-	digest := sha256.Sum256(data)
-	return hex.EncodeToString(digest[:])
 }
 
 func validateObservation(observation samsung.Observation) error {

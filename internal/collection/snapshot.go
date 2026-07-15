@@ -116,7 +116,7 @@ func ValidateSnapshot(expectedRoot string, snapshot Snapshot) error {
 		keys[strings.ToLower(item.Key)] = struct{}{}
 		digests[item.Digest] = struct{}{}
 	}
-	if generation(items) != snapshot.Generation {
+	if SnapshotGeneration(items) != snapshot.Generation {
 		return errors.New("collection snapshot generation does not match its items")
 	}
 	return nil
