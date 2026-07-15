@@ -201,7 +201,7 @@ func snapshot(items ...collection.Item) collection.Snapshot {
 		}
 		return 0
 	})
-	return collection.Snapshot{Generation: collectionGeneration(items), Items: items}
+	return collection.Snapshot{Generation: collection.SnapshotGeneration(items), Items: items}
 }
 
 func artworkItem(name, body string) collection.Item {
