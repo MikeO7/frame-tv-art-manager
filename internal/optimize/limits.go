@@ -1,6 +1,7 @@
 package optimize
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"io"
@@ -11,8 +12,8 @@ const (
 	defaultMaxOutputPixels = int64(12_000_000)
 )
 
-func decodeInputConfig(reader io.Reader) (int, int, error) {
-	config, _, err := image.DecodeConfig(reader)
+func decodeInputConfig(ctx context.Context, reader io.Reader) (int, int, error) {
+	config, _, err := image.DecodeConfig(&contextReader{ctx: ctx, reader: reader})
 	if err != nil {
 		return 0, 0, fmt.Errorf("decode image config: %w", err)
 	}

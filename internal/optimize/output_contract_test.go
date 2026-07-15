@@ -1,7 +1,9 @@
 package optimize
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -12,6 +14,41 @@ import (
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
+
+func TestValidateImageOutputChecksFormatAndDimensions(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "valid.jpg")
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 8, 6)), &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, encoded.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := validateImageOutput(ctx, path, formatJPEG, 8, 6); err != nil {
+		t.Fatalf("validateImageOutput(valid) = %v", err)
+	}
+	if err := validateImageOutput(ctx, path, formatPNG, 8, 6); err == nil {
+		t.Fatal("validateImageOutput(format mismatch) = nil")
+	}
+	if err := validateImageOutput(ctx, path, formatJPEG, 7, 6); err == nil {
+		t.Fatal("validateImageOutput(dimension mismatch) = nil")
+	}
+}
+
+func TestEncodeOptimizedTemporaryHonorsCancellation(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := encodeOptimizedTemporary(
+		ctx, filepath.Join(t.TempDir(), "output.png"), image.NewRGBA(image.Rect(0, 0, 8, 6)), 95,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("encodeOptimizedTemporary() error = %v, want context.Canceled", err)
+	}
+}
 
 func TestOrdinaryTransformOutputContract(t *testing.T) {
 	dir := t.TempDir()

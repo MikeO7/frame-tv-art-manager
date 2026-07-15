@@ -151,7 +151,7 @@ func preflightOrientation(ctx context.Context, input StageInput) (int, error) {
 		return 0, err
 	}
 	extension := strings.ToLower(filepath.Ext(input.Name))
-	orientation, readErr := readOrientationForExtension(file, extension)
+	orientation, readErr := readOrientationForExtension(ctx, file, extension)
 	opened, statErr := file.Stat()
 	closeErr := file.Close()
 	after, pathErr := os.Lstat(input.Path)
@@ -183,7 +183,7 @@ func preflightPortrait(ctx context.Context, input StageInput) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	orientation, readErr := readOrientationForExtension(file, extension)
+	orientation, readErr := readOrientationForExtension(ctx, file, extension)
 	opened, statErr := file.Stat()
 	closeErr := file.Close()
 	after, pathErr := os.Lstat(input.Path)

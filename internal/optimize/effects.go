@@ -204,3 +204,24 @@ func sharpenWithOptions(src *image.RGBA, amount float64, threshold, workerLimit 
 	})
 	return dst
 }
+
+// scaleAwareSharpenAmount treats the configured amount as the 1:1 baseline.
+// Downscales receive a modest bounded lift to restore detail lost in
+// resampling; upscales receive less sharpening because they contain no new
+// source detail and are more prone to halos.
+func scaleAwareSharpenAmount(amount float64, sourceWidth, sourceHeight, targetWidth, targetHeight int) float64 {
+	if amount <= 0 || sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0 {
+		return 0
+	}
+	scale := max(
+		float64(targetWidth)/float64(sourceWidth),
+		float64(targetHeight)/float64(sourceHeight),
+	)
+	factor := 1.0
+	if scale < 1 {
+		factor = min(1.5, 1+0.25*math.Log2(1/scale))
+	} else if scale > 1 {
+		factor = max(0.5, 1/math.Sqrt(scale))
+	}
+	return min(amount*factor, 2)
+}

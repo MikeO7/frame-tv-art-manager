@@ -29,7 +29,7 @@ func isPortraitFile(ctx context.Context, path string) (bool, error) {
 	if _, err := f.Seek(0, 0); err != nil {
 		return false, err
 	}
-	orientation, err := readOrientationForExtension(&contextReader{ctx: ctx, reader: f}, format)
+	orientation, err := readOrientationForExtension(ctx, f, format)
 	if err != nil {
 		return false, fmt.Errorf("read orientation: %w", err)
 	}
@@ -82,7 +82,7 @@ func loadAndRotateImageWithPolicy(
 	if _, err := f.Seek(0, 0); err != nil {
 		return nil, err
 	}
-	orientation, err := readOrientationForExtension(&contextReader{ctx: ctx, reader: f}, format)
+	orientation, err := readOrientationForExtension(ctx, f, format)
 	if err != nil {
 		return nil, fmt.Errorf("read orientation: %w", err)
 	}

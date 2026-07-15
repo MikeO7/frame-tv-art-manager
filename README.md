@@ -210,13 +210,24 @@ Portrait images can be handled in three ways:
 saliency model instead of a center crop. It falls back to the center crop unless
 the saliency score improves by `SMART_CROP_MIN_GAIN`. Linear-light resizing is
 enabled by default to avoid dark color fringes, and a conservative luminance
-unsharp mask is applied after resizing. Random dither is disabled by default.
+unsharp mask is applied only after resizing. Its configured amount is the 1:1
+baseline; the pipeline modestly increases it for downscales and reduces it for
+upscales to avoid halos. Random post-8-bit dither is not used because it adds
+noise without performing a real precision reduction.
 
 The Go decoders do not apply embedded ICC transforms. The default
 `IMAGE_COLOR_PROFILE_POLICY=assume-srgb` treats decoded samples as sRGB and logs
 a warning when color metadata is present. Use `reject-embedded` to fail closed
 instead. `IMAGE_MUSEUM_MODE` enables the optional creative texture and color
-treatment; it is off by default.
+treatment; it is off by default. When enabled, its default intensity of 5 is
+the balanced preset intended for most artwork.
+
+Image controls follow a safe-preset model: enabling an optional feature uses a
+conservative general-purpose setting, while the adjacent numeric controls allow
+fine tuning. Smart crop starts with a 3% improvement threshold, museum mode at
+intensity 5/10, and sharpening at amount 0.25 with threshold 4. The defaults
+favor preserving source intent; aggressive or destructive behavior remains
+explicitly opt-in.
 
 Samsung mattes are selected with `MATTE_STYLE`. Use `none` for full-screen art
 or a value such as `shadowbox_polar`. A `mattes.json` file in the artwork
@@ -252,13 +263,14 @@ the table below covers the settings most people change.
 | `IMAGE_JPEG_QUALITY` | `95` | JPEG encoding quality |
 | `IMAGE_OPTIMIZE_PNG` | `true` | Apply orientation, crop/resize, and effects to PNG inputs |
 | `IMAGE_LINEAR_LIGHT_RESIZE` | `true` | Resize RGB samples in linear light |
-| `IMAGE_SHARPEN_AMOUNT` | `0.25` | Luminance unsharp-mask amount (`0` disables) |
+| `IMAGE_SHARPEN_AMOUNT` | `0.25` | Scale-aware luminance unsharp-mask baseline (`0` disables) |
 | `IMAGE_SHARPEN_THRESHOLD` | `4` | Minimum luminance difference before sharpening |
 | `IMAGE_COLOR_PROFILE_POLICY` | `assume-srgb` | `assume-srgb` or `reject-embedded` |
 | `PORTRAIT_MODE` | `crop` | `crop`, `pad`, or `collage` |
 | `SMART_CROP_ENABLED` | `false` | Enable heuristic saliency cropping |
 | `SMART_CROP_MIN_GAIN` | `0.03` | Minimum improvement over center crop |
 | `IMAGE_MUSEUM_MODE` | `false` | Enable the texture/color treatment |
+| `IMAGE_MUSEUM_INTENSITY` | `5` | Balanced creative-treatment strength (`1`-`10`) |
 | `UPLOAD_ENABLED` | `false` | Enable `GET` and `POST /upload` |
 | `UPLOAD_TOKEN` | required with uploads | HTTP Basic-auth password (minimum 16 characters) |
 | `HEALTH_PORT` | `8080` | HTTP server port; zero disables it |

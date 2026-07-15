@@ -23,20 +23,39 @@ The audit text and inventory below describe the pre-remediation implementation.
 The following corrections were implemented after the review:
 
 - corrected NOAA-style solar time/elevation math with reference vectors;
-- repaired BMS surroundedness, standard sRGB/D50 Lab conversion, and
-  CIEDE2000 golden-vector coverage;
+- repaired BMS surroundedness with the paper's opening/dilation stages,
+  standard sRGB/D50 Lab conversion, and all 34 Sharma CIEDE2000 reference pairs;
 - normalized smart-crop features, centered ties, added boundary refinement,
-  and introduced a configurable minimum gain over center crop;
-- oriented images before fast-path decisions and added PNG `eXIf` support;
+  introduced a configurable minimum gain over center crop, and added a
+  versioned synthetic crop golden corpus covering portraits/skin tones,
+  animal-like texture, text/line art, landscapes, multiple subjects, edge
+  distractors, and already-good compositions with center-crop comparisons;
+- oriented images before fast-path decisions, added PNG `eXIf` support, and
+  strictly require the Exif orientation tag's SHORT/count/value contract;
 - replaced filename-authorized caching with durable transform metadata and
   content-addressed derivative names;
-- added full output decode validation, symlink/race-resistant catalog hashing,
-  output-pixel and working-memory limits;
-- added linear-light resizing, bounded luminance sharpening, opt-in dithering,
-  embedded-color-metadata policy, and individual PNG transformation;
-- parameterized collage geometry and made `PORTRAIT_MODE` authoritative for
-  all source origins; and
+- added full output decode validation with expected format/dimensions,
+  symlink/race-resistant catalog hashing, output-pixel and working-memory limits;
+- added linear-light resizing, bounded scale-aware luminance sharpening only
+  after resampling, embedded-color-metadata policy, and individual PNG transformation;
+- removed random post-8-bit dithering because it was not tied to a precision
+  reduction;
+- parameterized collage geometry, made mixed PNG/JPEG output order-independent,
+  admitted the combined input working set before full pixel decode, and made
+  `PORTRAIT_MODE` authoritative for all source origins; and
 - removed the dead luminance option and documented the new image controls.
+
+The resulting settings use conservative, general-purpose presets when a feature
+is enabled: smart crop requires a 3% saliency gain, museum mode uses intensity
+5/10, and luminance sharpening uses amount 0.25 with threshold 4. Each remains
+independently tunable for operators who need a stronger or weaker result.
+
+The crop corpus is a deterministic regression guard, not evidence of
+an “80% of people” preference rate. Establishing that claim still requires a
+held-out real-image corpus with licensed redistribution, blinded human labels,
+and comparison against center crop and competing systems. Until that study is
+performed, the 3% gate is deliberately described as a conservative engineering
+default rather than an empirically calibrated preference threshold.
 
 The creative museum-mode operations remain deliberately opt-in. Exact
 encoded-byte SHA-256 remains the mutation-safe identity; perceptual duplicate

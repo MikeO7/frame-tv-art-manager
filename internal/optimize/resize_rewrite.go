@@ -43,11 +43,11 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 		return 0, 0, fmt.Errorf("seek to start: %w", err)
 	}
 	extension := strings.ToLower(filepath.Ext(params.path))
-	orientation, orientationErr := readOrientationForExtension(f, extension)
+	orientation, orientationErr := readOrientationForExtension(params.ctx, f, extension)
 	if _, err := f.Seek(0, 0); err != nil {
 		return 0, 0, fmt.Errorf("seek to start: %w", err)
 	}
-	img, _, err := image.Decode(f)
+	img, _, err := image.Decode(&contextReader{ctx: params.ctx, reader: f})
 	if err != nil {
 		return 0, 0, fmt.Errorf("decode image: %w", err)
 	}
@@ -61,6 +61,7 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 	params.logger.Info("optimizing image", "file", params.filename, "original_dims", fmt.Sprintf("%dx%d", params.width, params.height))
 	rgba := toRGBA(RotateImage(img, orientation))
 	newW, newH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
+	sourceW, sourceH := newW, newH
 	resampled := newW != cfg.MaxWidth || newH != cfg.MaxHeight
 	if resampled {
 		if newH > newW && cfg.PortraitMode != "crop" {
@@ -76,7 +77,10 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 	}
 
 	if resampled {
-		rgba = sharpenWithOptions(rgba, cfg.SharpenAmount, cfg.SharpenThreshold, params.pixelWorkers)
+		amount := scaleAwareSharpenAmount(
+			cfg.SharpenAmount, sourceW, sourceH, cfg.MaxWidth, cfg.MaxHeight,
+		)
+		rgba = sharpenWithOptions(rgba, amount, cfg.SharpenThreshold, params.pixelWorkers)
 	}
 	if cfg.MuseumModeEnabled {
 		rgba = applyMuseumModeWithWorkers(rgba, cfg.MuseumModeIntensity, params.pixelWorkers)
@@ -88,7 +92,7 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 		return 0, 0, fmt.Errorf("close source image: %w", err)
 	}
 
-	tmpPath, err := encodeOptimizedTemporary(params.path, rgba, cfg.OptimizeJPEGQuality)
+	tmpPath, err := encodeOptimizedTemporary(params.ctx, params.path, rgba, cfg.OptimizeJPEGQuality)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -106,18 +110,22 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 	return rgba.Bounds().Dx(), rgba.Bounds().Dy(), nil
 }
 
-func encodeOptimizedTemporary(path string, imageData image.Image, quality int) (string, error) {
+func encodeOptimizedTemporary(ctx context.Context, path string, imageData image.Image, quality int) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	out, err := os.CreateTemp(filepath.Dir(path), ".optimize-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("create optimized temporary file: %w", err)
 	}
 	tmpPath := out.Name()
+	writer := &contextWriter{ctx: ctx, writer: out}
 	var encodeErr error
 	if strings.EqualFold(filepath.Ext(path), extPNG) {
 		encoder := png.Encoder{CompressionLevel: png.DefaultCompression}
-		encodeErr = encoder.Encode(out, imageData)
+		encodeErr = encoder.Encode(writer, imageData)
 	} else {
-		encodeErr = jpeg.Encode(out, imageData, &jpeg.Options{Quality: quality})
+		encodeErr = jpeg.Encode(writer, imageData, &jpeg.Options{Quality: quality})
 	}
 	if encodeErr != nil {
 		_ = out.Close()

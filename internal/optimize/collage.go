@@ -32,12 +32,29 @@ func createCollageForTarget(
 	minGain float64,
 	linearLight bool,
 ) *image.RGBA {
+	return createCollageForTargetWithSharpen(
+		img1, img2, targetWidth, targetHeight, smart, minGain, linearLight, 0, 0, 0, defaultPixelWorkers(),
+	)
+}
+
+//nolint:revive // per-panel resize and sharpen controls keep mixed-size collages accurate
+func createCollageForTargetWithSharpen(
+	img1, img2 *image.RGBA,
+	targetWidth, targetHeight int,
+	smart bool,
+	minGain float64,
+	linearLight bool,
+	leftSharpen, rightSharpen float64,
+	sharpenThreshold, pixelWorkers int,
+) *image.RGBA {
 	canvas := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
 	leftWidth := targetWidth / 2
 	rightWidth := targetWidth - leftWidth
 
 	left := centerCropWithOptions(img1, leftWidth, targetHeight, smart, minGain, linearLight)
 	right := centerCropWithOptions(img2, rightWidth, targetHeight, smart, minGain, linearLight)
+	left = sharpenWithOptions(left, leftSharpen, sharpenThreshold, pixelWorkers)
+	right = sharpenWithOptions(right, rightSharpen, sharpenThreshold, pixelWorkers)
 
 	std_draw.Draw(canvas, image.Rect(0, 0, leftWidth, targetHeight), left, left.Bounds().Min, std_draw.Src)
 	std_draw.Draw(canvas, image.Rect(leftWidth, 0, targetWidth, targetHeight), right, right.Bounds().Min, std_draw.Src)

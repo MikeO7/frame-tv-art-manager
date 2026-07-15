@@ -124,6 +124,18 @@ type contextReader struct {
 	reader io.Reader
 }
 
+type contextWriter struct {
+	ctx    context.Context
+	writer io.Writer
+}
+
+func (w *contextWriter) Write(buffer []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return w.writer.Write(buffer)
+}
+
 func (r *contextReader) Read(buffer []byte) (int, error) {
 	if err := r.ctx.Err(); err != nil {
 		return 0, err

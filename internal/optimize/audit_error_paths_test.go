@@ -199,7 +199,7 @@ func TestAuditSafetyHelperBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	if err := validateOptimizedPixels(file, 1, 1); err == nil {
+	if err := validateOptimizedPixels(context.Background(), file, 1, 1); err == nil {
 		t.Fatal("validateOptimizedPixels(wrong dimensions) error = nil")
 	}
 }

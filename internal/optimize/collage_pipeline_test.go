@@ -3,7 +3,9 @@ package optimize
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -65,8 +67,24 @@ func TestProcessCollagePair_SecondImageLoadFailure(t *testing.T) {
 		catalog:    &recordingCatalog{},
 		logger:     discardLogger(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "load/rotate missing.jpg") {
+	if err == nil || !strings.Contains(err.Error(), "missing.jpg") {
 		t.Fatalf("expected second-image load failure, got %v", err)
+	}
+}
+
+func TestProcessCollagePairRejectsCombinedWorkingSetBeforePixelDecode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writePNGHeaderOnly(t, filepath.Join(dir, "one.png"), 8000, 5000)
+	writePNGHeaderOnly(t, filepath.Join(dir, "two.png"), 8000, 5000)
+	cfg := DefaultConfig()
+	cfg.MaxWorkingBytes = 128 * 1024 * 1024
+	_, err := processCollagePair(collageJob{
+		ctx: context.Background(), artworkDir: dir, f1: "one.png", f2: "two.png",
+		cfg: cfg, catalog: &recordingCatalog{}, logger: discardLogger(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "working set") {
+		t.Fatalf("processCollagePair() error = %v, want pre-decode working-set rejection", err)
 	}
 }
 
@@ -172,6 +190,45 @@ func TestCollageUtilsPortraitDetectionAndRotation(t *testing.T) {
 	}
 	if got := img.Bounds().Dy(); got != 4 {
 		t.Fatalf("loadAndRotateImage width x height = %d x %d", img.Bounds().Dx(), got)
+	}
+}
+
+func TestCollageOutputExtensionIsOrderIndependentAndPreservesPNG(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		first, second string
+		want          string
+	}{
+		{name: "JPEG pair", first: "one.jpg", second: "two.jpeg", want: extJPG},
+		{name: "PNG first", first: "one.png", second: "two.jpg", want: extPNG},
+		{name: "PNG second", first: "one.jpg", second: "two.PNG", want: extPNG},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := collageOutputExtension(test.first, test.second); got != test.want {
+				t.Fatalf("collageOutputExtension(%q, %q) = %q, want %q", test.first, test.second, got, test.want)
+			}
+		})
+	}
+}
+
+func TestCreateCollageAppliesSharpenPerPanel(t *testing.T) {
+	t.Parallel()
+	input := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	fillRGBA(input, input.Bounds(), color.RGBA{R: 100, G: 100, B: 100, A: 255})
+	input.SetRGBA(4, 4, color.RGBA{R: 150, G: 150, B: 150, A: 255})
+	output := createCollageForTargetWithSharpen(
+		input, input, 16, 8, false, 0.03, true, 0, 1, 0, 1,
+	)
+	left := color.RGBAModel.Convert(output.At(4, 4)).(color.RGBA)
+	right := color.RGBAModel.Convert(output.At(12, 4)).(color.RGBA)
+	if left.R != 150 {
+		t.Fatalf("unsharpened left-panel value = %d, want 150", left.R)
+	}
+	if right.R <= left.R {
+		t.Fatalf("right-panel sharpened value = %d, want greater than left %d", right.R, left.R)
 	}
 }
 
@@ -462,6 +519,32 @@ func writePNGForCollageTests(t *testing.T, path string, width, height int) {
 	img := imageFromPattern(width, height)
 	if err := pngEncode(f, img); err != nil {
 		t.Fatalf("encode test image: %v", err)
+	}
+}
+
+func writePNGHeaderOnly(t *testing.T, path string, width, height uint32) {
+	t.Helper()
+	var encoded bytes.Buffer
+	encoded.Write(pngSignature[:])
+	writeChunk := func(name string, payload []byte) {
+		var length [4]byte
+		binary.BigEndian.PutUint32(length[:], uint32(len(payload)))
+		encoded.Write(length[:])
+		encoded.WriteString(name)
+		encoded.Write(payload)
+		var checksum [4]byte
+		binary.BigEndian.PutUint32(checksum[:], crc32.ChecksumIEEE(append([]byte(name), payload...)))
+		encoded.Write(checksum[:])
+	}
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], width)
+	binary.BigEndian.PutUint32(ihdr[4:8], height)
+	ihdr[8] = 8
+	ihdr[9] = 2
+	writeChunk("IHDR", ihdr)
+	writeChunk("IEND", nil)
+	if err := os.WriteFile(path, encoded.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

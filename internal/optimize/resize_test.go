@@ -15,6 +15,33 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
+func TestDefaultConfigUsesBalancedImagePresets(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	if cfg.SmartCropEnabled || cfg.SmartCropMinGain != 0.03 {
+		t.Fatalf("smart crop defaults = enabled %t, gain %v", cfg.SmartCropEnabled, cfg.SmartCropMinGain)
+	}
+	if cfg.MuseumModeEnabled || cfg.MuseumModeIntensity != 5 {
+		t.Fatalf("museum defaults = enabled %t, intensity %d", cfg.MuseumModeEnabled, cfg.MuseumModeIntensity)
+	}
+	if cfg.SharpenAmount != 0.25 || cfg.SharpenThreshold != 4 {
+		t.Fatalf("sharpen defaults = amount %v, threshold %d", cfg.SharpenAmount, cfg.SharpenThreshold)
+	}
+	if !cfg.LinearLightResize || !cfg.OptimizePNG || cfg.ColorProfilePolicy != "assume-srgb" {
+		t.Fatalf("safe processing defaults = %+v", cfg)
+	}
+}
+
+func TestTransformKeyTracksCurrentImageAlgorithmRevision(t *testing.T) {
+	t.Parallel()
+	if transformRevision != "frame-image-v6" {
+		t.Fatalf("transformRevision = %q, want frame-image-v6", transformRevision)
+	}
+	if got := TransformKey(DefaultConfig()); len(got) != 64 {
+		t.Fatalf("TransformKey() length = %d, want SHA-256 hex digest", len(got))
+	}
+}
+
 func TestOptimizeFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "test.jpg")

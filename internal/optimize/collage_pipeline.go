@@ -45,6 +45,17 @@ func processCollagePair(job collageJob) (string, error) {
 	p1 := filepath.Join(artworkDir, f1)
 	p2 := filepath.Join(artworkDir, f2)
 
+	if err := validateOutputDimensions(cfg.MaxWidth, cfg.MaxHeight, cfg.MaxOutputPixels); err != nil {
+		return "", err
+	}
+	inputPixels, err := inspectCollageInputPixels(ctx, p1, p2)
+	if err != nil {
+		return "", err
+	}
+	if err := validateWorkingPixels(inputPixels, cfg); err != nil {
+		return "", err
+	}
+
 	img1, err := loadAndRotateImageWithPolicy(ctx, p1, cfg.ColorProfilePolicy, logger)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", f1, err)
@@ -54,18 +65,18 @@ func processCollagePair(job collageJob) (string, error) {
 		return "", fmt.Errorf("load/rotate %s: %w", f2, err)
 	}
 
-	if err := validateOutputDimensions(cfg.MaxWidth, cfg.MaxHeight, cfg.MaxOutputPixels); err != nil {
-		return "", err
-	}
-	inputPixels := int64(img1.Bounds().Dx())*int64(img1.Bounds().Dy()) +
-		int64(img2.Bounds().Dx())*int64(img2.Bounds().Dy())
-	if err := validateWorkingPixels(inputPixels, cfg); err != nil {
-		return "", err
-	}
-	collage := createCollageForTarget(
-		img1, img2, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.LinearLightResize,
+	leftWidth := cfg.MaxWidth / 2
+	rightWidth := cfg.MaxWidth - leftWidth
+	leftSharpen := scaleAwareSharpenAmount(
+		cfg.SharpenAmount, img1.Bounds().Dx(), img1.Bounds().Dy(), leftWidth, cfg.MaxHeight,
 	)
-	collage = sharpenWithOptions(collage, cfg.SharpenAmount, cfg.SharpenThreshold, defaultPixelWorkers())
+	rightSharpen := scaleAwareSharpenAmount(
+		cfg.SharpenAmount, img2.Bounds().Dx(), img2.Bounds().Dy(), rightWidth, cfg.MaxHeight,
+	)
+	collage := createCollageForTargetWithSharpen(
+		img1, img2, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.LinearLightResize,
+		leftSharpen, rightSharpen, cfg.SharpenThreshold, defaultPixelWorkers(),
+	)
 	if cfg.MuseumModeEnabled {
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
 	}
@@ -80,11 +91,12 @@ func processCollagePair(job collageJob) (string, error) {
 	}
 	tmpPath := out.Name()
 	defer func() { _ = os.Remove(tmpPath) }()
+	writer := &contextWriter{ctx: ctx, writer: out}
 
 	if ext == extPNG {
-		err = png.Encode(out, collage)
+		err = png.Encode(writer, collage)
 	} else {
-		err = jpeg.Encode(out, collage, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+		err = jpeg.Encode(writer, collage, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
 	}
 	if err != nil {
 		_ = out.Close()
@@ -145,6 +157,26 @@ func processCollagePair(job collageJob) (string, error) {
 	}
 
 	return collageName, nil
+}
+
+func inspectCollageInputPixels(ctx context.Context, paths ...string) (int64, error) {
+	var pixels int64
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return 0, fmt.Errorf("open collage input %s: %w", filepath.Base(path), err)
+		}
+		width, height, decodeErr := decodeInputConfig(ctx, file)
+		closeErr := file.Close()
+		if err := errors.Join(decodeErr, closeErr); err != nil {
+			return 0, fmt.Errorf("inspect collage input %s: %w", filepath.Base(path), err)
+		}
+		pixels += int64(width) * int64(height)
+	}
+	return pixels, nil
 }
 
 func collageOutputExtension(first, second string) string {

@@ -23,6 +23,10 @@ type labColor struct {
 func ciede2000(color1, color2 labColor) float64 {
 	const degToRad = math.Pi / 180.0
 	const e7 = 6103515625.0 // 25^7
+	// Sharma's supplementary pairs 9-12 straddle the 180-degree hue
+	// discontinuity. Treat floating-point values indistinguishable from pi as
+	// equality so the formula follows its specified <= 180-degree branch.
+	const hueBoundaryTolerance = 1e-12
 
 	l1, a1, b1 := color1.l, color1.a, color1.b
 	l2, a2, b2 := color2.l, color2.a, color2.b
@@ -63,9 +67,9 @@ func ciede2000(color1, color2 labColor) float64 {
 	deltaHPrime := 0.0
 	if cPrime1*cPrime2 != 0 {
 		deltahPrime := hPrime2 - hPrime1
-		if deltahPrime > math.Pi {
+		if deltahPrime > math.Pi+hueBoundaryTolerance {
 			deltahPrime -= 2 * math.Pi
-		} else if deltahPrime < -math.Pi {
+		} else if deltahPrime < -math.Pi-hueBoundaryTolerance {
 			deltahPrime += 2 * math.Pi
 		}
 		deltaHPrime = 2.0 * math.Sqrt(cPrime1*cPrime2) * math.Sin(deltahPrime*0.5)
@@ -78,7 +82,7 @@ func ciede2000(color1, color2 labColor) float64 {
 	switch {
 	case cPrime1*cPrime2 == 0:
 		meanHPrime = hPrime1 + hPrime2
-	case math.Abs(hPrime1-hPrime2) <= math.Pi:
+	case math.Abs(hPrime1-hPrime2) <= math.Pi+hueBoundaryTolerance:
 		meanHPrime = (hPrime1 + hPrime2) * 0.5
 	case hPrime1+hPrime2 < 2*math.Pi:
 		meanHPrime = (hPrime1 + hPrime2 + 2*math.Pi) * 0.5

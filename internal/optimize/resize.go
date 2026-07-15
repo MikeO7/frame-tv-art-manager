@@ -25,6 +25,7 @@ const (
 	formatPNG             = "png"
 	profileRejectEmbedded = "reject-embedded"
 	portraitModeCollage   = "collage"
+	transformRevision     = "frame-image-v6"
 )
 
 type Config struct {
@@ -105,7 +106,7 @@ func optimizeFileWithPolicy(
 	}
 	defer func() { _ = f.Close() }()
 
-	width, height, err := decodeInputConfig(f)
+	width, height, err := decodeInputConfig(ctx, f)
 	if err != nil {
 		return filename, false, err
 	}
@@ -122,7 +123,7 @@ func optimizeFileWithPolicy(
 	if _, err := f.Seek(0, 0); err != nil {
 		return filename, false, fmt.Errorf("seek image orientation: %w", err)
 	}
-	orientation, err := readOrientationForExtension(f, ext)
+	orientation, err := readOrientationForExtension(ctx, f, ext)
 	if err != nil {
 		return filename, false, fmt.Errorf("read image orientation: %w", err)
 	}
@@ -132,7 +133,7 @@ func optimizeFileWithPolicy(
 	}
 	needsAdjustment := force || orientation != 1 || displayWidth != cfg.MaxWidth || displayHeight != cfg.MaxHeight
 	if !needsAdjustment && !cfg.MuseumModeEnabled {
-		if err := validateOptimizedPixels(f, cfg.MaxWidth, cfg.MaxHeight); err != nil {
+		if err := validateOptimizedPixels(ctx, f, cfg.MaxWidth, cfg.MaxHeight); err != nil {
 			return filename, false, err
 		}
 	}
@@ -170,18 +171,19 @@ func isOptimizableImage(extension string, cfg Config) bool {
 	return isOptimizableJPEG(extension) || (extension == extPNG && cfg.OptimizePNG)
 }
 
-func readOrientationForExtension(reader io.Reader, extension string) (int, error) {
+func readOrientationForExtension(ctx context.Context, reader io.Reader, extension string) (int, error) {
+	contextual := &contextReader{ctx: ctx, reader: reader}
 	if extension == extPNG || extension == formatPNG {
-		return ReadPNGOrientation(reader)
+		return ReadPNGOrientation(contextual)
 	}
-	return ReadOrientation(reader)
+	return ReadOrientation(contextual)
 }
 
-func validateOptimizedPixels(file *os.File, expectedWidth, expectedHeight int) error {
+func validateOptimizedPixels(ctx context.Context, file *os.File, expectedWidth, expectedHeight int) error {
 	if _, err := file.Seek(0, 0); err != nil {
 		return fmt.Errorf("seek optimized image: %w", err)
 	}
-	decoded, _, err := image.Decode(file)
+	decoded, _, err := image.Decode(&contextReader{ctx: ctx, reader: file})
 	if err != nil {
 		return fmt.Errorf("validate optimized pixels: %w", err)
 	}
@@ -198,7 +200,7 @@ func validateOptimizedPixels(file *os.File, expectedWidth, expectedHeight int) e
 // encoded output bytes. It is durable manifest metadata, never filename state.
 func TransformKey(cfg Config) string {
 	description := fmt.Sprintf(
-		"frame-image-v4|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|sharp=%.6g/%d|museum=%t/%d|portrait=%s|profile=%s",
+		transformRevision+"|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|sharp=%.6g/%d|museum=%t/%d|portrait=%s|profile=%s",
 		cfg.MaxWidth, cfg.MaxHeight, cfg.OptimizeJPEGQuality, cfg.OptimizePNG, cfg.LinearLightResize,
 		cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.SharpenAmount, cfg.SharpenThreshold,
 		cfg.MuseumModeEnabled, cfg.MuseumModeIntensity,
