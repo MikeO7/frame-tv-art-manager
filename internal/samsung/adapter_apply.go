@@ -142,13 +142,14 @@ func (a *adapter) guardActiveTV(ctx context.Context, transport mutationTransport
 	if err := validateFrameTVDevice(device); err != nil {
 		return err
 	}
+	power, _ := parseDevicePowerState(device.PowerState)
 	if _, wake := command.(Wake); wake {
-		if strings.TrimSpace(device.PowerState) != stringOff || len(a.config.MAC) != 6 {
+		if power != PowerStateOff || len(a.config.MAC) != 6 {
 			return ErrNotAuthorized
 		}
 		return nil
 	}
-	if strings.TrimSpace(device.PowerState) != stringOn {
+	if power != PowerStateOn {
 		return ErrNotAuthorized
 	}
 	artMode, err := transport.ArtMode(ctx)

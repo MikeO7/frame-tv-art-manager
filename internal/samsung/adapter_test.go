@@ -152,6 +152,7 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 		wantArtModeCalls int
 	}{
 		{name: "power off", power: "off", artMode: "on", wantDisposition: DispositionBlockedPowerOff},
+		{name: "power standby", power: "standby", artMode: "on", wantDisposition: DispositionBlockedPowerOff},
 		{name: "art mode off", power: "on", artMode: "off", wantDisposition: DispositionBlockedNotArtMode, wantArtModeCalls: 1},
 	}
 	for _, test := range tests {
@@ -180,12 +181,17 @@ func TestAdapterKnownOffAuthorizesOnlyExactSupportedWake(t *testing.T) {
 
 	tests := []struct {
 		name       string
+		power      string
 		withMAC    bool
 		required   CapabilitySet
 		wantRemote Support
 	}{
 		{
 			name: "configured MAC and exact remote-power request", withMAC: true,
+			required: CapabilityRemotePower, wantRemote: SupportSupported,
+		},
+		{
+			name: "standby with configured MAC", power: stringStandby, withMAC: true,
 			required: CapabilityRemotePower, wantRemote: SupportSupported,
 		},
 		{
@@ -202,7 +208,10 @@ func TestAdapterKnownOffAuthorizesOnlyExactSupportedWake(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			transport := mutationTransportForInventory(`[]`)
-			transport.device.PowerState = stringOff
+			transport.device.PowerState = test.power
+			if test.power == "" {
+				transport.device.PowerState = stringOff
+			}
 			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 			if test.withMAC {
 				adapter.config.MAC = []byte{0, 1, 2, 3, 4, 5}

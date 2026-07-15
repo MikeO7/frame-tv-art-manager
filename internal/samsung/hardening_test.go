@@ -65,7 +65,7 @@ func TestValidateFrameTVDeviceFailsClosed(t *testing.T) {
 		{name: "missing model", mutate: func(info *DeviceInfo) { info.ModelName = " " }},
 		{name: "support absent", mutate: func(info *DeviceInfo) { info.FrameTVSupport = "" }},
 		{name: "support false", mutate: func(info *DeviceInfo) { info.FrameTVSupport = stringFalse }},
-		{name: "power unknown", mutate: func(info *DeviceInfo) { info.PowerState = "standby" }},
+		{name: "power unknown", mutate: func(info *DeviceInfo) { info.PowerState = "sleeping" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -79,6 +79,10 @@ func TestValidateFrameTVDeviceFailsClosed(t *testing.T) {
 	valid.PowerState = stringOff
 	if err := validateFrameTVDevice(valid); err != nil {
 		t.Fatalf("validateFrameTVDevice(power off) error = %v", err)
+	}
+	valid.PowerState = "standby"
+	if err := validateFrameTVDevice(valid); err != nil {
+		t.Fatalf("validateFrameTVDevice(standby) error = %v", err)
 	}
 }
 
