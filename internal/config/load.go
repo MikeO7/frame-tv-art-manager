@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +13,11 @@ import (
 )
 
 const (
-	colorProfileAssumeSRGB = "assume-srgb"
-	colorProfileReject     = "reject-embedded"
+	colorProfileAssumeSRGB  = "assume-srgb"
+	colorProfileConvertSRGB = "convert-srgb"
+	colorProfileReject      = "reject-embedded"
+	smartCropProviderLocal  = "local"
+	smartCropProviderHTTP   = "http"
 )
 
 // Load reads configuration from environment variables, applies defaults,
@@ -141,13 +145,21 @@ func validateRanges(cfg *Config) error {
 		},
 		{between(cfg.OptimizeMemoryMB, 128, 4096), "IMAGE_MAX_WORKING_MEMORY_MB must be between 128 and 4096"},
 		{between(cfg.OptimizeJPEGQuality, 1, 100), "IMAGE_JPEG_QUALITY must be between 1 and 100"},
-		{cfg.SmartCropMinGain >= 0 && cfg.SmartCropMinGain <= 1, "SMART_CROP_MIN_GAIN must be between 0 and 1"},
-		{cfg.SharpenAmount >= 0 && cfg.SharpenAmount <= 2, "IMAGE_SHARPEN_AMOUNT must be between 0 and 2"},
-		{between(cfg.SharpenThreshold, 0, 255), "IMAGE_SHARPEN_THRESHOLD must be between 0 and 255"},
+		{betweenFloat(cfg.SmartCropMinGain, 0, 1), "SMART_CROP_MIN_GAIN must be between 0 and 1"},
+		{betweenFloat(cfg.SmartCropProtectionStrength, 0, 2), "SMART_CROP_PROTECTION_STRENGTH must be between 0 and 2"},
+		{supportedSmartCropProvider(cfg.SmartCropProvider), "SMART_CROP_PROVIDER must be local or http"},
 		{
-			cfg.ColorProfilePolicy == colorProfileAssumeSRGB || cfg.ColorProfilePolicy == colorProfileReject,
-			"IMAGE_COLOR_PROFILE_POLICY must be assume-srgb or reject-embedded",
+			cfg.SmartCropProvider != smartCropProviderHTTP || validHTTPURL(cfg.SmartCropProviderURL),
+			"SMART_CROP_PROVIDER_URL must be an absolute HTTP(S) URL for http provider",
 		},
+		{betweenFloat(cfg.SmartCropProviderMinConfidence, 0, 1), "SMART_CROP_PROVIDER_MIN_CONFIDENCE must be between 0 and 1"},
+		{cfg.SmartCropProviderTimeout > 0 && cfg.SmartCropProviderTimeout <= time.Minute, "SMART_CROP_PROVIDER_TIMEOUT_SECONDS must be between 1 and 60"},
+		{betweenFloat(cfg.SharpenAmount, 0, 2), "IMAGE_SHARPEN_AMOUNT must be between 0 and 2"},
+		{between(cfg.SharpenThreshold, 0, 255), "IMAGE_SHARPEN_THRESHOLD must be between 0 and 255"},
+		{supportedColorProfilePolicy(cfg.ColorProfilePolicy), "IMAGE_COLOR_PROFILE_POLICY must be convert-srgb, assume-srgb, or reject-embedded"},
+		{betweenFloat(cfg.HDRSourcePeakNits, 100, 10_000), "IMAGE_HDR_SOURCE_PEAK_NITS must be between 100 and 10000"},
+		{betweenFloat(cfg.HDRTargetPeakNits, 80, 500), "IMAGE_HDR_TARGET_PEAK_NITS must be between 80 and 500"},
+		{between(cfg.PerceptualDuplicateDistance, 0, 64), "IMAGE_PERCEPTUAL_DUPLICATE_DISTANCE must be between 0 and 64"},
 		{between(cfg.MuseumModeIntensity, 1, 10), "IMAGE_MUSEUM_INTENSITY must be between 1 and 10"},
 		{between(cfg.HealthPort, 0, 65535), "HEALTH_PORT must be between 0 and 65535"},
 		{cfg.ConnectionTimeout > 0 && cfg.ConnectionTimeout <= 10*time.Minute, "CONNECTION_TIMEOUT_SECONDS must be between 1 and 600"},
@@ -235,4 +247,31 @@ func isFinite(value float64) bool {
 
 func between(value, minimum, maximum int) bool {
 	return value >= minimum && value <= maximum
+}
+
+func betweenFloat(value, minimum, maximum float64) bool {
+	return value >= minimum && value <= maximum
+}
+
+func supportedSmartCropProvider(value string) bool {
+	switch value {
+	case smartCropProviderLocal, smartCropProviderHTTP:
+		return true
+	default:
+		return false
+	}
+}
+
+func validHTTPURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Host != "" && (parsed.Scheme == smartCropProviderHTTP || parsed.Scheme == "https")
+}
+
+func supportedColorProfilePolicy(value string) bool {
+	switch value {
+	case colorProfileConvertSRGB, colorProfileAssumeSRGB, colorProfileReject:
+		return true
+	default:
+		return false
+	}
 }

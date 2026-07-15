@@ -16,15 +16,26 @@ import (
 )
 
 type validatedImage struct {
-	data   []byte
-	digest [sha256.Size]byte
-	typeID FileType
-	width  int
-	height int
-	stem   string
+	data            []byte
+	digest          [sha256.Size]byte
+	typeID          FileType
+	width           int
+	height          int
+	stem            string
+	visualHash      uint64
+	visualHashValid bool
+}
+
+type validationOptions struct {
+	maxBytes, maxPixels int64
+	computeVisualHash   bool
 }
 
 func readAndValidate(ctx context.Context, reader io.Reader, hint string, maxBytes, maxPixels int64) (validatedImage, error) {
+	return readAndValidateWithOptions(ctx, reader, hint, validationOptions{maxBytes: maxBytes, maxPixels: maxPixels})
+}
+
+func readAndValidateWithOptions(ctx context.Context, reader io.Reader, hint string, options validationOptions) (validatedImage, error) {
 	if err := ctx.Err(); err != nil {
 		return validatedImage{}, fmt.Errorf("read import before work: %w", err)
 	}
@@ -32,27 +43,36 @@ func readAndValidate(ctx context.Context, reader io.Reader, hint string, maxByte
 	if err != nil {
 		return validatedImage{}, err
 	}
-	data, err := readBounded(reader, maxBytes)
+	data, err := readBounded(reader, options.maxBytes)
 	if err != nil {
 		return validatedImage{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return validatedImage{}, fmt.Errorf("decode import: %w", err)
 	}
-	decoded, err := decodeConfiguration(data, hintedType, maxPixels)
+	decoded, err := decodeConfiguration(data, hintedType, options.maxPixels)
 	if err != nil {
 		return validatedImage{}, err
 	}
-	if err := fullyDecode(data, decoded.config, decoded.format); err != nil {
+	imageData, err := fullyDecode(data, decoded.config, decoded.format)
+	if err != nil {
 		return validatedImage{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return validatedImage{}, fmt.Errorf("finish import validation: %w", err)
 	}
-	return validatedImage{
+	result := validatedImage{
 		data: data, digest: sha256.Sum256(data), typeID: decoded.typeID,
 		width: decoded.config.Width, height: decoded.config.Height, stem: stem,
-	}, nil
+	}
+	if options.computeVisualHash {
+		result.visualHash = differenceHash(imageData)
+		result.visualHashValid = true
+	}
+	if err := ctx.Err(); err != nil {
+		return validatedImage{}, fmt.Errorf("finish import fingerprint: %w", err)
+	}
+	return result, nil
 }
 
 func readBounded(reader io.Reader, maxBytes int64) ([]byte, error) {
@@ -94,16 +114,16 @@ func decodeConfiguration(data []byte, hintedType FileType, maxPixels int64) (dec
 	return decodedConfiguration{config: config, format: format, typeID: typeID}, nil
 }
 
-func fullyDecode(data []byte, config image.Config, format string) error {
+func fullyDecode(data []byte, config image.Config, format string) (image.Image, error) {
 	decoded, decodedFormat, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("fully decode image: %w", err)
+		return nil, fmt.Errorf("fully decode image: %w", err)
 	}
 	bounds := decoded.Bounds()
 	if decodedFormat != format || bounds.Dx() != config.Width || bounds.Dy() != config.Height {
-		return errors.New("decoded image facts are inconsistent")
+		return nil, errors.New("decoded image facts are inconsistent")
 	}
-	return nil
+	return decoded, nil
 }
 
 func validateDimensions(width, height int, maxPixels int64) error {

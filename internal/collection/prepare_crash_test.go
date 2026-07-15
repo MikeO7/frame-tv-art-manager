@@ -171,7 +171,7 @@ func TestPrepareScannerPropagatesCancellation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, _, err := scanPrepare(ctx, root, 1<<20, 1<<20); !errors.Is(err, context.Canceled) {
+	if _, _, err := scanPrepare(ctx, root, inventoryLimits{maxBytes: 1 << 20, maxPixels: 1 << 20}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("scan cancellation error = %v", err)
 	}
 }
@@ -186,7 +186,7 @@ func TestPrepareScannerPropagatesManifestAndRootFailures(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(control, manifestName), []byte("{"), 0o600); err != nil {
 			t.Fatalf("write malformed manifest: %v", err)
 		}
-		if _, _, err := scanPrepare(context.Background(), root, 1<<20, 1<<20); err == nil {
+		if _, _, err := scanPrepare(context.Background(), root, inventoryLimits{maxBytes: 1 << 20, maxPixels: 1 << 20}); err == nil {
 			t.Fatal("malformed manifest accepted")
 		}
 	})
@@ -195,7 +195,7 @@ func TestPrepareScannerPropagatesManifestAndRootFailures(t *testing.T) {
 		if err := os.WriteFile(root, []byte("not a directory"), 0o600); err != nil {
 			t.Fatalf("write root file: %v", err)
 		}
-		if _, _, err := scanPrepare(context.Background(), root, 1<<20, 1<<20); err == nil {
+		if _, _, err := scanPrepare(context.Background(), root, inventoryLimits{maxBytes: 1 << 20, maxPixels: 1 << 20}); err == nil {
 			t.Fatal("regular-file root accepted")
 		}
 	})

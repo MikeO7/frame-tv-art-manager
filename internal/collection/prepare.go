@@ -20,7 +20,7 @@ func (s *store) prepare(ctx context.Context, request PrepareRequest) (Snapshot, 
 		return Snapshot{}, err
 	}
 	changes := inventoryChanges(inventory.current, inventory.items)
-	projected := buildSnapshotWithWarnings(s.root, inventory.items, changes, inventory.warnings, request.DryRun)
+	projected := buildSnapshotWithNotices(s.root, inventory.items, changes, inventory.warnings, inventory.advisories, request.DryRun)
 	if err := s.validatePreparedSnapshot(projected); err != nil {
 		return Snapshot{}, err
 	}
@@ -54,7 +54,7 @@ func (s *store) beginPrepare(ctx context.Context, dryRun bool) error {
 }
 
 func (s *store) commitPrepared(ctx context.Context, inventory preparedInventory, changes []Change) (Snapshot, error) {
-	projected := buildSnapshotWithWarnings(s.root, inventory.items, changes, inventory.warnings, false)
+	projected := buildSnapshotWithNotices(s.root, inventory.items, changes, inventory.warnings, inventory.advisories, false)
 	if err := s.validatePreparedSnapshot(projected); err != nil {
 		return Snapshot{}, err
 	}
@@ -69,43 +69,31 @@ func (s *store) commitPrepared(ctx context.Context, inventory preparedInventory,
 	if err := commitManifest(ctx, s.root, next); err != nil {
 		return Snapshot{}, fmt.Errorf("commit collection inventory: %w", err)
 	}
-	committed, committedWarnings, err := scanPrepare(ctx, s.root, s.maxImportBytes, s.maxPixels)
+	limits := inventoryLimits{
+		maxBytes: s.maxImportBytes, maxPixels: s.maxPixels, computeVisualHash: s.perceptualDuplicates,
+	}
+	committed, committedWarnings, err := scanPrepare(ctx, s.root, limits)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
 	}
 	if err := verifyExpected(inventory.items, committed); err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed manifest: %w", err)
 	}
-	verified := buildSnapshotWithWarnings(s.root, committed, changes, committedWarnings, false)
+	committedAdvisories, err := s.perceptualAdvisories(ctx, committed)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("verify perceptual duplicate advisories: %w", err)
+	}
+	verified := buildSnapshotWithNotices(s.root, committed, changes, committedWarnings, committedAdvisories, false)
 	if err := s.validatePreparedSnapshot(verified); err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed collection snapshot: %w", err)
 	}
 	return verified, nil
 }
 
-type preparedInventory struct {
-	items          []Item
-	current        manifest
-	manifestExists bool
-	warnings       []string
-}
-
-func (s *store) prepareInventory(ctx context.Context, overrides map[string]Origin) (preparedInventory, error) {
-	current, exists, err := readManifest(ctx, s.root)
-	if err != nil {
-		return preparedInventory{}, fmt.Errorf("read committed manifest: %w", err)
-	}
-	items, warnings, err := scanPrepare(ctx, s.root, s.maxImportBytes, s.maxPixels, overrides)
-	if err != nil {
-		return preparedInventory{}, fmt.Errorf("inventory collection: %w", err)
-	}
-	return preparedInventory{items: items, current: current, manifestExists: exists, warnings: warnings}, nil
-}
-
 func scanPrepare(
 	ctx context.Context,
 	root string,
-	maxBytes, maxPixels int64,
+	limits inventoryLimits,
 	originOverrides ...map[string]Origin,
 ) ([]Item, []string, error) {
 	var overrides map[string]Origin
@@ -126,7 +114,7 @@ func scanPrepare(
 	items := make([]Item, 0, len(entries))
 	warnings := make([]string, 0)
 	for _, entry := range entries {
-		result, err := scanPrepareEntry(ctx, root, entry, maxBytes, maxPixels)
+		result, err := scanPrepareEntry(ctx, root, entry, limits)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -182,7 +170,7 @@ func scanPrepareEntry(
 	ctx context.Context,
 	root string,
 	entry os.DirEntry,
-	maxBytes, maxPixels int64,
+	limits inventoryLimits,
 ) (scannedPrepareEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return scannedPrepareEntry{}, fmt.Errorf("scan collection: %w", err)
@@ -193,7 +181,7 @@ func scanPrepareEntry(
 	if entry.Type()&os.ModeSymlink != 0 {
 		return scannedPrepareEntry{}, fmt.Errorf("artwork %s is a symlink", entry.Name())
 	}
-	item, err := inspectPrepareItem(ctx, root, entry, maxBytes, maxPixels)
+	item, err := inspectPrepareItem(ctx, root, entry, limits)
 	if err == nil {
 		return scannedPrepareEntry{item: item, include: true}, nil
 	}
@@ -207,7 +195,7 @@ func inspectPrepareItem(
 	ctx context.Context,
 	root string,
 	entry os.DirEntry,
-	maxBytes, maxPixels int64,
+	limits inventoryLimits,
 ) (Item, error) {
 	info, err := entry.Info()
 	if err != nil {
@@ -219,15 +207,15 @@ func inspectPrepareItem(
 	if !info.Mode().IsRegular() {
 		return Item{}, errors.New("not a regular file")
 	}
-	if info.Size() > maxBytes {
-		return Item{}, fmt.Errorf("exceeds %d-byte limit", maxBytes)
+	if info.Size() > limits.maxBytes {
+		return Item{}, fmt.Errorf("exceeds %d-byte limit", limits.maxBytes)
 	}
 	path := filepath.Join(root, entry.Name())
 	file, err := os.Open(path)
 	if err != nil {
 		return Item{}, fmt.Errorf("open: %w", err)
 	}
-	validated, validateErr := readAndValidate(ctx, file, entry.Name(), maxBytes, maxPixels)
+	validated, validateErr := readAndValidateWithOptions(ctx, file, entry.Name(), validationOptions(limits))
 	closeErr := file.Close()
 	if validateErr != nil {
 		return Item{}, fmt.Errorf("validate: %w", errors.Join(validateErr, closeErr))
@@ -238,7 +226,8 @@ func inspectPrepareItem(
 	return Item{
 		Name: entry.Name(), Key: entry.Name(), Path: path, Digest: validated.digest,
 		Type: validated.typeID, Size: info.Size(), Width: validated.width, Height: validated.height,
-		Origin: Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
+		Origin:     Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
+		visualHash: validated.visualHash, visualHashValid: validated.visualHashValid,
 	}, nil
 }
 

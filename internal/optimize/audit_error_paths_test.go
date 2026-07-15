@@ -26,21 +26,22 @@ func TestColorMetadataParsersRejectMalformedStreams(t *testing.T) {
 		{0xff, 0xd8, 0xff, 0xe1, 0, 4, 'x'},
 	}
 	for index, payload := range jpegCases {
-		if _, err := findJPEGColorMetadata(bytes.NewReader(payload)); err == nil {
-			t.Fatalf("findJPEGColorMetadata(case %d) error = nil", index)
+		if _, err := readJPEGColorData(bytes.NewReader(payload)); err == nil {
+			t.Fatalf("readJPEGColorData(case %d) error = nil", index)
 		}
 	}
 	for _, payload := range [][]byte{
 		{0xff, 0xd8, 0xff, 0xd9},
 		{0xff, 0xd8, 0xff, 0xe1, 0, 4, 'x', 'y', 0xff, 0xd9},
 	} {
-		if metadata, err := findJPEGColorMetadata(bytes.NewReader(payload)); err != nil || metadata != "" {
-			t.Fatalf("findJPEGColorMetadata(valid) = %q, %v", metadata, err)
+		if metadata, err := readJPEGColorData(bytes.NewReader(payload)); err != nil || metadata.description != "" {
+			t.Fatalf("readJPEGColorData(valid) = %+v, %v", metadata, err)
 		}
 	}
 	icc := append([]byte{0xff, 0xd8, 0xff, 0xe2, 0, 16}, []byte("ICC_PROFILE\x00\x01\x01")...)
-	if metadata, err := findJPEGColorMetadata(bytes.NewReader(icc)); err != nil || metadata != "JPEG ICC" {
-		t.Fatalf("findJPEGColorMetadata(ICC) = %q, %v", metadata, err)
+	icc = append(icc, 0xff, 0xd9)
+	if metadata, err := readJPEGColorData(bytes.NewReader(icc)); err != nil || metadata.description != jpegICCMetadata {
+		t.Fatalf("readJPEGColorData(ICC) = %+v, %v", metadata, err)
 	}
 
 	pngCases := [][]byte{
@@ -50,20 +51,21 @@ func TestColorMetadataParsersRejectMalformedStreams(t *testing.T) {
 		appendPNGChunkBytes(pngSignature[:], "text", []byte{1}, false),
 	}
 	for index, payload := range pngCases {
-		if _, err := findPNGColorMetadata(bytes.NewReader(payload)); err == nil {
-			t.Fatalf("findPNGColorMetadata(case %d) error = nil", index)
+		if _, err := readPNGColorData(bytes.NewReader(payload)); err == nil {
+			t.Fatalf("readPNGColorData(case %d) error = nil", index)
 		}
 	}
-	for _, chunkType := range []string{"iCCP", "gAMA", "cHRM"} {
-		payload := appendPNGChunkBytes(pngSignature[:], chunkType, nil, true)
-		if metadata, err := findPNGColorMetadata(bytes.NewReader(payload)); err != nil || metadata != "PNG "+chunkType {
-			t.Fatalf("findPNGColorMetadata(%s) = %q, %v", chunkType, metadata, err)
+	for chunkType, chunkData := range map[string][]byte{pngChunkGamma: make([]byte, 4), pngChunkChromaticity: make([]byte, 32)} {
+		payload := appendPNGChunkBytes(pngSignature[:], chunkType, chunkData, true)
+		payload = appendPNGChunkBytes(payload, pngChunkEnd, nil, true)
+		if metadata, err := readPNGColorData(bytes.NewReader(payload)); err != nil || metadata.description != "PNG "+chunkType {
+			t.Fatalf("readPNGColorData(%s) = %+v, %v", chunkType, metadata, err)
 		}
 	}
 	for _, chunkType := range []string{"IDAT", pngChunkEnd} {
 		payload := appendPNGChunkBytes(pngSignature[:], chunkType, nil, true)
-		if metadata, err := findPNGColorMetadata(bytes.NewReader(payload)); err != nil || metadata != "" {
-			t.Fatalf("findPNGColorMetadata(%s) = %q, %v", chunkType, metadata, err)
+		if metadata, err := readPNGColorData(bytes.NewReader(payload)); err != nil || metadata.description != "" {
+			t.Fatalf("readPNGColorData(%s) = %+v, %v", chunkType, metadata, err)
 		}
 	}
 }
@@ -129,9 +131,9 @@ func TestAuditSafetyHelperBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := enforceColorProfilePolicy(context.Background(), malformed, extJPG, "assume-srgb"); err == nil {
+	if _, err := readEmbeddedColorData(context.Background(), malformed, extJPG); err == nil {
 		_ = malformed.Close()
-		t.Fatal("enforceColorProfilePolicy(malformed) error = nil")
+		t.Fatal("readEmbeddedColorData(malformed) error = nil")
 	}
 	if err := malformed.Close(); err != nil {
 		t.Fatal(err)

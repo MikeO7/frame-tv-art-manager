@@ -41,7 +41,7 @@ func isPortraitFile(ctx context.Context, path string) (bool, error) {
 }
 
 func loadAndRotateImage(ctx context.Context, path string) (*image.RGBA, error) {
-	return loadAndRotateImageWithPolicy(ctx, path, "assume-srgb", slog.New(slog.DiscardHandler))
+	return loadAndRotateImageWithPolicy(ctx, path, profileAssumeSRGB, slog.New(slog.DiscardHandler))
 }
 
 func loadAndRotateImageWithPolicy(
@@ -49,6 +49,12 @@ func loadAndRotateImageWithPolicy(
 	path, profilePolicy string,
 	logger *slog.Logger,
 ) (*image.RGBA, error) {
+	cfg := DefaultConfig()
+	cfg.ColorProfilePolicy = profilePolicy
+	return loadAndRotateImageWithConfig(ctx, path, cfg, logger)
+}
+
+func loadAndRotateImageWithConfig(ctx context.Context, path string, cfg Config, logger *slog.Logger) (*image.RGBA, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -69,15 +75,9 @@ func loadAndRotateImageWithPolicy(
 	if format == formatPNG {
 		extension = extPNG
 	}
-	colorMetadata, err := enforceColorProfilePolicy(ctx, f, extension, profilePolicy)
+	colorMetadata, err := readColorDataWithPolicy(ctx, f, extension, cfg, logger, filepath.Base(path))
 	if err != nil {
 		return nil, err
-	}
-	if colorMetadata != "" {
-		logger.Warn(
-			"embedded color metadata is not transformed; treating decoded samples as sRGB",
-			"file", filepath.Base(path), "metadata", colorMetadata,
-		)
 	}
 	if _, err := f.Seek(0, 0); err != nil {
 		return nil, err
@@ -93,5 +93,5 @@ func loadAndRotateImageWithPolicy(
 	if err != nil {
 		return nil, err
 	}
-	return toRGBA(RotateImage(img, orientation)), nil
+	return toRGBA(RotateImage(normalizeColor(img, colorMetadata, cfg, logger, filepath.Base(path)), orientation)), nil
 }

@@ -174,6 +174,7 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 		}
 	}
 	metadata := newMetadataProjection(baseline)
+	result.warnings = append(result.warnings, baseline.Advisories...)
 	stageRequest := optimize.StageRequest{
 		Inputs: stageInputs(baseline), Config: c.cfg.OptimizeOptions(), Logger: c.logger,
 	}
@@ -252,6 +253,7 @@ func (c *localCollection) authoritativeSnapshot(
 		return result, err
 	}
 	result.snapshot = snapshot
+	result.warnings = append(result.warnings, snapshot.Advisories...)
 	return result, nil
 }
 

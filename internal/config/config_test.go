@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
@@ -141,40 +142,56 @@ func TestLoad_OptionalFields(t *testing.T) {
 
 func TestConfig_OptimizeOptions(t *testing.T) {
 	cfg := &Config{
-		OptimizeEnabled:     true,
-		SmartCropEnabled:    true,
-		SmartCropMinGain:    0.05,
-		OptimizeMaxWidth:    3840,
-		OptimizeMaxHeight:   2160,
-		OptimizeMaxPixels:   12_000_000,
-		OptimizeMemoryMB:    512,
-		OptimizeJPEGQuality: 90,
-		OptimizePNG:         true,
-		LinearLightResize:   true,
-		SharpenAmount:       0.3,
-		SharpenThreshold:    5,
-		ColorProfilePolicy:  "assume-srgb",
-		MuseumModeEnabled:   true,
-		MuseumModeIntensity: 7,
+		OptimizeEnabled:                true,
+		SmartCropEnabled:               true,
+		SmartCropMinGain:               0.05,
+		SmartCropProtection:            true,
+		SmartCropProtectionStrength:    0.4,
+		SmartCropProvider:              "local",
+		SmartCropProviderMinConfidence: 0.75,
+		SmartCropProviderTimeout:       9 * time.Second,
+		OptimizeMaxWidth:               3840,
+		OptimizeMaxHeight:              2160,
+		OptimizeMaxPixels:              12_000_000,
+		OptimizeMemoryMB:               512,
+		OptimizeJPEGQuality:            90,
+		OptimizePNG:                    true,
+		LinearLightResize:              true,
+		SharpenAmount:                  0.3,
+		SharpenThreshold:               5,
+		ColorProfilePolicy:             "assume-srgb",
+		HDRToneMap:                     true,
+		HDRSourcePeakNits:              1200,
+		HDRTargetPeakNits:              100,
+		MuseumModeEnabled:              true,
+		MuseumModeIntensity:            7,
 	}
 
 	opts := cfg.OptimizeOptions()
 	want := optimize.Config{
-		Enabled:             true,
-		SmartCropEnabled:    true,
-		SmartCropMinGain:    0.05,
-		MaxWidth:            3840,
-		MaxHeight:           2160,
-		MaxOutputPixels:     12_000_000,
-		MaxWorkingBytes:     512 * 1024 * 1024,
-		OptimizeJPEGQuality: 90,
-		OptimizePNG:         true,
-		LinearLightResize:   true,
-		SharpenAmount:       0.3,
-		SharpenThreshold:    5,
-		ColorProfilePolicy:  "assume-srgb",
-		MuseumModeEnabled:   true,
-		MuseumModeIntensity: 7,
+		Enabled:                        true,
+		SmartCropEnabled:               true,
+		SmartCropMinGain:               0.05,
+		SmartCropProtection:            true,
+		SmartCropProtectionStrength:    0.4,
+		SmartCropProvider:              "local",
+		SmartCropProviderMinConfidence: 0.75,
+		SmartCropProviderTimeout:       9 * time.Second,
+		MaxWidth:                       3840,
+		MaxHeight:                      2160,
+		MaxOutputPixels:                12_000_000,
+		MaxWorkingBytes:                512 * 1024 * 1024,
+		OptimizeJPEGQuality:            90,
+		OptimizePNG:                    true,
+		LinearLightResize:              true,
+		SharpenAmount:                  0.3,
+		SharpenThreshold:               5,
+		ColorProfilePolicy:             "assume-srgb",
+		HDRToneMap:                     true,
+		HDRSourcePeakNits:              1200,
+		HDRTargetPeakNits:              100,
+		MuseumModeEnabled:              true,
+		MuseumModeIntensity:            7,
 	}
 	if opts != want {
 		t.Errorf("OptimizeOptions() = %+v, want %+v", opts, want)

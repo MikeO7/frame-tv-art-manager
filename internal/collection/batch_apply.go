@@ -180,7 +180,9 @@ func (s *store) scanApplyEntry(
 	if isReserved(strings.ToLower(entry.Name())) || !isSupportedName(entry.Name()) {
 		return Item{}, fmt.Errorf("staged entry %q is not artwork", entry.Name())
 	}
-	item, err := inspectPrepareItem(ctx, directory, entry, s.maxImportBytes, s.maxPixels)
+	item, err := inspectPrepareItem(ctx, directory, entry, inventoryLimits{
+		maxBytes: s.maxImportBytes, maxPixels: s.maxPixels,
+	})
 	if err != nil {
 		return Item{}, fmt.Errorf("inspect staged artwork %s: %w", entry.Name(), err)
 	}

@@ -1,10 +1,18 @@
 package optimize
 
 import (
+	"context"
 	"image"
 	std_draw "image/draw"
+	"log/slog"
 	"math"
 )
+
+//nolint:revive // rendering context, source, target, policy, and logger are orthogonal inputs
+func centerCropConfigured(ctx context.Context, src *image.RGBA, targetW, targetH int, cfg Config, logger *slog.Logger) *image.RGBA {
+	cropRect := cropRectWithPolicy(ctx, src, targetW, targetH, cfg, logger)
+	return resizeCrop(src, cropRect, targetW, targetH, cfg.LinearLightResize)
+}
 
 // toRGBA converts decoded samples to a standard RGBA buffer. Go's standard
 // decoders do not apply embedded ICC transforms, so callers must enforce the
@@ -38,6 +46,18 @@ func centerCropWithOptions(
 }
 
 func cropRectForAspectWithGain(src *image.RGBA, targetAspect float64, smart bool, minGain float64) image.Rectangle {
+	return cropRectForAspectWithProtection(src, targetAspect, smart, minGain, false, 0)
+}
+
+//nolint:revive // explicit crop policy values keep this allocation-free scoring seam small
+func cropRectForAspectWithProtection(
+	src *image.RGBA,
+	targetAspect float64,
+	smart bool,
+	minGain float64,
+	protect bool,
+	protectionStrength float64,
+) image.Rectangle {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
 
@@ -46,7 +66,7 @@ func cropRectForAspectWithGain(src *image.RGBA, targetAspect float64, smart bool
 		cropW := int(float64(srcH) * targetAspect)
 		bestX := (srcW - cropW) / 2 // Default to center
 		if smart {
-			bestX = findBestDirectorCropWithGain(src, cropW, srcH, true, minGain)
+			bestX = findBestDirectorCropWithProtection(src, cropW, srcH, true, minGain, protect, protectionStrength)
 		}
 		return image.Rect(bestX, 0, bestX+cropW, srcH)
 	}
@@ -55,7 +75,7 @@ func cropRectForAspectWithGain(src *image.RGBA, targetAspect float64, smart bool
 	cropH := int(float64(srcW) / targetAspect)
 	bestY := (srcH - cropH) / 2 // Default to center
 	if smart {
-		bestY = findBestDirectorCropWithGain(src, srcW, cropH, false, minGain)
+		bestY = findBestDirectorCropWithProtection(src, srcW, cropH, false, minGain, protect, protectionStrength)
 	}
 	return image.Rect(0, bestY, srcW, bestY+cropH)
 }

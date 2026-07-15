@@ -92,11 +92,22 @@ func requiresIndividualStage(
 		if err != nil {
 			return false, fmt.Errorf("preflight color metadata for %q: %w", input.Name, err)
 		}
-		if colorMetadata != "" {
+		if colorMetadata.description != "" && colorMetadata.hdr == nil && cfg.ColorProfilePolicy == profileAssumeSRGB {
 			logger.Warn(
 				"embedded color metadata is not transformed; treating decoded samples as sRGB",
-				"file", input.Name, "metadata", colorMetadata,
+				"file", input.Name, "metadata", colorMetadata.description,
 			)
+		}
+		if colorMetadata.description != "" && cfg.ColorProfilePolicy == profileConvertSRGB &&
+			len(colorMetadata.icc) == 0 && colorMetadata.hdr == nil {
+			logger.Warn(
+				"embedded color metadata is unsupported for conversion; assuming sRGB",
+				"file", input.Name, "metadata", colorMetadata.description,
+			)
+		}
+		if (len(colorMetadata.icc) > 0 && cfg.ColorProfilePolicy == profileConvertSRGB) ||
+			(colorMetadata.hdr != nil && cfg.HDRToneMap) {
+			return true, nil
 		}
 		orientation, err := preflightOrientation(ctx, input)
 		if err != nil {
@@ -112,25 +123,28 @@ func requiresIndividualStage(
 	return false, nil
 }
 
-func preflightColorMetadata(ctx context.Context, input StageInput, policy string) (string, error) {
+func preflightColorMetadata(ctx context.Context, input StageInput, policy string) (embeddedColorData, error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return embeddedColorData{}, err
 	}
 	file, before, err := openPreflightInput(input)
 	if err != nil {
-		return "", err
+		return embeddedColorData{}, err
 	}
 	extension := strings.ToLower(filepath.Ext(input.Name))
-	metadata, readErr := enforceColorProfilePolicy(ctx, file, extension, policy)
+	metadata, readErr := readEmbeddedColorData(ctx, file, extension)
+	if readErr == nil && metadata.description != "" && policy == profileRejectEmbedded {
+		readErr = fmt.Errorf("unsupported embedded color metadata %s", metadata.description)
+	}
 	opened, statErr := file.Stat()
 	closeErr := file.Close()
 	after, pathErr := os.Lstat(input.Path)
 	if err := errors.Join(readErr, statErr, closeErr, pathErr); err != nil {
-		return "", err
+		return embeddedColorData{}, err
 	}
 	if after.Mode()&os.ModeSymlink != 0 || !after.Mode().IsRegular() ||
 		!os.SameFile(before, opened) || !os.SameFile(opened, after) {
-		return "", fmt.Errorf("artwork %q changed while reading color metadata", input.Name)
+		return embeddedColorData{}, fmt.Errorf("artwork %q changed while reading color metadata", input.Name)
 	}
 	return metadata, nil
 }

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"image"
 	"image/jpeg"
+	"image/png"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,6 +83,35 @@ func TestRequiresStageEnforcesColorPolicyOnExactTargetRawImage(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "JPEG ICC") {
 		t.Fatalf("RequiresStage(reject embedded profile) error = %v", err)
+	}
+}
+
+func TestRequiresStageIgnoresUnsupportedPNGColorHints(t *testing.T) {
+	t.Parallel()
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 8, 6))); err != nil {
+		t.Fatal(err)
+	}
+	const afterIHDR = 33
+	tagged := append([]byte{}, encoded.Bytes()[:afterIHDR]...)
+	tagged = appendPNGColorChunk(tagged, pngChunkGamma, []byte{0, 0, 0xb1, 0x8f})
+	tagged = append(tagged, encoded.Bytes()[afterIHDR:]...)
+	path := filepath.Join(t.TempDir(), "gamma.png")
+	if err := os.WriteFile(path, tagged, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = 8, 6
+	var logs bytes.Buffer
+	required, err := RequiresStage(context.Background(), StageRequest{
+		Inputs: []StageInput{{Name: "gamma.png", Path: path, Width: 8, Height: 6}},
+		Config: cfg, Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	if err != nil || required {
+		t.Fatalf("RequiresStage(gAMA-only PNG) = (%v, %v), want (false, nil)", required, err)
+	}
+	if !strings.Contains(logs.String(), "unsupported for conversion") {
+		t.Fatalf("fallback warning missing from logs: %q", logs.String())
 	}
 }
 

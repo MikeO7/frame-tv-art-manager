@@ -150,6 +150,18 @@ type Config struct {
 	SmartCropEnabled bool
 	// SmartCropMinGain is the minimum fractional score improvement over center crop.
 	SmartCropMinGain float64
+	// SmartCropProtection enables penalties for crops that bisect protected detail regions.
+	SmartCropProtection bool
+	// SmartCropProtectionStrength controls protected-region boundary penalties.
+	SmartCropProtectionStrength float64
+	// SmartCropProvider selects local analysis or the optional HTTP crop provider.
+	SmartCropProvider string
+	// SmartCropProviderURL is required only for the opt-in HTTP crop provider.
+	SmartCropProviderURL string
+	// SmartCropProviderMinConfidence rejects uncertain external crop proposals.
+	SmartCropProviderMinConfidence float64
+	// SmartCropProviderTimeout bounds the optional external crop request.
+	SmartCropProviderTimeout time.Duration
 
 	// OptimizeMaxWidth is the exact target image width (default 3840 for 4K).
 	OptimizeMaxWidth int
@@ -171,8 +183,19 @@ type Config struct {
 	SharpenAmount float64
 	// SharpenThreshold suppresses sharpening for small 8-bit luminance differences.
 	SharpenThreshold int
-	// ColorProfilePolicy is assume-srgb or reject-embedded.
+	// ColorProfilePolicy is convert-srgb, assume-srgb, or reject-embedded.
 	ColorProfilePolicy string
+	// HDRToneMap enables metadata-gated ITU-R BT.2446 Method A conversion to SDR.
+	HDRToneMap bool
+	// HDRSourcePeakNits is the assumed mastering peak when metadata does not declare one.
+	HDRSourcePeakNits float64
+	// HDRTargetPeakNits is the target SDR peak luminance.
+	HDRTargetPeakNits float64
+
+	// PerceptualDuplicates enables non-destructive visual-similarity advisories.
+	PerceptualDuplicates bool
+	// PerceptualDuplicateDistance is the maximum 64-bit difference-hash Hamming distance.
+	PerceptualDuplicateDistance int
 
 	// MuseumModeEnabled applies canvas texture, black lifting, and warming for a "real art" look.
 	MuseumModeEnabled bool

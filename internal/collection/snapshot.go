@@ -38,6 +38,11 @@ func buildSnapshot(root string, items []Item, changes []Change, dryRun bool) Sna
 }
 
 func buildSnapshotWithWarnings(root string, items []Item, changes []Change, warnings []string, dryRun bool) Snapshot {
+	return buildSnapshotWithNotices(root, items, changes, warnings, nil, dryRun)
+}
+
+//nolint:revive // warnings and non-fatal advisories are intentionally distinct snapshot facts
+func buildSnapshotWithNotices(root string, items []Item, changes []Change, warnings, advisories []string, dryRun bool) Snapshot {
 	cloned := cloneItems(items)
 	sortItems(cloned)
 	for index := range cloned {
@@ -48,6 +53,7 @@ func buildSnapshotWithWarnings(root string, items []Item, changes []Change, warn
 		Items:      cloned,
 		Changes:    append([]Change(nil), changes...),
 		Warnings:   append([]string(nil), warnings...),
+		Advisories: append([]string(nil), advisories...),
 		DryRun:     dryRun,
 	}
 }

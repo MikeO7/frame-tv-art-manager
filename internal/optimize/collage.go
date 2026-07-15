@@ -1,15 +1,25 @@
 package optimize
 
 import (
+	"context"
 	"image"
 	"image/color"
 	std_draw "image/draw"
+	"log/slog"
 )
 
 const (
 	collageWidth  = 3840
 	collageHeight = 2160
 )
+
+type collageRenderRequest struct {
+	ctx                       context.Context
+	cfg                       Config
+	logger                    *slog.Logger
+	leftSharpen, rightSharpen float64
+	sharpenThreshold, workers int
+}
 
 // CreateCollage joins two upright portrait images side-by-side into a single
 // 4K (3840x2160) landscape canvas, center-cropping each to a half-width panel
@@ -32,29 +42,24 @@ func createCollageForTarget(
 	minGain float64,
 	linearLight bool,
 ) *image.RGBA {
-	return createCollageForTargetWithSharpen(
-		img1, img2, targetWidth, targetHeight, smart, minGain, linearLight, 0, 0, 0, defaultPixelWorkers(),
-	)
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = targetWidth, targetHeight
+	cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.LinearLightResize = smart, minGain, linearLight
+	return renderCollage(img1, img2, collageRenderRequest{
+		ctx: context.Background(), cfg: cfg, logger: slog.New(slog.DiscardHandler), workers: defaultPixelWorkers(),
+	})
 }
 
-//nolint:revive // per-panel resize and sharpen controls keep mixed-size collages accurate
-func createCollageForTargetWithSharpen(
-	img1, img2 *image.RGBA,
-	targetWidth, targetHeight int,
-	smart bool,
-	minGain float64,
-	linearLight bool,
-	leftSharpen, rightSharpen float64,
-	sharpenThreshold, pixelWorkers int,
-) *image.RGBA {
+func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.RGBA {
+	targetWidth, targetHeight := request.cfg.MaxWidth, request.cfg.MaxHeight
 	canvas := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
 	leftWidth := targetWidth / 2
 	rightWidth := targetWidth - leftWidth
 
-	left := centerCropWithOptions(img1, leftWidth, targetHeight, smart, minGain, linearLight)
-	right := centerCropWithOptions(img2, rightWidth, targetHeight, smart, minGain, linearLight)
-	left = sharpenWithOptions(left, leftSharpen, sharpenThreshold, pixelWorkers)
-	right = sharpenWithOptions(right, rightSharpen, sharpenThreshold, pixelWorkers)
+	left := centerCropConfigured(request.ctx, img1, leftWidth, targetHeight, request.cfg, request.logger)
+	right := centerCropConfigured(request.ctx, img2, rightWidth, targetHeight, request.cfg, request.logger)
+	left = sharpenWithOptions(left, request.leftSharpen, request.sharpenThreshold, request.workers)
+	right = sharpenWithOptions(right, request.rightSharpen, request.sharpenThreshold, request.workers)
 
 	std_draw.Draw(canvas, image.Rect(0, 0, leftWidth, targetHeight), left, left.Bounds().Min, std_draw.Src)
 	std_draw.Draw(canvas, image.Rect(leftWidth, 0, targetWidth, targetHeight), right, right.Bounds().Min, std_draw.Src)

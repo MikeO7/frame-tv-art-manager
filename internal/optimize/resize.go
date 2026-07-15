@@ -1,4 +1,6 @@
 // Package optimize provides bounded image transformations for Frame TVs.
+//
+//nolint:revive // the optimizer's public configuration and transactional entry point intentionally remain colocated
 package optimize
 
 import (
@@ -13,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
@@ -24,48 +27,77 @@ const (
 	formatJPEG            = "jpeg"
 	formatPNG             = "png"
 	profileRejectEmbedded = "reject-embedded"
+	profileConvertSRGB    = "convert-srgb"
+	profileAssumeSRGB     = "assume-srgb"
+	smartCropProviderHTTP = "http"
+	jpegICCMetadata       = "JPEG ICC"
+	jpegICCSignature      = "ICC_PROFILE\x00"
+	pngChunkICC           = "iCCP"
+	pngChunkCICP          = "cICP"
+	pngChunkGamma         = "gAMA"
+	pngChunkChromaticity  = "cHRM"
+	pngChunkImageData     = "IDAT"
+	pngICCMetadata        = "PNG iCCP"
+	pngCICPMetadata       = "PNG cICP"
 	portraitModeCollage   = "collage"
-	transformRevision     = "frame-image-v6"
+	transformRevision     = "frame-image-v7"
 )
 
 type Config struct {
-	Enabled             bool
-	SmartCropEnabled    bool
-	SmartCropMinGain    float64
-	MaxWidth            int
-	MaxHeight           int
-	MaxOutputPixels     int64
-	MaxWorkingBytes     int64
-	OptimizeJPEGQuality int
-	OptimizePNG         bool
-	LinearLightResize   bool
-	SharpenAmount       float64
-	SharpenThreshold    int
-	ColorProfilePolicy  string
-	MuseumModeEnabled   bool
-	MuseumModeIntensity int
-	PortraitMode        string
+	Enabled                        bool
+	SmartCropEnabled               bool
+	SmartCropMinGain               float64
+	SmartCropProtection            bool
+	SmartCropProtectionStrength    float64
+	SmartCropProvider              string
+	SmartCropProviderURL           string
+	SmartCropProviderMinConfidence float64
+	SmartCropProviderTimeout       time.Duration
+	MaxWidth                       int
+	MaxHeight                      int
+	MaxOutputPixels                int64
+	MaxWorkingBytes                int64
+	OptimizeJPEGQuality            int
+	OptimizePNG                    bool
+	LinearLightResize              bool
+	SharpenAmount                  float64
+	SharpenThreshold               int
+	ColorProfilePolicy             string
+	HDRToneMap                     bool
+	HDRSourcePeakNits              float64
+	HDRTargetPeakNits              float64
+	MuseumModeEnabled              bool
+	MuseumModeIntensity            int
+	PortraitMode                   string
 }
 
 // DefaultConfig returns sensible defaults for Frame TV display.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:             true,
-		SmartCropEnabled:    false,
-		SmartCropMinGain:    0.03,
-		MaxWidth:            3840,
-		MaxHeight:           2160,
-		MaxOutputPixels:     defaultMaxOutputPixels,
-		MaxWorkingBytes:     512 * 1024 * 1024,
-		OptimizeJPEGQuality: 95,
-		OptimizePNG:         true,
-		LinearLightResize:   true,
-		SharpenAmount:       0.25,
-		SharpenThreshold:    4,
-		ColorProfilePolicy:  "assume-srgb",
-		MuseumModeEnabled:   false,
-		MuseumModeIntensity: 5,
-		PortraitMode:        "crop",
+		Enabled:                        true,
+		SmartCropEnabled:               false,
+		SmartCropMinGain:               0.03,
+		SmartCropProtection:            true,
+		SmartCropProtectionStrength:    0.35,
+		SmartCropProvider:              "local",
+		SmartCropProviderMinConfidence: 0.7,
+		SmartCropProviderTimeout:       8 * time.Second,
+		MaxWidth:                       3840,
+		MaxHeight:                      2160,
+		MaxOutputPixels:                defaultMaxOutputPixels,
+		MaxWorkingBytes:                512 * 1024 * 1024,
+		OptimizeJPEGQuality:            95,
+		OptimizePNG:                    true,
+		LinearLightResize:              true,
+		SharpenAmount:                  0.25,
+		SharpenThreshold:               4,
+		ColorProfilePolicy:             profileConvertSRGB,
+		HDRToneMap:                     true,
+		HDRSourcePeakNits:              1000,
+		HDRTargetPeakNits:              100,
+		MuseumModeEnabled:              false,
+		MuseumModeIntensity:            5,
+		PortraitMode:                   "crop",
 	}
 }
 
@@ -113,12 +145,9 @@ func optimizeFileWithPolicy(
 	if err := validateWorkingSet(width, height, cfg); err != nil {
 		return filename, false, err
 	}
-	colorMetadata, err := enforceColorProfilePolicy(ctx, f, ext, cfg.ColorProfilePolicy)
+	colorMetadata, err := readColorDataWithPolicy(ctx, f, ext, cfg, logger, filename)
 	if err != nil {
-		return filename, false, fmt.Errorf("enforce color profile policy: %w", err)
-	}
-	if colorMetadata != "" {
-		logger.Warn("embedded color metadata is not transformed; treating decoded samples as sRGB", "file", filename, "metadata", colorMetadata)
+		return filename, false, fmt.Errorf("read embedded color metadata: %w", err)
 	}
 	if _, err := f.Seek(0, 0); err != nil {
 		return filename, false, fmt.Errorf("seek image orientation: %w", err)
@@ -131,7 +160,10 @@ func optimizeFileWithPolicy(
 	if orientation >= 5 && orientation <= 8 {
 		displayWidth, displayHeight = height, width
 	}
-	needsAdjustment := force || orientation != 1 || displayWidth != cfg.MaxWidth || displayHeight != cfg.MaxHeight
+	needsColorNormalization := len(colorMetadata.icc) > 0 && cfg.ColorProfilePolicy == profileConvertSRGB
+	needsHDRToneMap := colorMetadata.hdr != nil && cfg.HDRToneMap
+	needsAdjustment := force || orientation != 1 || displayWidth != cfg.MaxWidth ||
+		displayHeight != cfg.MaxHeight || needsColorNormalization || needsHDRToneMap
 	if !needsAdjustment && !cfg.MuseumModeEnabled {
 		if err := validateOptimizedPixels(ctx, f, cfg.MaxWidth, cfg.MaxHeight); err != nil {
 			return filename, false, err
@@ -149,6 +181,7 @@ func optimizeFileWithPolicy(
 			f: f, path: path, filename: filename, width: width,
 			height: height, cfg: cfg, logger: logger,
 			ctx: ctx, pixelWorkers: pixelWorkerLimit,
+			colorData: colorMetadata,
 		})
 		if err != nil {
 			return filename, false, err
@@ -200,9 +233,13 @@ func validateOptimizedPixels(ctx context.Context, file *os.File, expectedWidth, 
 // encoded output bytes. It is durable manifest metadata, never filename state.
 func TransformKey(cfg Config) string {
 	description := fmt.Sprintf(
-		transformRevision+"|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|sharp=%.6g/%d|museum=%t/%d|portrait=%s|profile=%s",
+		transformRevision+"|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|protect=%t/%.6g|"+
+			"provider=%s/%s/%.6g/%s|sharp=%.6g/%d|hdr=%t/%.6g/%.6g|museum=%t/%d|portrait=%s|profile=%s",
 		cfg.MaxWidth, cfg.MaxHeight, cfg.OptimizeJPEGQuality, cfg.OptimizePNG, cfg.LinearLightResize,
-		cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.SharpenAmount, cfg.SharpenThreshold,
+		cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.SmartCropProtection, cfg.SmartCropProtectionStrength,
+		cfg.SmartCropProvider, cfg.SmartCropProviderURL, cfg.SmartCropProviderMinConfidence, cfg.SmartCropProviderTimeout,
+		cfg.SharpenAmount, cfg.SharpenThreshold,
+		cfg.HDRToneMap, cfg.HDRSourcePeakNits, cfg.HDRTargetPeakNits,
 		cfg.MuseumModeEnabled, cfg.MuseumModeIntensity,
 		cfg.PortraitMode, cfg.ColorProfilePolicy,
 	)

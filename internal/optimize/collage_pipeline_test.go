@@ -11,6 +11,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,9 +220,13 @@ func TestCreateCollageAppliesSharpenPerPanel(t *testing.T) {
 	input := image.NewRGBA(image.Rect(0, 0, 8, 8))
 	fillRGBA(input, input.Bounds(), color.RGBA{R: 100, G: 100, B: 100, A: 255})
 	input.SetRGBA(4, 4, color.RGBA{R: 150, G: 150, B: 150, A: 255})
-	output := createCollageForTargetWithSharpen(
-		input, input, 16, 8, false, 0.03, true, 0, 1, 0, 1,
-	)
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = 16, 8
+	cfg.SmartCropEnabled = false
+	output := renderCollage(input, input, collageRenderRequest{
+		ctx: context.Background(), cfg: cfg, logger: slog.New(slog.DiscardHandler),
+		rightSharpen: 1, workers: 1,
+	})
 	left := color.RGBAModel.Convert(output.At(4, 4)).(color.RGBA)
 	right := color.RGBAModel.Convert(output.At(12, 4)).(color.RGBA)
 	if left.R != 150 {

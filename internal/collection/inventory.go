@@ -19,8 +19,9 @@ import (
 const controlDirectory = ".frame-tv-art-manager"
 
 type inventoryLimits struct {
-	maxBytes  int64
-	maxPixels int64
+	maxBytes          int64
+	maxPixels         int64
+	computeVisualHash bool
 }
 
 func scan(ctx context.Context, root string, maxBytes, maxPixels int64) ([]Item, error) {
@@ -139,7 +140,8 @@ func inspectItem(ctx context.Context, root string, entry os.DirEntry, maxBytes, 
 	return Item{
 		Name: entry.Name(), Key: entry.Name(), Path: path, Digest: validated.digest,
 		Type: validated.typeID, Size: after.Size(), Width: validated.width, Height: validated.height,
-		Origin: Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
+		Origin:     Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
+		visualHash: validated.visualHash, visualHashValid: validated.visualHashValid,
 	}, true, nil
 }
 
@@ -174,7 +176,8 @@ func (s *store) plan(items []Item, input validatedImage, origin Origin) ([]Item,
 	item := Item{
 		Name: name, Key: name, Path: filepath.Join(s.root, name), Digest: input.digest,
 		Type: input.typeID, Size: int64(len(input.data)), Width: input.width, Height: input.height,
-		Origin: origin,
+		Origin:     origin,
+		visualHash: input.visualHash, visualHashValid: input.visualHashValid,
 	}
 	if origin.Class == OriginSource {
 		item.SourceKeys = []string{origin.Key}

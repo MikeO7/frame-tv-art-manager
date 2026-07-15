@@ -23,6 +23,7 @@ type rewriteParams struct {
 	logger         *slog.Logger
 	ctx            context.Context
 	pixelWorkers   int
+	colorData      embeddedColorData
 }
 
 //nolint:funlen,gocognit,gocyclo // ordered decode, transform, validation, and durable publication pipeline
@@ -59,7 +60,8 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 	}
 
 	params.logger.Info("optimizing image", "file", params.filename, "original_dims", fmt.Sprintf("%dx%d", params.width, params.height))
-	rgba := toRGBA(RotateImage(img, orientation))
+	normalized := normalizeColor(img, params.colorData, cfg, params.logger, params.filename)
+	rgba := toRGBA(RotateImage(normalized, orientation))
 	newW, newH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
 	sourceW, sourceH := newW, newH
 	resampled := newW != cfg.MaxWidth || newH != cfg.MaxHeight
@@ -67,9 +69,7 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 		if newH > newW && cfg.PortraitMode != "crop" {
 			rgba = padPortraitWithOptions(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.LinearLightResize)
 		} else {
-			rgba = centerCropWithOptions(
-				rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.LinearLightResize,
-			)
+			rgba = centerCropConfigured(params.ctx, rgba, cfg.MaxWidth, cfg.MaxHeight, cfg, params.logger)
 		}
 	}
 	if err := params.ctx.Err(); err != nil {

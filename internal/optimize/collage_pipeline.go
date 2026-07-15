@@ -56,11 +56,11 @@ func processCollagePair(job collageJob) (string, error) {
 		return "", err
 	}
 
-	img1, err := loadAndRotateImageWithPolicy(ctx, p1, cfg.ColorProfilePolicy, logger)
+	img1, err := loadAndRotateImageWithConfig(ctx, p1, cfg, logger)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", f1, err)
 	}
-	img2, err := loadAndRotateImageWithPolicy(ctx, p2, cfg.ColorProfilePolicy, logger)
+	img2, err := loadAndRotateImageWithConfig(ctx, p2, cfg, logger)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", f2, err)
 	}
@@ -73,10 +73,11 @@ func processCollagePair(job collageJob) (string, error) {
 	rightSharpen := scaleAwareSharpenAmount(
 		cfg.SharpenAmount, img2.Bounds().Dx(), img2.Bounds().Dy(), rightWidth, cfg.MaxHeight,
 	)
-	collage := createCollageForTargetWithSharpen(
-		img1, img2, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.LinearLightResize,
-		leftSharpen, rightSharpen, cfg.SharpenThreshold, defaultPixelWorkers(),
-	)
+	collage := renderCollage(img1, img2, collageRenderRequest{
+		ctx: ctx, cfg: cfg, logger: logger,
+		leftSharpen: leftSharpen, rightSharpen: rightSharpen,
+		sharpenThreshold: cfg.SharpenThreshold, workers: defaultPixelWorkers(),
+	})
 	if cfg.MuseumModeEnabled {
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
 	}

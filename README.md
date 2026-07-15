@@ -208,17 +208,28 @@ Portrait images can be handled in three ways:
 `PORTRAIT_MODE` is authoritative for every source, including web uploads.
 `SMART_CROP_ENABLED` uses a normalized Boolean-map, edge, skin-tone, and color
 saliency model instead of a center crop. It falls back to the center crop unless
-the saliency score improves by `SMART_CROP_MIN_GAIN`. Linear-light resizing is
+the saliency score improves by `SMART_CROP_MIN_GAIN`. Protected-region scoring
+is enabled with smart crop and penalizes boundaries that bisect dense line/text,
+skin-like, or high-contrast detail. `SMART_CROP_PROVIDER=http` can optionally
+send a maximum-512-pixel JPEG preview to an operator-controlled HTTP service;
+low-confidence, invalid, failed, and timed-out proposals fall back to the local
+cropper. The response is JSON with source-pixel `x`, `y`, `width`, `height`, and
+`confidence` fields. Linear-light resizing is
 enabled by default to avoid dark color fringes, and a conservative luminance
 unsharp mask is applied only after resizing. Its configured amount is the 1:1
 baseline; the pipeline modestly increases it for downscales and reduces it for
 upscales to avoid halos. Random post-8-bit dither is not used because it adds
 noise without performing a real precision reduction.
 
-The Go decoders do not apply embedded ICC transforms. The default
-`IMAGE_COLOR_PROFILE_POLICY=assume-srgb` treats decoded samples as sRGB and logs
-a warning when color metadata is present. Use `reject-embedded` to fail closed
-instead. `IMAGE_MUSEUM_MODE` enables the optional creative texture and color
+The default `IMAGE_COLOR_PROFILE_POLICY=convert-srgb` converts bounded RGB
+matrix/TRC ICC v2/v4 profiles into sRGB before geometry or effects. Unsupported
+profiles and standalone PNG chromaticity/gamma metadata fall back to sRGB with
+a warning; `assume-srgb` skips conversion and `reject-embedded` fails closed.
+Metadata-declared PQ/HLG Rec. 2020 PNG input is tone-mapped to SDR using the
+ITU-R BT.2446 Method A luma curve by default. Exact-byte SHA-256 remains the
+only deduplication authority; optional difference-hash matching merely reports
+probable visual duplicates and never removes either image.
+`IMAGE_MUSEUM_MODE` enables the optional creative texture and color
 treatment; it is off by default. When enabled, its default intensity of 5 is
 the balanced preset intended for most artwork.
 
@@ -265,10 +276,19 @@ the table below covers the settings most people change.
 | `IMAGE_LINEAR_LIGHT_RESIZE` | `true` | Resize RGB samples in linear light |
 | `IMAGE_SHARPEN_AMOUNT` | `0.25` | Scale-aware luminance unsharp-mask baseline (`0` disables) |
 | `IMAGE_SHARPEN_THRESHOLD` | `4` | Minimum luminance difference before sharpening |
-| `IMAGE_COLOR_PROFILE_POLICY` | `assume-srgb` | `assume-srgb` or `reject-embedded` |
+| `IMAGE_COLOR_PROFILE_POLICY` | `convert-srgb` | Convert supported ICC profiles; `assume-srgb` and `reject-embedded` are available |
+| `IMAGE_HDR_TONE_MAP` | `true` | Tone-map metadata-declared PQ/HLG PNG input to SDR |
+| `IMAGE_HDR_SOURCE_PEAK_NITS` | `1000` | Assumed HDR mastering peak |
+| `IMAGE_HDR_TARGET_PEAK_NITS` | `100` | SDR output peak used by the tone curve |
 | `PORTRAIT_MODE` | `crop` | `crop`, `pad`, or `collage` |
 | `SMART_CROP_ENABLED` | `false` | Enable heuristic saliency cropping |
 | `SMART_CROP_MIN_GAIN` | `0.03` | Minimum improvement over center crop |
+| `SMART_CROP_PROTECTION` | `true` | Protect dense detail from crop boundaries when smart crop is enabled |
+| `SMART_CROP_PROTECTION_STRENGTH` | `0.35` | Protected-region boundary penalty |
+| `SMART_CROP_PROVIDER` | `local` | `local` or opt-in `http` advanced crop service |
+| `SMART_CROP_PROVIDER_MIN_CONFIDENCE` | `0.7` | External proposal confidence required before use |
+| `IMAGE_PERCEPTUAL_DUPLICATES` | `true` | Report probable visual duplicates without deleting them |
+| `IMAGE_PERCEPTUAL_DUPLICATE_DISTANCE` | `6` | Maximum 64-bit difference-hash distance for an advisory |
 | `IMAGE_MUSEUM_MODE` | `false` | Enable the texture/color treatment |
 | `IMAGE_MUSEUM_INTENSITY` | `5` | Balanced creative-treatment strength (`1`-`10`) |
 | `UPLOAD_ENABLED` | `false` | Enable `GET` and `POST /upload` |

@@ -45,6 +45,26 @@ The following corrections were implemented after the review:
   `PORTRAIT_MODE` authoritative for all source origins; and
 - removed the dead luminance option and documented the new image controls.
 
+A follow-up implementation added the remaining suitable extensions identified
+after the audit:
+
+- bounded RGB matrix/TRC ICC v2/v4 conversion to sRGB, with explicit fallback
+  warnings for unsupported profile types and a strict rejection mode;
+- metadata-gated PQ/HLG Rec. 2020 PNG conversion to SDR using the ITU-R
+  BT.2446 Method A luma curve with configurable source and target peaks;
+- protected-region crop scoring for dense line/text, skin-like, and
+  high-contrast detail;
+- an opt-in, timeout-bounded HTTP crop-provider protocol with strict geometry
+  and confidence validation plus deterministic local fallback; and
+- non-destructive 64-bit difference-hash similarity advisories. Exact SHA-256
+  remains authoritative and perceptual similarity never authorizes deletion.
+
+The final review additionally made embedded-metadata inspection streaming
+(JPEG stops at SOS and PNG stops at IDAT), restricted HDR tone mapping to the
+declared Rec. 2020 PQ/HLG contract the converter supports, aligned preflight
+with execution for unsupported PNG color hints, and reuses ingress decodes for
+perceptual hashes instead of decoding every catalog item twice.
+
 The resulting settings use conservative, general-purpose presets when a feature
 is enabled: smart crop requires a 3% saliency gain, museum mode uses intensity
 5/10, and luminance sharpening uses amount 0.25 with threshold 4. Each remains
@@ -58,8 +78,8 @@ performed, the 3% gate is deliberately described as a conservative engineering
 default rather than an empirically calibrated preference threshold.
 
 The creative museum-mode operations remain deliberately opt-in. Exact
-encoded-byte SHA-256 remains the mutation-safe identity; perceptual duplicate
-detection was not added because it must never silently authorize deletion.
+encoded-byte SHA-256 remains the mutation-safe identity; perceptual similarity
+is reported separately and cannot authorize deletion.
 
 ## Complete algorithm and transform inventory
 

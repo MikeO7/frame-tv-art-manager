@@ -27,15 +27,15 @@ func TestDefaultConfigUsesBalancedImagePresets(t *testing.T) {
 	if cfg.SharpenAmount != 0.25 || cfg.SharpenThreshold != 4 {
 		t.Fatalf("sharpen defaults = amount %v, threshold %d", cfg.SharpenAmount, cfg.SharpenThreshold)
 	}
-	if !cfg.LinearLightResize || !cfg.OptimizePNG || cfg.ColorProfilePolicy != "assume-srgb" {
+	if !cfg.LinearLightResize || !cfg.OptimizePNG || cfg.ColorProfilePolicy != "convert-srgb" || !cfg.HDRToneMap {
 		t.Fatalf("safe processing defaults = %+v", cfg)
 	}
 }
 
 func TestTransformKeyTracksCurrentImageAlgorithmRevision(t *testing.T) {
 	t.Parallel()
-	if transformRevision != "frame-image-v6" {
-		t.Fatalf("transformRevision = %q, want frame-image-v6", transformRevision)
+	if transformRevision != "frame-image-v7" {
+		t.Fatalf("transformRevision = %q, want frame-image-v7", transformRevision)
 	}
 	if got := TransformKey(DefaultConfig()); len(got) != 64 {
 		t.Fatalf("TransformKey() length = %d, want SHA-256 hex digest", len(got))
