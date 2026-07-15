@@ -53,6 +53,23 @@ func TestProcessBMSThreshold_IgnoresExtraLuminance(t *testing.T) {
 	}
 }
 
+func TestProcessBMSThresholdRemovesBorderConnectedForeground(t *testing.T) {
+	t.Parallel()
+	const width, height = 5, 5
+	values := make([]uint8, width*height)
+	values[2] = 255
+	values[7] = 255 // connected to the top border
+	values[3*width+3] = 255
+
+	got := processBMSThreshold(values, 128, width, height)
+	if got[2] != 0 || got[7] != 0 {
+		t.Fatalf("border-connected foreground survived: top=%v inner=%v", got[2], got[7])
+	}
+	if got[3*width+3] != 1 {
+		t.Fatalf("enclosed foreground = %v, want 1", got[3*width+3])
+	}
+}
+
 func TestGenerateBMSMap(t *testing.T) {
 	src := imageForBMSTest(4, 3)
 	res := generateBMSMap(src)

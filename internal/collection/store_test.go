@@ -96,11 +96,15 @@ func TestSourceImportCommitsOriginAndAdoptsExactOperatorDigestWithoutClobber(t *
 	if len(imported.Items) != 1 || imported.Items[0].Name != operatorName || imported.Items[0].Origin != origin {
 		t.Fatalf("source association changed operator bytes or origin: %+v", imported)
 	}
+	if imported.Items[0].Key != operatorName || !reflect.DeepEqual(imported.Items[0].SourceKeys, []string{origin.Key}) {
+		t.Fatalf("source association lost stable artwork metadata: %+v", imported.Items[0])
+	}
 	if len(imported.Changes) != 1 || imported.Changes[0].Kind != collection.ChangeAdopted {
 		t.Fatalf("source association changes = %+v", imported.Changes)
 	}
 	stable, err := store.Prepare(context.Background(), collection.PrepareRequest{})
-	if err != nil || len(stable.Items) != 1 || stable.Items[0].Origin != origin {
+	if err != nil || len(stable.Items) != 1 || stable.Items[0].Origin != origin ||
+		stable.Items[0].Key != operatorName || !reflect.DeepEqual(stable.Items[0].SourceKeys, []string{origin.Key}) {
 		t.Fatalf("committed source origin = %+v, %v", stable, err)
 	}
 }

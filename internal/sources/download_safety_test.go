@@ -99,49 +99,12 @@ func TestExecuteDownloadRejectsExplicitUnsupportedImageFormatBeforeReadingBody(t
 	}
 }
 
-func TestExecuteDownloadSkipsExistingReextendedIdentityWithoutNetworkBodyRead(t *testing.T) {
-	artworkDir := t.TempDir()
-	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default())
-	existingName := "direct__same.h_existing.png"
-	loader.index.prefixMap["direct__same"] = existingName
-	loader.index.catalog[existingName] = struct{}{}
-	if err := os.WriteFile(filepath.Join(artworkDir, existingName), []byte("existing"), 0o644); err != nil {
-		t.Fatalf("seed existing artwork: %v", err)
-	}
-	body := &trackingReadCloser{Reader: strings.NewReader("replacement")}
-	loader.client = &http.Client{Transport: downloadRoundTripper(func(request *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"image/png"}},
-			Body:       body,
-			Request:    request,
-		}, nil
-	})}
-
-	downloaded, err := loader.executeDownload(
-		context.Background(),
-		"https://example.test/same",
-		"001__direct__same.jpg",
-		"001__direct__same",
-	)
-	if err != nil {
-		t.Fatalf("executeDownload() error = %v", err)
-	}
-	if downloaded {
-		t.Fatal("executeDownload() replaced an existing re-extended identity")
-	}
-	if body.read {
-		t.Fatal("executeDownload() consumed the response body after proving the identity exists")
-	}
-	if !body.closed {
-		t.Fatal("executeDownload() did not close the skipped response body")
-	}
-	contents, err := os.ReadFile(filepath.Join(artworkDir, existingName))
-	if err != nil {
-		t.Fatalf("read existing artwork: %v", err)
-	}
-	if string(contents) != "existing" {
-		t.Fatalf("existing artwork was modified: %q", contents)
+func TestResolveDownloadNameUsesDetectedExtension(t *testing.T) {
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+	response := &http.Response{Header: http.Header{"Content-Type": []string{"image/png"}}}
+	name := loader.resolveDownloadName(response, "https://example.test/same", "source.jpg")
+	if name != "source.png" {
+		t.Fatalf("resolveDownloadName() = %q, want source.png", name)
 	}
 }
 

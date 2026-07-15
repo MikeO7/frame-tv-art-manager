@@ -27,15 +27,13 @@ func TestSourceProviderResolutionContract(t *testing.T) {
 			if !provider.CanHandle(line) {
 				t.Fatalf("%s adapter rejected its source expression", provider.Name())
 			}
-			var index int32 = 1
-			if _, err := provider.Resolve(context.Background(), line, &index); err == nil {
+			if _, err := provider.Resolve(context.Background(), line); err == nil {
 				t.Fatalf("%s Resolve() accepted an unknown provider operation", provider.Name())
 			}
 		})
 	}
 
-	var index int32 = 1
-	images, err := newDirectProvider().Resolve(context.Background(), "https://example.com/art.jpg", &index)
+	images, err := newDirectProvider().Resolve(context.Background(), "https://example.com/art.jpg")
 	if err != nil || len(images) != 1 || images[0].URL != "https://example.com/art.jpg" {
 		t.Fatalf("direct Resolve() = (%v, %v)", images, err)
 	}
@@ -92,13 +90,38 @@ func TestSourceProvidersResolveSuccessfulResponses(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.provider.Name(), func(t *testing.T) {
-			var index int32 = 1
-			images, err := tc.provider.Resolve(context.Background(), tc.line, &index)
+			images, err := tc.provider.Resolve(context.Background(), tc.line)
 			if err != nil || len(images) != 1 || images[0].URL == "" ||
-				!strings.Contains(images[0].Identity, "__"+tc.provider.Name()+"__") {
+				!strings.HasPrefix(images[0].Identity, tc.provider.Name()+"--") {
 				t.Fatalf("Resolve(%q) = (%v, %v)", tc.line, images, err)
 			}
 		})
+	}
+}
+
+func TestPexelsResolutionUsesProviderPhotoIDs(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/curated" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"photos":[
+			{"id":101,"src":{"original":"https://images.pexels.com/photos/101/image.jpg"}},
+			{"id":202,"src":{"original":"https://images.pexels.com/photos/202/image.jpg"}}
+		]}`))
+	}))
+	defer server.Close()
+
+	provider := newPexelsProvider("key", slog.Default())
+	provider.client, provider.BaseURL = server.Client(), server.URL
+	images, err := provider.Resolve(context.Background(), "pexels:curated")
+	if err != nil || len(images) != 2 {
+		t.Fatalf("Resolve() = (%v, %v)", images, err)
+	}
+	if images[0].Identity == images[1].Identity ||
+		!strings.Contains(images[0].Identity, "101") || !strings.Contains(images[1].Identity, "202") {
+		t.Fatalf("Pexels identities are not provider-owned IDs: %q / %q", images[0].Identity, images[1].Identity)
 	}
 }
 

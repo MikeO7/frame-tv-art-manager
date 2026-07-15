@@ -22,7 +22,7 @@ models and releases.
 Each sync cycle follows the same basic path:
 
 1. Read the optional sources file and download anything missing.
-2. Build a catalog from supported images in the artwork directory.
+2. Recover and verify the versioned collection manifest against the artwork bytes.
 3. Validate and, when enabled, optimize those images.
 4. Connect to each configured TV and read its current Art Mode inventory.
 5. Upload missing files and remove tracked files that no longer exist locally.
@@ -37,6 +37,15 @@ being pruned from an incomplete result.
 Removing a remote source does not delete its already-downloaded local file.
 Source ownership is never inferred from a numeric filename prefix; delete the
 local file explicitly when it is no longer wanted.
+
+Artwork filenames are bounded, readable labels followed by a short SHA-256
+prefix of the bytes they currently name, for example
+`summer-vacation--8f14e45fceea167a.jpg`. Filename text does not control source
+ownership, transform freshness, collage eligibility, or dimensions. Those facts
+live in the private versioned collection manifest; version 1 manifests are
+migrated automatically. Provider identities are based on provider-owned IDs or
+the complete canonical source URL, so source ordering and similar-looking URLs
+cannot alias one another.
 
 Owned TV artwork is tracked in checksummed, transactionally replaced per-TV
 reconciliation state under the token directory. On upgrade, a valid legacy
@@ -109,7 +118,7 @@ set Compose `user: "<uid>:<gid>"`, and leave `PUID` and `PGID` unset.
 
 The simplest setup is the one above. Copy supported images into
 `data/artwork`; remove them when you no longer want the manager to track them.
-Content hashes are used to avoid duplicate local files.
+Exact encoded-byte SHA-256 hashes are used to avoid duplicate local files.
 
 ### The web uploader
 
@@ -121,7 +130,7 @@ http://<server-address>:8080/upload
 
 The page accepts JPEG and PNG files. Uploads are size-limited, fully decoded
 before being accepted, committed through the transactional Collection Store,
-and deduplicated by content hash.
+and deduplicated by exact encoded-byte hash.
 The same endpoint accepts a multipart `POST` with a field named `file`, which is
 useful from iOS Shortcuts.
 
@@ -184,9 +193,11 @@ rate limits and terms.
 
 ## Image processing
 
-Optimization is enabled by default. Images larger than the configured target
-are resized, while already suitable images take a fast path. The defaults are
-3840×2160 and JPEG quality 95.
+Optimization is enabled by default. Supported images that need a transform are
+oriented, cropped or padded, and resized to the exact configured target. The
+defaults are 3840×2160 and JPEG quality 95. JPEG and PNG inputs are fully
+decoded before use; PNG optimization is enabled by default and preserves PNG
+output, including alpha.
 
 Portrait images can be handled in three ways:
 
@@ -194,14 +205,25 @@ Portrait images can be handled in three ways:
 - `pad` places the portrait over a padded background;
 - `collage` combines portrait images into a landscape composition.
 
-`SMART_CROP_ENABLED` uses the project's content-aware crop path instead of a
-simple center crop. `IMAGE_MUSEUM_MODE` applies the optional texture and color
-treatment implemented by the optimizer. Both are off by default.
+`PORTRAIT_MODE` is authoritative for every source, including web uploads.
+`SMART_CROP_ENABLED` uses a normalized Boolean-map, edge, skin-tone, and color
+saliency model instead of a center crop. It falls back to the center crop unless
+the saliency score improves by `SMART_CROP_MIN_GAIN`. Linear-light resizing is
+enabled by default to avoid dark color fringes, and a conservative luminance
+unsharp mask is applied after resizing. Random dither is disabled by default.
+
+The Go decoders do not apply embedded ICC transforms. The default
+`IMAGE_COLOR_PROFILE_POLICY=assume-srgb` treats decoded samples as sRGB and logs
+a warning when color metadata is present. Use `reject-embedded` to fail closed
+instead. `IMAGE_MUSEUM_MODE` enables the optional creative texture and color
+treatment; it is off by default.
 
 Samsung mattes are selected with `MATTE_STYLE`. Use `none` for full-screen art
 or a value such as `shadowbox_polar`. A `mattes.json` file in the artwork
-directory can override the matte per filename; it is treated as a control file
-and never uploaded as artwork. The file must contain one JSON object whose
+directory can override the matte by current filename or stable artwork key. For
+operator files, the stable key is the filename first observed by the manager,
+so an override survives an engine-owned optimization rename. `mattes.json` is a
+control file and is never uploaded as artwork. The file must contain one JSON object whose
 keys are artwork basenames (with optional `_default`) and whose values are
 normalized matte names. Invalid or unsafe matte control files stop the Sync
 Cycle before any TV work instead of being silently ignored.
@@ -223,11 +245,20 @@ the table below covers the settings most people change.
 | `MAX_ARTWORK_IMAGES` | `0` | Local/source image cap; zero means no configured cap |
 | `MAX_DOWNLOAD_SIZE_MB` | `20` | Per-image download and upload body limit |
 | `IMAGE_OPTIMIZE_ENABLED` | `true` | Enable validation and resize pipeline |
-| `IMAGE_MAX_WIDTH` | `3840` | Target maximum width |
-| `IMAGE_MAX_HEIGHT` | `2160` | Target maximum height |
+| `IMAGE_MAX_WIDTH` | `3840` | Exact transformed output width |
+| `IMAGE_MAX_HEIGHT` | `2160` | Exact transformed output height |
+| `IMAGE_MAX_OUTPUT_PIXELS` | `12000000` | Safety cap for configured output pixels |
+| `IMAGE_MAX_WORKING_MEMORY_MB` | `512` | Estimated per-transform working-memory cap |
 | `IMAGE_JPEG_QUALITY` | `95` | JPEG encoding quality |
+| `IMAGE_OPTIMIZE_PNG` | `true` | Apply orientation, crop/resize, and effects to PNG inputs |
+| `IMAGE_LINEAR_LIGHT_RESIZE` | `true` | Resize RGB samples in linear light |
+| `IMAGE_SHARPEN_AMOUNT` | `0.25` | Luminance unsharp-mask amount (`0` disables) |
+| `IMAGE_SHARPEN_THRESHOLD` | `4` | Minimum luminance difference before sharpening |
+| `IMAGE_DITHER_ENABLED` | `false` | Add final-stage dither (normally unnecessary for JPEG/PNG) |
+| `IMAGE_COLOR_PROFILE_POLICY` | `assume-srgb` | `assume-srgb` or `reject-embedded` |
 | `PORTRAIT_MODE` | `crop` | `crop`, `pad`, or `collage` |
-| `SMART_CROP_ENABLED` | `false` | Enable content-aware cropping |
+| `SMART_CROP_ENABLED` | `false` | Enable heuristic saliency cropping |
+| `SMART_CROP_MIN_GAIN` | `0.03` | Minimum improvement over center crop |
 | `IMAGE_MUSEUM_MODE` | `false` | Enable the texture/color treatment |
 | `UPLOAD_ENABLED` | `false` | Enable `GET` and `POST /upload` |
 | `UPLOAD_TOKEN` | required with uploads | HTTP Basic-auth password (minimum 16 characters) |

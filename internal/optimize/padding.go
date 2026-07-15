@@ -11,8 +11,12 @@ import (
 // by scaling the photo to fill the background, heavily blurring it, and drawing the scaled upright
 // photo on top in the center.
 func padPortrait(src *image.RGBA, targetW, targetH int) *image.RGBA {
+	return padPortraitWithOptions(src, targetW, targetH, true)
+}
+
+func padPortraitWithOptions(src *image.RGBA, targetW, targetH int, linearLight bool) *image.RGBA {
 	// 1. Create blurred background filling the target size
-	bg := centerCrop(src, targetW, targetH, false)
+	bg := centerCropWithOptions(src, targetW, targetH, false, 0, linearLight)
 	bg = blurImage(bg, 8) // scale-down + box blur + scale-up method
 
 	// 2. Scale the upright portrait image so its height matches targetH exactly, preserving aspect ratio
@@ -23,8 +27,7 @@ func padPortrait(src *image.RGBA, targetW, targetH int) *image.RGBA {
 		newW = targetW
 	}
 
-	scaledPortrait := image.NewRGBA(image.Rect(0, 0, newW, targetH))
-	draw.CatmullRom.Scale(scaledPortrait, scaledPortrait.Bounds(), src, srcBounds, draw.Src, nil)
+	scaledPortrait := resizeCrop(src, srcBounds, newW, targetH, linearLight)
 
 	// 3. Draw the scaled portrait image in the center of the blurred background
 	startX := (targetW - newW) / 2

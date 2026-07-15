@@ -55,7 +55,9 @@ func julianCentury(t time.Time) float64 {
 		m += 12
 	}
 
-	jd := math.Floor(365.25*(y+4716)) + math.Floor(30.6001*(m+1)) + d + h/24.0 - 1524.5
+	a := math.Floor(y / 100)
+	b := 2 - a + math.Floor(a/4)
+	jd := math.Floor(365.25*(y+4716)) + math.Floor(30.6001*(m+1)) + d + h/24.0 + b - 1524.5
 	return (jd - 2451545.0) / 36525.0
 }
 
@@ -66,6 +68,7 @@ func solarDeclination(jc float64) (decl, eqTime float64) {
 	l0 := math.Mod(280.46646+jc*(36000.76983+jc*0.0003032), 360)
 	m0 := 357.52911 + jc*(35999.05029-jc*0.0001537)
 	m0Rad := m0 * math.Pi / 180
+	eccentricity := 0.016708634 - jc*(0.000042037+0.0000001267*jc)
 
 	// Equation of center and the resulting apparent longitude.
 	eoc := (1.914602-jc*(0.004817+jc*0.000014))*math.Sin(m0Rad) +
@@ -87,8 +90,10 @@ func solarDeclination(jc float64) (decl, eqTime float64) {
 	y2 := tanHalfObliq * tanHalfObliq
 	l0Rad := l0 * math.Pi / 180
 	eqTime = 4 * (y2*math.Sin(2*l0Rad) -
-		2*math.Sin(m0Rad)*(1-2*y2*math.Cos(2*l0Rad)) +
-		(0.0167*2)*math.Sin(2*m0Rad)) * 180 / math.Pi
+		2*eccentricity*math.Sin(m0Rad) +
+		4*eccentricity*y2*math.Sin(m0Rad)*math.Cos(2*l0Rad) -
+		0.5*y2*y2*math.Sin(4*l0Rad) -
+		1.25*eccentricity*eccentricity*math.Sin(2*m0Rad)) * 180 / math.Pi
 	return decl, eqTime
 }
 

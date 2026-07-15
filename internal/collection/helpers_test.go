@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 func TestDefensiveHelpersRejectInconsistentState(t *testing.T) {
@@ -42,13 +44,12 @@ func TestDefensiveHelpersRejectInconsistentState(t *testing.T) {
 func TestCollisionNamingFallsBackAfterEveryDigestPrefixIsOccupied(t *testing.T) {
 	digest := sha256.Sum256([]byte("input"))
 	input := validatedImage{digest: digest, typeID: FileTypePNG, stem: "photo"}
-	digestText := stringHex(digest[:])
 	items := make([]Item, 0, 14)
-	for length := 12; length <= len(digestText); length += 4 {
-		items = append(items, Item{Name: "photo-" + digestText[:length] + ".png"})
+	for digestBytes := 6; digestBytes <= len(digest); digestBytes += 2 {
+		items = append(items, Item{Name: artwork.BuildContentName("photo", digest, ".png", digestBytes)})
 	}
 	name := collisionSafeName(items, input)
-	if name != "photo-"+digestText+"-artwork.png" {
+	if name != artwork.BuildContentName("artwork", digest, ".png", len(digest)) {
 		t.Fatalf("fallback name = %q", name)
 	}
 }

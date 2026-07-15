@@ -44,6 +44,17 @@ func TestCenterCrop(t *testing.T) {
 	}
 }
 
+func TestLinearLightResizePreservesAverageLight(t *testing.T) {
+	t.Parallel()
+	source := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	source.SetRGBA(0, 0, color.RGBA{A: 255})
+	source.SetRGBA(1, 0, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+	output := resizeCrop(source, source.Bounds(), 1, 1, true)
+	if got := output.RGBAAt(0, 0).R; got < 175 || got > 195 {
+		t.Fatalf("linear-light black/white average = %d, want approximately 188", got)
+	}
+}
+
 func TestSharpen_SmallImage(t *testing.T) {
 	small := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	small.Set(0, 0, color.RGBA{100, 100, 100, 255})

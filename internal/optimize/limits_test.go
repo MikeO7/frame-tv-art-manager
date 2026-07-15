@@ -23,3 +23,22 @@ func TestValidateInputDimensions(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateOutputDimensionsEnforcesWorkingSetAdmission(t *testing.T) {
+	t.Parallel()
+	if err := validateOutputDimensions(3840, 2160, 12_000_000); err != nil {
+		t.Fatalf("4K target rejected: %v", err)
+	}
+	if err := validateOutputDimensions(16384, 16384, 12_000_000); err == nil {
+		t.Fatal("unsafe target dimensions were accepted")
+	}
+}
+
+func TestValidateWorkingSetRejectsUnsafeLinearTransform(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.MaxWorkingBytes = 128 * 1024 * 1024
+	if err := validateWorkingSet(8000, 5000, cfg); err == nil {
+		t.Fatal("unsafe working set was accepted")
+	}
+}

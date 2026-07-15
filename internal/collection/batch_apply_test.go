@@ -7,24 +7,22 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
-func TestSourceOriginStemNormalizesProviderIdentity(t *testing.T) {
+func TestCollisionSafeNameBoundsSourceIdentity(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		key  string
-		want string
-	}{
-		{key: "missing-prefix", want: "source"},
-		{key: "source:" + "  nasa / apod ", want: "nasa--apod"},
-		{key: "source:...", want: "source"},
-		{key: "source:valid_ID-1", want: "valid_ID-1"},
+	key := "source:provider--" + strings.Repeat("very-long-identity-", 30)
+	input := validatedImage{
+		stem: "ignored", typeID: FileTypeJPEG, digest: sha256.Sum256([]byte("source bytes")),
 	}
-	for _, test := range tests {
-		if got := sourceOriginStem(test.key); got != test.want {
-			t.Errorf("sourceOriginStem(%q) = %q, want %q", test.key, got, test.want)
-		}
+	name := collisionSafeName(nil, input, Origin{Key: key, Class: OriginSource})
+	if len(name) > artwork.MaxNameBytes || !strings.HasSuffix(name, ".jpg") {
+		t.Fatalf("collisionSafeName() = %q (%d bytes)", name, len(name))
 	}
 }
 
@@ -65,6 +63,42 @@ func TestApplyPublishesWholeStagedCollection(t *testing.T) {
 	}
 	if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("completed journal remains: %v", err)
+	}
+}
+
+func TestApplyCarriesStableMetadataAcrossDerivativeRename(t *testing.T) {
+	root := t.TempDir()
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := Origin{Key: "source:direct--art--0123456789abcdef", Class: OriginSource}
+	seed, err := valueStore.Import(context.Background(), ImportRequest{
+		Reader: bytes.NewReader(encodeInternalImage(t, 2, 2)), Hint: "source.png", Origin: origin,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stage := t.TempDir()
+	name := "source-derived.png"
+	if err := os.WriteFile(filepath.Join(stage, name), encodeInternalImage(t, 3, 2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	transformKey := strings.Repeat("a", sha256.Size*2)
+	metadata := ItemMetadata{
+		Key: seed.Items[0].Key, Origin: origin, SourceKeys: []string{origin.Key},
+		TransformKey: transformKey, Derivative: DerivativeOptimized,
+	}
+	snapshot, err := valueStore.Apply(context.Background(), ApplyRequest{
+		Directory: stage, Metadata: map[string]ItemMetadata{name: metadata},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Items) != 1 || snapshot.Items[0].Name != name || snapshot.Items[0].Key != seed.Items[0].Key ||
+		snapshot.Items[0].TransformKey != transformKey || snapshot.Items[0].Derivative != DerivativeOptimized ||
+		!slices.Equal(snapshot.Items[0].SourceKeys, []string{origin.Key}) {
+		t.Fatalf("derived metadata = %+v", snapshot.Items)
 	}
 }
 
@@ -118,7 +152,7 @@ func TestPrepareRecoversBatchTransaction(t *testing.T) {
 		t.Fatalf("write staged artwork: %v", err)
 	}
 	s := valueStore.(*store)
-	items, err := s.scanApplyDirectory(context.Background(), stageDirectory, seed.Items, nil)
+	items, err := s.scanApplyDirectory(context.Background(), stageDirectory, seed.Items, nil, nil)
 	if err != nil {
 		t.Fatalf("scan staged collection: %v", err)
 	}
@@ -383,7 +417,7 @@ func TestPrepareCompletesIdempotentBatchRecovery(t *testing.T) {
 		t.Fatalf("write staged artwork: %v", err)
 	}
 	s := valueStore.(*store)
-	items, err := s.scanApplyDirectory(context.Background(), stageDirectory, nil, nil)
+	items, err := s.scanApplyDirectory(context.Background(), stageDirectory, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("scan staged collection: %v", err)
 	}
@@ -437,7 +471,7 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 			t.Fatalf("write staged artwork: %v", err)
 		}
 		s := valueStore.(*store)
-		items, err := s.scanApplyDirectory(context.Background(), stageDirectory, nil, nil)
+		items, err := s.scanApplyDirectory(context.Background(), stageDirectory, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("scan staged collection: %v", err)
 		}
@@ -892,7 +926,7 @@ func TestBatchApplyCancellationAndDefensiveBranches(t *testing.T) {
 		t.Fatalf("new store: %v", err)
 	}
 	if _, err := valueStore.(*store).scanApplyDirectory(
-		context.Background(), filepath.Join(t.TempDir(), "missing"), nil, nil,
+		context.Background(), filepath.Join(t.TempDir(), "missing"), nil, nil, nil,
 	); err == nil {
 		t.Fatal("missing staged directory scanned successfully")
 	}
@@ -906,7 +940,7 @@ func TestBatchApplyCancellationAndDefensiveBranches(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := valueStore.(*store).scanApplyEntry(ctx, stage, entries[0], nil, nil); !errors.Is(err, context.Canceled) {
+	if _, err := valueStore.(*store).scanApplyEntry(ctx, stage, entries[0], nil, nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled stage scan error = %v", err)
 	}
 	if _, err := readStableBatchSource(ctx, filepath.Join(stage, "art.png"), Item{

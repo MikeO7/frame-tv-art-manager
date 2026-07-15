@@ -23,7 +23,6 @@ import (
 )
 
 func newTestLoader(cfg *config.Config, logger *slog.Logger) *Loader {
-	idx := NewArtworkCatalog(cfg.ArtworkDir, logger)
 	store, err := collection.New(collection.Config{
 		Root: cfg.ArtworkDir, MaxItems: cfg.MaxArtworkImages,
 		MaxImportBytes: int64(cfg.MaxDownloadSizeMB) * bytesPerMB,
@@ -31,7 +30,7 @@ func newTestLoader(cfg *config.Config, logger *slog.Logger) *Loader {
 	if err != nil {
 		panic(err)
 	}
-	return NewLoader(cfg, logger, idx, store)
+	return NewLoader(cfg, logger, store)
 }
 
 func testJPEGBytes(t *testing.T) []byte {
@@ -90,7 +89,7 @@ func TestLoader_Sync_Direct(t *testing.T) {
 		SourcesFile: sourcesFile,
 		ArtworkDir:  artworkDir,
 	}, slog.Default())
-	downloaded, err := l.Sync(context.Background())
+	downloaded, err := l.Sync(context.Background(), collection.Snapshot{})
 	if err != nil {
 		t.Fatalf("Sync failed: %v", err)
 	}
@@ -100,9 +99,41 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	}
 
 	// Verify file exists
-	files, catalogErr := l.index.SupportedFiles()
-	if catalogErr != nil || len(files) != 1 {
-		t.Errorf("expected 1 artwork file, got %v (%v)", files, catalogErr)
+	entries, readErr := os.ReadDir(artworkDir)
+	var artworkFiles int
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			artworkFiles++
+		}
+	}
+	if readErr != nil || artworkFiles != 1 {
+		t.Errorf("expected 1 artwork file, got %d (%v)", artworkFiles, readErr)
+	}
+}
+
+func TestLoaderSyncUsesDurableSourceOriginInsteadOfFilename(t *testing.T) {
+	artworkDir := t.TempDir()
+	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write(testJPEGBytes(t))
+	}))
+	defer server.Close()
+	if err := os.WriteFile(sourcesFile, []byte(server.URL+"\n"), 0o600); err != nil {
+		t.Fatalf("write sources: %v", err)
+	}
+
+	loader := newTestLoader(&config.Config{SourcesFile: sourcesFile, ArtworkDir: artworkDir}, slog.Default())
+	originKey := "source:" + sourceURLIdentity("direct", server.URL)
+	snapshot := collection.Snapshot{Items: []collection.Item{{
+		Name:   "arbitrary-operator-looking-name.jpg",
+		Origin: collection.Origin{Key: originKey, Class: collection.OriginSource},
+	}}}
+	downloaded, err := loader.Sync(context.Background(), snapshot)
+	if err != nil || downloaded != 0 || requests != 0 {
+		t.Fatalf("Sync() = (%d, %v), requests=%d; want durable-origin skip", downloaded, err, requests)
 	}
 }
 
@@ -117,7 +148,7 @@ func TestLoaderSyncDoesNotExposeRawSourceCredentials(t *testing.T) {
 	loader := newTestLoader(&config.Config{
 		SourcesFile: sourcesFile, ArtworkDir: artworkDir, UnsplashAccessKey: "configured-key",
 	}, logger)
-	_, err := loader.Sync(context.Background())
+	_, err := loader.Sync(context.Background(), collection.Snapshot{})
 	if err == nil {
 		t.Fatal("expected invalid source error")
 	}
@@ -218,33 +249,6 @@ func TestLoadSourcesDoesNotCacheFailedRevision(t *testing.T) {
 	}
 }
 
-func TestLoader_InternalMethods(t *testing.T) {
-	artworkDir := t.TempDir()
-
-	path := filepath.Join(artworkDir, "test__1234567890ab.jpg")
-	_ = os.WriteFile(path, []byte("some-data"), 0o600)
-
-	idx := NewArtworkCatalog(artworkDir, slog.Default())
-	if err := idx.Rebuild(); err != nil {
-		t.Fatalf("rebuild catalog: %v", err)
-	}
-
-	if _, ok := idx.LookupPrefix("test"); !ok {
-		t.Error("expected prefix entry for test identity")
-	}
-
-	idx.MarkVisited("test__1234567890ab.jpg")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Error("visited file was accidentally deleted")
-	}
-
-	unvisitedPath := filepath.Join(artworkDir, "002__unvisited__hash.jpg")
-	_ = os.WriteFile(unvisitedPath, []byte("x"), 0o600)
-	if _, err := os.Stat(unvisitedPath); err != nil {
-		t.Errorf("unvisited operator file was not preserved: %v", err)
-	}
-}
-
 func TestLoader_Sync_Failures(t *testing.T) {
 	artworkDir := t.TempDir()
 	sourcesFile := filepath.Join(t.TempDir(), "sources.txt")
@@ -264,7 +268,7 @@ func TestLoader_Sync_Failures(t *testing.T) {
 		SourcesFile: sourcesFile,
 		ArtworkDir:  artworkDir,
 	}, slog.Default())
-	downloaded, err := l.Sync(context.Background())
+	downloaded, err := l.Sync(context.Background(), collection.Snapshot{})
 	if err == nil {
 		t.Fatal("Sync should report a degraded cycle on download error")
 	}
@@ -321,7 +325,7 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	}, slog.Default())
 	setMockProviderURLs(l, server.URL)
 
-	_, err := l.Sync(context.Background())
+	_, err := l.Sync(context.Background(), collection.Snapshot{})
 	if err == nil {
 		t.Fatal("Sync should report provider failures")
 	}
@@ -364,7 +368,7 @@ sources:
 	defer server.Close()
 	setMockProviderURLs(l, server.URL)
 
-	_, _ = l.Sync(context.Background())
+	_, _ = l.Sync(context.Background(), collection.Snapshot{})
 }
 
 func TestLoader_UtilityMethods(t *testing.T) {
@@ -417,8 +421,7 @@ func TestLoader_syncLine_ArticSearch(t *testing.T) {
 	defer server.Close()
 	setMockProviderURLs(l, server.URL)
 
-	var globalIndex int32
-	count, err := l.syncLine(context.Background(), "artic:search:monet", &globalIndex)
+	count, err := l.syncLine(context.Background(), "artic:search:monet")
 	if err != nil {
 		t.Fatalf("syncLine failed: %v", err)
 	}
@@ -449,14 +452,16 @@ func TestLoader_executeDownload(t *testing.T) {
 		t.Error("expected downloaded=true")
 	}
 
-	entries, err := l.index.SupportedFiles()
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("expected 1 artwork file, got %v (%v)", entries, err)
+	entries, err := os.ReadDir(artworkDir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for name := range entries {
-		if !strings.HasSuffix(name, ".png") {
-			t.Errorf("expected png extension, got %q", name)
-		}
+	var foundPNG bool
+	for _, entry := range entries {
+		foundPNG = foundPNG || strings.HasSuffix(entry.Name(), ".png")
+	}
+	if !foundPNG {
+		t.Fatalf("expected committed PNG artwork, got %v", entries)
 	}
 }
 
@@ -466,12 +471,7 @@ func TestLoader_downloadWithIdentity_MaxReached(t *testing.T) {
 		ArtworkDir:       artworkDir,
 		MaxArtworkImages: 1,
 	}, slog.Default())
-	if err := os.WriteFile(filepath.Join(artworkDir, "operator.jpg"), []byte("operator bytes"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := l.index.Rebuild(); err != nil {
-		t.Fatal(err)
-	}
+	l.collectionSize = 1
 
 	downloaded, err := l.downloadWithIdentity(context.Background(), "http://example.com/x.jpg", "001__direct__x")
 	if err != nil {

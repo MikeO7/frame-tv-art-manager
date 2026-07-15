@@ -42,7 +42,6 @@ type localCollection struct {
 	logger   *slog.Logger
 	health   *health.Status
 	loader   sources.SourceLoader
-	catalog  *sources.ArtworkCatalog
 	limits   *resources.Controller
 	store    CollectionStore
 }
@@ -53,11 +52,10 @@ func newLocalCollection(
 	healthStatus *health.Status,
 	store CollectionStore,
 ) *localCollection {
-	catalog := sources.NewArtworkCatalog(cfg.ArtworkDir, logger)
 	return &localCollection{
 		mutation: make(chan struct{}, 1),
 		cfg:      cfg, logger: logger, health: healthStatus,
-		loader: sources.NewLoader(cfg, logger, catalog, store), catalog: catalog,
+		loader: sources.NewLoader(cfg, logger, store),
 		limits: resources.NewDefaultController(), store: store,
 	}
 }
@@ -152,23 +150,30 @@ func (c *localCollection) release() {
 	<-c.mutation
 }
 
+//nolint:funlen,gocyclo // ordered collection/source/transform transaction keeps failure ownership local
 func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection, error) {
 	var result preparedCollection
 	if c.cfg.DryRun {
 		result.warnings = append(result.warnings, "Dry-run skipped source downloads and local artwork mutations")
 		return c.authoritativeSnapshot(ctx, result)
 	}
-	if c.health != nil {
-		c.health.SetStage("downloading sources")
-	}
-	if err := c.syncSources(ctx, &result); err != nil {
-		return result, err
-	}
 	baseline, err := c.prepareAuthoritativeSnapshot(ctx, nil)
 	if err != nil {
 		return result, err
 	}
-	origins := newOriginProjection(baseline)
+	if c.health != nil {
+		c.health.SetStage("downloading sources")
+	}
+	if err := c.syncSources(ctx, &result, baseline); err != nil {
+		return result, err
+	}
+	if result.downloaded > 0 {
+		baseline, err = c.prepareAuthoritativeSnapshot(ctx, nil)
+		if err != nil {
+			return result, err
+		}
+	}
+	metadata := newMetadataProjection(baseline)
 	stageRequest := optimize.StageRequest{
 		Inputs: stageInputs(baseline), Config: c.cfg.OptimizeOptions(), Logger: c.logger,
 	}
@@ -189,12 +194,9 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 		return result, fmt.Errorf("optimize artwork collection: %w", err)
 	}
 	result.optimized = stage.Optimized
-	snapshot, err := c.publishStage(ctx, stage, origins)
+	snapshot, err := c.publishStage(ctx, stage, metadata)
 	if err != nil {
 		return result, err
-	}
-	if result.optimized > 0 {
-		c.catalog.InvalidateCache()
 	}
 	if err := c.validateAuthoritativeSnapshot(snapshot); err != nil {
 		return result, err
@@ -203,8 +205,12 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 	return result, nil
 }
 
-func (c *localCollection) syncSources(ctx context.Context, result *preparedCollection) error {
-	downloaded, err := c.loader.Sync(ctx)
+func (c *localCollection) syncSources(
+	ctx context.Context,
+	result *preparedCollection,
+	snapshot collectionpkg.Snapshot,
+) error {
+	downloaded, err := c.loader.Sync(ctx, snapshot)
 	result.downloaded = downloaded
 	if err != nil {
 		return fmt.Errorf("synchronize artwork sources: %w", err)
@@ -215,18 +221,16 @@ func (c *localCollection) syncSources(ctx context.Context, result *preparedColle
 func (c *localCollection) publishStage(
 	ctx context.Context,
 	stage *optimize.Stage,
-	origins *originProjection,
+	metadata *metadataProjection,
 ) (collectionpkg.Snapshot, error) {
-	for _, rename := range stage.Renames {
-		if err := origins.observeRename(rename.OldName, rename.NewName); err != nil {
-			return collectionpkg.Snapshot{}, errors.Join(
-				fmt.Errorf("project optimized artwork origins: %w", err), stage.Close(),
-			)
-		}
+	if err := metadata.apply(stage.Derivatives); err != nil {
+		return collectionpkg.Snapshot{}, errors.Join(
+			fmt.Errorf("project optimized artwork metadata: %w", err), stage.Close(),
+		)
 	}
 	snapshot, applyErr := c.store.Apply(ctx, collectionpkg.ApplyRequest{
 		Directory: stage.Directory,
-		Origins:   origins.snapshot(),
+		Metadata:  metadata.snapshot(),
 	})
 	if err := errors.Join(applyErr, stage.Close()); err != nil {
 		return collectionpkg.Snapshot{}, fmt.Errorf("publish optimized artwork collection: %w", err)

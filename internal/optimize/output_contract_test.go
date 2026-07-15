@@ -1,8 +1,6 @@
 package optimize
 
 import (
-	"crypto/sha256"
-	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -10,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 func TestOrdinaryTransformOutputContract(t *testing.T) {
@@ -56,16 +56,27 @@ func TestOrdinaryTransformOutputContract(t *testing.T) {
 	if !changed {
 		t.Fatal("OptimizeFile() changed = false, want true")
 	}
-	if name != "gradient_16x9_opt.h_local.jpg" {
-		t.Fatalf("optimized name = %q", name)
+	if name == "gradient.jpg" || filepath.Ext(name) != extJPG {
+		t.Fatalf("optimized content-addressed name = %q", name)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, name))
+	digest, err := fileDigest(filepath.Join(dir, name))
 	if err != nil {
-		t.Fatalf("read optimized output: %v", err)
+		t.Fatal(err)
 	}
-	gotDigest := fmt.Sprintf("%x", sha256.Sum256(raw))
-	const wantDigest = "7816464f4f0711c7b58e07811b73c9d16691cad829082f5029e4e9dc0bf0405b"
-	if gotDigest != wantDigest {
-		t.Fatalf("optimized SHA-256 = %s, want %s", gotDigest, wantDigest)
+	wantName := artwork.BuildContentName("gradient.jpg", digest, extJPG, 8)
+	if name != wantName {
+		t.Fatalf("optimized name = %q, want post-encode digest name %q", name, wantName)
+	}
+	output, err := os.Open(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("open optimized output: %v", err)
+	}
+	defer func() { _ = output.Close() }()
+	decoded, format, err := image.Decode(output)
+	if err != nil {
+		t.Fatalf("decode optimized output: %v", err)
+	}
+	if format != "jpeg" || decoded.Bounds().Dx() != 16 || decoded.Bounds().Dy() != 9 {
+		t.Fatalf("optimized output = %s %v, want jpeg 16x9", format, decoded.Bounds())
 	}
 }

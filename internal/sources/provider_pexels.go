@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -147,7 +146,7 @@ func (p *pexelsProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]s
 	return urls, nil
 }
 
-func (p *pexelsProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
+func (p *pexelsProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 2 {
 		return nil, fmt.Errorf("invalid pexels format")
@@ -188,13 +187,9 @@ func (p *pexelsProvider) Resolve(ctx context.Context, line string, globalIndex *
 
 	images := make([]SourceImage, 0, len(urls))
 	for _, u := range urls {
-		slug := URLToSlug(u)
-		idx := atomic.AddInt32(globalIndex, 1) - 1
-		identity := fmt.Sprintf("%03d__pexels__%s", idx, slug)
-
 		images = append(images, SourceImage{
 			URL:      u,
-			Identity: identity,
+			Identity: sourceURLIdentity(p.Name(), u),
 		})
 	}
 

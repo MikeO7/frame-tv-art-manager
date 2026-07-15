@@ -11,9 +11,8 @@ import (
 )
 
 // RequiresStage reports whether a verified collection snapshot can produce a
-// transformation or collage effect. It deliberately reads only JPEG metadata
-// needed to classify raw collage candidates; all other decisions use verified
-// snapshot facts and deterministic names.
+// transformation or collage effect. Durable manifest metadata decides whether
+// a derivative is current; filenames never authorize a skip.
 //
 // An uncertain file observation conservatively requires the full StageCatalog
 // path, which owns complete digest and pixel verification. Cancellation is
@@ -32,13 +31,13 @@ func RequiresStage(ctx context.Context, request StageRequest) (bool, error) {
 	if uncertain || len(rawPortraits) >= 2 {
 		return true, nil
 	}
-	return requiresIndividualStage(inputs, rawPortraits, request.Config), nil
+	return requiresIndividualStage(ctx, inputs, rawPortraits, request.Config)
 }
 
 func preflightRawPortraits(ctx context.Context, inputs []StageInput, cfg Config) ([]string, bool, error) {
 	rawPortraits := make([]string, 0)
 	for _, input := range inputs {
-		if !isRawCollageCandidate(input.Name, cfg) {
+		if !isRawCollageCandidate(input, cfg) {
 			continue
 		}
 		portrait, err := preflightPortrait(ctx, input)
@@ -55,32 +54,79 @@ func preflightRawPortraits(ctx context.Context, inputs []StageInput, cfg Config)
 	return rawPortraits, false, nil
 }
 
-func requiresIndividualStage(inputs []StageInput, rawPortraits []string, cfg Config) bool {
+//nolint:gocognit,gocyclo // conservative preflight keeps every fail-closed decision visible in one pass
+func requiresIndividualStage(
+	ctx context.Context,
+	inputs []StageInput,
+	rawPortraits []string,
+	cfg Config,
+) (bool, error) {
 	var unpairedPortrait string
 	if len(rawPortraits) == 1 {
 		unpairedPortrait = rawPortraits[0]
 	}
 	if !cfg.Enabled {
-		return false
+		return false, nil
 	}
+	transformKey := TransformKey(cfg)
 	for _, input := range inputs {
-		if input.Name == unpairedPortrait || !isOptimizableJPEG(strings.ToLower(filepath.Ext(input.Name))) {
+		if input.Name == unpairedPortrait || !isOptimizableImage(strings.ToLower(filepath.Ext(input.Name)), cfg) {
 			continue
 		}
-		if !isConfiguredOptimizedName(input.Name, cfg) {
-			return true
+		if input.Derivative != "" {
+			if input.TransformKey != transformKey || input.Width != cfg.MaxWidth || input.Height != cfg.MaxHeight {
+				return true, nil
+			}
+			continue
+		}
+		if input.Width != cfg.MaxWidth || input.Height != cfg.MaxHeight || cfg.MuseumModeEnabled || cfg.DitherEnabled {
+			return true, nil
+		}
+		orientation, err := preflightOrientation(ctx, input)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return false, err
+			}
+			return true, nil
+		}
+		if orientation != 1 {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func isRawCollageCandidate(name string, cfg Config) bool {
-	if strings.Contains(name, optimizedMarker) {
+func isRawCollageCandidate(input StageInput, cfg Config) bool {
+	if input.Derivative != "" {
 		return false
 	}
-	return cfg.PortraitMode == portraitModeCollage || strings.HasPrefix(name, "upload")
+	return cfg.PortraitMode == portraitModeCollage
 }
 
+func preflightOrientation(ctx context.Context, input StageInput) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	file, before, err := openPreflightInput(input)
+	if err != nil {
+		return 0, err
+	}
+	extension := strings.ToLower(filepath.Ext(input.Name))
+	orientation, readErr := readOrientationForExtension(file, extension)
+	opened, statErr := file.Stat()
+	closeErr := file.Close()
+	after, pathErr := os.Lstat(input.Path)
+	if err := errors.Join(readErr, statErr, closeErr, pathErr); err != nil {
+		return 0, fmt.Errorf("read orientation for %q: %w", input.Name, err)
+	}
+	if after.Mode()&os.ModeSymlink != 0 || !after.Mode().IsRegular() ||
+		!os.SameFile(before, opened) || !os.SameFile(opened, after) {
+		return 0, fmt.Errorf("artwork %q changed while reading metadata", input.Name)
+	}
+	return orientation, nil
+}
+
+//nolint:gocyclo // file identity, metadata, and orientation checks form one atomic observation
 func preflightPortrait(ctx context.Context, input StageInput) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
@@ -89,7 +135,8 @@ func preflightPortrait(ctx context.Context, input StageInput) (bool, error) {
 		return false, fmt.Errorf("classify collage candidate %q: %w", input.Name, err)
 	}
 	w, h := input.Width, input.Height
-	if !isOptimizableJPEG(strings.ToLower(filepath.Ext(input.Name))) {
+	extension := strings.ToLower(filepath.Ext(input.Name))
+	if !isOptimizableJPEG(extension) && extension != extPNG {
 		return h > w, nil
 	}
 
@@ -97,7 +144,7 @@ func preflightPortrait(ctx context.Context, input StageInput) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	orientation, readErr := ReadOrientation(file)
+	orientation, readErr := readOrientationForExtension(file, extension)
 	opened, statErr := file.Stat()
 	closeErr := file.Close()
 	after, pathErr := os.Lstat(input.Path)

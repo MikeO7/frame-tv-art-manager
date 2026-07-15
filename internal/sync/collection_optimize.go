@@ -27,7 +27,10 @@ func stageInputs(snapshot collectionpkg.Snapshot) []optimize.StageInput {
 	inputs := make([]optimize.StageInput, 0, len(snapshot.Items))
 	for _, item := range snapshot.Items {
 		inputs = append(inputs, optimize.StageInput{
-			Name: item.Name, Path: item.Path, Digest: item.Digest, Width: item.Width, Height: item.Height,
+			Name: item.Name, Key: item.Key, Path: item.Path, Digest: item.Digest,
+			Width: item.Width, Height: item.Height,
+			SourceKeys: append([]string(nil), item.SourceKeys...), TransformKey: item.TransformKey,
+			Derivative: string(item.Derivative),
 		})
 	}
 	return inputs

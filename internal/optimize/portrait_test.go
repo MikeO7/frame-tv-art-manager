@@ -191,6 +191,16 @@ func TestCreateCollage(t *testing.T) {
 	}
 }
 
+func TestCreateCollageForTargetHonorsConfiguredPixelContract(t *testing.T) {
+	t.Parallel()
+	left := image.NewRGBA(image.Rect(0, 0, 8, 12))
+	right := image.NewRGBA(image.Rect(0, 0, 8, 12))
+	got := CreateCollageForTarget(left, right, 16, 9, false)
+	if got.Bounds() != image.Rect(0, 0, 16, 9) {
+		t.Fatalf("collage bounds = %v, want 16x9", got.Bounds())
+	}
+}
+
 func TestReadOrientation_NoEXIF(t *testing.T) {
 	// A mock JPEG with SOI but no Exif APP1 segment, ending in EOI
 	noExifJpeg := []byte{0xFF, 0xD8, 0xFF, 0xD9}

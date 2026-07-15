@@ -13,11 +13,11 @@ func TestValidateSnapshot(t *testing.T) {
 	secondDigest := sha256.Sum256([]byte("second"))
 	valid := buildSnapshot(root, []Item{
 		{
-			Name: "first.png", Digest: firstDigest, Type: FileTypePNG, Size: 5, Width: 1, Height: 2,
+			Name: "first.png", Key: "first.png", Digest: firstDigest, Type: FileTypePNG, Size: 5, Width: 1, Height: 2,
 			Origin: Origin{Key: "operator:first.png", Class: OriginOperator},
 		},
 		{
-			Name: "second.jpg", Digest: secondDigest, Type: FileTypeJPEG, Size: 6, Width: 2, Height: 3,
+			Name: "second.jpg", Key: "second.jpg", Digest: secondDigest, Type: FileTypeJPEG, Size: 6, Width: 2, Height: 3,
 			Origin: Origin{Key: "upload:" + stringHex(secondDigest[:]), Class: OriginOperatorUpload},
 		},
 	}, nil, false)
@@ -104,6 +104,82 @@ func TestValidateSnapshot(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 				t.Fatalf("ValidateSnapshot() error = %v, want containing %q", err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateSnapshotAllowsDerivativeToRetainOriginalUploadKey(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	digest := sha256.Sum256([]byte("optimized bytes"))
+	snapshot := buildSnapshot(root, []Item{{
+		Name: "optimized.jpg", Key: "upload.jpg", Digest: digest, Type: FileTypeJPEG,
+		Size: 1, Width: 3840, Height: 2160,
+		Origin:     Origin{Key: "upload:" + strings.Repeat("1", sha256.Size*2), Class: OriginOperatorUpload},
+		Derivative: DerivativeOptimized, TransformKey: strings.Repeat("2", sha256.Size*2),
+	}}, nil, false)
+	if err := ValidateSnapshot(root, snapshot); err != nil {
+		t.Fatalf("ValidateSnapshot() error = %v", err)
+	}
+}
+
+func TestValidateSnapshotDerivativeMetadataBranches(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	digest := sha256.Sum256([]byte("bytes"))
+	transform := strings.Repeat("a", sha256.Size*2)
+	tests := []struct {
+		name   string
+		mutate func(*Item)
+		want   string
+	}{
+		{name: "valid optimized", mutate: func(item *Item) { item.Derivative = DerivativeOptimized; item.TransformKey = transform }},
+		{name: "valid collage", mutate: func(item *Item) {
+			item.Origin = Origin{Key: "derived:collage.jpg", Class: OriginDerived}
+			item.Derivative = DerivativeCollage
+			item.TransformKey = transform
+		}},
+		{name: "unsorted sources", mutate: func(item *Item) { item.SourceKeys = []string{"source:z", "source:a"} }, want: "not sorted"},
+		{name: "duplicate source", mutate: func(item *Item) { item.SourceKeys = []string{"source:a", "source:a"} }, want: "duplicated"},
+		{name: "invalid source", mutate: func(item *Item) { item.SourceKeys = []string{"bad"} }, want: "invalid"},
+		{name: "source origin absent", mutate: func(item *Item) {
+			item.Origin = Origin{Key: "source:own", Class: OriginSource}
+			item.SourceKeys = []string{"source:other"}
+		}, want: "absent"},
+		{name: "transform without derivative", mutate: func(item *Item) { item.TransformKey = transform }, want: "untransformed"},
+		{name: "derived without derivative", mutate: func(item *Item) {
+			item.Origin = Origin{Key: "derived:item", Class: OriginDerived}
+		}, want: "no derivative"},
+		{name: "invalid transform", mutate: func(item *Item) {
+			item.Derivative = DerivativeOptimized
+			item.TransformKey = "bad"
+		}, want: "invalid transform"},
+		{name: "collage origin mismatch", mutate: func(item *Item) {
+			item.Derivative = DerivativeCollage
+			item.TransformKey = transform
+		}, want: "disagree"},
+		{name: "derived kind mismatch", mutate: func(item *Item) {
+			item.Origin = Origin{Key: "derived:item", Class: OriginDerived}
+			item.Derivative = DerivativeOptimized
+			item.TransformKey = transform
+		}, want: "disagree"},
+		{name: "unknown derivative", mutate: func(item *Item) { item.Derivative = "mystery" }, want: "unknown"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			item := Item{
+				Name: "item.jpg", Key: "item.jpg", Digest: digest, Type: FileTypeJPEG,
+				Size: 5, Width: 1, Height: 1,
+				Origin: Origin{Key: "operator:item.jpg", Class: OriginOperator},
+			}
+			test.mutate(&item)
+			err := ValidateSnapshot(root, buildSnapshot(root, []Item{item}, nil, false))
+			if test.want == "" && err != nil {
+				t.Fatalf("ValidateSnapshot() error = %v", err)
+			}
+			if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+				t.Fatalf("ValidateSnapshot() error = %v, want %q", err, test.want)
 			}
 		})
 	}

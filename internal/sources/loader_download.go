@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
@@ -24,8 +23,9 @@ const (
 	sourceMediaTypePNG  = "image/png"
 )
 
-func (l *Loader) checkExisting(identity string) (string, bool) {
-	return l.index.LookupPrefix(identity)
+func (l *Loader) checkExisting(identity string) bool {
+	_, exists := l.sourceOrigins["source:"+identity]
+	return exists
 }
 
 func (l *Loader) executeDownload(ctx context.Context, url, filename, identity string, originKeys ...string) (bool, error) {
@@ -40,10 +40,7 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename, identity st
 		return false, err
 	}
 
-	filename, skip := l.resolveDownloadName(resp, url, filename)
-	if skip {
-		return false, nil
-	}
+	filename = l.resolveDownloadName(resp, url, filename)
 
 	tmpPath, written, err := l.downloadToTemp(resp)
 	if err != nil {
@@ -57,7 +54,7 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename, identity st
 	if err := validateDownloadedImage(tmpPath, filepath.Ext(filename)); err != nil {
 		return false, fmt.Errorf("validate downloaded image: %w", err)
 	}
-	originKey := "source:" + artwork.StripIndexPrefix(identity)
+	originKey := "source:" + identity
 	if len(originKeys) > 0 {
 		originKey = originKeys[0]
 	}
@@ -65,8 +62,9 @@ func (l *Loader) executeDownload(ctx context.Context, url, filename, identity st
 	if err != nil {
 		return false, err
 	}
-	l.index.NoteImported(identity, item)
+	l.sourceOrigins[originKey] = struct{}{}
 	if isNew {
+		l.collectionSize++
 		l.logger.Info("downloaded source image", "file", item.Name, "size_bytes", written)
 	}
 	return isNew, nil
@@ -196,24 +194,14 @@ func (l *Loader) fetch(ctx context.Context, url string) (*http.Response, error) 
 	return resp, nil
 }
 
-// resolveDownloadName rewrites filename to match the response's image
-// extension and reports whether the re-extended file already exists (skip).
-func (l *Loader) resolveDownloadName(resp *http.Response, url, filename string) (string, bool) {
+// resolveDownloadName rewrites filename to match the response's image extension.
+func (l *Loader) resolveDownloadName(resp *http.Response, url, filename string) string {
 	ext := extensionFromResponse(resp, url)
 	if ext == "" || strings.HasSuffix(filename, ext) {
-		return filename, false
+		return filename
 	}
 
-	filename = strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
-	// Prefix identities are extension-free. Looking up the rewritten filename
-	// itself would miss an existing source whenever the server corrected a
-	// guessed .jpg extension to .png, causing a second managed artwork file.
-	identity := strings.TrimSuffix(filename, ext)
-	if existing, ok := l.checkExisting(identity); ok {
-		l.index.MarkVisited(existing)
-		return filename, true
-	}
-	return filename, false
+	return strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
 }
 
 // downloadToTemp streams the (already size-guarded) response body into a
@@ -244,13 +232,12 @@ func (l *Loader) downloadToTemp(resp *http.Response) (string, int64, error) {
 }
 
 func (l *Loader) downloadWithIdentity(ctx context.Context, url, identity string, originKeys ...string) (bool, error) {
-	if l.index.MaxReached(l.maxImages) {
+	if l.maxImages > 0 && l.collectionSize >= l.maxImages {
 		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
 		return false, nil
 	}
 
-	if existing, ok := l.checkExisting(identity); ok {
-		l.index.MarkVisited(existing)
+	if l.checkExisting(identity) {
 		return false, nil
 	}
 

@@ -192,7 +192,7 @@ func TestImportUsesDeterministicCollisionNameAndSortedSnapshot(t *testing.T) {
 	root := t.TempDir()
 	input := encodeImage(t, "png", 3, 3)
 	digest := sha256.Sum256(input)
-	conflictingName := "photo-" + hex.EncodeToString(digest[:6]) + ".png"
+	conflictingName := "photo--" + hex.EncodeToString(digest[:6]) + ".png"
 	writeArtwork(t, root, conflictingName, encodeImage(t, "png", 1, 1))
 	writeArtwork(t, root, "zebra.jpg", encodeImage(t, "jpeg", 2, 1))
 
@@ -203,7 +203,7 @@ func TestImportUsesDeterministicCollisionNameAndSortedSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import collision: %v", err)
 	}
-	wantPrefix := "photo-" + hex.EncodeToString(digest[:8])
+	wantPrefix := "photo--" + hex.EncodeToString(digest[:8])
 	if !strings.HasPrefix(snapshot.Changes[0].Name, wantPrefix) {
 		t.Fatalf("collision name = %q, want prefix %q", snapshot.Changes[0].Name, wantPrefix)
 	}

@@ -13,12 +13,46 @@ func TestRequiresStageSkipsVerifiedNoWork(t *testing.T) {
 	t.Parallel()
 	cfg := DefaultConfig()
 	inputs := []StageInput{
-		{Name: "gallery_3840x2160_opt.h_aaaa.jpg", Path: "unused", Width: 3840, Height: 2160},
-		{Name: "already-valid.png", Path: "unused", Width: 3840, Height: 2160},
+		{Name: "gallery.jpg", Path: "unused", Width: 3840, Height: 2160, Derivative: "optimized", TransformKey: TransformKey(cfg)},
+		{Name: "already-valid.png", Path: "unused", Width: 3840, Height: 2160, Derivative: "optimized", TransformKey: TransformKey(cfg)},
 	}
 	required, err := RequiresStage(context.Background(), StageRequest{Inputs: inputs, Config: cfg})
 	if err != nil || required {
 		t.Fatalf("RequiresStage() = (%v, %v), want (false, nil)", required, err)
+	}
+}
+
+func TestRequiresStageDoesNotTrustOptimizedFilenameDimensions(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	required, err := RequiresStage(context.Background(), StageRequest{
+		Inputs: []StageInput{{
+			Name: "gallery.jpg", Path: "unused", Width: 1, Height: 1,
+			Derivative: "optimized", TransformKey: TransformKey(cfg),
+		}},
+		Config: cfg,
+	})
+	if err != nil || !required {
+		t.Fatalf("RequiresStage() = (%v, %v), want (true, nil)", required, err)
+	}
+}
+
+func TestRequiresStageInvalidatesChangedTransformConfiguration(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	input := StageInput{
+		Name: "gallery.jpg", Path: "unused", Width: cfg.MaxWidth, Height: cfg.MaxHeight,
+		Derivative: "optimized", TransformKey: TransformKey(cfg),
+	}
+
+	required, err := RequiresStage(context.Background(), StageRequest{Inputs: []StageInput{input}, Config: cfg})
+	if err != nil || required {
+		t.Fatalf("RequiresStage(same config) = (%v, %v), want no work", required, err)
+	}
+	cfg.OptimizeJPEGQuality--
+	required, err = RequiresStage(context.Background(), StageRequest{Inputs: []StageInput{input}, Config: cfg})
+	if err != nil || !required {
+		t.Fatalf("RequiresStage(changed quality) = (%v, %v), want transform", required, err)
 	}
 }
 
@@ -46,15 +80,21 @@ func TestRequiresStagePreservesTransformAndCollageSemantics(t *testing.T) {
 			},
 		},
 		{
-			name: "odd raw png upload waits for partner",
+			name: "uncertain raw png upload stages conservatively",
 			cfg:  DefaultConfig(),
 			inputs: []StageInput{
 				{Name: "upload-one.png", Path: "unused", Width: 100, Height: 200},
 			},
+			want: true,
 		},
 		{
 			name: "portrait pair stages while optimization disabled",
-			cfg:  func() Config { value := DefaultConfig(); value.Enabled = false; return value }(),
+			cfg: func() Config {
+				value := DefaultConfig()
+				value.Enabled = false
+				value.PortraitMode = portraitModeCollage
+				return value
+			}(),
 			inputs: []StageInput{
 				{Name: "upload-one.png", Path: "unused", Width: 100, Height: 200},
 				{Name: "upload-two.png", Path: "unused", Width: 100, Height: 200},
@@ -70,6 +110,30 @@ func TestRequiresStagePreservesTransformAndCollageSemantics(t *testing.T) {
 				t.Fatalf("RequiresStage() = (%v, %v), want (%v, nil)", got, err, test.want)
 			}
 		})
+	}
+}
+
+func TestRawCollageCandidateRequiresExplicitCollageMode(t *testing.T) {
+	t.Parallel()
+	for _, input := range []StageInput{
+		{Name: "upload-legacy.jpg"},
+		{Name: "opaque.jpg"},
+		{Name: "provider.jpg"},
+	} {
+		cfg := DefaultConfig()
+		if isRawCollageCandidate(input, cfg) {
+			t.Fatalf("isRawCollageCandidate(%+v, crop) = true", input)
+		}
+		cfg.PortraitMode = portraitModeCollage
+		if !isRawCollageCandidate(input, cfg) {
+			t.Fatalf("isRawCollageCandidate(%+v, collage) = false", input)
+		}
+	}
+
+	cfg := DefaultConfig()
+	cfg.PortraitMode = portraitModeCollage
+	if isRawCollageCandidate(StageInput{Name: "derived.jpg", Derivative: "optimized"}, cfg) {
+		t.Fatal("optimized derivative was treated as a raw collage candidate")
 	}
 }
 
@@ -101,6 +165,7 @@ func TestRequiresStageReadsOnlyCandidateMetadata(t *testing.T) {
 	writeTestImage(t, second, 8, 12)
 	cfg := DefaultConfig()
 	cfg.Enabled = false
+	cfg.PortraitMode = portraitModeCollage
 
 	required, err := RequiresStage(context.Background(), StageRequest{
 		Inputs: []StageInput{
@@ -126,8 +191,10 @@ func TestPreflightPortraitSafetyBranches(t *testing.T) {
 	if err != nil || portrait {
 		t.Fatalf("preflightPortrait(JPEG) = (%v, %v), want landscape", portrait, err)
 	}
+	pngPath := filepath.Join(directory, "upload-portrait.png")
+	writePNGForCollageTests(t, pngPath, 8, 12)
 	portrait, err = preflightPortrait(context.Background(), StageInput{
-		Name: "upload-portrait.png", Path: "unused", Width: 8, Height: 12,
+		Name: filepath.Base(pngPath), Path: pngPath, Width: 8, Height: 12,
 	})
 	if err != nil || !portrait {
 		t.Fatalf("preflightPortrait(PNG) = (%v, %v), want portrait", portrait, err)
@@ -180,5 +247,22 @@ func TestPreflightPortraitSafetyBranches(t *testing.T) {
 		if _, _, err := openPreflightInput(input); err == nil {
 			t.Fatalf("openPreflightInput(%s) error = nil", input.Name)
 		}
+	}
+}
+
+func TestPreflightOrientationReadsStableFileAndCancellation(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "exact.jpg")
+	writeTestImage(t, path, 8, 6)
+	orientation, err := preflightOrientation(context.Background(), StageInput{
+		Name: filepath.Base(path), Path: path, Width: 8, Height: 6,
+	})
+	if err != nil || orientation != 1 {
+		t.Fatalf("preflightOrientation() = (%d, %v)", orientation, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := preflightOrientation(ctx, StageInput{Name: "exact.jpg", Path: path}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("preflightOrientation(canceled) error = %v", err)
 	}
 }

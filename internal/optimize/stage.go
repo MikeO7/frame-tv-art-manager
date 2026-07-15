@@ -8,19 +8,26 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 )
 
 const stagePattern = ".frame-tv-transform-*"
 
+const derivativeKindOptimized = "optimized"
+
 // StageInput identifies one immutable artwork file to copy into an isolated
 // transformation workspace. Digest is the authoritative SHA-256 of its bytes.
 type StageInput struct {
-	Name   string
-	Path   string
-	Digest [sha256.Size]byte
-	Width  int
-	Height int
+	Name         string
+	Key          string
+	Path         string
+	Digest       [sha256.Size]byte
+	Width        int
+	Height       int
+	SourceKeys   []string
+	TransformKey string
+	Derivative   string
 }
 
 // StageRequest describes a complete isolated optimization pass.
@@ -39,12 +46,21 @@ type Rename struct {
 // Stage owns an isolated workspace containing the complete transformed
 // collection. Call Close after its contents have been consumed.
 type Stage struct {
-	Directory string
-	Optimized int
-	Renames   []Rename
+	Directory   string
+	Optimized   int
+	Renames     []Rename
+	Derivatives []Derivative
 
 	closeOnce sync.Once
 	closeErr  error
+}
+
+// Derivative records the stable lineage of one staged output.
+type Derivative struct {
+	Name         string
+	Inputs       []string
+	TransformKey string
+	Kind         string
 }
 
 // Close removes the complete transformation workspace. It is idempotent.
@@ -93,12 +109,46 @@ func StageCatalog(ctx context.Context, request StageRequest) (*Stage, error) {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	stage.Optimized, err = OptimizeCatalog(ctx, directory, catalog, request.Config, renames.observe, logger)
+	metadata := make(map[string]StageInput, len(request.Inputs))
+	for _, input := range request.Inputs {
+		metadata[input.Name] = input
+	}
+	stage.Optimized, err = optimizeCatalog(ctx, directory, catalog, request.Config, renames.observe, logger, metadata)
 	if err != nil {
 		return cleanupFailure(fmt.Errorf("optimize staged collection: %w", err))
 	}
 	stage.Renames = renames.snapshot()
+	stage.Derivatives = derivativesFromRenames(stage.Renames, TransformKey(request.Config), metadata)
 	return stage, nil
+}
+
+func derivativesFromRenames(
+	renames []Rename,
+	transformKey string,
+	metadata map[string]StageInput,
+) []Derivative {
+	grouped := make(map[string][]string)
+	for _, rename := range renames {
+		if rename.NewName != "" {
+			grouped[rename.NewName] = append(grouped[rename.NewName], rename.OldName)
+		}
+	}
+	names := make([]string, 0, len(grouped))
+	for name := range grouped {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	result := make([]Derivative, 0, len(names))
+	for _, name := range names {
+		inputs := grouped[name]
+		sort.Strings(inputs)
+		kind := derivativeKindOptimized
+		if len(inputs) > 1 || metadata[inputs[0]].Derivative == portraitModeCollage {
+			kind = portraitModeCollage
+		}
+		result = append(result, Derivative{Name: name, Inputs: inputs, TransformKey: transformKey, Kind: kind})
+	}
+	return result
 }
 
 func validateStageRequest(ctx context.Context, inputs []StageInput) error {

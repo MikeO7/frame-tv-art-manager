@@ -3,10 +3,8 @@ package sources
 import (
 	"context"
 	"errors"
-	"fmt"
 	neturl "net/url"
 	"strings"
-	"sync/atomic"
 )
 
 type directProvider struct{}
@@ -25,7 +23,7 @@ func (p *directProvider) CanHandle(line string) bool {
 	return true
 }
 
-func (p *directProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
+func (p *directProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
 	urlStr := strings.TrimPrefix(line, "direct:")
 
 	u, err := neturl.Parse(urlStr)
@@ -36,13 +34,10 @@ func (p *directProvider) Resolve(ctx context.Context, line string, globalIndex *
 		return nil, errors.New("unsupported direct URL scheme")
 	}
 
-	idx := atomic.AddInt32(globalIndex, 1) - 1
-	identity := fmt.Sprintf("%03d__direct__%s", idx, URLToSlug(urlStr))
-
 	return []SourceImage{
 		{
 			URL:      urlStr,
-			Identity: identity,
+			Identity: sourceURLIdentity(p.Name(), urlStr),
 		},
 	}, nil
 }

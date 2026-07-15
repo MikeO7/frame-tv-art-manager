@@ -3,7 +3,6 @@ package optimize
 import (
 	"bytes"
 	"context"
-	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -48,9 +47,8 @@ func TestOptimizeFile(t *testing.T) {
 		t.Error("expected modified to be true")
 	}
 
-	// The file should have been renamed according to naming policy.
-	if !strings.Contains(newName, "100x100_opt.h_") {
-		t.Errorf("expected new filename to contain 100x100_opt.h_, got %s", newName)
+	if filepath.Ext(newName) != extJPG || newName == "test.jpg" {
+		t.Errorf("expected content-addressed JPEG filename, got %s", newName)
 	}
 
 	// Check if file still exists and is valid
@@ -85,8 +83,8 @@ func TestOptimizeFile_MuseumMode(t *testing.T) {
 	if !mod {
 		t.Error("expected modified to be true in museum mode")
 	}
-	if !strings.Contains(newName, "100x100_opt.h_") {
-		t.Errorf("expected new filename to contain 100x100_opt.h_, got %s", newName)
+	if filepath.Ext(newName) != extJPG || newName == "museum.jpg" {
+		t.Errorf("expected content-addressed JPEG filename, got %s", newName)
 	}
 }
 
@@ -120,6 +118,57 @@ func TestValidateImage_Invalid(t *testing.T) {
 
 	if err := ValidateImage(path); err == nil {
 		t.Error("expected error for invalid image")
+	}
+}
+
+func TestValidateImageRejectsHeaderValidTruncatedJPEG(t *testing.T) {
+	t.Parallel()
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 32, 32)), &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatal(err)
+	}
+	data := encoded.Bytes()
+	var truncated []byte
+	for cut := len(data) - 1; cut > len(data)/2; cut-- {
+		candidate := data[:cut]
+		if _, err := jpeg.DecodeConfig(bytes.NewReader(candidate)); err == nil {
+			if _, err := jpeg.Decode(bytes.NewReader(candidate)); err != nil {
+				truncated = append([]byte(nil), candidate...)
+				break
+			}
+		}
+	}
+	if truncated == nil {
+		t.Fatal("could not construct header-valid truncated JPEG")
+	}
+	path := filepath.Join(t.TempDir(), "truncated.jpg")
+	if err := os.WriteFile(path, truncated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateImage(path); err == nil {
+		t.Fatal("ValidateImage() accepted a truncated pixel stream")
+	}
+}
+
+func TestOptimizeFileColorProfilePolicy(t *testing.T) {
+	t.Parallel()
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 8, 6)), nil); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("ICC_PROFILE\x00\x01\x01")
+	segment := append([]byte{0xff, 0xe2, 0x00, byte(len(payload) + 2)}, payload...)
+	tagged := append(append(append([]byte(nil), encoded.Bytes()[:2]...), segment...), encoded.Bytes()[2:]...)
+
+	path := filepath.Join(t.TempDir(), "tagged.jpg")
+	if err := os.WriteFile(path, tagged, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = 8, 6
+	cfg.ColorProfilePolicy = "reject-embedded"
+	if _, _, err := OptimizeFile(path, cfg, slog.Default()); err == nil || !strings.Contains(err.Error(), "JPEG ICC") {
+		t.Fatalf("OptimizeFile(reject embedded profile) error = %v", err)
 	}
 }
 
@@ -158,43 +207,6 @@ func BenchmarkDither(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		dither(img)
-	}
-}
-
-func TestCheckFastPath_StaleSmallerDimensions(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.MaxWidth = 3840
-	cfg.MaxHeight = 2160
-
-	tests := []struct {
-		name     string
-		filename string
-		want     bool
-	}{
-		{
-			name:     "exact match skips",
-			filename: "photo_3840x2160_opt.h_abc123.jpg",
-			want:     true,
-		},
-		{
-			name:     "stale smaller dims re-optimizes",
-			filename: "photo_1920x1080_opt.h_abc123.jpg",
-			want:     false,
-		},
-		{
-			name:     "no opt marker always processes",
-			filename: "photo.h_abc123.jpg",
-			want:     false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := checkFastPath(tt.filename, cfg, slog.Default())
-			if got != tt.want {
-				t.Errorf("checkFastPath(%q) = %v, want %v", tt.filename, got, tt.want)
-			}
-		})
 	}
 }
 
@@ -252,8 +264,8 @@ func TestOptimizeFile_MuseumModeSkipsDither(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OptimizeFile normal mode failed: %v", err)
 	}
-	if !normalMod {
-		t.Error("expected modified to be true without museum mode")
+	if normalMod || normalName != filepath.Base(path2) {
+		t.Errorf("exact image without effects = (%q, %v), want unchanged", normalName, normalMod)
 	}
 	if err := ValidateImage(filepath.Join(tmpDir, normalName)); err != nil {
 		t.Errorf("normal mode output is invalid: %v", err)
@@ -282,6 +294,7 @@ func TestOptimizeFile_DisabledAndUnsupported(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Enabled = true
+	cfg.OptimizePNG = false
 	gotName, mod, err = OptimizeFile(pathPNG, cfg, slog.Default())
 	if err != nil || gotName != "image.png" || mod {
 		t.Fatalf("OptimizeFile unsupported extension = (%s, %v, %v)", gotName, mod, err)
@@ -289,10 +302,8 @@ func TestOptimizeFile_DisabledAndUnsupported(t *testing.T) {
 }
 
 func TestHandleRename_NoChange(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.MaxWidth = 4
-	cfg.MaxHeight = 4
-	path := filepath.Join(t.TempDir(), "upload_4x4_opt.h_aa.jpg")
+	filename := "upload.jpg"
+	path := filepath.Join(t.TempDir(), filename)
 	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
@@ -300,7 +311,7 @@ func TestHandleRename_NoChange(t *testing.T) {
 	// ensure handleRename reports no rename when filename already matches target
 	_, changed, err := handleRename(renameRequest{
 		path:     path,
-		filename: "upload_4x4_opt.h_aa.jpg",
+		filename: filename,
 		dir:      filepath.Dir(path),
 		modified: false,
 		finalW:   4,
@@ -313,14 +324,15 @@ func TestHandleRename_NoChange(t *testing.T) {
 }
 
 func TestHandleRename_NoChangeWhenAlreadyOptimizedButModified(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "upload_4x4_opt.h_aa.jpg")
+	filename := "upload.jpg"
+	path := filepath.Join(t.TempDir(), filename)
 	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
 
 	_, changed, err := handleRename(renameRequest{
 		path:     path,
-		filename: "upload_4x4_opt.h_aa.jpg",
+		filename: filename,
 		dir:      filepath.Dir(path),
 		modified: true,
 		finalW:   4,
@@ -335,51 +347,75 @@ func TestHandleRename_NoChangeWhenAlreadyOptimizedButModified(t *testing.T) {
 	}
 }
 
-func TestCheckFastPath(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.MaxWidth = 3840
-	cfg.MaxHeight = 2160
+func TestOptimizeFileFastPathVerifiesDecodedDimensions(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "lying_32x18_opt.h_local.jpg")
+	writeTestImage(t, path, 1, 1)
 
-	if !checkFastPath("photo_3840x2160_opt.h_abc123.jpg", cfg, slog.Default()) {
-		t.Fatal("expected fast path for matching optimized dimensions")
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 32
+	cfg.MaxHeight = 18
+	name, changed, err := OptimizeFile(path, cfg, slog.Default())
+	if err != nil {
+		t.Fatalf("OptimizeFile() error = %v", err)
 	}
-	if checkFastPath("photo_1920x1080_opt.h_abc123.jpg", cfg, slog.Default()) {
-		t.Fatal("expected no fast path for mismatched optimized dimensions")
+	if !changed {
+		t.Fatal("OptimizeFile() changed = false, want true")
 	}
-	if checkFastPath("photo.jpg", cfg, slog.Default()) {
-		t.Fatal("expected no fast path for non-optimized filename")
+	output, err := os.Open(filepath.Join(directory, name))
+	if err != nil {
+		t.Fatalf("open output: %v", err)
+	}
+	defer func() { _ = output.Close() }()
+	decoded, _, err := image.Decode(output)
+	if err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if got := decoded.Bounds().Size(); got.X != 32 || got.Y != 18 {
+		t.Fatalf("output dimensions = %v, want (32,18)", got)
+	}
+	if _, err := output.Seek(0, 0); err != nil {
+		t.Fatalf("seek output: %v", err)
+	}
+	if orientation, err := ReadOrientation(output); err != nil || orientation != 1 {
+		t.Fatalf("output orientation = (%d, %v), want canonical orientation 1", orientation, err)
 	}
 }
 
-func TestOptimizeFileFastPathFullyDecodesPixels(t *testing.T) {
-	var encoded bytes.Buffer
-	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 32, 32)), nil); err != nil {
-		t.Fatal(err)
-	}
-	data := encoded.Bytes()
-	var truncated []byte
-	for cut := len(data) - 1; cut > len(data)/2; cut-- {
-		candidate := data[:cut]
-		if _, err := jpeg.DecodeConfig(bytes.NewReader(candidate)); err != nil {
-			continue
-		}
-		if _, err := jpeg.Decode(bytes.NewReader(candidate)); err != nil {
-			truncated = candidate
-			break
-		}
-	}
-	if truncated == nil {
-		t.Fatal("could not construct a header-valid truncated JPEG")
-	}
-	path := filepath.Join(t.TempDir(), "photo_32x32_opt.h_abc123.jpg")
-	if err := os.WriteFile(path, truncated, 0o600); err != nil {
-		t.Fatal(err)
-	}
+func TestOptimizeFileAppliesOrientationBeforeExactSizeDecision(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "rotated.jpg")
+	writeJPEGWithExifOrientation(t, path, 32, 18, 6)
+
 	cfg := DefaultConfig()
-	cfg.MaxWidth, cfg.MaxHeight = 32, 32
-	if _, _, err := optimizeFile(context.Background(), path, cfg, slog.Default(), 1); err == nil ||
-		!strings.Contains(err.Error(), "validate optimized pixels") {
-		t.Fatalf("optimizeFile() error = %v, want full-decode failure", err)
+	cfg.MaxWidth = 32
+	cfg.MaxHeight = 18
+	name, changed, err := OptimizeFile(path, cfg, slog.Default())
+	if err != nil {
+		t.Fatalf("OptimizeFile() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("OptimizeFile() changed = false, want orientation rewrite")
+	}
+	output, err := os.Open(filepath.Join(directory, name))
+	if err != nil {
+		t.Fatalf("open output: %v", err)
+	}
+	defer func() { _ = output.Close() }()
+	decoded, _, err := image.Decode(output)
+	if err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if got := decoded.Bounds().Size(); got.X != 32 || got.Y != 18 {
+		t.Fatalf("output dimensions = %v, want (32,18)", got)
+	}
+	if _, err := output.Seek(0, 0); err != nil {
+		t.Fatalf("seek output: %v", err)
+	}
+	if orientation, err := ReadOrientation(output); err != nil || orientation != 1 {
+		t.Fatalf("output orientation = (%d, %v), want canonical orientation 1", orientation, err)
 	}
 }
 
@@ -398,6 +434,7 @@ func TestHandleRename_RenamesWhenNeeded(t *testing.T) {
 		finalW:   1280,
 		finalH:   720,
 		logger:   slog.Default(),
+		cfg:      DefaultConfig(),
 	})
 	if err != nil || !changed {
 		t.Fatalf("handleRename() = (%s, %v, %v), want rename success", newName, changed, err)
@@ -421,24 +458,28 @@ func TestHandleRenamePreservesExistingOperatorDestination(t *testing.T) {
 	if err := os.WriteFile(source, []byte("optimized bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	destinationName, changed := artwork.BuildOptimizedNameFromFile("source.jpg", 1280, 720)
-	if !changed {
-		t.Fatal("test name did not require optimization rename")
+	digest, err := fileDigest(source)
+	if err != nil {
+		t.Fatal(err)
 	}
+	destinationName := artwork.BuildContentName("source.jpg", digest, extJPG, 8)
 	destination := filepath.Join(directory, destinationName)
 	if err := os.WriteFile(destination, []byte("operator bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	_, _, err := handleRename(renameRequest{
+	newName, changed, err := handleRename(renameRequest{
 		path: source, filename: "source.jpg", dir: directory, modified: true,
 		finalW: 1280, finalH: 720, logger: slog.Default(), ctx: context.Background(),
 	})
-	if !errors.Is(err, os.ErrExist) {
-		t.Fatalf("handleRename() error = %v, want destination collision", err)
+	if err != nil || !changed {
+		t.Fatalf("handleRename() = (%q, %v, %v), want collision-safe rename", newName, changed, err)
 	}
-	if got, err := os.ReadFile(source); err != nil || string(got) != "optimized bytes" {
-		t.Fatalf("source = %q, %v", got, err)
+	if newName == destinationName {
+		t.Fatalf("handleRename() reused occupied destination %q", newName)
+	}
+	if got, err := os.ReadFile(filepath.Join(directory, newName)); err != nil || string(got) != "optimized bytes" {
+		t.Fatalf("renamed source = %q, %v", got, err)
 	}
 	if got, err := os.ReadFile(destination); err != nil || string(got) != "operator bytes" {
 		t.Fatalf("destination = %q, %v", got, err)
@@ -451,7 +492,7 @@ func TestHandleRename_RenameErrorPropagated(t *testing.T) {
 		path:     filepath.Join(dir, "missing.jpg"),
 		filename: "missing.jpg",
 		dir:      dir,
-		modified: false,
+		modified: true,
 		finalW:   4,
 		finalH:   4,
 		logger:   slog.Default(),

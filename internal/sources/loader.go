@@ -56,8 +56,9 @@ type Loader struct {
 	providers         []SourceProvider
 	maxImages         int
 	maxSizeMB         int
-	index             *ArtworkCatalog
 	importer          CollectionImporter
+	sourceOrigins     map[string]struct{}
+	collectionSize    int
 	lastSourcesDigest [sha256.Size]byte
 	hasSourcesDigest  bool
 	cachedUrls        []string
@@ -74,13 +75,8 @@ type CollectionImporter interface {
 func NewLoader(
 	cfg *config.Config,
 	logger *slog.Logger,
-	index *ArtworkCatalog,
 	importer CollectionImporter,
 ) *Loader {
-	if index == nil {
-		index = NewArtworkCatalog(cfg.ArtworkDir, logger)
-	}
-
 	providers := []SourceProvider{
 		newUnsplashProvider(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger),
 		newNasaProvider(cfg.NasaAPIKey, logger),
@@ -100,9 +96,9 @@ func NewLoader(
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		providers: providers,
-		index:     index,
-		importer:  importer,
+		providers:     providers,
+		importer:      importer,
+		sourceOrigins: make(map[string]struct{}),
 	}
 }
 

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
@@ -28,7 +30,6 @@ type rewriteParams struct {
 func rewriteImage(params rewriteParams) (int, int, error) {
 	f := params.f
 	cfg := params.cfg
-	_ = params.needsAdjustment
 	if params.ctx == nil {
 		params.ctx = context.Background()
 	}
@@ -42,13 +43,17 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 	if _, err := f.Seek(0, 0); err != nil {
 		return 0, 0, fmt.Errorf("seek to start: %w", err)
 	}
-	orientation, _ := ReadOrientation(f)
+	extension := strings.ToLower(filepath.Ext(params.path))
+	orientation, orientationErr := readOrientationForExtension(f, extension)
 	if _, err := f.Seek(0, 0); err != nil {
 		return 0, 0, fmt.Errorf("seek to start: %w", err)
 	}
 	img, _, err := image.Decode(f)
 	if err != nil {
 		return 0, 0, fmt.Errorf("decode image: %w", err)
+	}
+	if orientationErr != nil {
+		return 0, 0, fmt.Errorf("read image orientation: %w", orientationErr)
 	}
 	if err := params.ctx.Err(); err != nil {
 		return 0, 0, err
@@ -59,19 +64,23 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 	newW, newH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
 	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
 		if newH > newW && cfg.PortraitMode != "crop" {
-			rgba = padPortrait(rgba, cfg.MaxWidth, cfg.MaxHeight)
+			rgba = padPortraitWithOptions(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.LinearLightResize)
 		} else {
-			rgba = centerCrop(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled)
+			rgba = centerCropWithOptions(
+				rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.LinearLightResize,
+			)
 		}
 	}
 	if err := params.ctx.Err(); err != nil {
 		return 0, 0, err
 	}
 
-	rgba = sharpenWithWorkers(rgba, params.pixelWorkers)
+	if params.needsAdjustment {
+		rgba = sharpenWithOptions(rgba, cfg.SharpenAmount, cfg.SharpenThreshold, params.pixelWorkers)
+	}
 	if cfg.MuseumModeEnabled {
 		rgba = applyMuseumModeWithWorkers(rgba, cfg.MuseumModeIntensity, params.pixelWorkers)
-	} else {
+	} else if cfg.DitherEnabled {
 		rgba = ditherWithWorkers(rgba, params.pixelWorkers)
 	}
 	if err := params.ctx.Err(); err != nil {
@@ -101,10 +110,17 @@ func encodeOptimizedTemporary(path string, imageData image.Image, quality int) (
 		return "", fmt.Errorf("create optimized temporary file: %w", err)
 	}
 	tmpPath := out.Name()
-	if err := jpeg.Encode(out, imageData, &jpeg.Options{Quality: quality}); err != nil {
+	var encodeErr error
+	if strings.EqualFold(filepath.Ext(path), extPNG) {
+		encoder := png.Encoder{CompressionLevel: png.DefaultCompression}
+		encodeErr = encoder.Encode(out, imageData)
+	} else {
+		encodeErr = jpeg.Encode(out, imageData, &jpeg.Options{Quality: quality})
+	}
+	if encodeErr != nil {
 		_ = out.Close()
 		_ = os.Remove(tmpPath)
-		return "", fmt.Errorf("encode jpeg: %w", err)
+		return "", fmt.Errorf("encode optimized image: %w", encodeErr)
 	}
 	if err := errors.Join(out.Chmod(0o644), out.Sync(), out.Close()); err != nil {
 		_ = os.Remove(tmpPath)

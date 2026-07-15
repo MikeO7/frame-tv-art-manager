@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	colorProfileAssumeSRGB = "assume-srgb"
+	colorProfileReject     = "reject-embedded"
+)
+
 // Load reads configuration from environment variables, applies defaults,
 // and validates the result. Returns an error if required values are missing
 // or constraints are violated.
@@ -129,7 +134,20 @@ func validateRanges(cfg *Config) error {
 		{cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours <= 168, "AUTO_OFF_GRACE_HOURS must be between 0 and 168"},
 		{between(cfg.OptimizeMaxWidth, 1, 16384), "IMAGE_MAX_WIDTH must be between 1 and 16384"},
 		{between(cfg.OptimizeMaxHeight, 1, 16384), "IMAGE_MAX_HEIGHT must be between 1 and 16384"},
+		{between(cfg.OptimizeMaxPixels, 1, 100_000_000), "IMAGE_MAX_OUTPUT_PIXELS must be between 1 and 100000000"},
+		{
+			int64(cfg.OptimizeMaxWidth)*int64(cfg.OptimizeMaxHeight) <= int64(cfg.OptimizeMaxPixels),
+			"target image dimensions exceed IMAGE_MAX_OUTPUT_PIXELS",
+		},
+		{between(cfg.OptimizeMemoryMB, 128, 4096), "IMAGE_MAX_WORKING_MEMORY_MB must be between 128 and 4096"},
 		{between(cfg.OptimizeJPEGQuality, 1, 100), "IMAGE_JPEG_QUALITY must be between 1 and 100"},
+		{cfg.SmartCropMinGain >= 0 && cfg.SmartCropMinGain <= 1, "SMART_CROP_MIN_GAIN must be between 0 and 1"},
+		{cfg.SharpenAmount >= 0 && cfg.SharpenAmount <= 2, "IMAGE_SHARPEN_AMOUNT must be between 0 and 2"},
+		{between(cfg.SharpenThreshold, 0, 255), "IMAGE_SHARPEN_THRESHOLD must be between 0 and 255"},
+		{
+			cfg.ColorProfilePolicy == colorProfileAssumeSRGB || cfg.ColorProfilePolicy == colorProfileReject,
+			"IMAGE_COLOR_PROFILE_POLICY must be assume-srgb or reject-embedded",
+		},
 		{between(cfg.MuseumModeIntensity, 1, 10), "IMAGE_MUSEUM_INTENSITY must be between 1 and 10"},
 		{between(cfg.HealthPort, 0, 65535), "HEALTH_PORT must be between 0 and 65535"},
 		{cfg.ConnectionTimeout > 0 && cfg.ConnectionTimeout <= 10*time.Minute, "CONNECTION_TIMEOUT_SECONDS must be between 1 and 600"},

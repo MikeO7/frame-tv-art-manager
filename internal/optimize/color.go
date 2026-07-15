@@ -126,11 +126,17 @@ func ciede2000(color1, color2 labColor) float64 {
 	return math.Sqrt(valSq)
 }
 
-// rgbToLab performs a fast, simplified conversion from RGB to CIE Lab space.
+// rgbToLab converts encoded sRGB to CIE Lab using the standard piecewise sRGB
+// transfer, a D65 XYZ intermediate, Bradford adaptation, and the D50 Lab white.
 func rgbToLab(r, g, b uint8) (float64, float64, float64) {
 	lutRgbToLabOnce.Do(func() {
 		for i := 0; i < 256; i++ {
-			lutRgbToLab[i] = math.Pow(float64(i)/255.0, 2.2)
+			encoded := float64(i) / 255.0
+			if encoded <= 0.04045 {
+				lutRgbToLab[i] = encoded / 12.92
+			} else {
+				lutRgbToLab[i] = math.Pow((encoded+0.055)/1.055, 2.4)
+			}
 		}
 	})
 
@@ -139,36 +145,33 @@ func rgbToLab(r, g, b uint8) (float64, float64, float64) {
 	gf := lutRgbToLab[g]
 	bf := lutRgbToLab[b]
 
-	// 2. RGB to XYZ
-	x := rf*0.4124 + gf*0.3576 + bf*0.1805
-	y := rf*0.2126 + gf*0.7152 + bf*0.0722
-	z := rf*0.0193 + gf*0.1192 + bf*0.9505
+	// Linear sRGB to CIE XYZ D65.
+	x65 := rf*0.4123907992659595 + gf*0.3575843393838780 + bf*0.1804807884018343
+	y65 := rf*0.2126390058715104 + gf*0.7151686787677560 + bf*0.0721923153607337
+	z65 := rf*0.0193308187155919 + gf*0.1191947797946260 + bf*0.9505321522496607
 
-	// 3. XYZ to Lab (Simplified D65)
-	fy := y
-	if fy > 0.008856 {
-		fy = math.Cbrt(fy)
-	} else {
-		fy = 7.787*fy + 0.13793103448275862
-	}
+	// Bradford chromatic adaptation from D65 to D50.
+	x50 := x65*1.0479298208405488 + y65*0.0229467933410191 - z65*0.0501922295431356
+	y50 := x65*0.0296278156881593 + y65*0.9904344845732490 - z65*0.0170738250293851
+	z50 := -x65*0.0092430581525912 + y65*0.0150551448965779 + z65*0.7518742814281371
 
-	fx := x
-	if fx > 0.008856 {
-		fx = math.Cbrt(fx)
-	} else {
-		fx = 7.787*fx + 0.13793103448275862
-	}
-
-	fz := z
-	if fz > 0.008856 {
-		fz = math.Cbrt(fz)
-	} else {
-		fz = 7.787*fz + 0.13793103448275862
-	}
+	// CIE Lab D50 reference white.
+	fx := labTransfer(x50 / 0.96422)
+	fy := labTransfer(y50)
+	fz := labTransfer(z50 / 0.82521)
 
 	l := 116.0*fy - 16.0
 	a := 500.0 * (fx - fy)
 	bLab := 200.0 * (fy - fz)
 
 	return l, a, bLab
+}
+
+func labTransfer(value float64) float64 {
+	const epsilon = 216.0 / 24389.0
+	const kappa = 24389.0 / 27.0
+	if value > epsilon {
+		return math.Cbrt(value)
+	}
+	return (kappa*value + 16.0) / 116.0
 }

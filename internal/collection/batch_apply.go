@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 )
@@ -57,7 +56,7 @@ func (s *store) planApply(ctx context.Context, request ApplyRequest) ([]Item, ba
 	if err != nil {
 		return nil, batchPlan{}, err
 	}
-	staged, err := s.scanApplyDirectory(ctx, request.Directory, current, request.Origins)
+	staged, err := s.scanApplyDirectory(ctx, request.Directory, current, request.Origins, request.Metadata)
 	if err != nil {
 		return nil, batchPlan{}, fmt.Errorf("inventory staged collection: %w", err)
 	}
@@ -82,7 +81,16 @@ func (s *store) applyOriginsOnly(ctx context.Context, current, next []Item, proj
 }
 
 func itemsEqual(left, right []Item) bool {
-	return slices.Equal(left, right)
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		//nolint:gosec // equal lengths are checked above before the paired index walk
+		if !itemEqual(left[index], right[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateStageDirectory(root, directory string) error {
@@ -135,6 +143,7 @@ func (s *store) scanApplyDirectory(
 	directory string,
 	current []Item,
 	overrides map[string]Origin,
+	metadata map[string]ItemMetadata,
 ) ([]Item, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
@@ -146,7 +155,7 @@ func (s *store) scanApplyDirectory(
 	}
 	items := make([]Item, 0, len(entries))
 	for _, entry := range entries {
-		item, err := s.scanApplyEntry(ctx, directory, entry, currentByName, overrides)
+		item, err := s.scanApplyEntry(ctx, directory, entry, currentByName, overrides, metadata)
 		if err != nil {
 			return nil, err
 		}
@@ -156,12 +165,14 @@ func (s *store) scanApplyDirectory(
 	return items, nil
 }
 
+//nolint:revive // scan dependencies are explicit capabilities of this internal transaction step
 func (s *store) scanApplyEntry(
 	ctx context.Context,
 	directory string,
 	entry os.DirEntry,
 	current map[string]Item,
 	overrides map[string]Origin,
+	metadata map[string]ItemMetadata,
 ) (Item, error) {
 	if err := ctx.Err(); err != nil {
 		return Item{}, fmt.Errorf("scan staged collection: %w", err)
@@ -179,6 +190,16 @@ func (s *store) scanApplyEntry(
 	}
 	if origin, ok := overrides[item.Name]; ok {
 		item.Origin = origin
+		if origin.Class == OriginSource {
+			item.SourceKeys = appendSourceKey(item.SourceKeys, origin.Key)
+		}
+	}
+	if projected, ok := metadata[item.Name]; ok {
+		item.Key = projected.Key
+		item.Origin = projected.Origin
+		item.SourceKeys = append([]string(nil), projected.SourceKeys...)
+		item.TransformKey = projected.TransformKey
+		item.Derivative = projected.Derivative
 	}
 	if err := validateSnapshotOrigin(item); err != nil {
 		return Item{}, fmt.Errorf("staged artwork %s origin: %w", item.Name, err)

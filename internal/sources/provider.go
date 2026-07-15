@@ -2,6 +2,8 @@ package sources
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	neturl "net/url"
 	"path/filepath"
 	"regexp"
@@ -39,7 +41,38 @@ type SourceImage struct {
 type SourceProvider interface {
 	Name() string
 	CanHandle(line string) bool
-	Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error)
+	Resolve(ctx context.Context, line string) ([]SourceImage, error)
+}
+
+// sourceIdentity returns an order-independent provider identity. stableKey is
+// hashed so signed URLs and other sensitive source material never enter the
+// manifest or filename, while label keeps generated artwork recognizable.
+func sourceIdentity(provider, stableKey, label string) string {
+	digest := sha256.Sum256([]byte(stableKey))
+	label = strings.TrimSuffix(Filename(label), filepath.Ext(label))
+	label = strings.ReplaceAll(strings.TrimSpace(label), " ", "-")
+	if label == "" {
+		label = mediaTypeImage
+	}
+	return fmt.Sprintf("%s--%s--%x", provider, capSlug(label), digest[:8])
+}
+
+func sourceURLIdentity(provider, rawURL string) string {
+	parsed, err := neturl.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return sourceIdentity(provider, rawURL, slugDirectSource)
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.Fragment = ""
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	label := parsed.Host
+	if len(parts) >= 2 {
+		label = parts[len(parts)-2] + "-" + parts[len(parts)-1]
+	} else if len(parts) == 1 && parts[0] != "" {
+		label = parts[0]
+	}
+	return sourceIdentity(provider, parsed.String(), label)
 }
 
 // slugFromArticURL derives a stable slug from an Art Institute IIIF URL.

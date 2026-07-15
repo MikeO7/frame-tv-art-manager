@@ -30,7 +30,7 @@ func TestPrepareRecoversManifestTransactionAtEveryDurableBoundary(t *testing.T) 
 				t.Fatalf("validate artwork: %v", err)
 			}
 			items := []Item{{
-				Name: "operator.png", Path: artworkPath, Digest: value.digest,
+				Name: "operator.png", Key: "operator.png", Path: artworkPath, Digest: value.digest,
 				Type: value.typeID, Width: value.width, Height: value.height,
 				Origin: Origin{Key: "operator:operator.png", Class: OriginOperator},
 			}}
@@ -97,7 +97,7 @@ func TestManifestTransactionRejectsCancellationAndInvalidIntent(t *testing.T) {
 		t.Fatal("unknown transaction kind accepted")
 	}
 	invalidManifest := valid
-	invalidManifest.Next.Version = 2
+	invalidManifest.Next.Version = 3
 	if validTransaction(root, invalidManifest) {
 		t.Fatal("invalid next manifest accepted")
 	}

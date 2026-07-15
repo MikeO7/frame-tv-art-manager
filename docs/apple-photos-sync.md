@@ -24,9 +24,9 @@ The manager runs a lightweight HTTP upload endpoint on the same health server it
                                         sync to TV
 ```
 
-1. You send a JPEG or PNG to `POST http://<server>:8080/upload`.
+1. You send an authenticated JPEG or PNG request to `POST http://<server>:8080/upload`.
 2. The manager saves it to the `artwork/` directory with a deterministic, hash-based filename.
-3. On the next sync cycle (default: every 5 minutes), the image is optimized to 4K, framed with your chosen matte, and uploaded to the TV.
+3. On the next sync cycle (default: every 5 minutes), the image is transformed to the configured target, framed with your chosen matte, and uploaded to the TV.
 4. If you send the same image again, it's silently deduplicated — no wasted space.
 
 ---
@@ -35,6 +35,7 @@ The manager runs a lightweight HTTP upload endpoint on the same health server it
 
 - The manager's health server must be enabled (it is by default on port `8080`). If you set `HEALTH_PORT=0`, the upload endpoint is disabled.
 - The upload feature must be enabled via `UPLOAD_ENABLED=true` in your `.env` (disabled by default for security).
+- `UPLOAD_TOKEN` must be set to a secret of at least 16 characters. Uploads use HTTP Basic authentication with username `frame`.
 - Your Mac or iPhone must be on the same local network as the server.
 
 ---
@@ -58,6 +59,7 @@ This method uses the built-in **Shortcuts** app on your iPhone or iPad to send y
    - Set the URL to: `http://192.168.1.150:8080/upload` (replace with your server's IP).
    - Set the method to **`POST`**.
    - Set **Request Body** to **`File`** (or **`Converted Image`**).
+   - Under **Headers**, add `Authorization` with value `Basic <credentials>`, where `<credentials>` is the Base64 encoding of `frame:YOUR_UPLOAD_TOKEN`.
 7. Done! Tap the **Play** button to test the upload.
 
 > 🔒 **iOS Permissions Troubleshooting:** If Shortcuts reports a permission error when running, open the **Settings** app on your device, select **Shortcuts** → **Advanced**, and turn on the toggles for **Allow Running Scripts** and **Allow Sharing Large Amounts of Data (if visible)**.
@@ -102,6 +104,7 @@ Save this as `~/frame-tv-sync.sh`:
 #!/bin/bash
 # Sync Apple Photos favorites to Frame TV Art Manager
 SERVER="http://192.168.1.150:8080"
+UPLOAD_TOKEN="replace-with-your-upload-token"
 TEMP_DIR=$(mktemp -d)
 
 # Add Homebrew and pip bin paths for launchd environment
@@ -122,7 +125,7 @@ osxphotos export "$TEMP_DIR" \
 # Upload each exported photo
 for f in "$TEMP_DIR"/*.jpeg "$TEMP_DIR"/*.jpg; do
   [ -f "$f" ] || continue
-  curl -s -X POST -F "file=@$f" "$SERVER/upload"
+  curl -s -u "frame:$UPLOAD_TOKEN" -X POST -F "file=@$f" "$SERVER/upload"
 done
 
 rm -rf "$TEMP_DIR"
@@ -186,6 +189,7 @@ The fastest way to push a single image from any terminal:
 
 ```bash
 curl -X POST \
+  -u "frame:$UPLOAD_TOKEN" \
   -F "file=@/path/to/photo.jpg" \
   http://192.168.1.150:8080/upload
 ```
@@ -194,7 +198,7 @@ Upload an entire folder of photos:
 
 ```bash
 for f in ~/Desktop/frame-photos/*.jpg; do
-  curl -s -X POST -F "file=@$f" http://192.168.1.150:8080/upload
+  curl -s -u "frame:$UPLOAD_TOKEN" -X POST -F "file=@$f" http://192.168.1.150:8080/upload
   echo "  → uploaded $(basename "$f")"
 done
 ```
@@ -208,9 +212,9 @@ Replace `192.168.1.150` with your server's IP address.
 Once an image arrives at the `/upload` endpoint:
 
 1. **Validation.** The server checks the file is a valid JPEG or PNG and is within the size limit (`MAX_DOWNLOAD_SIZE_MB`, default 20 MB).
-2. **Identity & dedup.** A content hash is computed. If the same image was uploaded before, the duplicate is silently discarded.
+2. **Identity & dedup.** An exact encoded-byte SHA-256 hash is computed. If the same file was uploaded before, the duplicate is silently discarded.
 3. **Saved to artwork/.** The file is written with a deterministic name: `upload-{hash}.jpg`. This name is stable across re-uploads.
-4. **Optimization.** On the next sync cycle, the optimizer scales it to 4K (3840×2160), applies your matte style, and applies museum mode filters if enabled.
+4. **Optimization.** On the next sync cycle, the optimizer applies orientation, the configured portrait/crop policy, and exact target sizing (3840×2160 by default). PNG processing, smart crop, sharpening, and museum treatment follow their image settings.
 5. **TV sync.** The image is uploaded to the TV via the Samsung Art API and appears in Art Mode.
 
 ### What about removal?
@@ -227,6 +231,7 @@ Uploaded photos are treated as **user-owned files** — the manager never delete
 | Variable | Default | Description |
 |---|---|---|
 | `UPLOAD_ENABLED` | `false` | Set to `true` to enable the `/upload` endpoint. |
+| `UPLOAD_TOKEN` | required | HTTP Basic-auth password; minimum 16 characters. |
 | `MAX_DOWNLOAD_SIZE_MB` | `20` | Maximum file size per upload in megabytes. |
 | `HEALTH_PORT` | `8080` | Port for the health server (and the upload endpoint). |
 
@@ -235,6 +240,6 @@ Uploaded photos are treated as **user-owned files** — the manager never delete
 ## Security Notes
 
 - The upload endpoint is **disabled by default**. You must explicitly set `UPLOAD_ENABLED=true`.
-- The endpoint accepts uploads from **any client on the network** without authentication. Only enable it on a trusted LAN.
+- Every upload requires HTTP Basic authentication. Keep the endpoint on a trusted LAN because plain HTTP does not encrypt the token or image; use a TLS reverse proxy before crossing untrusted networks.
 - Files are validated (magic bytes, size limits) before being written to disk.
 - Filenames are sanitized — the original filename is never used. The server generates a safe, hash-based name.

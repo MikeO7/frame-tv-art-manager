@@ -14,8 +14,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 func TestIsPortraitFile_SeekFailureFromNonSeekableSource(t *testing.T) {
@@ -98,7 +96,7 @@ func TestProcessCollagePair_CreateTempFailure(t *testing.T) {
 	}
 }
 
-func TestProcessCollagePair_CommitCollisionIsError(t *testing.T) {
+func TestProcessCollagePairExtendsDigestForOccupiedName(t *testing.T) {
 	dir := t.TempDir()
 	writeTestImage(t, filepath.Join(dir, "upload_a.h_a.jpg"), 8, 12)
 	writeTestImage(t, filepath.Join(dir, "upload_b.h_b.jpg"), 8, 12)
@@ -107,19 +105,7 @@ func TestProcessCollagePair_CommitCollisionIsError(t *testing.T) {
 	cfg.MaxWidth = 8
 	cfg.MaxHeight = 12
 
-	stem1, hash1, ext1 := artwork.ExtractStemAndHash("upload_a.h_a.jpg")
-	stem2, hash2, _ := artwork.ExtractStemAndHash("upload_b.h_b.jpg")
-	ext := strings.ToLower(ext1)
-	if ext != extJPG && ext != extJPEG && ext != extPNG {
-		ext = extJPG
-	}
-	collageName := artwork.BuildOptimizedName("collage_"+stem1+"_"+stem2, cfg.MaxWidth, cfg.MaxHeight, hash1+"_"+hash2, ext)
-	collisionPath := filepath.Join(dir, collageName)
-	if err := os.WriteFile(collisionPath, []byte("operator artwork"), 0o644); err != nil {
-		t.Fatalf("create output collision target: %v", err)
-	}
-
-	_, err := processCollagePair(collageJob{
+	collageName, err := processCollagePair(collageJob{
 		artworkDir: dir,
 		f1:         "upload_a.h_a.jpg",
 		f2:         "upload_b.h_b.jpg",
@@ -127,15 +113,37 @@ func TestProcessCollagePair_CommitCollisionIsError(t *testing.T) {
 		catalog:    &recordingCatalog{},
 		logger:     discardLogger(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "commit collage") {
-		t.Fatalf("expected commit collision error, got %v", err)
+	if err != nil {
+		t.Fatalf("seed collage: %v", err)
 	}
-	if got, err := os.ReadFile(collisionPath); err != nil || string(got) != "operator artwork" {
-		t.Fatalf("collision target was replaced: %q, %v", got, err)
+	collisionPath := filepath.Join(dir, collageName)
+	original, err := os.ReadFile(collisionPath)
+	if err != nil {
+		t.Fatalf("read seeded collage: %v", err)
+	}
+	writeTestImage(t, filepath.Join(dir, "upload_a.h_a.jpg"), 8, 12)
+	writeTestImage(t, filepath.Join(dir, "upload_b.h_b.jpg"), 8, 12)
+
+	alternateName, err := processCollagePair(collageJob{
+		artworkDir: dir,
+		f1:         "upload_a.h_a.jpg",
+		f2:         "upload_b.h_b.jpg",
+		cfg:        cfg,
+		catalog:    &recordingCatalog{},
+		logger:     discardLogger(),
+	})
+	if err != nil || alternateName == collageName {
+		t.Fatalf("alternate collage = %q, error %v", alternateName, err)
+	}
+	if got, err := os.ReadFile(collisionPath); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("collision target was replaced: %d bytes, %v", len(got), err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, alternateName)); err != nil {
+		t.Fatalf("alternate collage does not exist: %v", err)
 	}
 	for _, name := range []string{"upload_a.h_a.jpg", "upload_b.h_b.jpg"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
-			t.Fatalf("collage source %q was removed after collision: %v", name, err)
+		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("collage source %q still exists: %v", name, err)
 		}
 	}
 }
@@ -215,10 +223,12 @@ func TestProcessCollagesOddUploadPortraitSkipsOne(t *testing.T) {
 	}
 
 	var count int64
+	cfg := DefaultConfig()
+	cfg.PortraitMode = portraitModeCollage
 	if err := processCollages(collageBatch{
 		artworkDir:     dir,
 		localFiles:     localFiles,
-		cfg:            DefaultConfig(),
+		cfg:            cfg,
 		catalog:        &recordingCatalog{},
 		onRename:       nil,
 		logger:         discardLogger(),

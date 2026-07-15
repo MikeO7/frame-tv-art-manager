@@ -3,18 +3,31 @@ package brightness
 import (
 	"errors"
 	"log/slog"
+	"math"
 	"testing"
 	"time"
 )
 
 func TestJulianCenturyJanuaryAndJune(t *testing.T) {
 	j2000 := time.Date(2000, time.January, 1, 12, 0, 0, 0, time.UTC)
-	if got := julianCentury(j2000); got < -0.001 || got > 0.001 {
-		t.Fatalf("julianCentury(J2000) = %v, want near 0", got)
+	if got := julianCentury(j2000); math.Abs(got) > 1e-12 {
+		t.Fatalf("julianCentury(J2000) = %v, want 0", got)
 	}
 	if january, june := julianCentury(time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)),
 		julianCentury(time.Date(2025, time.June, 1, 0, 0, 0, 0, time.UTC)); january >= june {
 		t.Fatalf("January century %v should precede June %v", january, june)
+	}
+}
+
+func TestSunElevationMatchesNOAAGoldenVector(t *testing.T) {
+	t.Parallel()
+
+	// NOAA General Solar Position Calculations, independently evaluated for
+	// Denver at this UTC instant: equation of time -5.86 minutes and geometric
+	// solar elevation 26.03 degrees.
+	got := sunElevation(39.7392, -104.9903, time.Date(2026, time.July, 14, 0, 0, 0, 0, time.UTC))
+	if math.Abs(got-26.03) > 0.1 {
+		t.Fatalf("sunElevation() = %.4f degrees, want 26.03 (+/- 0.1)", got)
 	}
 }
 

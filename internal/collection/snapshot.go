@@ -1,17 +1,14 @@
 package collection
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"path/filepath"
+	"slices"
 	"strings"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
 const maxCollectionControlBytes int64 = 16 << 20
@@ -23,13 +20,17 @@ type manifest struct {
 }
 
 type manifestItem struct {
-	Name      string      `json:"name"`
-	Digest    string      `json:"digest"`
-	Type      FileType    `json:"type"`
-	Width     int         `json:"width"`
-	Height    int         `json:"height"`
-	OriginKey string      `json:"origin_key"`
-	Class     OriginClass `json:"class"`
+	Name         string         `json:"name"`
+	Digest       string         `json:"digest"`
+	Type         FileType       `json:"type"`
+	Width        int            `json:"width"`
+	Height       int            `json:"height"`
+	OriginKey    string         `json:"origin_key"`
+	Class        OriginClass    `json:"class"`
+	Key          string         `json:"key,omitempty"`
+	SourceKeys   []string       `json:"source_keys,omitempty"`
+	TransformKey string         `json:"transform_key,omitempty"`
+	Derivative   DerivativeKind `json:"derivative,omitempty"`
 }
 
 func buildSnapshot(root string, items []Item, changes []Change, dryRun bool) Snapshot {
@@ -57,10 +58,12 @@ func newManifest(items []Item) manifest {
 		entries = append(entries, manifestItem{
 			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
 			Width: item.Width, Height: item.Height,
-			OriginKey: item.Origin.Key, Class: item.Origin.Class,
+			OriginKey: item.Origin.Key, Class: item.Origin.Class, Key: item.Key,
+			SourceKeys:   append([]string(nil), item.SourceKeys...),
+			TransformKey: item.TransformKey, Derivative: item.Derivative,
 		})
 	}
-	return manifest{Version: 1, Generation: generation(items), Items: entries}
+	return manifest{Version: 2, Generation: generation(items), Items: entries}
 }
 
 func generation(items []Item) string {
@@ -69,7 +72,9 @@ func generation(items []Item) string {
 		entries = append(entries, manifestItem{
 			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
 			Width: item.Width, Height: item.Height,
-			OriginKey: item.Origin.Key, Class: item.Origin.Class,
+			OriginKey: item.Origin.Key, Class: item.Origin.Class, Key: item.Key,
+			SourceKeys:   append([]string(nil), item.SourceKeys...),
+			TransformKey: item.TransformKey, Derivative: item.Derivative,
 		})
 	}
 	data, err := json.Marshal(entries)
@@ -95,12 +100,14 @@ func ValidateSnapshot(expectedRoot string, snapshot Snapshot) error {
 	items := cloneItems(snapshot.Items)
 	sortItems(items)
 	names := make(map[string]struct{}, len(items))
+	keys := make(map[string]struct{}, len(items))
 	digests := make(map[[sha256.Size]byte]struct{}, len(items))
 	for _, item := range items {
-		if err := validateSnapshotItem(expectedRoot, item, names, digests); err != nil {
+		if err := validateSnapshotItem(expectedRoot, item, names, keys, digests); err != nil {
 			return err
 		}
 		names[strings.ToLower(item.Name)] = struct{}{}
+		keys[strings.ToLower(item.Key)] = struct{}{}
 		digests[item.Digest] = struct{}{}
 	}
 	if generation(items) != snapshot.Generation {
@@ -113,6 +120,7 @@ func validateSnapshotItem(
 	expectedRoot string,
 	item Item,
 	names map[string]struct{},
+	keys map[string]struct{},
 	digests map[[sha256.Size]byte]struct{},
 ) error {
 	lowerName := strings.ToLower(item.Name)
@@ -122,11 +130,21 @@ func validateSnapshotItem(
 	if _, exists := names[lowerName]; exists {
 		return fmt.Errorf("collection snapshot repeats name %q", item.Name)
 	}
+	if item.Key == "" || filepath.Base(item.Key) != item.Key || strings.ContainsAny(item.Key, `/\\`) ||
+		isReserved(strings.ToLower(item.Key)) || !isSupportedName(item.Key) {
+		return fmt.Errorf("collection snapshot item %q artwork key %q is invalid", item.Name, item.Key)
+	}
+	if _, exists := keys[strings.ToLower(item.Key)]; exists {
+		return fmt.Errorf("collection snapshot repeats artwork key %q", item.Key)
+	}
 	if _, exists := digests[item.Digest]; exists {
 		return fmt.Errorf("collection snapshot repeats digest %s", hex.EncodeToString(item.Digest[:]))
 	}
 	if err := validateSnapshotOrigin(item); err != nil {
 		return fmt.Errorf("collection snapshot item %q origin is invalid: %w", item.Name, err)
+	}
+	if err := validateSnapshotDerivative(item); err != nil {
+		return fmt.Errorf("collection snapshot item %q derivative is invalid: %w", item.Name, err)
 	}
 	return nil
 }
@@ -173,19 +191,91 @@ func snapshotTypeMatchesName(typeID FileType, lowerName string) bool {
 func validateSnapshotOrigin(item Item) error {
 	switch item.Origin.Class {
 	case OriginOperator:
-		if item.Origin.Key != "operator:"+item.Name {
-			return errors.New("operator key does not match the item name")
+		if !validPrefixedKey(item.Origin.Key, "operator:") {
+			return errors.New("operator key is invalid")
 		}
 	case OriginOperatorUpload:
-		if item.Origin.Key != "upload:"+hex.EncodeToString(item.Digest[:]) {
-			return errors.New("upload key does not match the item digest")
-		}
+		return validateUploadOrigin(item)
 	case OriginSource:
 		if !validSourceOriginKey(item.Origin.Key) {
 			return errors.New("source key is invalid")
 		}
+	case OriginDerived:
+		if !validPrefixedKey(item.Origin.Key, "derived:") {
+			return errors.New("derived key is invalid")
+		}
 	default:
 		return fmt.Errorf("unknown class %q", item.Origin.Class)
+	}
+	return nil
+}
+
+func validateUploadOrigin(item Item) error {
+	encoded := strings.TrimPrefix(item.Origin.Key, "upload:")
+	decoded, err := hex.DecodeString(encoded)
+	if err != nil || len(decoded) != sha256.Size || encoded != strings.ToLower(encoded) {
+		return errors.New("upload key is invalid")
+	}
+	if item.Derivative == "" && item.Origin.Key != "upload:"+hex.EncodeToString(item.Digest[:]) {
+		return errors.New("upload key does not match the item digest")
+	}
+	return nil
+}
+
+func validPrefixedKey(key, prefix string) bool {
+	value := strings.TrimPrefix(key, prefix)
+	return value != key && value != "" && len(key) <= 512 && key == strings.TrimSpace(key) &&
+		!strings.ContainsAny(value, "/\\\x00\r\n")
+}
+
+func validateSnapshotDerivative(item Item) error {
+	if err := validateSourceReferences(item); err != nil {
+		return err
+	}
+	return validateTransformMetadata(item)
+}
+
+func validateSourceReferences(item Item) error {
+	if !slices.IsSorted(item.SourceKeys) {
+		return errors.New("source references are not sorted")
+	}
+	seen := make(map[string]struct{}, len(item.SourceKeys))
+	for _, key := range item.SourceKeys {
+		if !validSourceOriginKey(key) {
+			return fmt.Errorf("source reference %q is invalid", key)
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return fmt.Errorf("source reference %q is duplicated", key)
+		}
+		seen[key] = struct{}{}
+	}
+	if item.Origin.Class == OriginSource {
+		if _, exists := seen[item.Origin.Key]; !exists {
+			return errors.New("source origin is absent from source references")
+		}
+	}
+	return nil
+}
+
+func validateTransformMetadata(item Item) error {
+	switch item.Derivative {
+	case "":
+		if item.TransformKey != "" {
+			return errors.New("untransformed artwork has a transform key")
+		}
+		if item.Origin.Class == OriginDerived {
+			return errors.New("derived artwork has no derivative kind")
+		}
+	case DerivativeOptimized, DerivativeCollage:
+		decoded, err := hex.DecodeString(item.TransformKey)
+		if err != nil || len(decoded) != sha256.Size {
+			return errors.New("transformed artwork has an invalid transform key")
+		}
+		if (item.Derivative == DerivativeCollage) != (item.Origin.Class == OriginDerived) {
+			return errors.New("collage derivative and derived origin disagree")
+		}
+	default:
+		return fmt.Errorf("unknown derivative kind %q", item.Derivative)
 	}
 	return nil
 }
@@ -194,41 +284,4 @@ func validSourceOriginKey(key string) bool {
 	const prefix = "source:"
 	return strings.HasPrefix(key, prefix) && len(key) > len(prefix) && len(key) <= 512 &&
 		key == strings.TrimSpace(key) && !strings.ContainsAny(key, "/\\\x00\r\n")
-}
-
-type manifestOrigin struct {
-	digest [sha256.Size]byte
-	origin Origin
-}
-
-func readManifestOrigins(ctx context.Context, root string) (map[string]manifestOrigin, error) {
-	value, exists, err := readManifest(ctx, root)
-	if err != nil || !exists {
-		return map[string]manifestOrigin{}, err
-	}
-	return validateManifestItems(value)
-}
-
-func readManifest(ctx context.Context, root string) (manifest, bool, error) {
-	path := filepath.Join(root, controlDirectory, manifestName)
-	data, err := durablefs.ReadStable(ctx, path, durablefs.StableReadOptions{
-		MaxBytes: maxCollectionControlBytes, RequiredMode: 0o600,
-	})
-	if errors.Is(err, fs.ErrNotExist) {
-		return manifest{}, false, nil
-	}
-	if err != nil {
-		return manifest{}, false, fmt.Errorf("read collection manifest: %w", err)
-	}
-	var value manifest
-	if err := json.Unmarshal(data, &value); err != nil {
-		return manifest{}, false, fmt.Errorf("decode collection manifest: %w", err)
-	}
-	if value.Version != 1 {
-		return manifest{}, false, fmt.Errorf("unsupported collection manifest version %d", value.Version)
-	}
-	if _, err := validateManifestItems(value); err != nil {
-		return manifest{}, false, err
-	}
-	return value, true, nil
 }

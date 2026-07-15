@@ -149,34 +149,32 @@ func TestPixabayProvider_fetchPhotoList_ErrorsAndParsing(t *testing.T) {
 func TestPixabayProvider_Resolve_ErrorsAndPaths(t *testing.T) {
 	c := newPixabayProvider("key", slog.Default())
 
-	var globalIndex int32 = 0
-
 	// 1. Invalid format (no colon)
-	_, err := c.Resolve(context.Background(), "pixabay", &globalIndex)
+	_, err := c.Resolve(context.Background(), "pixabay")
 	if err == nil || !strings.Contains(err.Error(), "invalid pixabay format") {
 		t.Errorf("expected invalid format error, got %v", err)
 	}
 
 	// 2. Search without query
-	_, err = c.Resolve(context.Background(), "pixabay:search", &globalIndex)
+	_, err = c.Resolve(context.Background(), "pixabay:search")
 	if err == nil || !strings.Contains(err.Error(), "search requires a query") {
 		t.Errorf("expected search query error, got %v", err)
 	}
 
 	// 3. Photo without ID
-	_, err = c.Resolve(context.Background(), "pixabay:photo", &globalIndex)
+	_, err = c.Resolve(context.Background(), "pixabay:photo")
 	if err == nil || !strings.Contains(err.Error(), "photo requires an ID") {
 		t.Errorf("expected photo ID error, got %v", err)
 	}
 
 	// 4. User without ID
-	_, err = c.Resolve(context.Background(), "pixabay:user", &globalIndex)
+	_, err = c.Resolve(context.Background(), "pixabay:user")
 	if err == nil || !strings.Contains(err.Error(), "user requires an ID") {
 		t.Errorf("expected user ID error, got %v", err)
 	}
 
 	// 5. Unknown command
-	_, err = c.Resolve(context.Background(), "pixabay:unknown_cmd:123", &globalIndex)
+	_, err = c.Resolve(context.Background(), "pixabay:unknown_cmd:123")
 	if err == nil || !strings.Contains(err.Error(), "unknown pixabay type") {
 		t.Errorf("expected unknown type error, got %v", err)
 	}
@@ -184,7 +182,7 @@ func TestPixabayProvider_Resolve_ErrorsAndPaths(t *testing.T) {
 	// 6. Underlying fetch error
 	// Use an invalid server to trigger fetch error for search
 	c.BaseURL = "invalid-url://foo"
-	_, err = c.Resolve(context.Background(), "pixabay:search:mars", &globalIndex)
+	_, err = c.Resolve(context.Background(), "pixabay:search:mars")
 	if err == nil {
 		t.Error("expected fetch error to propagate up, got nil")
 	}
@@ -200,15 +198,15 @@ func TestPixabayProvider_Resolve_ErrorsAndPaths(t *testing.T) {
 	defer serverSuccess.Close()
 
 	c.BaseURL = serverSuccess.URL
-	images, err := c.Resolve(context.Background(), "pixabay:photo:123", &globalIndex)
+	images, err := c.Resolve(context.Background(), "pixabay:photo:123")
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
 	if len(images) != 1 {
 		t.Fatalf("expected 1 image, got %d", len(images))
 	}
-	if !strings.Contains(images[0].Identity, "__pixabay__") {
-		t.Errorf("expected identity to contain __pixabay__, got %s", images[0].Identity)
+	if !strings.HasPrefix(images[0].Identity, "pixabay--") {
+		t.Errorf("expected stable Pixabay identity, got %s", images[0].Identity)
 	}
 }
 

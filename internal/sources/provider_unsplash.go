@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -150,7 +149,7 @@ func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation s
 	}
 }
 
-func (p *unsplashProvider) Resolve(ctx context.Context, line string, globalIndex *int32) ([]SourceImage, error) {
+func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
 	if p.accessKey == "" {
 		return nil, fmt.Errorf("UNSPLASH_ACCESS_KEY not configured")
 	}
@@ -185,9 +184,8 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string, globalIndex
 		phCopy := ph
 		urlStr := phCopy.URLs.Raw + "&w=3840&q=95&fm=jpg"
 
-		slug := capSlug(strings.ReplaceAll(Filename(parts[2]+"-"+phCopy.ID), " ", "-"))
-		idx := atomic.AddInt32(globalIndex, 1) - 1
-		identity := fmt.Sprintf("%03d__unsplash__%s", idx, slug)
+		label := strings.ReplaceAll(Filename(parts[2]+"-"+phCopy.ID), " ", "-")
+		identity := sourceIdentity(p.Name(), phCopy.ID, label)
 
 		images = append(images, SourceImage{
 			URL:      urlStr,

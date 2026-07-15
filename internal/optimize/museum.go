@@ -48,7 +48,7 @@ func unifyCollectionWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 
 	// Target Gallery RMS (Rich Contrast)
 	const targetRMS = 58.0
-	contrastGamma := 1.0 + (rms-targetRMS)/100.0
+	contrastGamma := 1.0 + (targetRMS-rms)/100.0
 	if contrastGamma < 0.85 {
 		contrastGamma = 0.85
 	}
@@ -189,12 +189,22 @@ func applyContrastAndGamutWithWorkers(src *image.RGBA, contrastGamma float64, wo
 
 	var lutLin [256]float64
 	for i := 0; i < 256; i++ {
-		lutLin[i] = math.Pow(float64(i)/255.0, 2.2*contrastGamma)
+		encoded := float64(i) / 255.0
+		linear := encoded / 12.92
+		if encoded > 0.04045 {
+			linear = math.Pow((encoded+0.055)/1.055, 2.4)
+		}
+		lutLin[i] = math.Pow(linear, contrastGamma)
 	}
 
 	lutSrgbOnce.Do(func() {
 		for i := 0; i < srgbLUTSize; i++ {
-			val := math.Pow(float64(i)/srgbLUTMaxIdx, 0.454545454545) * 255.0
+			linear := float64(i) / srgbLUTMaxIdx
+			encoded := linear * 12.92
+			if linear > 0.0031308 {
+				encoded = 1.055*math.Pow(linear, 1.0/2.4) - 0.055
+			}
+			val := encoded * 255.0
 			switch {
 			case val < 0:
 				lutSrgb[i] = 0

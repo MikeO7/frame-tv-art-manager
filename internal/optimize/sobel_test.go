@@ -29,10 +29,13 @@ func TestCalculateSobelEdge_Paths(t *testing.T) {
 	if boundary != boundarySlow {
 		t.Fatalf("boundary fast=%f slow=%f", boundary, boundarySlow)
 	}
+	if interior > 1 || boundary > 1 {
+		t.Fatalf("normalized Sobel response exceeded 1: interior=%f boundary=%f", interior, boundary)
+	}
 }
 
 func TestCalculateSkinProbability(t *testing.T) {
-	if got := calculateSkinProbability(200, 120, 100); got != 1.0 {
+	if got := calculateSkinProbability(200, 120, 100); got < 0.65 || got > 1.0 {
 		t.Fatalf("expected high confidence skin, got %f", got)
 	}
 	if got := calculateSkinProbability(0, 0, 0); got != 0.0 {

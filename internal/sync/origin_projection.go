@@ -1,46 +1,82 @@
 package sync
 
 import (
-	"strings"
-	"sync"
+	"fmt"
+	"sort"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
-type originProjection struct {
-	mu      sync.Mutex
-	origins map[string]collectionpkg.Origin
+type metadataProjection struct {
+	items map[string]collectionpkg.ItemMetadata
 }
 
-func newOriginProjection(snapshot collectionpkg.Snapshot) *originProjection {
-	origins := make(map[string]collectionpkg.Origin, len(snapshot.Items))
+func newMetadataProjection(snapshot collectionpkg.Snapshot) *metadataProjection {
+	items := make(map[string]collectionpkg.ItemMetadata, len(snapshot.Items))
 	for _, item := range snapshot.Items {
-		origins[item.Name] = item.Origin
+		items[item.Name] = collectionpkg.ItemMetadata{
+			Key: item.Key, Origin: item.Origin, SourceKeys: append([]string(nil), item.SourceKeys...),
+			TransformKey: item.TransformKey, Derivative: item.Derivative,
+		}
 	}
-	return &originProjection{origins: origins}
+	return &metadataProjection{items: items}
 }
 
-func (projection *originProjection) observeRename(oldName, newName string) error {
-	projection.mu.Lock()
-	defer projection.mu.Unlock()
-	origin, exists := projection.origins[oldName]
-	delete(projection.origins, oldName)
-	if newName == "" {
-		return nil
+func (projection *metadataProjection) apply(derivatives []optimize.Derivative) error {
+	for _, derivative := range derivatives {
+		if derivative.Name == "" || len(derivative.Inputs) == 0 {
+			return fmt.Errorf("optimized derivative has incomplete lineage")
+		}
+		inputs := make([]collectionpkg.ItemMetadata, 0, len(derivative.Inputs))
+		for _, name := range derivative.Inputs {
+			metadata, exists := projection.items[name]
+			if !exists {
+				return fmt.Errorf("optimized derivative input %q is unknown", name)
+			}
+			inputs = append(inputs, metadata)
+			delete(projection.items, name)
+		}
+		output := inputs[0]
+		output.TransformKey = derivative.TransformKey
+		switch derivative.Kind {
+		case string(collectionpkg.DerivativeOptimized):
+			output.Derivative = collectionpkg.DerivativeOptimized
+		case string(collectionpkg.DerivativeCollage):
+			output.Key = derivative.Name
+			output.Origin = collectionpkg.Origin{
+				Key: "derived:" + derivative.Name, Class: collectionpkg.OriginDerived,
+			}
+			output.SourceKeys = unionSourceKeys(inputs)
+			output.Derivative = collectionpkg.DerivativeCollage
+		default:
+			return fmt.Errorf("optimized derivative %q has unknown kind %q", derivative.Name, derivative.Kind)
+		}
+		projection.items[derivative.Name] = output
 	}
-	if !exists || origin.Class != collectionpkg.OriginSource || strings.HasPrefix(newName, "collage_") {
-		origin = collectionpkg.Origin{Key: "operator:" + newName, Class: collectionpkg.OriginOperator}
-	}
-	projection.origins[newName] = origin
 	return nil
 }
 
-func (projection *originProjection) snapshot() map[string]collectionpkg.Origin {
-	projection.mu.Lock()
-	defer projection.mu.Unlock()
-	result := make(map[string]collectionpkg.Origin, len(projection.origins))
-	for name, origin := range projection.origins {
-		result[name] = origin
+func unionSourceKeys(items []collectionpkg.ItemMetadata) []string {
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		for _, key := range item.SourceKeys {
+			seen[key] = struct{}{}
+		}
+	}
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (projection *metadataProjection) snapshot() map[string]collectionpkg.ItemMetadata {
+	result := make(map[string]collectionpkg.ItemMetadata, len(projection.items))
+	for name, metadata := range projection.items {
+		metadata.SourceKeys = append([]string(nil), metadata.SourceKeys...)
+		result[name] = metadata
 	}
 	return result
 }

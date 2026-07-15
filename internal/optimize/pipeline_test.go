@@ -206,8 +206,8 @@ func TestCollectRawPortraitsAndWorkerBounds(t *testing.T) {
 		"upload_1x1_opt.h_hash.jpg": {}, "._sidecar.jpg": {}, "missing.jpg": {},
 	}
 	got := collectRawPortraits(dir, files, false)
-	if len(got) != 1 || got[0] != "upload_portrait.jpg" {
-		t.Fatalf("collectRawPortraits(upload only) = %v", got)
+	if len(got) != 0 {
+		t.Fatalf("collectRawPortraits(crop mode) = %v, want none", got)
 	}
 	if _, exists := files["._sidecar.jpg"]; exists {
 		t.Fatal("AppleDouble sidecar was not pruned")
@@ -232,10 +232,12 @@ func TestProcessCollagesUpdatesBatchState(t *testing.T) {
 	catalog := &recordingCatalog{}
 	var count int64
 	var callbacks [][2]string
+	cfg := DefaultConfig()
+	cfg.PortraitMode = portraitModeCollage
 	if err := processCollages(collageBatch{
 		artworkDir: dir,
 		localFiles: localFiles,
-		cfg:        DefaultConfig(),
+		cfg:        cfg,
 		catalog:    catalog,
 		onRename: func(oldName, newName string) error {
 			callbacks = append(callbacks, [2]string{oldName, newName})
@@ -250,7 +252,7 @@ func TestProcessCollagesUpdatesBatchState(t *testing.T) {
 		t.Fatalf("count=%d files=%v callbacks=%v renames=%v", count, localFiles, callbacks, catalog.renames)
 	}
 	for name := range localFiles {
-		if !strings.HasPrefix(name, "collage_") {
+		if !strings.HasPrefix(name, "collage-") {
 			t.Fatalf("unexpected collage name %q", name)
 		}
 	}
@@ -264,7 +266,7 @@ func TestOptimizeFileFastAndUnsupportedPaths(t *testing.T) {
 	cfg.MaxWidth = 8
 	cfg.MaxHeight = 6
 	name, modified, err := OptimizeFile(jpegPath, cfg, discardLogger())
-	if err != nil || !modified || name == "exact.jpg" {
+	if err != nil || modified || name != "exact.jpg" {
 		t.Fatalf("exact OptimizeFile = (%q, %v, %v)", name, modified, err)
 	}
 	if fastName, fastModified, fastErr := OptimizeFile(filepath.Join(dir, name), cfg, discardLogger()); fastErr != nil || fastModified || fastName != name {
@@ -279,8 +281,9 @@ func TestOptimizeFileFastAndUnsupportedPaths(t *testing.T) {
 	pngPath := filepath.Join(dir, "image.png")
 	writeTestImage(t, pngPath, 4, 4)
 	cfg.Enabled = true
-	if _, modified, err := OptimizeFile(pngPath, cfg, discardLogger()); err != nil || modified {
-		t.Fatalf("PNG OptimizeFile = (%v, %v)", modified, err)
+	pngName, modified, err := OptimizeFile(pngPath, cfg, discardLogger())
+	if err != nil || !modified || filepath.Ext(pngName) != extPNG {
+		t.Fatalf("PNG OptimizeFile = (%q, %v, %v)", pngName, modified, err)
 	}
 
 	if _, _, err := OptimizeFile(filepath.Join(dir, "missing.jpg"), cfg, discardLogger()); err == nil {

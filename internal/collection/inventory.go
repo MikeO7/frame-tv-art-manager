@@ -9,9 +9,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
-	"unicode"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 const controlDirectory = ".frame-tv-art-manager"
@@ -75,8 +77,12 @@ func scanEntries(
 			return nil, err
 		}
 		if include {
-			if origin, ok := origins[item.Name]; ok && origin.digest == item.Digest {
-				item.Origin = origin.origin
+			if metadata, ok := origins[item.Name]; ok && metadata.digest == item.Digest {
+				item.Key = metadata.key
+				item.Origin = metadata.origin
+				item.SourceKeys = append([]string(nil), metadata.sourceKeys...)
+				item.TransformKey = metadata.transformKey
+				item.Derivative = metadata.derivative
 			}
 			items = append(items, item)
 		}
@@ -113,7 +119,7 @@ func inspectItem(ctx context.Context, root string, entry os.DirEntry, maxBytes, 
 		return Item{}, false, fmt.Errorf("close artwork %s: %w", entry.Name(), closeErr)
 	}
 	return Item{
-		Name: entry.Name(), Path: path, Digest: validated.digest,
+		Name: entry.Name(), Key: entry.Name(), Path: path, Digest: validated.digest,
 		Type: validated.typeID, Size: info.Size(), Width: validated.width, Height: validated.height,
 		Origin: Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
 	}, true, nil
@@ -134,6 +140,7 @@ func (s *store) plan(items []Item, input validatedImage, origin Origin) ([]Item,
 			if item.Origin != origin && origin.Class == OriginSource {
 				projected := cloneItems(items)
 				projected[index].Origin = origin
+				projected[index].SourceKeys = appendSourceKey(projected[index].SourceKeys, origin.Key)
 				return projected, Change{Kind: ChangeAdopted, Name: item.Name}, true
 			}
 			return cloneItems(items), Change{Kind: ChangeDuplicate, Name: item.Name}, true
@@ -141,64 +148,49 @@ func (s *store) plan(items []Item, input validatedImage, origin Origin) ([]Item,
 	}
 	name := collisionSafeName(items, input, origin)
 	item := Item{
-		Name: name, Path: filepath.Join(s.root, name), Digest: input.digest,
+		Name: name, Key: name, Path: filepath.Join(s.root, name), Digest: input.digest,
 		Type: input.typeID, Size: int64(len(input.data)), Width: input.width, Height: input.height,
 		Origin: origin,
+	}
+	if origin.Class == OriginSource {
+		item.SourceKeys = []string{origin.Key}
 	}
 	projected := append(cloneItems(items), item)
 	sortItems(projected)
 	return projected, Change{Kind: ChangeAdded, Name: name}, false
 }
 
+func appendSourceKey(keys []string, key string) []string {
+	for _, existing := range keys {
+		if existing == key {
+			return append([]string(nil), keys...)
+		}
+	}
+	result := append(append([]string(nil), keys...), key)
+	sort.Strings(result)
+	return result
+}
+
 func collisionSafeName(items []Item, input validatedImage, origins ...Origin) string {
-	digest := fmt.Sprintf("%x", input.digest)
 	extension := "." + string(input.typeID)
-	stem := input.stem
+	label := input.stem
 	var origin Origin
 	if len(origins) > 0 {
 		origin = origins[0]
 	}
 	if origin.Class == OriginSource {
-		stem = sourceOriginStem(origin.Key)
-	}
-	for length := 12; length <= len(digest); length += 4 {
-		candidate := stem + "-" + digest[:length] + extension
-		if origin.Class == OriginSource {
-			candidate = stem + ".h_" + digest[:length] + extension
+		_, identity, found := strings.Cut(origin.Key, ":")
+		if found {
+			label = identity
 		}
+	}
+	for digestBytes := 6; digestBytes <= len(input.digest); digestBytes += 2 {
+		candidate := artwork.BuildContentName(label, input.digest, extension, digestBytes)
 		if nameAvailable(items, candidate) {
 			return candidate
 		}
 	}
-	if origin.Class == OriginSource {
-		return stem + ".h_" + digest + "-artwork" + extension
-	}
-	return stem + "-" + digest + "-artwork" + extension
-}
-
-func sourceOriginStem(key string) string {
-	_, identity, found := strings.Cut(key, ":")
-	if !found {
-		return string(OriginSource)
-	}
-	var stem strings.Builder
-	stem.Grow(len(identity))
-	for _, char := range identity {
-		switch {
-		case unicode.IsLetter(char), unicode.IsDigit(char), strings.ContainsRune("._-", char):
-			stem.WriteRune(char)
-		case unicode.IsSpace(char):
-			stem.WriteByte('-')
-		}
-		if stem.Len() >= 100 {
-			break
-		}
-	}
-	result := strings.Trim(stem.String(), ".-_")
-	if result == "" {
-		return string(OriginSource)
-	}
-	return result
+	return artwork.BuildContentName("artwork", input.digest, extension, len(input.digest))
 }
 
 func nameAvailable(items []Item, candidate string) bool {
@@ -222,7 +214,19 @@ func sortItems(items []Item) {
 func cloneItems(items []Item) []Item {
 	cloned := make([]Item, len(items))
 	copy(cloned, items)
+	for index := range cloned {
+		//nolint:gosec // cloned is allocated to exactly len(items) immediately above
+		cloned[index].SourceKeys = append([]string(nil), items[index].SourceKeys...)
+	}
 	return cloned
+}
+
+func itemEqual(left, right Item) bool {
+	return left.Name == right.Name && left.Key == right.Key && left.Path == right.Path &&
+		left.Digest == right.Digest && left.Type == right.Type && left.Size == right.Size &&
+		left.Width == right.Width && left.Height == right.Height && left.Origin == right.Origin &&
+		left.TransformKey == right.TransformKey && left.Derivative == right.Derivative &&
+		slices.Equal(left.SourceKeys, right.SourceKeys)
 }
 
 func hashFile(path string) ([sha256.Size]byte, error) {

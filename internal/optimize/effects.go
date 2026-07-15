@@ -3,13 +3,12 @@ package optimize
 import (
 	"image"
 	std_draw "image/draw"
-
-	"golang.org/x/image/draw"
+	"math"
 )
 
-// toRGBA converts any image type to a standard RGBA image for processing.
-// This also serves as a color normalization step, flattening different
-// color profiles into a consistent sRGB-like space for the TV.
+// toRGBA converts decoded samples to a standard RGBA buffer. Go's standard
+// decoders do not apply embedded ICC transforms, so callers must enforce the
+// configured profile policy before treating samples as sRGB.
 func toRGBA(img image.Image) *image.RGBA {
 	if rgba, ok := img.(*image.RGBA); ok {
 		return rgba
@@ -23,17 +22,22 @@ func toRGBA(img image.Image) *image.RGBA {
 // centerCrop performs a content-aware crop and high-fidelity scale to target dimensions.
 // It uses the Director's Cut Saliency Engine to identify subjects and optimize composition.
 func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
-	cropRect := cropRectForAspect(src, float64(targetW)/float64(targetH), smart)
-
-	// Single-pass high-fidelity scaling using Catmull-Rom (Bicubic).
-	final := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
-	draw.CatmullRom.Scale(final, final.Bounds(), src, cropRect, draw.Src, nil)
-	return final
+	return centerCropWithOptions(src, targetW, targetH, smart, 0.03, true)
 }
 
-// cropRectForAspect selects the source rectangle that matches targetAspect,
-// centered by default or saliency-aligned when smart cropping is enabled.
-func cropRectForAspect(src *image.RGBA, targetAspect float64, smart bool) image.Rectangle {
+//nolint:revive // crop policy is kept explicit at this internal pixel-processing seam
+func centerCropWithOptions(
+	src *image.RGBA,
+	targetW, targetH int,
+	smart bool,
+	minGain float64,
+	linearLight bool,
+) *image.RGBA {
+	cropRect := cropRectForAspectWithGain(src, float64(targetW)/float64(targetH), smart, minGain)
+	return resizeCrop(src, cropRect, targetW, targetH, linearLight)
+}
+
+func cropRectForAspectWithGain(src *image.RGBA, targetAspect float64, smart bool, minGain float64) image.Rectangle {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
 
@@ -42,7 +46,7 @@ func cropRectForAspect(src *image.RGBA, targetAspect float64, smart bool) image.
 		cropW := int(float64(srcH) * targetAspect)
 		bestX := (srcW - cropW) / 2 // Default to center
 		if smart {
-			bestX = findBestDirectorCrop(src, cropW, srcH, true)
+			bestX = findBestDirectorCropWithGain(src, cropW, srcH, true, minGain)
 		}
 		return image.Rect(bestX, 0, bestX+cropW, srcH)
 	}
@@ -51,7 +55,7 @@ func cropRectForAspect(src *image.RGBA, targetAspect float64, smart bool) image.
 	cropH := int(float64(srcW) / targetAspect)
 	bestY := (srcH - cropH) / 2 // Default to center
 	if smart {
-		bestY = findBestDirectorCrop(src, srcW, cropH, false)
+		bestY = findBestDirectorCropWithGain(src, srcW, cropH, false, minGain)
 	}
 	return image.Rect(0, bestY, srcW, bestY+cropH)
 }
@@ -225,5 +229,52 @@ func sharpenWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 		copy(dst.Pix[y*dst.Stride+(width-1)*4:y*dst.Stride+(width-1)*4+4], src.Pix[y*src.Stride+(width-1)*4:y*src.Stride+(width-1)*4+4])
 	}
 
+	return dst
+}
+
+// sharpenWithOptions applies a bounded luminance unsharp mask. The threshold
+// suppresses amplification of low-level JPEG noise and the shared luminance
+// delta avoids creating colored edge halos.
+//
+//nolint:gocognit // bounded row/channel loops keep the hot pixel path allocation-free
+func sharpenWithOptions(src *image.RGBA, amount float64, threshold, workerLimit int) *image.RGBA {
+	if amount <= 0 {
+		return src
+	}
+	bounds := src.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width < 3 || height < 3 {
+		return src
+	}
+	dst := image.NewRGBA(bounds)
+	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
+	chunk := (height - 2 + pixelPartitions - 1) / pixelPartitions
+	rgbLuma := func(pix []uint8, offset int) int {
+		return int(pix[offset])*299 + int(pix[offset+1])*587 + int(pix[offset+2])*114
+	}
+	runPixelTasks(workerLimit, func(partition int) {
+		startY := 1 + partition*chunk
+		endY := min(startY+chunk, height-1)
+		if startY >= endY {
+			return
+		}
+		for y := startY; y < endY; y++ {
+			for x := 1; x < width-1; x++ {
+				center := y*src.Stride + x*4
+				neighborLuma := (rgbLuma(src.Pix, center-src.Stride) +
+					rgbLuma(src.Pix, center+src.Stride) +
+					rgbLuma(src.Pix, center-4) +
+					rgbLuma(src.Pix, center+4)) / 4
+				delta := float64(rgbLuma(src.Pix, center)-neighborLuma) / 1000
+				if math.Abs(delta) < float64(threshold) {
+					continue
+				}
+				for channel := 0; channel < 3; channel++ {
+					value := float64(src.Pix[center+channel]) + amount*delta
+					dst.Pix[center+channel] = clampByte(value)
+				}
+			}
+		}
+	})
 	return dst
 }

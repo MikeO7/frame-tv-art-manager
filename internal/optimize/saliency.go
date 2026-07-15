@@ -12,6 +12,10 @@ import (
 // 1. Global BMS analysis at 256px to find the primary Region of Interest.
 // 2. High-res Micro-Refinement at the focal point to optimize for edge alignment.
 func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool) int {
+	return findBestDirectorCropWithGain(src, windowW, windowH, horizontal, 0.03)
+}
+
+func findBestDirectorCropWithGain(src *image.RGBA, windowW, windowH int, horizontal bool, minGain float64) int {
 	srcBounds := src.Bounds()
 	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
 
@@ -23,7 +27,7 @@ func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool
 	}
 	workW, workH := int(float64(srcW)*scale), int(float64(srcH)*scale)
 	workImg := image.NewRGBA(image.Rect(0, 0, workW, workH))
-	draw.NearestNeighbor.Scale(workImg, workImg.Bounds(), src, src.Bounds(), draw.Src, nil)
+	draw.CatmullRom.Scale(workImg, workImg.Bounds(), src, src.Bounds(), draw.Src, nil)
 
 	saliencyMap := generateSaliencyMap(workImg)
 	integral := calculateIntegralImage(saliencyMap, workW, workH)
@@ -39,11 +43,32 @@ func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool
 		mapWinH:    mapWinH,
 		horizontal: horizontal,
 	})
+	centerMapPos := max((workW-mapWinW)/2, 0)
+	if !horizontal {
+		centerMapPos = max((workH-mapWinH)/2, 0)
+	}
+	bestScore := cropWindowScore(integral, workW, workH, mapWinW, mapWinH, horizontal, bestMapPos)
+	centerScore := cropWindowScore(integral, workW, workH, mapWinW, mapWinH, horizontal, centerMapPos)
+	denominator := math.Max(math.Abs(centerScore), 1e-9)
+	if (bestScore-centerScore)/denominator < max(minGain, 0) {
+		if horizontal {
+			return max((srcW-windowW)/2, 0)
+		}
+		return max((srcH-windowH)/2, 0)
+	}
 	globalOffset := int(float64(bestMapPos) / scale)
 
 	// PASS 2: High-Res Micro-Refinement (Fine-tuning at the focal point)
 	// We search within a +/- 5% range at a higher resolution to snap to sharp edges.
 	return refineOffset(src, globalOffset, windowW, windowH, horizontal)
+}
+
+//nolint:revive // integral-image geometry is explicit to keep scoring allocation-free
+func cropWindowScore(integral []float64, workW, workH, windowW, windowH int, horizontal bool, offset int) float64 {
+	if horizontal {
+		return getRectSum(integral, image.Rect(offset, 0, offset+windowW-1, workH-1), workW)
+	}
+	return getRectSum(integral, image.Rect(0, offset, workW-1, offset+windowH-1), workW)
 }
 
 // windowScan bundles the inputs for sliding a crop window across a saliency
@@ -64,11 +89,21 @@ func scanBestWindow(scan windowScan) int {
 	mapWinW, mapWinH := scan.mapWinW, scan.mapWinH
 	horizontal := scan.horizontal
 
-	best, maxScore := 0, -1.0
+	axisSize, windowSize := workH, mapWinH
+	if horizontal {
+		axisSize, windowSize = workW, mapWinW
+	}
+	center := max((axisSize-windowSize)/2, 0)
+	best, maxScore := center, -1.0
+	isBetter := func(score float64, position int) bool {
+		const tieTolerance = 1e-12
+		return score > maxScore+tieTolerance ||
+			(math.Abs(score-maxScore) <= tieTolerance && math.Abs(float64(position-center)) < math.Abs(float64(best-center)))
+	}
 	if horizontal {
 		for mx := 0; mx <= workW-mapWinW; mx++ {
 			rect := image.Rect(mx, 0, mx+mapWinW-1, workH-1)
-			if score := getRectSum(integral, rect, workW); score > maxScore {
+			if score := getRectSum(integral, rect, workW); isBetter(score, mx) {
 				maxScore, best = score, mx
 			}
 		}
@@ -76,7 +111,7 @@ func scanBestWindow(scan windowScan) int {
 	}
 	for my := 0; my <= workH-mapWinH; my++ {
 		rect := image.Rect(0, my, workW-1, my+mapWinH-1)
-		if score := getRectSum(integral, rect, workW); score > maxScore {
+		if score := getRectSum(integral, rect, workW); isBetter(score, my) {
 			maxScore, best = score, my
 		}
 	}
@@ -111,7 +146,7 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 	}
 
 	bestOffset := globalOffset
-	maxScore := -1.0
+	minScore := math.Inf(1)
 
 	// Local search at high resolution
 	for delta := -searchRange; delta <= searchRange; delta++ {
@@ -123,7 +158,8 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 			offset = clampOffset(offset, windowH, srcH)
 		}
 
-		// Quick edge-score of the boundary
+		// Prefer crop boundaries that cross less edge energy while remaining near
+		// the globally selected saliency window.
 		var score float64
 		if horizontal {
 			score = calculateEdgeScore(src, offset, 0, offset+windowW, srcH)
@@ -131,8 +167,9 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 			score = calculateEdgeScore(src, 0, offset, srcW, offset+windowH)
 		}
 
-		if score > maxScore {
-			maxScore = score
+		score += 0.02 * math.Abs(float64(delta)) / float64(searchRange)
+		if score < minScore {
+			minScore = score
 			bestOffset = offset
 		}
 	}
@@ -140,21 +177,29 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 	return bestOffset
 }
 
-// calculateEdgeScore calculates a simplified Sobel sum for micro-refinement.
+// calculateEdgeScore estimates the edge energy crossed by the two active crop
+// boundaries. Lower values are safer because they are less likely to bisect a
+// salient subject.
 func calculateEdgeScore(src *image.RGBA, x1, y1, x2, y2 int) float64 {
-	score := 0.0
-	// Sample only the corners and midpoints for speed in refinement
-	samples := [][]int{
-		{x1, y1},
-		{x2 - 1, y1},
-		{x1, y2 - 1},
-		{x2 - 1, y2 - 1},
-		{(x1 + x2) / 2, (y1 + y2) / 2},
+	const samples = 64
+	score, count := 0.0, 0
+	if y1 == src.Bounds().Min.Y && y2 == src.Bounds().Max.Y {
+		for i := 0; i < samples; i++ {
+			y := y1 + i*max(y2-y1-1, 0)/max(samples-1, 1)
+			score += calculateSobelEdge(src, x1, y) + calculateSobelEdge(src, x2-1, y)
+			count += 2
+		}
+	} else {
+		for i := 0; i < samples; i++ {
+			x := x1 + i*max(x2-x1-1, 0)/max(samples-1, 1)
+			score += calculateSobelEdge(src, x, y1) + calculateSobelEdge(src, x, y2-1)
+			count += 2
+		}
 	}
-	for _, s := range samples {
-		score += calculateSobelEdge(src, s[0], s[1])
+	if count == 0 {
+		return 0
 	}
-	return score
+	return score / float64(count)
 }
 
 // generateSaliencyMap creates a 2D map where each pixel represents a saliency score.
@@ -247,10 +292,8 @@ func generateSaliencyMap(src *image.RGBA) []float64 {
 			centerBias := 0.1 * (1.0 - math.Sqrt(dxSq[x]+dySqY))
 			aesthetic := centerBias + ((thirdX[x] + thirdYY) * 0.25) + balanceX[x]
 
-			// Weighted Fusion v4.1
-			// BMS is the core, with perceptual CIEDE2000 color distance as the color contrast weight.
-			fusion := (object * 0.40) + (edge * 0.20) + (skin * 0.25) + (colorWeight * 0.15)
-			mapData[yW+x] = fusion * (1.0 + aesthetic)
+			fusion := (object * 0.45) + (edge * 0.25) + (skin * 0.10) + (colorWeight * 0.20)
+			mapData[yW+x] = min(max(fusion*(1.0+aesthetic), 0), 1)
 		}
 	}
 	return mapData

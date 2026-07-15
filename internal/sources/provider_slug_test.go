@@ -77,19 +77,25 @@ func TestDirectProvider(t *testing.T) {
 		t.Error("direct provider should handle any line")
 	}
 
-	var idx int32
-	images, err := p.Resolve(context.Background(), "direct:https://example.com/a.jpg", &idx)
+	images, err := p.Resolve(context.Background(), "direct:https://example.com/gallery/a.jpg")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(images) != 1 {
 		t.Fatalf("expected 1 image, got %d", len(images))
 	}
-	if images[0].URL != "https://example.com/a.jpg" {
+	if images[0].URL != "https://example.com/gallery/a.jpg" {
 		t.Errorf("URL = %q", images[0].URL)
 	}
-	if !strings.HasPrefix(images[0].Identity, "000__direct__") {
-		t.Errorf("Identity = %q", images[0].Identity)
+	second, err := p.Resolve(context.Background(), "direct:https://example.com/gallery/b.jpg")
+	if err != nil || len(second) != 1 {
+		t.Fatalf("second Resolve() = (%v, %v)", second, err)
+	}
+	if images[0].Identity == second[0].Identity {
+		t.Fatalf("distinct direct URLs share identity %q", images[0].Identity)
+	}
+	if strings.HasPrefix(images[0].Identity, "000__") || strings.HasPrefix(second[0].Identity, "001__") {
+		t.Fatalf("source identities depend on list order: %q / %q", images[0].Identity, second[0].Identity)
 	}
 }
 

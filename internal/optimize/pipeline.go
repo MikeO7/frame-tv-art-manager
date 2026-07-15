@@ -24,14 +24,16 @@ type Catalog interface {
 type RenameObserver func(oldName, newName string) error
 
 type optContext struct {
-	artworkDir string
-	localFiles map[string]struct{}
-	cfg        Config
-	onRename   RenameObserver
-	catalog    Catalog
-	logger     *slog.Logger
-	mu         sync.Mutex
-	errs       []error
+	artworkDir   string
+	localFiles   map[string]struct{}
+	cfg          Config
+	onRename     RenameObserver
+	catalog      Catalog
+	logger       *slog.Logger
+	inputs       map[string]StageInput
+	transformKey string
+	mu           sync.Mutex
+	errs         []error
 }
 
 func (o *optContext) recordError(err error) {
@@ -93,6 +95,19 @@ func OptimizeCatalog(
 	onRename RenameObserver,
 	logger *slog.Logger,
 ) (int, error) {
+	return optimizeCatalog(ctx, artworkDir, catalog, cfg, onRename, logger, nil)
+}
+
+//nolint:revive // internal orchestration seam keeps filesystem, catalog, policy, observer, and metadata explicit
+func optimizeCatalog(
+	ctx context.Context,
+	artworkDir string,
+	catalog Catalog,
+	cfg Config,
+	onRename RenameObserver,
+	logger *slog.Logger,
+	inputs map[string]StageInput,
+) (int, error) {
 	localFiles, err := catalog.SupportedFiles()
 	if err != nil {
 		return 0, err
@@ -100,13 +115,8 @@ func OptimizeCatalog(
 
 	var optimizedCount int64
 
-	// Collage pairing runs in two cases:
-	//   1. Always for uploaded files (prefixed "upload"): iPhone/web uploads are
-	//      personal photos and benefit from side-by-side collage layout.
-	//   2. For all portrait files when PORTRAIT_MODE=collage is explicitly set.
-	//
-	// Remote source images (Unsplash, NASA, etc.) default to crop mode and are
-	// excluded from auto-collage unless PORTRAIT_MODE=collage is set.
+	// Collage pairing is explicit: every portrait source is eligible only when
+	// PORTRAIT_MODE=collage. Upload origin does not override operator policy.
 	//nolint:contextcheck // the batch carries this exact context into every collage filesystem operation
 	collageErr := processCollages(collageBatch{
 		ctx:            ctx,
@@ -117,15 +127,18 @@ func OptimizeCatalog(
 		onRename:       onRename,
 		logger:         logger,
 		optimizedCount: &optimizedCount,
+		inputs:         inputs,
 	})
 
 	o := &optContext{
-		artworkDir: artworkDir,
-		localFiles: localFiles,
-		cfg:        cfg,
-		onRename:   onRename,
-		catalog:    catalog,
-		logger:     logger,
+		artworkDir:   artworkDir,
+		localFiles:   localFiles,
+		cfg:          cfg,
+		onRename:     onRename,
+		catalog:      catalog,
+		logger:       logger,
+		inputs:       inputs,
+		transformKey: TransformKey(cfg),
 	}
 
 	runOptimizeWorkers(ctx, enqueueOptimizeJobs(localFiles), o, &optimizedCount)
@@ -189,6 +202,7 @@ func clampWorkers(n int) int {
 
 func handleSingleOptimizationContext(ctx context.Context, filename string, o *optContext) (bool, bool) {
 	path := filepath.Join(o.artworkDir, filename)
+	input := o.inputs[filename]
 
 	if !o.cfg.Enabled {
 		if err := ValidateImage(path); err != nil {
@@ -199,7 +213,18 @@ func handleSingleOptimizationContext(ctx context.Context, filename string, o *op
 		return false, true
 	}
 
-	newFilename, modified, err := optimizeFile(ctx, path, o.cfg, o.logger, defaultPixelWorkers())
+	if input.Derivative != "" && input.TransformKey == o.transformKey &&
+		input.Width == o.cfg.MaxWidth && input.Height == o.cfg.MaxHeight {
+		return false, true
+	}
+	force := input.Derivative != "" && input.TransformKey != o.transformKey
+	label := input.Key
+	if label == "" {
+		label = filename
+	}
+	newFilename, modified, err := optimizeFileWithPolicy(
+		ctx, path, label, force, o.cfg, o.logger, defaultPixelWorkers(),
+	)
 	if err != nil {
 		o.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
 		o.recordDelete(filename)

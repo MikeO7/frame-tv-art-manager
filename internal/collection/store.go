@@ -194,7 +194,7 @@ func verifyExpected(expected, committed []Item) error {
 		return fmt.Errorf("item count changed from %d to %d", len(expected), len(committed))
 	}
 	for index := range expected {
-		if expected[index] != committed[index] {
+		if !itemEqual(expected[index], committed[index]) {
 			return fmt.Errorf("item %d changed during publication", index)
 		}
 	}

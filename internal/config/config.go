@@ -146,17 +146,35 @@ type Config struct {
 	// OptimizeEnabled enables automatic image resizing for oversized images.
 	OptimizeEnabled bool
 
-	// SmartCropEnabled uses entropy analysis to find the best crop area (default false).
+	// SmartCropEnabled uses saliency analysis to choose the crop area (default false).
 	SmartCropEnabled bool
+	// SmartCropMinGain is the minimum fractional score improvement over center crop.
+	SmartCropMinGain float64
 
-	// OptimizeMaxWidth is the maximum image width (default 3840 for 4K).
+	// OptimizeMaxWidth is the exact target image width (default 3840 for 4K).
 	OptimizeMaxWidth int
 
-	// OptimizeMaxHeight is the maximum image height (default 2160 for 4K).
+	// OptimizeMaxHeight is the exact target image height (default 2160 for 4K).
 	OptimizeMaxHeight int
+	// OptimizeMaxPixels bounds target pixels and peak transform memory.
+	OptimizeMaxPixels int
+	// OptimizeMemoryMB bounds the estimated peak bytes of one transform.
+	OptimizeMemoryMB int
 
 	// OptimizeJPEGQuality is the JPEG encoding quality (1-100, default 95).
 	OptimizeJPEGQuality int
+	// OptimizePNG enables the same geometry/effect pipeline for PNG inputs.
+	OptimizePNG bool
+	// LinearLightResize performs crop/resampling in linear-light 16-bit RGBA.
+	LinearLightResize bool
+	// SharpenAmount controls bounded post-resize unsharp masking; zero disables it.
+	SharpenAmount float64
+	// SharpenThreshold suppresses sharpening for small 8-bit luminance differences.
+	SharpenThreshold int
+	// DitherEnabled enables final 8-bit quantization dither. It is off for the current 8-bit pipeline.
+	DitherEnabled bool
+	// ColorProfilePolicy is assume-srgb or reject-embedded.
+	ColorProfilePolicy string
 
 	// MuseumModeEnabled applies canvas texture, black lifting, and warming for a "real art" look.
 	MuseumModeEnabled bool
@@ -203,6 +221,5 @@ type Config struct {
 
 	// --- Portrait Mode Handling ---
 	// PortraitMode controls how vertical photos are resized: "collage", "pad", "crop" (default "crop").
-	// Uploaded files (from the /upload endpoint) always use collage mode regardless of this setting.
 	PortraitMode string
 }

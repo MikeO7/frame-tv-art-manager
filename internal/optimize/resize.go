@@ -3,6 +3,8 @@ package optimize
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"image"
 	_ "image/png" // Needed for decoding PNG images
@@ -11,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
@@ -19,17 +20,24 @@ const (
 	extJPG              = ".jpg"
 	extJPEG             = ".jpeg"
 	extPNG              = ".png"
-	optimizedMarker     = "_opt.h_"
 	portraitModeCollage = "collage"
 )
 
 type Config struct {
 	Enabled             bool
 	SmartCropEnabled    bool
+	SmartCropMinGain    float64
 	MaxWidth            int
 	MaxHeight           int
+	MaxOutputPixels     int64
+	MaxWorkingBytes     int64
 	OptimizeJPEGQuality int
-	NormalizeLuminance  bool
+	OptimizePNG         bool
+	LinearLightResize   bool
+	SharpenAmount       float64
+	SharpenThreshold    int
+	DitherEnabled       bool
+	ColorProfilePolicy  string
 	MuseumModeEnabled   bool
 	MuseumModeIntensity int
 	PortraitMode        string
@@ -40,10 +48,18 @@ func DefaultConfig() Config {
 	return Config{
 		Enabled:             true,
 		SmartCropEnabled:    false,
+		SmartCropMinGain:    0.03,
 		MaxWidth:            3840,
 		MaxHeight:           2160,
+		MaxOutputPixels:     defaultMaxOutputPixels,
+		MaxWorkingBytes:     512 * 1024 * 1024,
 		OptimizeJPEGQuality: 95,
-		NormalizeLuminance:  true,
+		OptimizePNG:         true,
+		LinearLightResize:   true,
+		SharpenAmount:       0.25,
+		SharpenThreshold:    4,
+		DitherEnabled:       false,
+		ColorProfilePolicy:  "assume-srgb",
 		MuseumModeEnabled:   false,
 		MuseumModeIntensity: 1,
 		PortraitMode:        "crop",
@@ -51,6 +67,19 @@ func DefaultConfig() Config {
 }
 
 func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Logger, pixelWorkerLimit int) (string, bool, error) {
+	return optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, cfg, logger, pixelWorkerLimit)
+}
+
+//nolint:funlen,gocognit,gocyclo,revive // explicit transaction inputs avoid hidden optimizer state
+func optimizeFileWithPolicy(
+	ctx context.Context,
+	path string,
+	label string,
+	force bool,
+	cfg Config,
+	logger *slog.Logger,
+	pixelWorkerLimit int,
+) (string, bool, error) {
 	filename := filepath.Base(path)
 	dir := filepath.Dir(path)
 	if err := ctx.Err(); err != nil {
@@ -59,10 +88,12 @@ func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Log
 	if !cfg.Enabled {
 		return filename, false, nil
 	}
+	if err := validateOutputDimensions(cfg.MaxWidth, cfg.MaxHeight, cfg.MaxOutputPixels); err != nil {
+		return filename, false, err
+	}
 
-	// Only optimize JPEGs (Frame TV primary format).
 	ext := strings.ToLower(filepath.Ext(path))
-	if !isOptimizableJPEG(ext) {
+	if !isOptimizableImage(ext, cfg) {
 		return filename, false, nil
 	}
 
@@ -76,13 +107,33 @@ func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Log
 	if err != nil {
 		return filename, false, err
 	}
-	if checkFastPath(filename, cfg, logger) {
-		if err := validateOptimizedPixels(f); err != nil {
+	if err := validateWorkingSet(width, height, cfg); err != nil {
+		return filename, false, err
+	}
+	colorMetadata, err := enforceColorProfilePolicy(f, ext, cfg.ColorProfilePolicy)
+	if err != nil {
+		return filename, false, fmt.Errorf("enforce color profile policy: %w", err)
+	}
+	if colorMetadata != "" {
+		logger.Warn("embedded color metadata is not transformed; treating decoded samples as sRGB", "file", filename, "metadata", colorMetadata)
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return filename, false, fmt.Errorf("seek image orientation: %w", err)
+	}
+	orientation, err := readOrientationForExtension(f, ext)
+	if err != nil {
+		return filename, false, fmt.Errorf("read image orientation: %w", err)
+	}
+	displayWidth, displayHeight := width, height
+	if orientation >= 5 && orientation <= 8 {
+		displayWidth, displayHeight = height, width
+	}
+	needsAdjustment := force || orientation != 1 || displayWidth != cfg.MaxWidth || displayHeight != cfg.MaxHeight
+	if !needsAdjustment && !cfg.MuseumModeEnabled && !cfg.DitherEnabled {
+		if err := validateOptimizedPixels(f, cfg.MaxWidth, cfg.MaxHeight); err != nil {
 			return filename, false, err
 		}
-		return filename, false, nil
 	}
-	needsAdjustment := width != cfg.MaxWidth || height != cfg.MaxHeight
 
 	var finalW, finalH int
 	var modified bool
@@ -105,7 +156,7 @@ func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Log
 	//nolint:contextcheck // the request carries this exact context into the durable rename
 	return handleRename(renameRequest{
 		path: path, filename: filename, dir: dir, modified: modified,
-		finalW: finalW, finalH: finalH, logger: logger, ctx: ctx,
+		finalW: finalW, finalH: finalH, logger: logger, ctx: ctx, cfg: cfg, label: label,
 	})
 }
 
@@ -113,42 +164,58 @@ func isOptimizableJPEG(extension string) bool {
 	return extension == extJPG || extension == extJPEG
 }
 
-func validateOptimizedPixels(file *os.File) error {
+func isOptimizableImage(extension string, cfg Config) bool {
+	return isOptimizableJPEG(extension) || (extension == extPNG && cfg.OptimizePNG)
+}
+
+func readOrientationForExtension(reader *os.File, extension string) (int, error) {
+	if extension == extPNG || extension == "png" {
+		return ReadPNGOrientation(reader)
+	}
+	return ReadOrientation(reader)
+}
+
+func validateOptimizedPixels(file *os.File, expectedWidth, expectedHeight int) error {
 	if _, err := file.Seek(0, 0); err != nil {
 		return fmt.Errorf("seek optimized image: %w", err)
 	}
-	if _, _, err := image.Decode(file); err != nil {
+	decoded, _, err := image.Decode(file)
+	if err != nil {
 		return fmt.Errorf("validate optimized pixels: %w", err)
+	}
+	if bounds := decoded.Bounds(); bounds.Dx() != expectedWidth || bounds.Dy() != expectedHeight {
+		return fmt.Errorf(
+			"validate optimized dimensions: got %dx%d, want %dx%d",
+			bounds.Dx(), bounds.Dy(), expectedWidth, expectedHeight,
+		)
 	}
 	return nil
 }
 
-// checkFastPath returns true if the file is already optimized with matching dimensions.
-func checkFastPath(filename string, cfg Config, logger *slog.Logger) bool {
-	if isConfiguredOptimizedName(filename, cfg) {
-		w, h, _ := artwork.ParseDimensions(filename)
-		logger.Debug("skipping already optimized file", "file", filename, "dims", fmt.Sprintf("%dx%d", w, h))
-		return true
-	}
-	return false
-}
-
-func isConfiguredOptimizedName(filename string, cfg Config) bool {
-	if !strings.Contains(filename, optimizedMarker) {
-		return false
-	}
-	w, h, ok := artwork.ParseDimensions(filename)
-	return ok && w == cfg.MaxWidth && h == cfg.MaxHeight
+// TransformKey identifies every setting and algorithm revision that can alter
+// encoded output bytes. It is durable manifest metadata, never filename state.
+func TransformKey(cfg Config) string {
+	description := fmt.Sprintf(
+		"frame-image-v3|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|sharp=%.6g/%d|dither=%t|museum=%t/%d|portrait=%s|profile=%s",
+		cfg.MaxWidth, cfg.MaxHeight, cfg.OptimizeJPEGQuality, cfg.OptimizePNG, cfg.LinearLightResize,
+		cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.SharpenAmount, cfg.SharpenThreshold,
+		cfg.DitherEnabled, cfg.MuseumModeEnabled, cfg.MuseumModeIntensity,
+		cfg.PortraitMode, cfg.ColorProfilePolicy,
+	)
+	digest := sha256.Sum256([]byte(description))
+	return hex.EncodeToString(digest[:])
 }
 
 // renameRequest bundles the inputs needed to decide whether an optimized file
 // should be renamed to reflect its final dimensions.
 type renameRequest struct {
 	path, filename, dir string
+	label               string
 	modified            bool
 	finalW, finalH      int
 	logger              *slog.Logger
 	ctx                 context.Context
+	cfg                 Config
 }
 
 // handleRename renames the file according to optimized names if needed.
@@ -157,19 +224,25 @@ func handleRename(req renameRequest) (string, bool, error) {
 	filename := req.filename
 	dir := req.dir
 	modified := req.modified
-	finalW, finalH := req.finalW, req.finalH
 	logger := req.logger
 
-	currentW, currentH, _ := artwork.ParseDimensions(filename)
-	isOpt := strings.Contains(filename, optimizedMarker)
-
-	if !modified && isOpt && currentW == finalW && currentH == finalH {
+	if !modified {
 		return filename, false, nil
 	}
-
-	newFilename, changed := artwork.BuildOptimizedNameFromFile(filename, finalW, finalH)
-	if !changed {
-		return filename, modified, nil
+	digest, err := fileDigest(path)
+	if err != nil {
+		return filename, modified, fmt.Errorf("hash optimized output: %w", err)
+	}
+	label := req.label
+	if label == "" {
+		label = filename
+	}
+	newFilename, err := availableContentName(dir, filename, label, digest, filepath.Ext(filename))
+	if err != nil {
+		return filename, modified, fmt.Errorf("choose optimized output name: %w", err)
+	}
+	if newFilename == filename {
+		return filename, true, nil
 	}
 
 	newPath := filepath.Join(dir, newFilename)
@@ -183,17 +256,4 @@ func handleRename(req renameRequest) (string, bool, error) {
 
 	logger.Info("updated optimized filename", "old", filename, "new", newFilename)
 	return newFilename, true, nil
-}
-
-// ValidateImage performs a low-cost corruption check by decoding only the
-// image's configuration header, without loading pixel data into memory.
-func ValidateImage(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-
-	_, _, err = image.DecodeConfig(f)
-	return err
 }

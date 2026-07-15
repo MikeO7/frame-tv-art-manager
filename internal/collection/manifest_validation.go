@@ -3,6 +3,7 @@ package collection
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -12,24 +13,32 @@ import (
 func validateManifestItems(value manifest) (map[string]manifestOrigin, error) {
 	origins := make(map[string]manifestOrigin, len(value.Items))
 	names := make(map[string]struct{}, len(value.Items))
+	keys := make(map[string]struct{}, len(value.Items))
 	digests := make(map[[sha256.Size]byte]struct{}, len(value.Items))
 	items := make([]Item, 0, len(value.Items))
 	for _, entry := range value.Items {
-		item, err := validateManifestItem(entry, names, digests)
+		item, err := validateManifestItem(value.Version, entry, names, keys, digests)
 		if err != nil {
 			return nil, err
 		}
-		origins[entry.Name] = manifestOrigin{digest: item.Digest, origin: item.Origin}
+		origins[entry.Name] = manifestOrigin{
+			digest: item.Digest, key: item.Key, origin: item.Origin,
+			sourceKeys:   append([]string(nil), item.SourceKeys...),
+			transformKey: item.TransformKey, derivative: item.Derivative,
+		}
 		names[strings.ToLower(entry.Name)] = struct{}{}
+		keys[strings.ToLower(item.Key)] = struct{}{}
 		digests[item.Digest] = struct{}{}
 		items = append(items, item)
 	}
-	return validateManifestGeneration(value.Generation, items, origins)
+	return validateManifestGeneration(value.Version, value.Generation, items, origins)
 }
 
 func validateManifestItem(
+	version int,
 	entry manifestItem,
 	names map[string]struct{},
+	keys map[string]struct{},
 	digests map[[sha256.Size]byte]struct{},
 ) (Item, error) {
 	lowerName, err := validateManifestName(entry.Name, names)
@@ -41,10 +50,17 @@ func validateManifestItem(
 		return Item{}, err
 	}
 	item := Item{
-		Name: entry.Name, Digest: digest, Type: entry.Type, Width: entry.Width, Height: entry.Height,
-		Origin: Origin{Key: entry.OriginKey, Class: entry.Class},
+		Name: entry.Name, Key: entry.Key, Digest: digest, Type: entry.Type, Width: entry.Width, Height: entry.Height,
+		Origin: Origin{Key: entry.OriginKey, Class: entry.Class}, SourceKeys: append([]string(nil), entry.SourceKeys...),
+		TransformKey: entry.TransformKey, Derivative: entry.Derivative,
 	}
-	if err := validateManifestItemFacts(item, lowerName); err != nil {
+	if version == 1 {
+		item.Key = item.Name
+		if item.Origin.Class == OriginSource {
+			item.SourceKeys = []string{item.Origin.Key}
+		}
+	}
+	if err := validateManifestItemFacts(item, lowerName, keys); err != nil {
 		return Item{}, err
 	}
 	return item, nil
@@ -84,20 +100,32 @@ func validateManifestDigest(
 	return digest, nil
 }
 
-func validateManifestItemFacts(item Item, lowerName string) error {
+func validateManifestItemFacts(item Item, lowerName string, keys map[string]struct{}) error {
 	if item.Width <= 0 || item.Height <= 0 {
 		return fmt.Errorf("manifest item %q dimensions must be positive", item.Name)
 	}
 	if !snapshotTypeMatchesName(item.Type, lowerName) {
 		return fmt.Errorf("manifest item %q type %q is invalid for its name", item.Name, item.Type)
 	}
+	key := strings.ToLower(item.Key)
+	if item.Key == "" || filepath.Base(item.Key) != item.Key || strings.ContainsAny(item.Key, `/\\`) ||
+		isReserved(key) || !isSupportedName(item.Key) {
+		return fmt.Errorf("manifest item %q artwork key %q is invalid", item.Name, item.Key)
+	}
+	if _, duplicate := keys[key]; duplicate {
+		return fmt.Errorf("manifest item %q repeats artwork key %q", item.Name, item.Key)
+	}
 	if err := validateSnapshotOrigin(item); err != nil {
 		return fmt.Errorf("manifest item %q origin is invalid: %w", item.Name, err)
+	}
+	if err := validateSnapshotDerivative(item); err != nil {
+		return fmt.Errorf("manifest item %q derivative is invalid: %w", item.Name, err)
 	}
 	return nil
 }
 
 func validateManifestGeneration(
+	version int,
 	generationValue string,
 	items []Item,
 	origins map[string]manifestOrigin,
@@ -106,8 +134,37 @@ func validateManifestGeneration(
 		return nil, errors.New("collection manifest generation is invalid")
 	}
 	sortItems(items)
-	if generationValue != generation(items) {
+	want := generation(items)
+	if version == 1 {
+		want = legacyGeneration(items)
+	}
+	if generationValue != want {
 		return nil, errors.New("collection manifest generation does not match its items")
 	}
 	return origins, nil
+}
+
+func legacyGeneration(items []Item) string {
+	type legacyItem struct {
+		Name      string      `json:"name"`
+		Digest    string      `json:"digest"`
+		Type      FileType    `json:"type"`
+		Width     int         `json:"width"`
+		Height    int         `json:"height"`
+		OriginKey string      `json:"origin_key"`
+		Class     OriginClass `json:"class"`
+	}
+	entries := make([]legacyItem, 0, len(items))
+	for _, item := range items {
+		entries = append(entries, legacyItem{
+			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
+			Width: item.Width, Height: item.Height, OriginKey: item.Origin.Key, Class: item.Origin.Class,
+		})
+	}
+	data, err := json.Marshal(entries)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
 }

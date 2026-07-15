@@ -17,6 +17,10 @@ const (
 	OriginOperatorUpload OriginClass = "operator-upload"
 	OriginOperator       OriginClass = "operator"
 	OriginSource         OriginClass = "source"
+	OriginDerived        OriginClass = "derived"
+
+	DerivativeOptimized DerivativeKind = "optimized"
+	DerivativeCollage   DerivativeKind = "collage"
 
 	ChangeAdded     ChangeKind = "added"
 	ChangeAdopted   ChangeKind = "adopted"
@@ -63,7 +67,18 @@ type PrepareRequest struct {
 type ApplyRequest struct {
 	Directory string
 	Origins   map[string]Origin
+	Metadata  map[string]ItemMetadata
 	DryRun    bool
+}
+
+// ItemMetadata carries stable logical identity across a staged namespace or
+// byte transformation. The staged bytes remain authoritative for media facts.
+type ItemMetadata struct {
+	Key          string
+	Origin       Origin
+	SourceKeys   []string
+	TransformKey string
+	Derivative   DerivativeKind
 }
 
 // Policy applies request-specific limits. Zero values retain store limits.
@@ -81,6 +96,7 @@ type Snapshot struct {
 
 type Item struct {
 	Name   string
+	Key    string
 	Path   string
 	Digest [sha256.Size]byte
 	Type   FileType
@@ -88,11 +104,18 @@ type Item struct {
 	Width  int
 	Height int
 	Origin Origin
+	// SourceKeys retains every stable Source Origin represented by this artwork,
+	// including sources combined into a derived collage.
+	SourceKeys   []string
+	TransformKey string
+	Derivative   DerivativeKind
 }
 
 type FileType string
 
 type OriginClass string
+
+type DerivativeKind string
 
 type Origin struct {
 	Key   string

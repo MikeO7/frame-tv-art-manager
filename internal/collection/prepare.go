@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -150,14 +151,21 @@ func prepareItemOrigin(
 	committed map[string]manifestOrigin,
 	overrides map[string]Origin,
 ) (Item, error) {
-	if origin, ok := committed[item.Name]; ok && origin.digest == item.Digest {
-		item.Origin = origin.origin
+	if metadata, ok := committed[item.Name]; ok && metadata.digest == item.Digest {
+		item.Key = metadata.key
+		item.Origin = metadata.origin
+		item.SourceKeys = append([]string(nil), metadata.sourceKeys...)
+		item.TransformKey = metadata.transformKey
+		item.Derivative = metadata.derivative
 	}
 	origin, overridden := overrides[item.Name]
 	if !overridden {
 		return item, nil
 	}
 	item.Origin = origin
+	if origin.Class == OriginSource {
+		item.SourceKeys = appendSourceKey(item.SourceKeys, origin.Key)
+	}
 	if err := validateSnapshotOrigin(item); err != nil {
 		return Item{}, fmt.Errorf("override artwork %s origin: %w", item.Name, err)
 	}
@@ -228,7 +236,7 @@ func inspectPrepareItem(
 		return Item{}, fmt.Errorf("close: %w", closeErr)
 	}
 	return Item{
-		Name: entry.Name(), Path: path, Digest: validated.digest,
+		Name: entry.Name(), Key: entry.Name(), Path: path, Digest: validated.digest,
 		Type: validated.typeID, Size: info.Size(), Width: validated.width, Height: validated.height,
 		Origin: Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
 	}, nil
@@ -263,12 +271,18 @@ func inventoryChanges(current manifest, items []Item) []Change {
 	return changes
 }
 
+//nolint:gocyclo // explicit field comparison prevents persistence schema fields from being skipped
 func manifestsEqual(left, right manifest) bool {
 	if left.Version != right.Version || left.Generation != right.Generation || len(left.Items) != len(right.Items) {
 		return false
 	}
 	for index := range left.Items {
-		if left.Items[index] != right.Items[index] {
+		leftItem, rightItem := left.Items[index], right.Items[index]
+		if leftItem.Name != rightItem.Name || leftItem.Digest != rightItem.Digest || leftItem.Type != rightItem.Type ||
+			leftItem.Width != rightItem.Width || leftItem.Height != rightItem.Height ||
+			leftItem.OriginKey != rightItem.OriginKey || leftItem.Class != rightItem.Class ||
+			leftItem.Key != rightItem.Key || leftItem.TransformKey != rightItem.TransformKey ||
+			leftItem.Derivative != rightItem.Derivative || !slices.Equal(leftItem.SourceKeys, rightItem.SourceKeys) {
 			return false
 		}
 	}

@@ -13,7 +13,7 @@ import (
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
-	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
 func TestArtworkCollectionBoundaryValidationAndCancellation(t *testing.T) {
@@ -109,16 +109,18 @@ func TestLocalCollectionOptimizationPreflightSkipsOrStages(t *testing.T) {
 	tests := []struct {
 		name      string
 		filename  string
+		width     int
+		height    int
 		wantApply int
 	}{
-		{name: "verified optimized snapshot skips stage and apply", filename: "gallery_4x4_opt.h_abcdef123456.jpg"},
-		{name: "raw jpeg still stages", filename: "gallery.jpg", wantApply: 1},
+		{name: "exact raw image skips needless transform", filename: "gallery.jpg", width: 4, height: 4},
+		{name: "wrong-size raw jpeg stages", filename: "wide.jpg", width: 8, height: 4, wantApply: 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			artworkDir := t.TempDir()
 			path := filepath.Join(artworkDir, test.filename)
-			if err := os.WriteFile(path, createJPEG(t, 4, 4), 0o644); err != nil {
+			if err := os.WriteFile(path, createJPEG(t, test.width, test.height), 0o644); err != nil {
 				t.Fatalf("write artwork: %v", err)
 			}
 			base := newTestCollectionStore(t, artworkDir)
@@ -128,8 +130,7 @@ func TestLocalCollectionOptimizationPreflightSkipsOrStages(t *testing.T) {
 					ArtworkDir: artworkDir, OptimizeEnabled: true,
 					OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,
 				},
-				logger: slog.Default(), loader: fixedSourceLoader{},
-				catalog: sources.NewArtworkCatalog(artworkDir, slog.Default()), store: recording,
+				logger: slog.Default(), loader: fixedSourceLoader{}, store: recording,
 			}
 			tempRoot := t.TempDir()
 			t.Setenv("TMPDIR", tempRoot)
@@ -152,6 +153,35 @@ func TestLocalCollectionOptimizationPreflightSkipsOrStages(t *testing.T) {
 				t.Fatalf("snapshot items = %d, want 1", len(result.snapshot.Items))
 			}
 		})
+	}
+}
+
+func TestLocalCollectionOptimizationPreservesUploadIdentityInManifest(t *testing.T) {
+	t.Parallel()
+	artworkDir := t.TempDir()
+	store := newTestCollectionStore(t, artworkDir)
+	imported, err := store.Import(context.Background(), collectionpkg.ImportRequest{
+		Reader: bytes.NewReader(createJPEG(t, 8, 4)), Hint: "family.jpg",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := imported.Items[0]
+	cfg := &config.Config{
+		ArtworkDir: artworkDir, OptimizeEnabled: true,
+		OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,
+	}
+	manager := &localCollection{
+		cfg: cfg, logger: slog.Default(), loader: fixedSourceLoader{}, store: store,
+	}
+	result, err := manager.prepareCycle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := result.snapshot.Items[0]
+	if got.Name == original.Name || got.Key != original.Key || got.Origin != original.Origin ||
+		got.Derivative != collectionpkg.DerivativeOptimized || got.TransformKey != optimize.TransformKey(cfg.OptimizeOptions()) {
+		t.Fatalf("optimized upload metadata = %+v; original = %+v", got, original)
 	}
 }
 
@@ -188,9 +218,8 @@ func TestLocalCollectionPrepareOwnsCompleteCycle(t *testing.T) {
 		ArtworkDir: artworkDir, OptimizeEnabled: true,
 		OptimizeMaxWidth: 10, OptimizeMaxHeight: 6, OptimizeJPEGQuality: 90,
 	}
-	catalog := sources.NewArtworkCatalog(artworkDir, slog.Default())
 	collection := &localCollection{
-		cfg: cfg, logger: slog.Default(), loader: fixedSourceLoader{downloaded: 1}, catalog: catalog,
+		cfg: cfg, logger: slog.Default(), loader: fixedSourceLoader{downloaded: 1},
 		store: newTestCollectionStore(t, artworkDir),
 	}
 
@@ -214,13 +243,12 @@ func TestLocalCollectionPreservesSourceOriginAcrossOptimization(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed source artwork: %v", err)
 	}
-	catalog := sources.NewArtworkCatalog(artworkDir, slog.Default())
 	manager := &localCollection{
 		cfg: &config.Config{
 			ArtworkDir: artworkDir, OptimizeEnabled: true,
 			OptimizeMaxWidth: 10, OptimizeMaxHeight: 6, OptimizeJPEGQuality: 90,
 		},
-		logger: slog.Default(), loader: fixedSourceLoader{}, catalog: catalog, store: store,
+		logger: slog.Default(), loader: fixedSourceLoader{}, store: store,
 	}
 
 	prepared, err := manager.prepareCycle(context.Background())
@@ -252,9 +280,8 @@ func TestLocalCollectionPreparePropagatesSourceFailure(t *testing.T) {
 	artworkDir := t.TempDir()
 	collection := &localCollection{
 		cfg: &config.Config{ArtworkDir: artworkDir}, logger: slog.Default(),
-		loader:  fixedSourceLoader{err: wantErr},
-		catalog: sources.NewArtworkCatalog(artworkDir, slog.Default()),
-		store:   newTestCollectionStore(t, artworkDir),
+		loader: fixedSourceLoader{err: wantErr},
+		store:  newTestCollectionStore(t, artworkDir),
 	}
 
 	_, err := collection.prepareCycle(context.Background())
@@ -283,8 +310,7 @@ func TestLocalCollectionPrepareDryRunIsReadOnly(t *testing.T) {
 	collection := &localCollection{
 		cfg:    &config.Config{ArtworkDir: artworkDir, DryRun: true, OptimizeEnabled: true},
 		logger: slog.Default(), loader: panicSourceLoader{},
-		catalog: sources.NewArtworkCatalog(artworkDir, slog.Default()),
-		store:   newTestCollectionStore(t, artworkDir),
+		store: newTestCollectionStore(t, artworkDir),
 	}
 	result, err := collection.prepareCycle(context.Background())
 	if err != nil {
@@ -319,10 +345,10 @@ type fixedSourceLoader struct {
 
 type panicSourceLoader struct{}
 
-func (panicSourceLoader) Sync(context.Context) (int, error) {
+func (panicSourceLoader) Sync(context.Context, collectionpkg.Snapshot) (int, error) {
 	panic("source loader called during dry-run")
 }
 
-func (l fixedSourceLoader) Sync(context.Context) (int, error) {
+func (l fixedSourceLoader) Sync(context.Context, collectionpkg.Snapshot) (int, error) {
 	return l.downloaded, l.err
 }

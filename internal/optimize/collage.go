@@ -6,31 +6,47 @@ import (
 	std_draw "image/draw"
 )
 
-// Collage canvas geometry: two portrait panels side-by-side on a 4K landscape
-// canvas, separated by a thin dark seam centered on the midline.
 const (
-	collageWidth      = 3840             // 4K landscape canvas width
-	collageHeight     = 2160             // 4K landscape canvas height
-	collagePanelWidth = collageWidth / 2 // per-image panel width (1920)
-	dividerHalfWidth  = 2                // seam extends dividerHalfWidth px each side of the midline
+	collageWidth  = 3840
+	collageHeight = 2160
 )
 
 // CreateCollage joins two upright portrait images side-by-side into a single
 // 4K (3840x2160) landscape canvas, center-cropping each to a half-width panel
 // and drawing a clean dark divider line down the seam.
 func CreateCollage(img1, img2 *image.RGBA, smart bool) *image.RGBA {
-	canvas := image.NewRGBA(image.Rect(0, 0, collageWidth, collageHeight))
+	return CreateCollageForTarget(img1, img2, collageWidth, collageHeight, smart)
+}
 
-	left := centerCrop(img1, collagePanelWidth, collageHeight, smart)
-	right := centerCrop(img2, collagePanelWidth, collageHeight, smart)
+// CreateCollageForTarget joins two upright portraits into the requested
+// landscape pixel contract.
+func CreateCollageForTarget(img1, img2 *image.RGBA, targetWidth, targetHeight int, smart bool) *image.RGBA {
+	return createCollageForTarget(img1, img2, targetWidth, targetHeight, smart, 0.03, true)
+}
 
-	std_draw.Draw(canvas, image.Rect(0, 0, collagePanelWidth, collageHeight), left, left.Bounds().Min, std_draw.Src)
-	std_draw.Draw(canvas, image.Rect(collagePanelWidth, 0, collageWidth, collageHeight), right, right.Bounds().Min, std_draw.Src)
+//nolint:revive // explicit target and crop-quality controls keep this renderer independent of global config
+func createCollageForTarget(
+	img1, img2 *image.RGBA,
+	targetWidth, targetHeight int,
+	smart bool,
+	minGain float64,
+	linearLight bool,
+) *image.RGBA {
+	canvas := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	leftWidth := targetWidth / 2
+	rightWidth := targetWidth - leftWidth
+
+	left := centerCropWithOptions(img1, leftWidth, targetHeight, smart, minGain, linearLight)
+	right := centerCropWithOptions(img2, rightWidth, targetHeight, smart, minGain, linearLight)
+
+	std_draw.Draw(canvas, image.Rect(0, 0, leftWidth, targetHeight), left, left.Bounds().Min, std_draw.Src)
+	std_draw.Draw(canvas, image.Rect(leftWidth, 0, targetWidth, targetHeight), right, right.Bounds().Min, std_draw.Src)
 
 	// Dark charcoal / off-black seam centered on the panel boundary.
 	dividerColor := color.RGBA{R: 18, G: 18, B: 18, A: 255}
-	for y := 0; y < collageHeight; y++ {
-		for x := collagePanelWidth - dividerHalfWidth; x < collagePanelWidth+dividerHalfWidth; x++ {
+	dividerHalfWidth := max(1, targetWidth/1920)
+	for y := 0; y < targetHeight; y++ {
+		for x := max(0, leftWidth-dividerHalfWidth); x < min(targetWidth, leftWidth+dividerHalfWidth); x++ {
 			canvas.Set(x, y, dividerColor)
 		}
 	}

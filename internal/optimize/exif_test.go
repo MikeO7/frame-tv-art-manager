@@ -3,9 +3,11 @@ package optimize
 import (
 	"bytes"
 	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
+	"image/png"
 	"os"
 	"strings"
 	"testing"
@@ -33,6 +35,34 @@ func exifJPEG(order binary.ByteOrder, tagType uint16, orientation uint32) []byte
 	jpeg := []byte{0xff, 0xd8, 0xff, 0xe1, byte((len(payload) + 2) >> 8), byte(len(payload) + 2)}
 	jpeg = append(jpeg, payload...)
 	return append(jpeg, 0xff, 0xd9)
+}
+
+func TestReadPNGOrientationEXIFChunk(t *testing.T) {
+	t.Parallel()
+	jpegWithExif := exifJPEG(binary.LittleEndian, 3, 6)
+	tiff := jpegWithExif[12 : len(jpegWithExif)-2]
+	var chunk bytes.Buffer
+	if err := binary.Write(&chunk, binary.BigEndian, uint32(len(tiff))); err != nil {
+		t.Fatal(err)
+	}
+	chunk.WriteString("eXIf")
+	chunk.Write(tiff)
+	checksum := crc32.ChecksumIEEE(append([]byte("eXIf"), tiff...))
+	if err := binary.Write(&chunk, binary.BigEndian, checksum); err != nil {
+		t.Fatal(err)
+	}
+
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	raw := encoded.Bytes()
+	const afterIHDR = 33
+	withExif := append(append(append([]byte(nil), raw[:afterIHDR]...), chunk.Bytes()...), raw[afterIHDR:]...)
+	orientation, err := ReadPNGOrientation(bytes.NewReader(withExif))
+	if err != nil || orientation != 6 {
+		t.Fatalf("ReadPNGOrientation() = (%d, %v), want (6, nil)", orientation, err)
+	}
 }
 
 func TestReadOrientationEXIFVariants(t *testing.T) {

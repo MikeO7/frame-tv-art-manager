@@ -88,6 +88,20 @@ func TestStageCatalogIsolatesTransformAndCleansWorkspace(t *testing.T) {
 	}
 }
 
+func TestDerivativesFromRenamesRecordsCollageLineage(t *testing.T) {
+	t.Parallel()
+	got := derivativesFromRenames([]Rename{
+		{OldName: "second.jpg", NewName: "collage.jpg"},
+		{OldName: "single.jpg", NewName: "optimized.jpg"},
+		{OldName: "first.jpg", NewName: "collage.jpg"},
+	}, "transform", nil)
+	if len(got) != 2 || got[0].Name != "collage.jpg" || got[0].Kind != "collage" ||
+		len(got[0].Inputs) != 2 || got[0].Inputs[0] != "first.jpg" || got[0].Inputs[1] != "second.jpg" ||
+		got[1].Name != "optimized.jpg" || got[1].Kind != "optimized" || got[1].TransformKey != "transform" {
+		t.Fatalf("derivatives = %+v", got)
+	}
+}
+
 func TestStageCatalogCancellationDoesNotCreateWorkspace(t *testing.T) {
 	tempParent := t.TempDir()
 	t.Setenv("TMPDIR", tempParent)

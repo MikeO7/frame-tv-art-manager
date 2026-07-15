@@ -5,6 +5,8 @@ import (
 	"math"
 )
 
+const maxSobelResponse = 4 * 255000 * math.Sqrt2
+
 func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
 	bounds := src.Bounds()
 	minX, maxX, minY, maxY := bounds.Min.X, bounds.Max.X-1, bounds.Min.Y, bounds.Max.Y-1
@@ -42,9 +44,8 @@ func calculateSobelEdge(src *image.RGBA, x, y int) float64 {
 		gx := -l00 - (l01 << 1) - l02 + l20 + (l21 << 1) + l22
 		gy := -l00 - (l10 << 1) - l20 + l02 + (l12 << 1) + l22
 
-		// Cast gx and gy to float64 before squaring to prevent 32-bit integer overflow on 32-bit architectures
-		// Divide by 255000.0 instead of 255.0 because we scaled our RGB values by 1000
-		return math.Sqrt(float64(gx)*float64(gx)+float64(gy)*float64(gy)) / 255000.0
+		// Cast gx and gy to float64 before squaring to prevent 32-bit integer overflow.
+		return math.Min(math.Sqrt(float64(gx)*float64(gx)+float64(gy)*float64(gy))/maxSobelResponse, 1)
 	}
 
 	return calculateSobelEdgeSlow(src, x, y, bounds)
@@ -90,15 +91,18 @@ func calculateSobelEdgeSlow(src *image.RGBA, x, y int, bounds image.Rectangle) f
 	gxFloat := float64(gx)
 	gyFloat := float64(gy)
 
-	return math.Sqrt(gxFloat*gxFloat+gyFloat*gyFloat) / 255000.0
+	return math.Min(math.Sqrt(gxFloat*gxFloat+gyFloat*gyFloat)/maxSobelResponse, 1)
 }
 
 func calculateSkinProbability(r, g, b uint8) float64 {
 	rf, gf, bf := float64(r), float64(g), float64(b)
+	y := 0.299*rf + 0.587*gf + 0.114*bf
+	if y < 25 || y > 245 {
+		return 0
+	}
 	cb := 128 - 0.168736*rf - 0.331264*gf + 0.5*bf
 	cr := 128 + 0.5*rf - 0.418688*gf - 0.081312*bf
-	if cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 {
-		return 1.0
-	}
-	return 0.0
+	cbDistance := (cb - 102) / 25
+	crDistance := (cr - 153) / 20
+	return math.Exp(-0.5 * (cbDistance*cbDistance + crDistance*crDistance))
 }

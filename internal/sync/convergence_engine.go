@@ -131,6 +131,7 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("read artwork matte policy: %w", err)
 	}
+	mattes = resolveMatteKeys(prepared.snapshot, mattes)
 	policy, err := convergencePolicy(engine.cfg, mattes, startedAt, cycleLog)
 	if err != nil {
 		return fmt.Errorf("build reconciliation policy: %w", err)

@@ -2,46 +2,59 @@ package optimize
 
 import (
 	"image"
-	"sync"
+	"math"
 )
 
-// generateBMSMap implements Boolean Map Saliency's surroundedness principle.
-// It finds regions that are topologically isolated from the image borders.
-// v4.0 is fully parallelized across all threshold channels.
+// generateBMSMap implements Boolean Map Saliency's surroundedness principle
+// across the three perceptual Lab channels and both threshold polarities.
+//
+//nolint:gocognit // the nested channel/threshold/polarity loops are the BMS algorithm's explicit dimensions
 func generateBMSMap(src *image.RGBA) []float64 {
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	bms := make([]float64, w*h)
+	if w == 0 || h == 0 {
+		return bms
+	}
 
-	// Precompute luminance map once for all thresholds to avoid redundant
-	// calculation overhead across concurrent goroutines
 	pix := src.Pix
-	lumMap := make([]uint8, w*h)
+	channels := [3][]uint8{make([]uint8, w*h), make([]uint8, w*h), make([]uint8, w*h)}
 	for i := 0; i < w*h; i++ {
 		idx := i * 4
-		lum := (int(pix[idx])*299 + int(pix[idx+1])*587 + int(pix[idx+2])*114) / 1000
-		lumMap[i] = uint8(lum) //nolint:gosec // weighted luminance of 0-255 channels stays within byte range
+		l, a, b := rgbToLab(pix[idx], pix[idx+1], pix[idx+2])
+		channels[0][i] = clampByte(l * 2.55)
+		channels[1][i] = clampByte(a + 128)
+		channels[2][i] = clampByte(b + 128)
 	}
 
-	thresholds := []uint8{50, 100, 150, 200, 240}
-	results := make([][]float64, len(thresholds))
-	var wg sync.WaitGroup
-
-	for i, t := range thresholds {
-		wg.Add(1)
-		go func(idx int, threshold uint8) {
-			defer wg.Done()
-			results[idx] = processBMSThreshold(lumMap, threshold, w, h)
-		}(i, t)
-	}
-	wg.Wait()
-
-	// Aggregate parallel results
-	for _, res := range results {
-		for i := 0; i < w*h; i++ {
-			bms[i] += res[i] / float64(len(thresholds))
+	for _, channel := range channels {
+		for threshold := 32; threshold < 256; threshold += 32 {
+			for _, inverse := range []bool{false, true} {
+				attention := processBMSThresholdDirection(channel, uint8(threshold), w, h, inverse)
+				normSquared := 0.0
+				for _, value := range attention {
+					normSquared += value * value
+				}
+				if normSquared == 0 {
+					continue
+				}
+				normalizer := 1 / math.Sqrt(normSquared)
+				for i, value := range attention {
+					bms[i] += value * normalizer
+				}
+			}
 		}
 	}
-	return bms
+	return normalizeAndBlurBMS(bms, w, h)
+}
+
+func clampByte(value float64) uint8 {
+	if value <= 0 {
+		return 0
+	}
+	if value >= 255 {
+		return 255
+	}
+	return uint8(math.Round(value))
 }
 
 type bmsState struct {
@@ -55,7 +68,7 @@ type bmsState struct {
 }
 
 func (s *bmsState) tryEnqueue(idx int) {
-	if !s.boolMap[idx] && !s.bg[idx] {
+	if s.boolMap[idx] && !s.bg[idx] {
 		s.bg[idx] = true
 		s.queue[s.tail] = idx
 		s.tail++
@@ -95,20 +108,25 @@ func (s *bmsState) floodFill() {
 }
 
 func processBMSThreshold(lumMap []uint8, t uint8, w, h int) []float64 {
+	return processBMSThresholdDirection(lumMap, t, w, h, false)
+}
+
+func processBMSThresholdDirection(values []uint8, threshold uint8, w, h int, inverse bool) []float64 {
 	if w <= 0 || h <= 0 {
 		return nil
 	}
-	if len(lumMap) < w*h {
+	if len(values) < w*h {
 		return nil
 	}
 	res := make([]float64, w*h)
 	boolMap := make([]bool, w*h)
-	for i, luminance := range lumMap {
+	for i, value := range values {
 		if i >= len(boolMap) {
 			break
 		}
-		if luminance > t {
-			boolMap[i] = true
+		boolMap[i] = value > threshold
+		if inverse {
+			boolMap[i] = !boolMap[i]
 		}
 	}
 
@@ -129,4 +147,32 @@ func processBMSThreshold(lumMap []uint8, t uint8, w, h int) []float64 {
 		}
 	}
 	return res
+}
+
+//nolint:gocognit // the fixed 3x3 spatial reduction is clearer kept as direct bounded loops
+func normalizeAndBlurBMS(values []float64, w, h int) []float64 {
+	blurred := make([]float64, len(values))
+	maxValue := 0.0
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			sum := 0.0
+			count := 0.0
+			for yy := max(0, y-1); yy <= min(h-1, y+1); yy++ {
+				for xx := max(0, x-1); xx <= min(w-1, x+1); xx++ {
+					sum += values[yy*w+xx]
+					count++
+				}
+			}
+			blurred[y*w+x] = sum / count
+			if blurred[y*w+x] > maxValue {
+				maxValue = blurred[y*w+x]
+			}
+		}
+	}
+	if maxValue > 0 {
+		for i := range blurred {
+			blurred[i] /= maxValue
+		}
+	}
+	return blurred
 }

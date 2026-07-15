@@ -6,6 +6,10 @@ import (
 	"io"
 )
 
+var pngSignature = [8]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a} //nolint:gochecknoglobals // format constant
+
+const pngChunkEnd = "IEND"
+
 // ReadOrientation reads the EXIF orientation tag from an image file if available.
 //
 //nolint:gocognit,gocyclo // custom EXIF marker scan with raw JPEG bounds checks
@@ -48,6 +52,49 @@ func ReadOrientation(r io.Reader) (int, error) {
 		}
 	}
 	return 1, nil
+}
+
+// ReadPNGOrientation reads the standardized PNG eXIf chunk when present.
+//
+//nolint:gocognit,gocyclo,nestif // streaming chunk framing and optional Exif prefix are one bounds-checked parser
+func ReadPNGOrientation(r io.Reader) (int, error) {
+	var signature [8]byte
+	if _, err := io.ReadFull(r, signature[:]); err != nil {
+		return 1, err
+	}
+	if signature != pngSignature {
+		return 1, fmt.Errorf("not a PNG (signature missing)")
+	}
+	for {
+		var header [8]byte
+		if _, err := io.ReadFull(r, header[:]); err != nil {
+			return 1, err
+		}
+		length := int64(binary.BigEndian.Uint32(header[:4]))
+		chunkType := string(header[4:])
+		if length > 64<<20 {
+			return 1, fmt.Errorf("PNG metadata chunk %s is too large", chunkType)
+		}
+		if chunkType == "eXIf" {
+			payload := make([]byte, length)
+			if _, err := io.ReadFull(r, payload); err != nil {
+				return 1, err
+			}
+			if _, err := io.CopyN(io.Discard, r, 4); err != nil {
+				return 1, err
+			}
+			if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
+				payload = payload[6:]
+			}
+			return parseExif(payload)
+		}
+		if _, err := io.CopyN(io.Discard, r, length+4); err != nil {
+			return 1, err
+		}
+		if chunkType == pngChunkEnd {
+			return 1, nil
+		}
+	}
 }
 
 func processMarker(r io.Reader, marker byte) (int, bool, error) {
