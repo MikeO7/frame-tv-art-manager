@@ -16,6 +16,7 @@ type CycleSummary struct {
 	TotalLocal      int
 	FromSources     int
 	Optimized       int
+	FailedTVs       int
 	TVs             []TVSyncResult
 	Warnings        []string
 }
@@ -74,7 +75,28 @@ func LogCycleSummary(logger *slog.Logger, s CycleSummary) {
 	sb.WriteString(padLine("  Next:   " + nextSync.Format("15:04:05")))
 	sb.WriteString(bottomBorder)
 
-	logger.Info(sb.String())
+	logStructuredCycleSummary(logger, sb.String(), s, elapsed, nextSync)
+}
+
+func logStructuredCycleSummary(
+	logger *slog.Logger,
+	message string,
+	s CycleSummary,
+	elapsed time.Duration,
+	nextSync time.Time,
+) {
+	logger.Info(message,
+		"event", "sync_cycle_summary",
+		"cycle", s.CycleNum,
+		"duration_ms", elapsed.Milliseconds(),
+		"next_sync_at", nextSync,
+		"local_artwork", s.TotalLocal,
+		"source_downloads", s.FromSources,
+		"optimized", s.Optimized,
+		"tv_count", len(s.TVs),
+		"failed_tvs", s.FailedTVs,
+		"warnings", len(s.Warnings),
+	)
 }
 
 func writeTVSummary(sb *strings.Builder, tv TVSyncResult, padLine func(string) string) {

@@ -6,6 +6,7 @@ package samsung
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 var (
@@ -60,6 +61,42 @@ const (
 	ErrorKindOutcomeUnknown
 )
 
+// String returns the stable operator-facing name used in structured logs.
+//
+//nolint:gocyclo,goconst // An exhaustive enum mapping is clearer and safer than a positional name table.
+func (kind ErrorKind) String() string {
+	switch kind {
+	case ErrorKindNone:
+		return "none"
+	case ErrorKindCanceled:
+		return "canceled"
+	case ErrorKindBackoff:
+		return "backoff"
+	case ErrorKindUnreachable:
+		return "unreachable"
+	case ErrorKindTimeout:
+		return "timeout"
+	case ErrorKindUnauthorized:
+		return "unauthorized"
+	case ErrorKindProtocol:
+		return "protocol"
+	case ErrorKindUnsupported:
+		return "unsupported"
+	case ErrorKindInvalidResponse:
+		return "invalid_response"
+	case ErrorKindStorageFull:
+		return "storage_full"
+	case ErrorKindNotAuthorized:
+		return "not_authorized"
+	case ErrorKindPersistence:
+		return "persistence"
+	case ErrorKindOutcomeUnknown:
+		return "outcome_unknown"
+	default:
+		return fmt.Sprintf("unknown(%d)", kind)
+	}
+}
+
 // Outcome records whether a command definitely reached and changed the TV.
 type Outcome uint8
 
@@ -70,15 +107,35 @@ const (
 	OutcomeUnknown
 )
 
+// String returns the stable operator-facing name used in structured logs.
+//
+//nolint:goconst // These are stable enum names, not interchangeable domain constants.
+func (outcome Outcome) String() string {
+	switch outcome {
+	case OutcomeNotAttempted:
+		return "not_attempted"
+	case OutcomeNotApplied:
+		return "not_applied"
+	case OutcomeApplied:
+		return "applied"
+	case OutcomeUnknown:
+		return "unknown"
+	default:
+		return fmt.Sprintf("unknown(%d)", outcome)
+	}
+}
+
 // Error preserves a stable policy classification and its original cause.
 type Error struct {
-	Kind      ErrorKind
-	Operation string
-	RequestID string
-	Code      int
-	Retryable bool
-	Outcome   Outcome
-	Cause     error
+	Kind                ErrorKind
+	Operation           string
+	RequestID           string
+	Code                int
+	Retryable           bool
+	Outcome             Outcome
+	RetryAt             time.Time
+	ConsecutiveFailures int
+	Cause               error
 }
 
 func (e *Error) Error() string {

@@ -19,6 +19,7 @@ func TestLogCycleSummary_RendersStatusesAndWarnings(t *testing.T) {
 		TotalLocal:      3,
 		FromSources:     1,
 		Optimized:       2,
+		FailedTVs:       1,
 		TVs: []TVSyncResult{
 			{IP: "192.168.0.1", Model: "Mock", Status: "ok", ArtMode: true},
 			{IP: "192.168.0.2", Status: statusBackoff, Model: "mocked"},
@@ -45,5 +46,12 @@ func TestLogCycleSummary_RendersStatusesAndWarnings(t *testing.T) {
 	}
 	if !strings.Contains(out, "⚠ Warnings during this cycle:") {
 		t.Fatalf("expected warnings section, got %q", out)
+	}
+	for _, field := range []string{
+		"event=sync_cycle_summary", "cycle=7", "local_artwork=3", "tv_count=3", "failed_tvs=1", "warnings=2",
+	} {
+		if !strings.Contains(out, field) {
+			t.Errorf("summary log missing %q: %s", field, out)
+		}
 	}
 }

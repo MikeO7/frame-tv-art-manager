@@ -143,6 +143,7 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 	a.stateMu.Lock()
 	closed := a.closed
 	nextAttemptAt := a.runtime.NextAttemptAt
+	consecutiveFailures := a.runtime.ConsecutiveFailures
 	a.stateMu.Unlock()
 	if closed {
 		return observation, fmt.Errorf("observe closed adapter: %w", ErrNotConnected)
@@ -154,11 +155,13 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 		observation.Connection = ConnectionBackingOff
 		observation.Disposition = DispositionBlockedBackoff
 		err := &Error{
-			Kind:      ErrorKindBackoff,
-			Operation: operationObserve,
-			Retryable: true,
-			Outcome:   OutcomeNotAttempted,
-			Cause:     fmt.Errorf("retry after %s", nextAttemptAt.Format(time.RFC3339Nano)),
+			Kind:                ErrorKindBackoff,
+			Operation:           operationObserve,
+			Retryable:           true,
+			Outcome:             OutcomeNotAttempted,
+			RetryAt:             nextAttemptAt,
+			ConsecutiveFailures: consecutiveFailures,
+			Cause:               fmt.Errorf("retry after %s", nextAttemptAt.Format(time.RFC3339Nano)),
 		}
 		a.publishAuthorizationFacts(observation, request)
 		return cloneObservation(observation), err

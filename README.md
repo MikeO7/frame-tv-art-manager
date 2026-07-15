@@ -366,6 +366,15 @@ and normal Reconciliation resumes; another rejection restarts the quiet period.
 A failed healthcheck does not restart a container by itself. Use a Docker
 restart policy or an orchestrator policy if automatic recovery is required.
 
+Application logs are JSON. Every TV reconciliation outcome includes the cycle,
+TV address, status, mutation counts, and the complete error when one occurs.
+Samsung failures also include stable `error_kind`, `operation`, `outcome`, and
+`retryable` fields; backoff entries include `retry_at` and the consecutive
+failure count. Mutation retry warnings include the current, next, and maximum
+attempt numbers. Use these structured fields together with `/status` to locate
+the failing TV and protocol operation without relying on the abbreviated cycle
+summary.
+
 ## Running without Docker
 
 Go uses the toolchain declared in [`go.mod`](go.mod):

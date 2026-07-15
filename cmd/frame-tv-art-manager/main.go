@@ -33,7 +33,8 @@ const (
 func main() {
 	handleCLIArgs()
 	if err := runMain(); err != nil {
-		fmt.Fprintf(os.Stderr, "Frame TV Art Manager failed: %v\n", err)
+		logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+		logger.Error("Frame TV Art Manager failed", "component", "application", "error", err)
 		os.Exit(1)
 	}
 }
@@ -58,11 +59,11 @@ func runMainContext(ctx context.Context) error {
 		logger.Warn(warning.Message, "variable", warning.Variable, "fallback", warning.Fallback)
 	}
 	if err := preflight(ctx, cfg, logger); err != nil {
-		return err
+		return fmt.Errorf("preflight application: %w", err)
 	}
 	application, err := buildApplication(ctx, cfg, logger)
 	if err != nil {
-		return err
+		return fmt.Errorf("build application: %w", err)
 	}
 	if err := application.Run(ctx); err != nil {
 		return fmt.Errorf("run application: %w", err)

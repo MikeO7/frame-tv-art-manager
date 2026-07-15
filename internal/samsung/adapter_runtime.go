@@ -42,6 +42,8 @@ func (a *adapter) failObservation(
 		a.stateMu.Lock()
 		a.runtime.ConsecutiveFailures++
 		a.runtime.NextAttemptAt = a.clock.Now().Add(a.backoffDelay(a.runtime.ConsecutiveFailures))
+		typed.ConsecutiveFailures = a.runtime.ConsecutiveFailures
+		typed.RetryAt = a.runtime.NextAttemptAt
 		a.stateMu.Unlock()
 	}
 	if closeErr := a.transport.Close(context.WithoutCancel(ctx)); closeErr != nil {

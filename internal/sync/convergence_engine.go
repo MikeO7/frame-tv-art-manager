@@ -90,19 +90,21 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 		"tvs", len(engine.runtimes), "interval_min", engine.cfg.SyncIntervalMin,
 		"artwork_dir", engine.cfg.ArtworkDir,
 	)
-	if err := engine.RunOnce(ctx); err != nil {
-		engine.logger.Error("sync cycle failed", "error", err)
+	if err := engine.RunOnce(ctx); err != nil && ctx.Err() != nil {
+		engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
+		return ctx.Err()
 	}
 	ticker := time.NewTicker(engineSyncInterval(engine.cfg))
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			engine.logger.Info("shutting down sync loop")
+			engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
 			return ctx.Err()
 		case <-ticker.C:
-			if err := engine.RunOnce(ctx); err != nil {
-				engine.logger.Error("sync cycle failed", "error", err)
+			if err := engine.RunOnce(ctx); err != nil && ctx.Err() != nil {
+				engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
+				return ctx.Err()
 			}
 		}
 	}
@@ -118,12 +120,16 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	cycleLog := engine.logger.With("cycle", cycleNum)
 	startedAt := time.Now()
 	var tvErrors []error
-	defer func() { engine.finalizeCycle(err, tvErrors) }()
+	failedTVs := 0
+	defer func() {
+		engine.finalizeCycle(err, tvErrors)
+		engine.logFailedCycle(ctx, cycleLog, startedAt, err, failedTVs)
+	}()
 
 	cycleLog.Info("starting sync cycle", "tvs", len(engine.runtimes))
 	prepared, err := engine.collection.prepareCycle(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare artwork collection: %w", err)
 	}
 	cycleLog.Info("local artwork ready", "total", len(prepared.snapshot.Items), "optimized", prepared.optimized)
 
@@ -140,16 +146,17 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 		engine.health.SetStage("syncing TVs")
 	}
 	summaries, tvErrors := engine.syncAll(ctx, cycleNum, prepared.snapshot, policy)
+	failedTVs = countFailedTVs(summaries)
 	if len(tvErrors) == 1 && errors.Is(tvErrors[0], ctx.Err()) {
 		return ctx.Err()
 	}
 	LogCycleSummary(engine.logger, CycleSummary{
 		CycleNum: cycleNum, StartTime: startedAt, SyncIntervalMin: engine.cfg.SyncIntervalMin,
 		TotalLocal: len(prepared.snapshot.Items), FromSources: prepared.downloaded,
-		Optimized: prepared.optimized, TVs: summaries, Warnings: prepared.warnings,
+		Optimized: prepared.optimized, FailedTVs: failedTVs, TVs: summaries, Warnings: prepared.warnings,
 	})
 	if len(tvErrors) > 0 {
-		return errors.Join(tvErrors...)
+		return fmt.Errorf("sync TVs: %w", errors.Join(tvErrors...))
 	}
 	return nil
 }
@@ -192,6 +199,7 @@ func (engine *convergenceEngine) syncAll(
 		result := <-results
 		summaries = append(summaries, result.summary)
 		engine.publishTVHealth(result.summary)
+		logTVOutcome(ctx, engine.logger.With("cycle", cycleNum), result.summary, result.err)
 		if result.err != nil {
 			errs = append(errs, fmt.Errorf("tv %s: %w", result.summary.IP, result.err))
 		}
@@ -265,29 +273,4 @@ func (engine *convergenceEngine) closeRuntimes(ctx context.Context) error {
 		errs = append(errs, ctx.Err())
 	}
 	return errors.Join(errs...)
-}
-
-func acquireCycle(ctx context.Context, gate chan struct{}) error {
-	select {
-	case gate <- struct{}{}:
-		if err := ctx.Err(); err != nil {
-			<-gate
-			return fmt.Errorf("wait for sync cycle: %w", err)
-		}
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("wait for sync cycle: %w", ctx.Err())
-	}
-}
-
-func acquireTVWorker(ctx context.Context, workers chan<- struct{}) bool {
-	if ctx.Err() != nil {
-		return false
-	}
-	select {
-	case workers <- struct{}{}:
-		return true
-	case <-ctx.Done():
-		return false
-	}
 }

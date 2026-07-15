@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
@@ -161,6 +162,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		result.Observation = observation
 		if err != nil {
 			if isMutationRetry(err) && commandAttempts < s.mutations.attempts {
+				s.logMutationRetry(ctx, request.CycleID, command, commandAttempts, err)
 				currentPlan = refreshedPlan
 				continue
 			}
@@ -205,6 +207,33 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	result.Status = StatusComplete
 	result.State = cloneState(state)
 	return result, nil
+}
+
+func (s *service) logMutationRetry(
+	ctx context.Context,
+	cycleID string,
+	command CommandIntent,
+	attempt int,
+	err error,
+) {
+	attrs := []slog.Attr{
+		slog.String("cycle_id", cycleID),
+		slog.String("command", string(command.Kind)),
+		slog.Int("attempt", attempt),
+		slog.Int("next_attempt", attempt+1),
+		slog.Int("max_attempts", s.mutations.attempts),
+		slog.Any("error", err),
+	}
+	var samsungErr *samsung.Error
+	if errors.As(err, &samsungErr) {
+		attrs = append(attrs,
+			slog.String("error_kind", samsungErr.Kind.String()),
+			slog.String("operation", samsungErr.Operation),
+			slog.Bool("retryable", samsungErr.Retryable),
+			slog.String("outcome", samsungErr.Outcome.String()),
+		)
+	}
+	s.logger.LogAttrs(ctx, slog.LevelWarn, "Samsung mutation failed; retrying", attrs...)
 }
 
 type recoveryInput struct {
