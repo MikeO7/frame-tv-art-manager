@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -69,7 +70,7 @@ func (runtime *convergenceRuntime) run(
 	result, err := runtime.reconciler.Run(ctx, reconcile.Request{
 		CycleID: cycleID, TV: runtime.adapter, Snapshot: snapshot, Policy: policy, DryRun: dryRun,
 	})
-	summary := convergenceSummary(runtime.address, result)
+	summary := convergenceSummary(runtime.address, result, snapshot)
 	var samsungErr *samsung.Error
 	if errors.As(err, &samsungErr) && samsungErr.Kind == samsung.ErrorKindBackoff {
 		summary.Status = statusBackoff
@@ -123,7 +124,7 @@ func (runtime *convergenceRuntime) close(ctx context.Context) error {
 }
 
 //nolint:gocyclo // explicit result-state projection keeps operator status exhaustive and local
-func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
+func convergenceSummary(address string, result reconcile.Result, snapshot collectionpkg.Snapshot) TVSyncResult {
 	observation := result.Observation
 	summary := TVSyncResult{
 		IP: address, Model: observation.TV.Model,
@@ -167,15 +168,19 @@ func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
 			summary.Slideshow = fmt.Sprintf("%s every %d min", setting.Kind, setting.Interval)
 		}
 	}
-	projectFreeSpace(&summary, result)
+	projectFreeSpace(&summary, result, snapshot)
 	return summary
 }
 
-func projectFreeSpace(summary *TVSyncResult, result reconcile.Result) {
+func projectFreeSpace(summary *TVSyncResult, result reconcile.Result, snapshot collectionpkg.Snapshot) {
 	storage := result.Observation.Storage
 	inventory := result.Observation.Inventory
 	if !storage.Known || storage.TotalBytes <= 0 || !inventory.Known {
 		return
+	}
+	bytesByDigest := make(map[string]int64, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		bytesByDigest[hex.EncodeToString(item.Digest[:])] = item.Size
 	}
 	byContentID := make(map[string]reconcile.Binding, len(result.State.Bindings))
 	for _, binding := range result.State.Bindings {
@@ -187,10 +192,17 @@ func projectFreeSpace(summary *TVSyncResult, result reconcile.Result) {
 	var usedBytes int64
 	for _, contentID := range inventory.ContentIDs {
 		binding, exists := byContentID[contentID]
-		if !exists || binding.Size <= 0 || binding.Size > storage.TotalBytes-usedBytes {
+		if !exists {
 			return
 		}
-		usedBytes += binding.Size
+		artworkBytes := binding.ArtworkBytes
+		if artworkBytes == 0 {
+			artworkBytes = bytesByDigest[binding.Digest]
+		}
+		if artworkBytes <= 0 || artworkBytes > storage.TotalBytes-usedBytes {
+			return
+		}
+		usedBytes += artworkBytes
 	}
 	freeBytes := storage.TotalBytes - usedBytes
 	summary.StorageKnown = true

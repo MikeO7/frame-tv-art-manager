@@ -117,7 +117,7 @@ func validateBinding(key string, binding Binding) error {
 	if filepath.Base(binding.Name) != binding.Name || strings.TrimSpace(binding.Name) == "" {
 		return fmt.Errorf("binding %s has invalid name", key)
 	}
-	if binding.Size < 0 {
+	if binding.ArtworkBytes < 0 {
 		return fmt.Errorf("binding %s has invalid size", key)
 	}
 	if !validDigest(binding.CollectionGeneration) || binding.ConfirmedAt.IsZero() {

@@ -1298,7 +1298,7 @@ func TestAppliedUploadReceiptFoldsBinding(t *testing.T) {
 		CommandID: "command", Outcome: samsung.OutcomeApplied, ContentID: "new-content", CompletedAt: testTime,
 	}, nil)
 	if err != nil || got.Pending != nil || got.Bindings[digestHex("art")].ContentID != "new-content" ||
-		got.Bindings[digestHex("art")].Size != 3 {
+		got.Bindings[digestHex("art")].ArtworkBytes != 3 {
 		t.Fatalf("state = %#v, error = %v", got, err)
 	}
 }

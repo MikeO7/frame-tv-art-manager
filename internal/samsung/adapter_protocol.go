@@ -143,8 +143,11 @@ func (t *protocolTransport) StorageCapacity(ctx context.Context) (int64, error) 
 		return 0, err
 	}
 	flashGB, err := response.TVFlashSize.Int64()
-	if err != nil || flashGB <= 0 || flashGB > (1<<63-1)/bytesPerDecimalGB {
-		return 0, fmt.Errorf("invalid TV flash size %q", response.TVFlashSize)
+	if err != nil {
+		return 0, fmt.Errorf("parse TV flash size %q: %w", response.TVFlashSize, err)
+	}
+	if flashGB <= 0 || flashGB > (1<<63-1)/bytesPerDecimalGB {
+		return 0, fmt.Errorf("TV flash size %d is out of range", flashGB)
 	}
 	return flashGB * bytesPerDecimalGB, nil
 }
