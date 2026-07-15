@@ -398,6 +398,37 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	}
 }
 
+func TestNonStorageProbeRejectionDoesNotRefreshCapacityEvidence(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "state")
+	full := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
+	identity, _ := identityFromObservation(full)
+	state := initialState(identity)
+	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	if err := newStateStore(directory).save(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	probeTime := testTime.Add(time.Hour)
+	adapter := &fakeAdapter{
+		observations: []samsung.Observation{full, full},
+		receipts:     []samsung.Receipt{{Outcome: samsung.OutcomeNotApplied}},
+		applyErrs:    []error{fmt.Errorf("upload rejected: %w", samsung.ErrArtAPIError)},
+	}
+	service, err := New(Config{StateDirectory: directory}, Dependencies{
+		Clock: fixedClock{probeTime}, IDs: &sequenceIDs{},
+	}, WithCapacityEvidenceTTL(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, runErr := service.Run(context.Background(), Request{
+		CycleID: "non-storage-probe-rejection", TV: adapter,
+		Snapshot: snapshot(artworkItem("first.jpg", "first")),
+	})
+	if !errors.Is(runErr, samsung.ErrArtAPIError) || result.State.Capacity != (CapacityEvidence{}) {
+		t.Fatalf("Run() = %+v, %v; want original error and cleared capacity evidence", result, runErr)
+	}
+}
+
 func TestExpiredCapacityProbePreservesLastKnownGoodArtwork(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
 	observation := knownObservation(samsung.PowerStateOn, "last-known-good")

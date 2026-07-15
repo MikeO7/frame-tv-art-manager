@@ -71,11 +71,8 @@ func (s *service) handleDefiniteRejection(
 ) (State, samsung.Observation, error) {
 	state.Revision++
 	commandKind := state.Pending.Command.Kind
-	if state.Capacity.Probe && commandKind == CommandUpload &&
-		receipt.Outcome == samsung.OutcomeNotApplied {
-		state.Capacity = CapacityEvidence{
-			Known: true, Maximum: len(observation.Inventory.ContentIDs), ObservedAt: s.clock.Now(),
-		}
+	if state.Capacity.Probe && commandKind == CommandUpload {
+		state.Capacity = CapacityEvidence{}
 	}
 	state.Pending = nil
 	if commandKind == CommandUpload && receipt.Outcome == samsung.OutcomeNotApplied &&
