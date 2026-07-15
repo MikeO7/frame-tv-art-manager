@@ -20,11 +20,12 @@ func (t *protocolTransport) Upload(ctx context.Context, upload preparedUpload) (
 		return "", commandError("upload", OutcomeNotAttempted, err)
 	}
 	defer cleanup()
-	fields := buildSendImageRequest(newRequestID(), upload.fileType, upload.matte, upload.size)
+	requestID := newRequestID()
+	fields := buildSendImageRequest(requestID, upload.fileType, upload.matte, upload.size)
 	delete(fields, keyRequest)
 	delete(fields, "id")
 	delete(fields, keyRequestID)
-	response, err := t.mutateOnConnection(ctx, conn, requestSendImage, fields)
+	response, err := t.mutateOnConnection(ctx, conn, requestSendImage, requestID, fields)
 	if err != nil {
 		return "", err
 	}
@@ -153,7 +154,7 @@ func (t *protocolTransport) mutate(ctx context.Context, name string, fields map[
 	if err != nil {
 		return commandError(name, OutcomeNotAttempted, err)
 	}
-	_, err = t.mutateOnConnection(ctx, conn, name, fields)
+	_, err = t.mutateOnConnection(ctx, conn, name, newRequestID(), fields)
 	return err
 }
 
@@ -161,9 +162,10 @@ func (t *protocolTransport) mutateOnConnection(
 	ctx context.Context,
 	conn *connection,
 	name string,
+	requestID string,
 	fields map[string]any,
 ) (*artResponse, error) {
-	response, err := t.sendOnConnection(ctx, conn, name, fields)
+	response, err := t.sendOnConnection(ctx, conn, name, requestID, fields)
 	if err == nil {
 		return response, nil
 	}

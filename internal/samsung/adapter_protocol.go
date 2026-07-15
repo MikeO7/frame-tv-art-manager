@@ -169,16 +169,16 @@ func (t *protocolTransport) send(ctx context.Context, requestName string, fields
 	if conn == nil || !conn.IsAlive() {
 		return nil, ErrNotConnected
 	}
-	return t.sendOnConnection(ctx, conn, requestName, fields)
+	return t.sendOnConnection(ctx, conn, requestName, newRequestID(), fields)
 }
 
 func (t *protocolTransport) sendOnConnection(
 	ctx context.Context,
 	conn *connection,
 	requestName string,
+	requestID string,
 	fields map[string]any,
 ) (*artResponse, error) {
-	requestID := newRequestID()
 	request := map[string]any{
 		keyRequest:   requestName,
 		"id":         requestID,
