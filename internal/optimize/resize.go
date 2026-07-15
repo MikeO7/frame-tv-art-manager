@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	_ "image/png" // Needed for decoding PNG images
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -169,7 +170,7 @@ func isOptimizableImage(extension string, cfg Config) bool {
 	return isOptimizableJPEG(extension) || (extension == extPNG && cfg.OptimizePNG)
 }
 
-func readOrientationForExtension(reader *os.File, extension string) (int, error) {
+func readOrientationForExtension(reader io.Reader, extension string) (int, error) {
 	if extension == extPNG || extension == formatPNG {
 		return ReadPNGOrientation(reader)
 	}

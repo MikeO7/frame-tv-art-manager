@@ -2,6 +2,7 @@ package optimize
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"image"
 	"image/color"
