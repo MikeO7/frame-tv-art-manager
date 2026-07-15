@@ -69,6 +69,7 @@ type Loader struct {
 // artwork path directly.
 type CollectionImporter interface {
 	Import(context.Context, collection.ImportRequest) (collection.Snapshot, error)
+	ImportBatch(context.Context, []collection.ImportRequest) (collection.Snapshot, error)
 }
 
 // NewLoader creates a new sources loader from application config.

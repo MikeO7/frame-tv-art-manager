@@ -264,6 +264,28 @@ func TestPerformHealthCheckConnectionFailure(t *testing.T) {
 	}
 }
 
+func TestPerformLivenessCheckUsesLiveEndpoint(t *testing.T) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/live" {
+			http.Error(w, "wrong endpoint", http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HEALTH_PORT", port)
+	if err := performLivenessCheck(); err != nil {
+		t.Fatalf("performLivenessCheck() error = %v", err)
+	}
+}
+
 func TestHealthCheckPort(t *testing.T) {
 	t.Setenv("HEALTH_PORT", "")
 	if got := healthCheckPort(); got != defaultHealthPort {

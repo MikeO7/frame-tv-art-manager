@@ -103,6 +103,20 @@ func (c *localCollection) Import(
 	return c.store.Import(ctx, request)
 }
 
+func (c *localCollection) ImportBatch(
+	ctx context.Context,
+	requests []collectionpkg.ImportRequest,
+) (collectionpkg.Snapshot, error) {
+	for index := range requests {
+		requests[index].DryRun = requests[index].DryRun || c.cfg.DryRun
+	}
+	if err := c.acquire(ctx); err != nil {
+		return collectionpkg.Snapshot{}, err
+	}
+	defer c.release()
+	return c.store.ImportBatch(ctx, requests)
+}
+
 func (c *localCollection) Apply(
 	ctx context.Context,
 	request collectionpkg.ApplyRequest,

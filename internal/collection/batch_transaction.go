@@ -46,6 +46,40 @@ func (s *store) commitBatch(ctx context.Context, sourceDirectory string, plan ba
 	return recoverBatchTransaction(ctx, s.root, tx)
 }
 
+func (s *store) commitImportBatch(ctx context.Context, additions []batchImportAddition, items []Item) error {
+	cleanupCtx := context.WithoutCancel(ctx)
+	if err := cleanupBatchStages(ctx, s.root); err != nil {
+		return err
+	}
+	tx := transaction{Version: 1, Kind: transactionKindBatch, Next: newManifest(items)}
+	for index, addition := range additions {
+		effect, err := s.stageValidatedBatchAddition(ctx, addition, index)
+		if err != nil {
+			return errors.Join(err, cleanupBatchStages(cleanupCtx, s.root))
+		}
+		tx.Additions = append(tx.Additions, effect)
+	}
+	if err := writeJournal(ctx, s.root, tx); err != nil {
+		return errors.Join(fmt.Errorf("publish batch transaction intent: %w", err), cleanupBatchStages(cleanupCtx, s.root))
+	}
+	return recoverBatchTransaction(ctx, s.root, tx)
+}
+
+func (s *store) stageValidatedBatchAddition(
+	ctx context.Context,
+	addition batchImportAddition,
+	index int,
+) (transactionEffect, error) {
+	digest := hex.EncodeToString(addition.input.digest[:])
+	stage := filepath.Join(s.root, controlDirectory, stagingName, fmt.Sprintf("batch-%03d-%s%s", index, digest, filepath.Ext(addition.item.Name)))
+	if err := durablefs.Replace(ctx, stage, 0o644, func(writer io.Writer) error {
+		return copyBytes(writer, addition.input.data)
+	}); err != nil {
+		return transactionEffect{}, fmt.Errorf("stage artwork %s: %w", addition.item.Name, err)
+	}
+	return transactionEffect{Stage: stage, Final: addition.item.Path, Digest: digest}, nil
+}
+
 func (s *store) stageBatchAddition(
 	ctx context.Context,
 	sourceDirectory string,

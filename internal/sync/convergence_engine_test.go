@@ -232,6 +232,13 @@ func (collection *staticArtworkCollection) Import(
 	return collection.snapshot, collection.err
 }
 
+func (collection *staticArtworkCollection) ImportBatch(
+	context.Context,
+	[]collectionpkg.ImportRequest,
+) (collectionpkg.Snapshot, error) {
+	return collection.snapshot, collection.err
+}
+
 func (collection *staticArtworkCollection) Apply(
 	context.Context,
 	collectionpkg.ApplyRequest,

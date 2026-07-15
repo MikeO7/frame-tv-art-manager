@@ -4,9 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
+
+const (
+	sourceImportBatchSize     = 25
+	sourceImportBatchMaxBytes = 256 << 20
+)
+
+type pendingSourceDownload struct {
+	prepared preparedDownload
+	image    SourceImage
+}
 
 // SourceLoader downloads remote artwork into the local collection.
 type SourceLoader interface {
@@ -49,6 +61,9 @@ func (l *Loader) Sync(ctx context.Context, snapshot collection.Snapshot) (int, e
 		count, syncErr := l.syncLine(ctx, line)
 		downloaded += count
 		if syncErr != nil {
+			if ctx.Err() != nil {
+				return downloaded, ctx.Err()
+			}
 			l.logger.Warn("source resolve failed", "source_index", sourceIndex+1, "error", syncErr)
 			cycleErrors = append(cycleErrors, fmt.Errorf("sync source %d: %w", sourceIndex+1, syncErr))
 		}
@@ -89,6 +104,8 @@ func (l *Loader) disabled() bool {
 }
 
 // syncLine resolves and downloads all images for one sources-file line.
+//
+//nolint:funlen,gocognit,gocyclo // Bounded batching keeps download cleanup, cancellation, and committed counts in one ordered pass.
 func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 	provider := l.resolveProvider(line)
 	if provider == nil {
@@ -102,23 +119,123 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 
 	var count int
 	var downloadErrors []error
+	pending := make([]pendingSourceDownload, 0, sourceImportBatchSize)
+	var pendingBytes int64
+	flush := func() error {
+		if len(pending) == 0 {
+			return nil
+		}
+		added, err := l.importSourceBatch(ctx, pending)
+		for _, download := range pending {
+			_ = os.Remove(download.prepared.path)
+		}
+		pending = pending[:0]
+		pendingBytes = 0
+		count += added
+		return err
+	}
 	for _, img := range images {
+		if err := ctx.Err(); err != nil {
+			for _, download := range pending {
+				_ = os.Remove(download.prepared.path)
+			}
+			return count, err
+		}
 		originKey := "source:" + img.Identity
-		ok, dErr := l.downloadWithIdentity(ctx, img.URL, img.Identity, originKey)
+		if l.checkExisting(img.Identity) {
+			continue
+		}
+		if l.maxImages > 0 && l.collectionSize+len(pending) >= l.maxImages {
+			l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
+			break
+		}
+		filename := img.Identity + ".jpg"
+		prepared, dErr := l.prepareDownload(ctx, img.URL, filename, img.Identity, originKey)
 		if dErr != nil {
+			if ctx.Err() != nil {
+				for _, download := range pending {
+					_ = os.Remove(download.prepared.path)
+				}
+				return count, ctx.Err()
+			}
 			l.logger.Warn("source download failed", "url", truncateURL(img.URL), "error", dErr)
 			downloadErrors = append(downloadErrors, fmt.Errorf("download %s: %w", truncateURL(img.URL), dErr))
 			continue
 		}
-		if !ok {
+		if len(pending) > 0 && pendingBytes+prepared.written > sourceImportBatchMaxBytes {
+			if err := flush(); err != nil {
+				_ = os.Remove(prepared.path)
+				return count, errors.Join(append(downloadErrors, err)...)
+			}
+		}
+		pending = append(pending, pendingSourceDownload{prepared: prepared, image: img})
+		pendingBytes += prepared.written
+		if len(pending) == sourceImportBatchSize {
+			if err := flush(); err != nil {
+				return count, errors.Join(append(downloadErrors, err)...)
+			}
+		}
+	}
+	if err := flush(); err != nil {
+		return count, errors.Join(append(downloadErrors, err)...)
+	}
+	return count, errors.Join(downloadErrors...)
+}
+
+//nolint:funlen,gocognit,gocyclo // File ownership and ordered import results are handled together to keep cleanup auditable.
+func (l *Loader) importSourceBatch(ctx context.Context, pending []pendingSourceDownload) (int, error) {
+	if l.importer == nil {
+		return 0, errors.New("source collection importer is required")
+	}
+	files := make([]*os.File, 0, len(pending))
+	requests := make([]collection.ImportRequest, 0, len(pending))
+	for _, download := range pending {
+		file, err := os.Open(filepath.Clean(download.prepared.path))
+		if err != nil {
+			for _, opened := range files {
+				_ = opened.Close()
+			}
+			return 0, fmt.Errorf("open validated source download: %w", err)
+		}
+		files = append(files, file)
+		requests = append(requests, collection.ImportRequest{
+			Reader: file, Hint: download.prepared.filename, MaxBytes: int64(l.maxSizeMB) * bytesPerMB,
+			Origin: collection.Origin{Key: download.prepared.originKey, Class: collection.OriginSource},
+		})
+	}
+	snapshot, importErr := l.importer.ImportBatch(ctx, requests)
+	for _, file := range files {
+		_ = file.Close()
+	}
+	if importErr != nil {
+		return 0, fmt.Errorf("transactionally import source artwork batch: %w", importErr)
+	}
+	if len(snapshot.Changes) != len(pending) {
+		return 0, fmt.Errorf("source import returned %d changes for %d downloads", len(snapshot.Changes), len(pending))
+	}
+	items := make(map[string]collection.Item, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		items[item.Name] = item
+	}
+	var added int
+	for index, change := range snapshot.Changes {
+		if change.Name == "" {
+			return added, errors.New("source import returned an empty committed item name")
+		}
+		//nolint:gosec // exact slice lengths are checked before this paired ordered walk
+		download := pending[index]
+		l.sourceOrigins[download.prepared.originKey] = struct{}{}
+		if change.Kind != collection.ChangeAdded {
 			continue
 		}
-		count++
-		if img.OnDownload != nil {
-			if hookErr := img.OnDownload(ctx); hookErr != nil {
+		added++
+		l.collectionSize++
+		l.logger.Info("downloaded source image", "file", items[change.Name].Name, "size_bytes", download.prepared.written)
+		if download.image.OnDownload != nil {
+			if hookErr := download.image.OnDownload(ctx); hookErr != nil {
 				l.logger.Warn("post-download hook failed", "error", hookErr)
 			}
 		}
 	}
-	return count, errors.Join(downloadErrors...)
+	return added, nil
 }

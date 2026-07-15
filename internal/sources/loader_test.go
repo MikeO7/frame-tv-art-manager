@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
@@ -109,6 +110,230 @@ func TestLoader_Sync_Direct(t *testing.T) {
 	if readErr != nil || artworkFiles != 1 {
 		t.Errorf("expected 1 artwork file, got %d (%v)", artworkFiles, readErr)
 	}
+}
+
+type staticSourceProvider struct {
+	images []SourceImage
+}
+
+func (p staticSourceProvider) Name() string          { return "static" }
+func (p staticSourceProvider) CanHandle(string) bool { return true }
+func (p staticSourceProvider) Resolve(context.Context, string) ([]SourceImage, error) {
+	return append([]SourceImage(nil), p.images...), nil
+}
+
+type countingImporter struct {
+	collection.Store
+	batches    int
+	batchSizes []int
+}
+
+type scriptedImporter struct {
+	snapshot collection.Snapshot
+	err      error
+}
+
+func (i scriptedImporter) Import(context.Context, collection.ImportRequest) (collection.Snapshot, error) {
+	return i.snapshot, i.err
+}
+
+func (i scriptedImporter) ImportBatch(context.Context, []collection.ImportRequest) (collection.Snapshot, error) {
+	return i.snapshot, i.err
+}
+
+func (i *countingImporter) ImportBatch(ctx context.Context, requests []collection.ImportRequest) (collection.Snapshot, error) {
+	i.batches++
+	i.batchSizes = append(i.batchSizes, len(requests))
+	return i.Store.ImportBatch(ctx, requests)
+}
+
+func TestLoaderSyncImportsResolvedImagesAsBatch(t *testing.T) {
+	artworkDir := t.TempDir()
+	first := testJPEGBytes(t)
+	var secondBuffer bytes.Buffer
+	if err := jpeg.Encode(&secondBuffer, image.NewRGBA(image.Rect(0, 0, 3, 2)), nil); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		if r.URL.Path == "/first" {
+			_, _ = w.Write(first)
+			return
+		}
+		_, _ = w.Write(secondBuffer.Bytes())
+	}))
+	defer server.Close()
+	store, err := collection.New(collection.Config{Root: artworkDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	importer := &countingImporter{Store: store}
+	loader := NewLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default(), importer)
+	loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{
+		{URL: server.URL + "/first", Identity: "first"},
+		{URL: server.URL + "/second", Identity: "second"},
+	}}}
+
+	count, err := loader.syncLine(context.Background(), "static:any")
+	if err != nil {
+		t.Fatalf("syncLine() error = %v", err)
+	}
+	if count != 2 || importer.batches != 1 || !slices.Equal(importer.batchSizes, []int{2}) {
+		t.Fatalf("count = %d, batches = %d, sizes = %v", count, importer.batches, importer.batchSizes)
+	}
+}
+
+func TestLoaderSyncStopsDownloadingImmediatelyWhenCanceled(t *testing.T) {
+	artworkDir := t.TempDir()
+	requestStarted := make(chan struct{})
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			close(requestStarted)
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default())
+	loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{
+		{URL: server.URL + "/1", Identity: "one"},
+		{URL: server.URL + "/2", Identity: "two"},
+		{URL: server.URL + "/3", Identity: "three"},
+	}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := loader.syncLine(ctx, "static:any")
+		result <- err
+	}()
+	<-requestStarted
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("syncLine() error = %v, want context.Canceled", err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("download requests = %d, want 1", got)
+	}
+}
+
+func TestLoaderSyncFlushesAtBoundedBatchSize(t *testing.T) {
+	artworkDir := t.TempDir()
+	imageData := testJPEGBytes(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write(imageData)
+	}))
+	defer server.Close()
+	store, err := collection.New(collection.Config{Root: artworkDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	importer := &countingImporter{Store: store}
+	loader := NewLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default(), importer)
+	images := make([]SourceImage, sourceImportBatchSize+1)
+	for index := range images {
+		images[index] = SourceImage{URL: server.URL, Identity: fmt.Sprintf("image-%02d", index)}
+	}
+	loader.providers = []SourceProvider{staticSourceProvider{images: images}}
+	count, err := loader.syncLine(context.Background(), "static:any")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || !slices.Equal(importer.batchSizes, []int{sourceImportBatchSize, 1}) {
+		t.Fatalf("count = %d, batch sizes = %v", count, importer.batchSizes)
+	}
+}
+
+func TestImportSourceBatchErrorContracts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "download.jpg")
+	if err := os.WriteFile(path, testJPEGBytes(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pending := []pendingSourceDownload{{prepared: preparedDownload{
+		path: path, filename: "download.jpg", originKey: "source:test", written: 10,
+	}}}
+
+	t.Run("missing importer", func(t *testing.T) {
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+		loader.importer = nil
+		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil {
+			t.Fatal("importSourceBatch() accepted a missing importer")
+		}
+	})
+	t.Run("missing prepared file", func(t *testing.T) {
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+		missing := []pendingSourceDownload{{prepared: preparedDownload{path: path + ".missing"}}}
+		if _, err := loader.importSourceBatch(context.Background(), missing); err == nil {
+			t.Fatal("importSourceBatch() accepted a missing prepared file")
+		}
+	})
+	t.Run("import failure", func(t *testing.T) {
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{err: errors.New("commit failed")})
+		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil || !strings.Contains(err.Error(), "commit failed") {
+			t.Fatalf("importSourceBatch() error = %v", err)
+		}
+	})
+	t.Run("wrong change count", func(t *testing.T) {
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{})
+		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil || !strings.Contains(err.Error(), "1 downloads") {
+			t.Fatalf("importSourceBatch() error = %v", err)
+		}
+	})
+	t.Run("empty change name", func(t *testing.T) {
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{snapshot: collection.Snapshot{
+			Changes: []collection.Change{{Kind: collection.ChangeAdded}},
+		}})
+		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil || !strings.Contains(err.Error(), "empty") {
+			t.Fatalf("importSourceBatch() error = %v", err)
+		}
+	})
+	t.Run("duplicate", func(t *testing.T) {
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{snapshot: collection.Snapshot{
+			Changes: []collection.Change{{Kind: collection.ChangeDuplicate, Name: "existing.jpg"}},
+		}})
+		added, err := loader.importSourceBatch(context.Background(), pending)
+		if err != nil || added != 0 || !loader.checkExisting("test") {
+			t.Fatalf("importSourceBatch() = %d, %v", added, err)
+		}
+	})
+}
+
+func TestLoaderSyncLineLimitAndImportErrors(t *testing.T) {
+	t.Run("no provider", func(t *testing.T) {
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+		loader.providers = nil
+		if _, err := loader.syncLine(context.Background(), "unknown:any"); err == nil {
+			t.Fatal("syncLine() accepted an unknown provider")
+		}
+	})
+	t.Run("collection limit", func(t *testing.T) {
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxArtworkImages: 1}, slog.Default())
+		loader.collectionSize = 1
+		loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{{
+			URL: "http://example.com/never-requested.jpg", Identity: "limited",
+		}}}}
+		count, err := loader.syncLine(context.Background(), "static:any")
+		if err != nil || count != 0 {
+			t.Fatalf("syncLine() = %d, %v", count, err)
+		}
+	})
+	t.Run("final batch import failure", func(t *testing.T) {
+		imageData := testJPEGBytes(t)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write(imageData)
+		}))
+		defer server.Close()
+		loader := NewLoader(
+			&config.Config{ArtworkDir: t.TempDir()},
+			slog.Default(),
+			scriptedImporter{err: errors.New("batch commit failed")},
+		)
+		loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{{URL: server.URL, Identity: "one"}}}}
+		if _, err := loader.syncLine(context.Background(), "static:any"); err == nil || !strings.Contains(err.Error(), "batch commit failed") {
+			t.Fatalf("syncLine() error = %v", err)
+		}
+	})
 }
 
 func TestLoaderSyncUsesDurableSourceOriginInsteadOfFilename(t *testing.T) {

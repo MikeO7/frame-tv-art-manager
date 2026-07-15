@@ -17,8 +17,8 @@ const (
 	healthStatusHealthyOK = "ok"
 )
 
-func runHealthCheck() {
-	if err := performHealthCheck(); err != nil {
+func runHealthCheck(path string) {
+	if err := performEndpointCheck(path); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
@@ -28,13 +28,21 @@ func runHealthCheck() {
 }
 
 func performHealthCheck() error {
+	return performEndpointCheck("/health")
+}
+
+func performLivenessCheck() error {
+	return performEndpointCheck("/live")
+}
+
+func performEndpointCheck(path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf("http://127.0.0.1:%d/health", healthCheckPort()),
+		fmt.Sprintf("http://127.0.0.1:%d%s", healthCheckPort(), path),
 		nil,
 	)
 	if err != nil {
