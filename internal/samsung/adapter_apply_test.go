@@ -225,6 +225,22 @@ func TestAdapterFreshInventoryPreventsStaleDelete(t *testing.T) {
 	}
 }
 
+func TestAdapterStandbyArtModeAllowsGuardedDelete(t *testing.T) {
+	const inventory = `[{"content_id":"id-1","category_id":"MY-C0002"}]`
+	transport := mutationTransportForInventory(inventory)
+	transport.device.PowerState = stringStandby
+	transport.inventories = []json.RawMessage{
+		json.RawMessage(inventory), json.RawMessage(inventory), json.RawMessage(`[]`),
+	}
+	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+	observation := observeForCommand(t, adapter, CapabilityImageDeletion)
+
+	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Delete{ContentID: "id-1"})
+	if err != nil || receipt.Outcome != OutcomeApplied || transport.deleteCalls != 1 {
+		t.Fatalf("standby Art Mode delete receipt/error/calls = %+v/%v/%d", receipt, err, transport.deleteCalls)
+	}
+}
+
 func TestAdapterClassifiesMutationOutcomes(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -289,6 +305,7 @@ func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 	t.Run("wake from standby", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
 		transport.devices = []DeviceInfo{standby, standby, on}
+		transport.artMode = stringOff
 		adapter := newTestAdapterWithMAC(t, transport)
 		observation := observeForCommand(t, adapter, CapabilityRemotePower)
 		receipt, err := adapter.Apply(context.Background(), observation.Authorization, Wake{})
@@ -310,6 +327,7 @@ func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 	t.Run("power off reaches standby", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
 		transport.devices = []DeviceInfo{on, on, standby}
+		transport.artModes = []string{stringOn, stringOn, stringOff}
 		transport.inventories = []json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`[]`)}
 		adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 		observation := observeForCommand(t, adapter, CapabilityRemotePower)
@@ -318,6 +336,20 @@ func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 			t.Fatalf("receipt/error/calls = %+v/%v/%d", receipt, err, transport.powerOffCalls)
 		}
 	})
+}
+
+func TestAdapterWakeRevalidatesStandbyArtMode(t *testing.T) {
+	transport := mutationTransportForInventory(`[]`)
+	transport.device.PowerState = stringStandby
+	transport.artMode = stringOff
+	adapter := newTestAdapterWithMAC(t, transport)
+	observation := observeForCommand(t, adapter, CapabilityRemotePower)
+	transport.artMode = stringOn
+
+	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Wake{})
+	if !errors.Is(err, ErrNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.wakeCalls != 0 {
+		t.Fatalf("standby Art Mode wake receipt/error/calls = %+v/%v/%d", receipt, err, transport.wakeCalls)
+	}
 }
 
 func TestAdapterPowerPostconditionPollsUntilTransition(t *testing.T) {
@@ -414,19 +446,38 @@ func TestAdapterAuthorizationIsBoundToObservedCapability(t *testing.T) {
 	}
 }
 
-func TestDesiredPowerObservedTreatsStandbyAsOff(t *testing.T) {
+func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name      string
+		artMode   string
+		desired   string
+		wantMatch bool
+	}{
+		{name: "Art Mode satisfies on", artMode: stringOn, desired: stringOn, wantMatch: true},
+		{name: "Art Mode does not satisfy off", artMode: stringOn, desired: stringOff},
+		{name: "Art Mode off satisfies off", artMode: stringOff, desired: stringOff, wantMatch: true},
+		{name: "Art Mode off does not satisfy on", artMode: stringOff, desired: stringOn},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := mutationTransportForInventory(`[]`)
+			transport.device.PowerState = stringStandby
+			transport.artMode = test.artMode
+			reached, err := desiredPowerObserved(context.Background(), transport, test.desired)
+			if err != nil || reached != test.wantMatch {
+				t.Fatalf("desiredPowerObserved(standby, %s, %s) = %v, %v", test.artMode, test.desired, reached, err)
+			}
+		})
+	}
 	transport := mutationTransportForInventory(`[]`)
 	transport.device.PowerState = stringStandby
-
-	reached, err := desiredPowerObserved(context.Background(), transport, stringOff)
-	if err != nil || !reached {
-		t.Fatalf("desiredPowerObserved(standby, off) = %v, %v", reached, err)
+	transport.artModeErr = errors.New("art mode unavailable")
+	if _, err := desiredPowerObserved(context.Background(), transport, stringOff); err == nil {
+		t.Fatal("desiredPowerObserved() accepted standby with an Art Mode error")
 	}
-	reached, err = desiredPowerObserved(context.Background(), transport, stringOn)
-	if err != nil || reached {
-		t.Fatalf("desiredPowerObserved(standby, on) = %v, %v", reached, err)
-	}
+	transport.device.PowerState = stringOn
+	transport.artModeErr = nil
 	if _, err := desiredPowerObserved(context.Background(), transport, "sleeping"); err == nil {
 		t.Fatal("desiredPowerObserved() accepted an unknown desired state")
 	}

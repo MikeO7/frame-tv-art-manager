@@ -28,6 +28,7 @@ type scriptedObservationTransport struct {
 	device         DeviceInfo
 	deviceErr      error
 	artMode        string
+	artModes       []string
 	artModeErr     error
 	inventory      json.RawMessage
 	inventoryErr   error
@@ -48,6 +49,11 @@ func (t *scriptedObservationTransport) DeviceInfo(context.Context) (DeviceInfo, 
 
 func (t *scriptedObservationTransport) ArtMode(context.Context) (string, error) {
 	t.artModeCalls++
+	if len(t.artModes) > 0 {
+		value := t.artModes[0]
+		t.artModes = t.artModes[1:]
+		return value, t.artModeErr
+	}
 	return t.artMode, t.artModeErr
 }
 
@@ -115,16 +121,20 @@ func TestAdapterObserveCanonicalizesInventory(t *testing.T) {
 func TestAdapterObserveNeverInfersArtModeOnFromErrors(t *testing.T) {
 	tests := []struct {
 		name  string
+		power string
 		value string
 		err   error
 	}{
-		{name: "request error", err: errors.New("connection lost")},
+		{name: "standby request error", power: stringStandby, err: errors.New("connection lost")},
 		{name: "blank response"},
-		{name: "unknown response", value: "ambient"},
+		{name: "standby unknown response", power: stringStandby, value: "ambient"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			transport := eligibleObservationTransport(json.RawMessage(`[]`))
+			if test.power != "" {
+				transport.device.PowerState = test.power
+			}
 			transport.artMode = test.value
 			transport.artModeErr = test.err
 			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
@@ -143,6 +153,28 @@ func TestAdapterObserveNeverInfersArtModeOnFromErrors(t *testing.T) {
 	}
 }
 
+func TestAdapterObserveStandbyArtModeIsOperational(t *testing.T) {
+	transport := eligibleObservationTransport(json.RawMessage(`[{"content_id":"MY_F0001","category_id":"MY-C0002"}]`))
+	transport.device.PowerState = stringStandby
+	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+
+	observation, err := adapter.Observe(context.Background(), ObserveRequest{
+		CycleID:              "cycle",
+		CollectionGeneration: "generation",
+		Required:             CapabilityUserArtInventory,
+	})
+	if err != nil {
+		t.Fatalf("Observe() error = %v", err)
+	}
+	if observation.Power != PowerStateOn || observation.ArtMode != ArtModeOn ||
+		observation.Disposition != DispositionEligible || observation.Authorization.isZero() {
+		t.Fatalf("standby Art Mode observation = %#v", observation)
+	}
+	if !observation.Inventory.Known || !reflect.DeepEqual(observation.Inventory.ContentIDs, []string{"MY_F0001"}) {
+		t.Fatalf("standby Art Mode inventory = %#v", observation.Inventory)
+	}
+}
+
 func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -152,7 +184,10 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 		wantArtModeCalls int
 	}{
 		{name: "power off", power: "off", artMode: "on", wantDisposition: DispositionBlockedPowerOff},
-		{name: "power standby", power: "standby", artMode: "on", wantDisposition: DispositionBlockedPowerOff},
+		{
+			name: "standby outside Art Mode", power: "standby", artMode: "off",
+			wantDisposition: DispositionBlockedPowerOff, wantArtModeCalls: 1,
+		},
 		{name: "art mode off", power: "on", artMode: "off", wantDisposition: DispositionBlockedNotArtMode, wantArtModeCalls: 1},
 	}
 	for _, test := range tests {
@@ -182,6 +217,7 @@ func TestAdapterKnownOffAuthorizesOnlyExactSupportedWake(t *testing.T) {
 	tests := []struct {
 		name       string
 		power      string
+		artMode    string
 		withMAC    bool
 		required   CapabilitySet
 		wantRemote Support
@@ -191,7 +227,7 @@ func TestAdapterKnownOffAuthorizesOnlyExactSupportedWake(t *testing.T) {
 			required: CapabilityRemotePower, wantRemote: SupportSupported,
 		},
 		{
-			name: "standby with configured MAC", power: stringStandby, withMAC: true,
+			name: "standby outside Art Mode with configured MAC", power: stringStandby, artMode: stringOff, withMAC: true,
 			required: CapabilityRemotePower, wantRemote: SupportSupported,
 		},
 		{
@@ -211,6 +247,9 @@ func TestAdapterKnownOffAuthorizesOnlyExactSupportedWake(t *testing.T) {
 			transport.device.PowerState = test.power
 			if test.power == "" {
 				transport.device.PowerState = stringOff
+			}
+			if test.artMode != "" {
+				transport.artMode = test.artMode
 			}
 			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 			if test.withMAC {
