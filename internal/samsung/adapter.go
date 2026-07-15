@@ -194,42 +194,23 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 		FirmwareVersion: strings.TrimSpace(device.FirmwareVersion),
 		Known:           strings.TrimSpace(device.ModelName) != "",
 	}
-	power, _ := parseDevicePowerState(device.PowerState)
-	switch power {
-	case PowerStateOn:
-		observation.Power = PowerStateOn
-	case PowerStateOff:
-		observation.Power = PowerStateOff
-		observation.Disposition = DispositionBlockedPowerOff
-		if _, supportsMutation := a.transport.(mutationTransport); supportsMutation &&
-			request.Required == CapabilityRemotePower && len(a.config.MAC) == 6 {
-			observation.Capabilities.RemotePower = SupportSupported
-			observation.Authorization = a.newAuthorization(request, connectionGeneration, [sha256.Size]byte{})
-		}
-		a.resetFailures()
-		a.publishAuthorizationFacts(observation, request)
-		return cloneObservation(observation), nil
-	default:
-		return a.failObservation(ctx, observation, request, "observe power", fmt.Errorf("unrecognized power state %q", device.PowerState))
-	}
-
-	artMode, err := a.transport.ArtMode(ctx)
+	state, err := readOperationalState(ctx, a.transport, device)
 	if err != nil {
-		return a.failObservation(ctx, observation, request, "observe art mode", err)
+		return a.failObservation(ctx, observation, request, "observe operational state", err)
 	}
-	switch strings.TrimSpace(artMode) {
-	case stringOn:
-		observation.ArtMode = ArtModeOn
+	observation.Power = state.Power
+	observation.ArtMode = state.ArtMode
+	if state.ArtMode != ArtModeUnknown {
 		observation.Capabilities.ArtStateObservation = SupportSupported
-	case stringOff:
-		observation.ArtMode = ArtModeOff
-		observation.Capabilities.ArtStateObservation = SupportSupported
+	}
+	if state.Power == PowerStateOff {
+		return a.knownPowerOffObservation(observation, request, connectionGeneration), nil
+	}
+	if state.ArtMode == ArtModeOff {
 		observation.Disposition = DispositionBlockedNotArtMode
 		a.resetFailures()
 		a.publishAuthorizationFacts(observation, request)
 		return cloneObservation(observation), nil
-	default:
-		return a.failObservation(ctx, observation, request, "observe art mode", fmt.Errorf("unrecognized art mode %q", artMode))
 	}
 
 	rawInventory, err := a.transport.Inventory(ctx)
@@ -255,6 +236,23 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 	a.resetFailures()
 	a.publishAuthorizationFacts(observation, request)
 	return cloneObservation(observation), nil
+}
+
+func (a *adapter) knownPowerOffObservation(
+	observation Observation,
+	request ObserveRequest,
+	connectionGeneration uint64,
+) Observation {
+	observation.Power = PowerStateOff
+	observation.Disposition = DispositionBlockedPowerOff
+	if _, supportsMutation := a.transport.(mutationTransport); supportsMutation &&
+		request.Required == CapabilityRemotePower && len(a.config.MAC) == 6 {
+		observation.Capabilities.RemotePower = SupportSupported
+		observation.Authorization = a.newAuthorization(request, connectionGeneration, [sha256.Size]byte{})
+	}
+	a.resetFailures()
+	a.publishAuthorizationFacts(observation, request)
+	return cloneObservation(observation)
 }
 
 // Close invalidates all issued authorizations and releases the read channel.

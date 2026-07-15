@@ -320,6 +320,9 @@ mode, and solar coordinates are validated at startup.
   Unknown power never authorizes a wake. With multiple TVs,
   the single legacy MAC is ambiguous, so Wake-on-LAN is disabled with a startup
   warning.
+- Some Frame firmware reports `standby` while Art Mode is active. The manager
+  treats that state as operational only after the Art API positively reports
+  Art Mode on; `standby` with Art Mode off remains a known-off state.
 - `SHUTDOWN_TIMEOUT_SECONDS` sets the bounded graceful-shutdown window and
   defaults to 30 seconds.
 - Malformed numeric and Boolean environment values retain their documented
