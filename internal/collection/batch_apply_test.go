@@ -100,6 +100,19 @@ func TestApplyCarriesStableMetadataAcrossDerivativeRename(t *testing.T) {
 		!slices.Equal(snapshot.Items[0].SourceKeys, []string{origin.Key}) {
 		t.Fatalf("derived metadata = %+v", snapshot.Items)
 	}
+	unchangedStage := t.TempDir()
+	if err := os.WriteFile(filepath.Join(unchangedStage, name), encodeInternalImage(t, 3, 2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := valueStore.Apply(context.Background(), ApplyRequest{Directory: unchangedStage})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := unchanged.Items[0]
+	if got.Key != metadata.Key || got.Origin != metadata.Origin || got.TransformKey != transformKey ||
+		got.Derivative != DerivativeOptimized || !slices.Equal(got.SourceKeys, metadata.SourceKeys) {
+		t.Fatalf("unchanged apply lost metadata: %+v", got)
+	}
 }
 
 func TestApplyDryRunAndReplacementRejectionDoNotMutateCollection(t *testing.T) {

@@ -45,11 +45,11 @@ func processCollagePair(job collageJob) (string, error) {
 	p1 := filepath.Join(artworkDir, f1)
 	p2 := filepath.Join(artworkDir, f2)
 
-	img1, err := loadAndRotateImageWithPolicy(p1, cfg.ColorProfilePolicy, logger)
+	img1, err := loadAndRotateImageWithPolicy(ctx, p1, cfg.ColorProfilePolicy, logger)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", f1, err)
 	}
-	img2, err := loadAndRotateImageWithPolicy(p2, cfg.ColorProfilePolicy, logger)
+	img2, err := loadAndRotateImageWithPolicy(ctx, p2, cfg.ColorProfilePolicy, logger)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", f2, err)
 	}
@@ -68,14 +68,9 @@ func processCollagePair(job collageJob) (string, error) {
 	collage = sharpenWithOptions(collage, cfg.SharpenAmount, cfg.SharpenThreshold, defaultPixelWorkers())
 	if cfg.MuseumModeEnabled {
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
-	} else if cfg.DitherEnabled {
-		collage = dither(collage)
 	}
 
-	ext := strings.ToLower(filepath.Ext(f1))
-	if ext != extJPG && ext != extJPEG && ext != extPNG {
-		ext = extJPG
-	}
+	ext := collageOutputExtension(f1, f2)
 
 	// 0o644 is intentional — artwork files must be world-readable so they
 	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
@@ -106,14 +101,20 @@ func processCollagePair(job collageJob) (string, error) {
 	if err := out.Close(); err != nil {
 		return "", fmt.Errorf("close collage: %w", err)
 	}
-	if err := ValidateImage(tmpPath); err != nil {
+	expectedFormat := formatJPEG
+	if ext == extPNG {
+		expectedFormat = formatPNG
+	}
+	if err := validateImageOutput(ctx, tmpPath, expectedFormat, cfg.MaxWidth, cfg.MaxHeight); err != nil {
 		return "", fmt.Errorf("validate collage: %w", err)
 	}
-	digest, err := fileDigest(tmpPath)
+	digest, err := fileDigest(ctx, tmpPath)
 	if err != nil {
 		return "", fmt.Errorf("hash collage: %w", err)
 	}
-	collageName, err := availableContentName(artworkDir, "", "collage-"+f1+"-"+f2, digest, ext)
+	collageName, err := availableContentName(ctx, contentNameRequest{
+		directory: artworkDir, label: "collage-" + f1 + "-" + f2, digest: digest, extension: ext,
+	})
 	if err != nil {
 		return "", fmt.Errorf("choose collage output name: %w", err)
 	}
@@ -146,9 +147,17 @@ func processCollagePair(job collageJob) (string, error) {
 	return collageName, nil
 }
 
+func collageOutputExtension(first, second string) string {
+	if strings.EqualFold(filepath.Ext(first), extPNG) || strings.EqualFold(filepath.Ext(second), extPNG) {
+		return extPNG
+	}
+	return extJPG
+}
+
 // collectRawPortraits returns the un-optimized portrait files eligible for
 // collage pairing, pruning AppleDouble ("._") entries from localFiles as it goes.
 func collectRawPortraits(
+	ctx context.Context,
 	artworkDir string,
 	localFiles map[string]struct{},
 	wantsCollageAll bool,
@@ -172,7 +181,7 @@ func collectRawPortraits(
 			continue
 		}
 		path := filepath.Join(artworkDir, filename)
-		if isPortrait, err := isPortraitFile(path); err == nil && isPortrait {
+		if isPortrait, err := isPortraitFile(ctx, path); err == nil && isPortrait {
 			rawPortraits = append(rawPortraits, filename)
 		}
 	}
@@ -194,6 +203,10 @@ type collageBatch struct {
 }
 
 func processCollages(batch collageBatch) error {
+	ctx := batch.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	artworkDir := batch.artworkDir
 	localFiles := batch.localFiles
 	cfg := batch.cfg
@@ -204,7 +217,7 @@ func processCollages(batch collageBatch) error {
 	var observerErrors []error
 
 	wantsCollageAll := cfg.PortraitMode == portraitModeCollage
-	rawPortraits := collectRawPortraits(artworkDir, localFiles, wantsCollageAll, batch.inputs)
+	rawPortraits := collectRawPortraits(ctx, artworkDir, localFiles, wantsCollageAll, batch.inputs)
 
 	// Sort for deterministic pairing: map iteration order is random, so without
 	// this the same set of uploads could pair differently across runs.
@@ -216,7 +229,7 @@ func processCollages(batch collageBatch) error {
 
 		logger.Info("pairing portrait images into collage", "file1", f1, "file2", f2)
 		collageFilename, err := processCollagePair(collageJob{
-			ctx:        batch.ctx,
+			ctx:        ctx,
 			artworkDir: artworkDir,
 			f1:         f1,
 			f2:         f2,

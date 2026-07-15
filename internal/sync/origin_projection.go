@@ -40,12 +40,17 @@ func (projection *metadataProjection) apply(derivatives []optimize.Derivative) e
 		output := inputs[0]
 		output.TransformKey = derivative.TransformKey
 		switch derivative.Kind {
-		case string(collectionpkg.DerivativeOptimized):
+		case optimize.DerivativeOptimized:
 			output.Derivative = collectionpkg.DerivativeOptimized
-		case string(collectionpkg.DerivativeCollage):
-			output.Key = derivative.Name
-			output.Origin = collectionpkg.Origin{
-				Key: "derived:" + derivative.Name, Class: collectionpkg.OriginDerived,
+		case optimize.DerivativeCollage:
+			// A new multi-input collage gets a new logical identity. Re-encoding
+			// an existing collage preserves its key so matte overrides and other
+			// operator references survive engine-owned filename changes.
+			if len(inputs) > 1 {
+				output.Key = derivative.Name
+				output.Origin = collectionpkg.Origin{
+					Key: "derived:" + derivative.Name, Class: collectionpkg.OriginDerived,
+				}
 			}
 			output.SourceKeys = unionSourceKeys(inputs)
 			output.Derivative = collectionpkg.DerivativeCollage

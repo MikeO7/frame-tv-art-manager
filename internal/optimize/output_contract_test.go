@@ -1,6 +1,7 @@
 package optimize
 
 import (
+	"context"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -59,7 +60,7 @@ func TestOrdinaryTransformOutputContract(t *testing.T) {
 	if name == "gradient.jpg" || filepath.Ext(name) != extJPG {
 		t.Fatalf("optimized content-addressed name = %q", name)
 	}
-	digest, err := fileDigest(filepath.Join(dir, name))
+	digest, err := fileDigest(context.Background(), filepath.Join(dir, name))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,6 @@ func (c *Config) OptimizeOptions() optimize.Config {
 		LinearLightResize:   c.LinearLightResize,
 		SharpenAmount:       c.SharpenAmount,
 		SharpenThreshold:    c.SharpenThreshold,
-		DitherEnabled:       c.DitherEnabled,
 		ColorProfilePolicy:  c.ColorProfilePolicy,
 		MuseumModeEnabled:   c.MuseumModeEnabled,
 		MuseumModeIntensity: c.MuseumModeIntensity,

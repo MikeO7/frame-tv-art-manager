@@ -1,8 +1,11 @@
 package optimize
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/jpeg"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,6 +59,31 @@ func TestRequiresStageInvalidatesChangedTransformConfiguration(t *testing.T) {
 	}
 }
 
+func TestRequiresStageEnforcesColorPolicyOnExactTargetRawImage(t *testing.T) {
+	t.Parallel()
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 8, 6)), nil); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("ICC_PROFILE\x00\x01\x01")
+	segment := append([]byte{0xff, 0xe2, 0x00, byte(len(payload) + 2)}, payload...)
+	tagged := append(append(append([]byte(nil), encoded.Bytes()[:2]...), segment...), encoded.Bytes()[2:]...)
+	path := filepath.Join(t.TempDir(), "tagged.jpg")
+	if err := os.WriteFile(path, tagged, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = 8, 6
+	cfg.ColorProfilePolicy = "reject-embedded"
+	_, err := RequiresStage(context.Background(), StageRequest{
+		Inputs: []StageInput{{Name: "tagged.jpg", Path: path, Width: 8, Height: 6}},
+		Config: cfg,
+	})
+	if err == nil || !strings.Contains(err.Error(), "JPEG ICC") {
+		t.Fatalf("RequiresStage(reject embedded profile) error = %v", err)
+	}
+}
+
 func TestRequiresStagePreservesTransformAndCollageSemantics(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -64,14 +92,6 @@ func TestRequiresStagePreservesTransformAndCollageSemantics(t *testing.T) {
 		inputs []StageInput
 		want   bool
 	}{
-		{
-			name: "raw jpeg needs optimized name",
-			cfg:  DefaultConfig(),
-			inputs: []StageInput{
-				{Name: "raw.jpg", Path: "unused", Width: 3840, Height: 2160},
-			},
-			want: true,
-		},
 		{
 			name: "disabled optimization skips ordinary transform",
 			cfg:  func() Config { value := DefaultConfig(); value.Enabled = false; return value }(),

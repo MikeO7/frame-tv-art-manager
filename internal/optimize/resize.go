@@ -17,10 +17,13 @@ import (
 )
 
 const (
-	extJPG              = ".jpg"
-	extJPEG             = ".jpeg"
-	extPNG              = ".png"
-	portraitModeCollage = "collage"
+	extJPG                = ".jpg"
+	extJPEG               = ".jpeg"
+	extPNG                = ".png"
+	formatJPEG            = "jpeg"
+	formatPNG             = "png"
+	profileRejectEmbedded = "reject-embedded"
+	portraitModeCollage   = "collage"
 )
 
 type Config struct {
@@ -36,7 +39,6 @@ type Config struct {
 	LinearLightResize   bool
 	SharpenAmount       float64
 	SharpenThreshold    int
-	DitherEnabled       bool
 	ColorProfilePolicy  string
 	MuseumModeEnabled   bool
 	MuseumModeIntensity int
@@ -58,10 +60,9 @@ func DefaultConfig() Config {
 		LinearLightResize:   true,
 		SharpenAmount:       0.25,
 		SharpenThreshold:    4,
-		DitherEnabled:       false,
 		ColorProfilePolicy:  "assume-srgb",
 		MuseumModeEnabled:   false,
-		MuseumModeIntensity: 1,
+		MuseumModeIntensity: 5,
 		PortraitMode:        "crop",
 	}
 }
@@ -110,7 +111,7 @@ func optimizeFileWithPolicy(
 	if err := validateWorkingSet(width, height, cfg); err != nil {
 		return filename, false, err
 	}
-	colorMetadata, err := enforceColorProfilePolicy(f, ext, cfg.ColorProfilePolicy)
+	colorMetadata, err := enforceColorProfilePolicy(ctx, f, ext, cfg.ColorProfilePolicy)
 	if err != nil {
 		return filename, false, fmt.Errorf("enforce color profile policy: %w", err)
 	}
@@ -129,7 +130,7 @@ func optimizeFileWithPolicy(
 		displayWidth, displayHeight = height, width
 	}
 	needsAdjustment := force || orientation != 1 || displayWidth != cfg.MaxWidth || displayHeight != cfg.MaxHeight
-	if !needsAdjustment && !cfg.MuseumModeEnabled && !cfg.DitherEnabled {
+	if !needsAdjustment && !cfg.MuseumModeEnabled {
 		if err := validateOptimizedPixels(f, cfg.MaxWidth, cfg.MaxHeight); err != nil {
 			return filename, false, err
 		}
@@ -144,7 +145,7 @@ func optimizeFileWithPolicy(
 	} else {
 		finalW, finalH, err = rewriteImage(rewriteParams{
 			f: f, path: path, filename: filename, width: width,
-			height: height, needsAdjustment: needsAdjustment, cfg: cfg, logger: logger,
+			height: height, cfg: cfg, logger: logger,
 			ctx: ctx, pixelWorkers: pixelWorkerLimit,
 		})
 		if err != nil {
@@ -169,7 +170,7 @@ func isOptimizableImage(extension string, cfg Config) bool {
 }
 
 func readOrientationForExtension(reader *os.File, extension string) (int, error) {
-	if extension == extPNG || extension == "png" {
+	if extension == extPNG || extension == formatPNG {
 		return ReadPNGOrientation(reader)
 	}
 	return ReadOrientation(reader)
@@ -196,10 +197,10 @@ func validateOptimizedPixels(file *os.File, expectedWidth, expectedHeight int) e
 // encoded output bytes. It is durable manifest metadata, never filename state.
 func TransformKey(cfg Config) string {
 	description := fmt.Sprintf(
-		"frame-image-v3|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|sharp=%.6g/%d|dither=%t|museum=%t/%d|portrait=%s|profile=%s",
+		"frame-image-v4|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|sharp=%.6g/%d|museum=%t/%d|portrait=%s|profile=%s",
 		cfg.MaxWidth, cfg.MaxHeight, cfg.OptimizeJPEGQuality, cfg.OptimizePNG, cfg.LinearLightResize,
 		cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.SharpenAmount, cfg.SharpenThreshold,
-		cfg.DitherEnabled, cfg.MuseumModeEnabled, cfg.MuseumModeIntensity,
+		cfg.MuseumModeEnabled, cfg.MuseumModeIntensity,
 		cfg.PortraitMode, cfg.ColorProfilePolicy,
 	)
 	digest := sha256.Sum256([]byte(description))
@@ -225,11 +226,15 @@ func handleRename(req renameRequest) (string, bool, error) {
 	dir := req.dir
 	modified := req.modified
 	logger := req.logger
+	ctx := req.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	if !modified {
 		return filename, false, nil
 	}
-	digest, err := fileDigest(path)
+	digest, err := fileDigest(ctx, path)
 	if err != nil {
 		return filename, modified, fmt.Errorf("hash optimized output: %w", err)
 	}
@@ -237,7 +242,9 @@ func handleRename(req renameRequest) (string, bool, error) {
 	if label == "" {
 		label = filename
 	}
-	newFilename, err := availableContentName(dir, filename, label, digest, filepath.Ext(filename))
+	newFilename, err := availableContentName(ctx, contentNameRequest{
+		directory: dir, currentName: filename, label: label, digest: digest, extension: filepath.Ext(filename),
+	})
 	if err != nil {
 		return filename, modified, fmt.Errorf("choose optimized output name: %w", err)
 	}
@@ -246,10 +253,6 @@ func handleRename(req renameRequest) (string, bool, error) {
 	}
 
 	newPath := filepath.Join(dir, newFilename)
-	ctx := req.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if err := durablefs.MoveExclusive(ctx, path, newPath); err != nil {
 		return filename, modified, fmt.Errorf("rename to optimized: %w", err)
 	}

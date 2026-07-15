@@ -54,7 +54,7 @@ func TestStageCatalogIsolatesTransformAndCleansWorkspace(t *testing.T) {
 	if outputInfo.Mode().Perm() != 0o644 {
 		t.Fatalf("staged output mode = %o, want 0644", outputInfo.Mode().Perm())
 	}
-	if err := ValidateImage(outputPath); err != nil {
+	if err := ValidateImage(context.Background(), outputPath); err != nil {
 		t.Fatalf("staged output is invalid: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(stage.Directory, sourceName)); !errors.Is(err, os.ErrNotExist) {

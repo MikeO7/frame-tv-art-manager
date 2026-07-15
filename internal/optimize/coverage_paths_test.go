@@ -227,25 +227,6 @@ func TestProcessCollages_OddPortraitListUnpaired(t *testing.T) {
 	}
 }
 
-func TestDither_UpperClampPath(t *testing.T) {
-	src := image.NewRGBA(image.Rect(0, 0, 5, 1))
-	for i := 0; i < 5; i++ {
-		src.SetRGBA(i, 0, color.RGBA{R: 255, G: 255, B: 255, A: 255})
-	}
-
-	out := dither(src)
-	if out == nil {
-		t.Fatal("dither returned nil")
-	}
-
-	px0 := out.Pix[0]  // x=0 red
-	px3 := out.Pix[12] // x=3 red
-	px4 := out.Pix[16] // x=4 red
-	if px0 == 255 || px3 == 0 || px4 == 0 {
-		t.Fatalf("unexpected dither output: px0=%d px3=%d px4=%d", px0, px3, px4)
-	}
-}
-
 func TestApplyContrastAndGamut_NegativeContrastClampsLookupToMax(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
 	img.SetRGBA(0, 0, color.RGBA{R: 1, G: 1, B: 1, A: 255})
@@ -380,7 +361,7 @@ func TestProcessCollages_IgnoresPortraitProbeErrors(t *testing.T) {
 	files := map[string]struct{}{
 		"upload_missing.jpg": {},
 	}
-	if got := collectRawPortraits(dir, files, true); len(got) != 0 {
+	if got := collectRawPortraits(context.Background(), dir, files, true); len(got) != 0 {
 		t.Fatalf("collectRawPortraits() = %v", got)
 	}
 }

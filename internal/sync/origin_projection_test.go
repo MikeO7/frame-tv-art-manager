@@ -15,10 +15,12 @@ func TestMetadataProjectionPreservesIdentityAndCombinesSourceLineage(t *testing.
 		{Name: "one.jpg", Key: "one.jpg", Origin: collectionpkg.Origin{Key: "source:one", Class: collectionpkg.OriginSource}, SourceKeys: []string{"source:one"}},
 		{Name: "two.jpg", Key: "two.jpg", Origin: collectionpkg.Origin{Key: "source:two", Class: collectionpkg.OriginSource}, SourceKeys: []string{"source:two"}},
 		{Name: "operator.jpg", Key: "original.jpg", Origin: collectionpkg.Origin{Key: "operator:operator.jpg", Class: collectionpkg.OriginOperator}},
+		{Name: "old-collage.jpg", Key: "collage-key.jpg", Origin: collectionpkg.Origin{Key: "derived:collage-key.jpg", Class: collectionpkg.OriginDerived}, SourceKeys: []string{"source:one", "source:two"}, Derivative: collectionpkg.DerivativeCollage},
 	}})
 	err := projection.apply([]optimize.Derivative{
 		{Name: "optimized.jpg", Inputs: []string{"operator.jpg"}, TransformKey: "transform", Kind: "optimized"},
 		{Name: "collage.jpg", Inputs: []string{"two.jpg", "one.jpg"}, TransformKey: "transform", Kind: "collage"},
+		{Name: "new-collage.jpg", Inputs: []string{"old-collage.jpg"}, TransformKey: "new-transform", Kind: "collage"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +34,11 @@ func TestMetadataProjectionPreservesIdentityAndCombinesSourceLineage(t *testing.
 	if collage.Origin.Class != collectionpkg.OriginDerived || collage.Derivative != collectionpkg.DerivativeCollage ||
 		!reflect.DeepEqual(collage.SourceKeys, []string{"source:one", "source:two"}) {
 		t.Fatalf("collage metadata = %+v", collage)
+	}
+	reencoded := items["new-collage.jpg"]
+	if reencoded.Key != "collage-key.jpg" || reencoded.Origin.Key != "derived:collage-key.jpg" ||
+		reencoded.Derivative != collectionpkg.DerivativeCollage {
+		t.Fatalf("re-encoded collage metadata = %+v", reencoded)
 	}
 }
 

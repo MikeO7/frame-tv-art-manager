@@ -69,14 +69,13 @@ func TestReadOrientationEXIFVariants(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
 		order       binary.ByteOrder
-		tagType     uint16
 		orientation uint32
 	}{
-		{name: "little endian short", order: binary.LittleEndian, tagType: 3, orientation: 6},
-		{name: "big endian long", order: binary.BigEndian, tagType: 4, orientation: 8},
+		{name: "little endian short", order: binary.LittleEndian, orientation: 6},
+		{name: "big endian short", order: binary.BigEndian, orientation: 8},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ReadOrientation(bytes.NewReader(exifJPEG(tt.order, tt.tagType, tt.orientation)))
+			got, err := ReadOrientation(bytes.NewReader(exifJPEG(tt.order, 3, tt.orientation)))
 			if err != nil || got != int(tt.orientation) {
 				t.Fatalf("ReadOrientation() = (%d, %v), want %d", got, err, tt.orientation)
 			}
@@ -150,6 +149,19 @@ func TestParseExifValidationAndMissingTag(t *testing.T) {
 	badTypeJPEG := exifJPEG(binary.LittleEndian, 9, 1)
 	if _, err := ReadOrientation(bytes.NewReader(badTypeJPEG)); err == nil || !strings.Contains(err.Error(), "unexpected") {
 		t.Fatalf("unexpected orientation type error = %v", err)
+	}
+	longJPEG := exifJPEG(binary.LittleEndian, 4, 1)
+	if _, err := ReadOrientation(bytes.NewReader(longJPEG)); err == nil || !strings.Contains(err.Error(), "type") {
+		t.Fatalf("LONG orientation type error = %v", err)
+	}
+	badCountJPEG := exifJPEG(binary.LittleEndian, 3, 1)
+	binary.LittleEndian.PutUint32(badCountJPEG[26:], 2)
+	if _, err := ReadOrientation(bytes.NewReader(badCountJPEG)); err == nil || !strings.Contains(err.Error(), "count") {
+		t.Fatalf("orientation count error = %v", err)
+	}
+	badValueJPEG := exifJPEG(binary.LittleEndian, 3, 9)
+	if _, err := ReadOrientation(bytes.NewReader(badValueJPEG)); err == nil || !strings.Contains(err.Error(), "value") {
+		t.Fatalf("orientation value error = %v", err)
 	}
 }
 

@@ -213,7 +213,7 @@ Once an image arrives at the `/upload` endpoint:
 
 1. **Validation.** The server checks the file is a valid JPEG or PNG and is within the size limit (`MAX_DOWNLOAD_SIZE_MB`, default 20 MB).
 2. **Identity & dedup.** An exact encoded-byte SHA-256 hash is computed. If the same file was uploaded before, the duplicate is silently discarded.
-3. **Saved to artwork/.** The file is written with a deterministic name: `upload-{hash}.jpg`. This name is stable across re-uploads.
+3. **Saved to artwork/.** The file keeps its format and is written with a bounded readable label plus a prefix of its exact byte digest, such as `summer-photo--8f14e45fceea167a.png`. The filename may change when the manager transforms the bytes; durable manifest identity makes re-uploads and matte overrides independent of that display name.
 4. **Optimization.** On the next sync cycle, the optimizer applies orientation, the configured portrait/crop policy, and exact target sizing (3840×2160 by default). PNG processing, smart crop, sharpening, and museum treatment follow their image settings.
 5. **TV sync.** The image is uploaded to the TV via the Samsung Art API and appears in Art Mode.
 

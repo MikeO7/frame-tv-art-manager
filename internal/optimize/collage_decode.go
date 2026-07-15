@@ -1,6 +1,7 @@
 package optimize
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"log/slog"
@@ -8,14 +9,17 @@ import (
 	"path/filepath"
 )
 
-func isPortraitFile(path string) (bool, error) {
+func isPortraitFile(ctx context.Context, path string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return false, err
 	}
 	defer f.Close()
 
-	imgCfg, format, err := image.DecodeConfig(f)
+	imgCfg, format, err := image.DecodeConfig(&contextReader{ctx: ctx, reader: f})
 	if err != nil {
 		return false, err
 	}
@@ -25,7 +29,7 @@ func isPortraitFile(path string) (bool, error) {
 	if _, err := f.Seek(0, 0); err != nil {
 		return false, err
 	}
-	orientation, err := readOrientationForExtension(f, format)
+	orientation, err := readOrientationForExtension(&contextReader{ctx: ctx, reader: f}, format)
 	if err != nil {
 		return false, fmt.Errorf("read orientation: %w", err)
 	}
@@ -36,18 +40,25 @@ func isPortraitFile(path string) (bool, error) {
 	return h > w, nil
 }
 
-func loadAndRotateImage(path string) (*image.RGBA, error) {
-	return loadAndRotateImageWithPolicy(path, "assume-srgb", slog.New(slog.DiscardHandler))
+func loadAndRotateImage(ctx context.Context, path string) (*image.RGBA, error) {
+	return loadAndRotateImageWithPolicy(ctx, path, "assume-srgb", slog.New(slog.DiscardHandler))
 }
 
-func loadAndRotateImageWithPolicy(path, profilePolicy string, logger *slog.Logger) (*image.RGBA, error) {
+func loadAndRotateImageWithPolicy(
+	ctx context.Context,
+	path, profilePolicy string,
+	logger *slog.Logger,
+) (*image.RGBA, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	imgCfg, format, err := image.DecodeConfig(f)
+	imgCfg, format, err := image.DecodeConfig(&contextReader{ctx: ctx, reader: f})
 	if err != nil {
 		return nil, err
 	}
@@ -55,10 +66,10 @@ func loadAndRotateImageWithPolicy(path, profilePolicy string, logger *slog.Logge
 		return nil, err
 	}
 	extension := extJPG
-	if format == "png" {
+	if format == formatPNG {
 		extension = extPNG
 	}
-	colorMetadata, err := enforceColorProfilePolicy(f, extension, profilePolicy)
+	colorMetadata, err := enforceColorProfilePolicy(ctx, f, extension, profilePolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -71,14 +82,14 @@ func loadAndRotateImageWithPolicy(path, profilePolicy string, logger *slog.Logge
 	if _, err := f.Seek(0, 0); err != nil {
 		return nil, err
 	}
-	orientation, err := readOrientationForExtension(f, format)
+	orientation, err := readOrientationForExtension(&contextReader{ctx: ctx, reader: f}, format)
 	if err != nil {
 		return nil, fmt.Errorf("read orientation: %w", err)
 	}
 	if _, err := f.Seek(0, 0); err != nil {
 		return nil, err
 	}
-	img, _, err := image.Decode(f)
+	img, _, err := image.Decode(&contextReader{ctx: ctx, reader: f})
 	if err != nil {
 		return nil, err
 	}

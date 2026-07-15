@@ -29,7 +29,7 @@ func generateBMSMap(src *image.RGBA) []float64 {
 	for _, channel := range channels {
 		for threshold := 32; threshold < 256; threshold += 32 {
 			for _, inverse := range []bool{false, true} {
-				attention := processBMSThresholdDirection(channel, uint8(threshold), w, h, inverse)
+				attention := processBMSAttention(channel, uint8(threshold), w, h, inverse)
 				normSquared := 0.0
 				for _, value := range attention {
 					normSquared += value * value
@@ -118,8 +118,21 @@ func processBMSThresholdDirection(values []uint8, threshold uint8, w, h int, inv
 	if len(values) < w*h {
 		return nil
 	}
-	res := make([]float64, w*h)
-	boolMap := make([]bool, w*h)
+	boolMap := thresholdBooleanMap(values, threshold, w*h, inverse)
+	return surroundednessMap(boolMap, w, h)
+}
+
+func processBMSAttention(values []uint8, threshold uint8, w, h int, inverse bool) []float64 {
+	if w <= 0 || h <= 0 || len(values) < w*h {
+		return nil
+	}
+	boolMap := thresholdBooleanMap(values, threshold, w*h, inverse)
+	opened := dilateBinary(erodeBinary(boolMap, w, h), w, h)
+	return dilateAttention(surroundednessMap(opened, w, h), w, h)
+}
+
+func thresholdBooleanMap(values []uint8, threshold uint8, size int, inverse bool) []bool {
+	boolMap := make([]bool, size)
 	for i, value := range values {
 		if i >= len(boolMap) {
 			break
@@ -129,7 +142,11 @@ func processBMSThresholdDirection(values []uint8, threshold uint8, w, h int, inv
 			boolMap[i] = !boolMap[i]
 		}
 	}
+	return boolMap
+}
 
+func surroundednessMap(boolMap []bool, w, h int) []float64 {
+	res := make([]float64, w*h)
 	state := bmsState{
 		queue:   make([]int, w*h),
 		boolMap: boolMap,
@@ -147,6 +164,56 @@ func processBMSThresholdDirection(values []uint8, threshold uint8, w, h int, inv
 		}
 	}
 	return res
+}
+
+//nolint:gocognit // fixed 3x3 binary erosion is clearest as direct bounded loops
+func erodeBinary(values []bool, w, h int) []bool {
+	result := make([]bool, len(values))
+	for y := 1; y < h-1; y++ {
+		for x := 1; x < w-1; x++ {
+			keep := true
+			for yy := y - 1; yy <= y+1 && keep; yy++ {
+				for xx := x - 1; xx <= x+1; xx++ {
+					if !values[yy*w+xx] {
+						keep = false
+						break
+					}
+				}
+			}
+			result[y*w+x] = keep
+		}
+	}
+	return result
+}
+
+func dilateBinary(values []bool, w, h int) []bool {
+	result := make([]bool, len(values))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			for yy := max(0, y-1); yy <= min(h-1, y+1); yy++ {
+				for xx := max(0, x-1); xx <= min(w-1, x+1); xx++ {
+					if values[yy*w+xx] {
+						result[y*w+x] = true
+					}
+				}
+			}
+		}
+	}
+	return result
+}
+
+func dilateAttention(values []float64, w, h int) []float64 {
+	result := make([]float64, len(values))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			for yy := max(0, y-1); yy <= min(h-1, y+1); yy++ {
+				for xx := max(0, x-1); xx <= min(w-1, x+1); xx++ {
+					result[y*w+x] = max(result[y*w+x], values[yy*w+xx])
+				}
+			}
+		}
+	}
+	return result
 }
 
 //nolint:gocognit // the fixed 3x3 spatial reduction is clearer kept as direct bounded loops

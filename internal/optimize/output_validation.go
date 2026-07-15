@@ -1,8 +1,10 @@
 package optimize
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"image"
 	"io"
 	"os"
@@ -11,19 +13,21 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
-func availableContentName(
-	directory string,
-	currentName string,
-	label string,
-	digest [sha256.Size]byte,
-	extension string,
-) (string, error) {
+type contentNameRequest struct {
+	directory, currentName, label, extension string
+	digest                                   [sha256.Size]byte
+}
+
+func availableContentName(ctx context.Context, request contentNameRequest) (string, error) {
 	for digestBytes := 8; digestBytes <= sha256.Size; digestBytes += 2 {
-		candidate := artwork.BuildContentName(label, digest, extension, digestBytes)
-		if candidate == currentName {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		candidate := artwork.BuildContentName(request.label, request.digest, request.extension, digestBytes)
+		if candidate == request.currentName {
 			return candidate, nil
 		}
-		_, err := os.Lstat(filepath.Join(directory, candidate))
+		_, err := os.Lstat(filepath.Join(request.directory, candidate))
 		if errors.Is(err, os.ErrNotExist) {
 			return candidate, nil
 		}
@@ -34,14 +38,17 @@ func availableContentName(
 	return "", errors.New("every content-digest filename is occupied")
 }
 
-func fileDigest(path string) ([sha256.Size]byte, error) {
+func fileDigest(ctx context.Context, path string) ([sha256.Size]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return [sha256.Size]byte{}, err
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return [sha256.Size]byte{}, err
 	}
 	defer func() { _ = file.Close() }()
 	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
+	if _, err := io.Copy(hash, &contextReader{ctx: ctx, reader: file}); err != nil {
 		return [sha256.Size]byte{}, err
 	}
 	var digest [sha256.Size]byte
@@ -50,13 +57,39 @@ func fileDigest(path string) ([sha256.Size]byte, error) {
 }
 
 // ValidateImage verifies that the complete encoded pixel stream decodes.
-func ValidateImage(path string) error {
-	f, err := os.Open(path)
+func ValidateImage(ctx context.Context, path string) error {
+	_, _, err := decodeImageOutput(ctx, path)
+	return err
+}
+
+func validateImageOutput(ctx context.Context, path, expectedFormat string, expectedWidth, expectedHeight int) error {
+	decoded, format, err := decodeImageOutput(ctx, path)
 	if err != nil {
 		return err
 	}
+	if format != expectedFormat {
+		return fmt.Errorf("output format %q, want %q", format, expectedFormat)
+	}
+	bounds := decoded.Bounds()
+	if bounds.Dx() != expectedWidth || bounds.Dy() != expectedHeight {
+		return fmt.Errorf(
+			"output dimensions %dx%d, want %dx%d",
+			bounds.Dx(), bounds.Dy(), expectedWidth, expectedHeight,
+		)
+	}
+	return nil
+}
+
+func decodeImageOutput(ctx context.Context, path string) (image.Image, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
 	defer func() { _ = f.Close() }()
 
-	_, _, err = image.Decode(f)
-	return err
+	decoded, format, err := image.Decode(&contextReader{ctx: ctx, reader: f})
+	return decoded, format, err
 }

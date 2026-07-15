@@ -88,7 +88,6 @@ func (env *environment) loadConfig() (*Config, error) {
 		LinearLightResize:   env.boolean("IMAGE_LINEAR_LIGHT_RESIZE", true),
 		SharpenAmount:       env.decimal("IMAGE_SHARPEN_AMOUNT", 0.25),
 		SharpenThreshold:    env.integer("IMAGE_SHARPEN_THRESHOLD", 4),
-		DitherEnabled:       env.boolean("IMAGE_DITHER_ENABLED", false),
 		ColorProfilePolicy:  strings.ToLower(env.str("IMAGE_COLOR_PROFILE_POLICY", colorProfileAssumeSRGB)),
 		MuseumModeEnabled:   env.boolean("IMAGE_MUSEUM_MODE", false),
 		MuseumModeIntensity: env.integer("IMAGE_MUSEUM_INTENSITY", 5),

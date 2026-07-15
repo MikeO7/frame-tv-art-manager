@@ -171,8 +171,6 @@ type Config struct {
 	SharpenAmount float64
 	// SharpenThreshold suppresses sharpening for small 8-bit luminance differences.
 	SharpenThreshold int
-	// DitherEnabled enables final 8-bit quantization dither. It is off for the current 8-bit pipeline.
-	DitherEnabled bool
 	// ColorProfilePolicy is assume-srgb or reject-embedded.
 	ColorProfilePolicy string
 

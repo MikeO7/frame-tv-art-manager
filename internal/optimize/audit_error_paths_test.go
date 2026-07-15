@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,7 +129,7 @@ func TestAuditSafetyHelperBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := enforceColorProfilePolicy(malformed, extJPG, "assume-srgb"); err == nil {
+	if _, err := enforceColorProfilePolicy(context.Background(), malformed, extJPG, "assume-srgb"); err == nil {
 		_ = malformed.Close()
 		t.Fatal("enforceColorProfilePolicy(malformed) error = nil")
 	}
@@ -142,8 +143,19 @@ func TestAuditSafetyHelperBranches(t *testing.T) {
 	}
 
 	digest := sha256.Sum256([]byte("name"))
+	request := contentNameRequest{directory: directory, label: "label", digest: digest, extension: extJPG}
+	if _, err := availableContentName(ctx, request); !errors.Is(err, context.Canceled) {
+		t.Fatalf("availableContentName(canceled) error = %v", err)
+	}
+	if _, err := fileDigest(ctx, path); !errors.Is(err, context.Canceled) {
+		t.Fatalf("fileDigest(canceled) error = %v", err)
+	}
+	if err := ValidateImage(ctx, path); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ValidateImage(canceled) error = %v", err)
+	}
 	current := artwork.BuildContentName("label", digest, extJPG, 8)
-	if got, err := availableContentName(directory, current, "label", digest, extJPG); err != nil || got != current {
+	request.currentName = current
+	if got, err := availableContentName(context.Background(), request); err != nil || got != current {
 		t.Fatalf("availableContentName(current) = %q, %v", got, err)
 	}
 	for digestBytes := 8; digestBytes <= sha256.Size; digestBytes += 2 {
@@ -152,20 +164,22 @@ func TestAuditSafetyHelperBranches(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := availableContentName(directory, "", "occupied", digest, extJPG); err == nil {
+	request.currentName, request.label = "", "occupied"
+	if _, err := availableContentName(context.Background(), request); err == nil {
 		t.Fatal("availableContentName(all occupied) error = nil")
 	}
 	notDirectory := filepath.Join(directory, "not-directory")
 	if err := os.WriteFile(notDirectory, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := availableContentName(notDirectory, "", "label", digest, extJPG); err == nil {
+	request.directory, request.label = notDirectory, "label"
+	if _, err := availableContentName(context.Background(), request); err == nil {
 		t.Fatal("availableContentName(non-directory) error = nil")
 	}
-	if _, err := fileDigest(filepath.Join(directory, "missing")); err == nil {
+	if _, err := fileDigest(context.Background(), filepath.Join(directory, "missing")); err == nil {
 		t.Fatal("fileDigest(missing) error = nil")
 	}
-	if _, err := fileDigest(directory); err == nil {
+	if _, err := fileDigest(context.Background(), directory); err == nil {
 		t.Fatal("fileDigest(directory) error = nil")
 	}
 

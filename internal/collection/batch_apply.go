@@ -186,7 +186,11 @@ func (s *store) scanApplyEntry(
 	}
 	item.Path = filepath.Join(s.root, item.Name)
 	if old, ok := current[item.Name]; ok && old.Digest == item.Digest {
+		item.Key = old.Key
 		item.Origin = old.Origin
+		item.SourceKeys = append([]string(nil), old.SourceKeys...)
+		item.TransformKey = old.TransformKey
+		item.Derivative = old.Derivative
 	}
 	if origin, ok := overrides[item.Name]; ok {
 		item.Origin = origin

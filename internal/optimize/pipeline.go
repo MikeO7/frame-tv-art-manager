@@ -205,7 +205,7 @@ func handleSingleOptimizationContext(ctx context.Context, filename string, o *op
 	input := o.inputs[filename]
 
 	if !o.cfg.Enabled {
-		if err := ValidateImage(path); err != nil {
+		if err := ValidateImage(ctx, path); err != nil {
 			o.logger.Warn("skipping corrupt image", "file", filename, "error", err)
 			o.recordDelete(filename)
 			return false, false

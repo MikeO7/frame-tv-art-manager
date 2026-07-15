@@ -133,7 +133,7 @@ func TestOptimizeCatalogRenamesImage(t *testing.T) {
 	if callback[0][0] != oldName || callback[0][1] == oldName {
 		t.Fatalf("unexpected callback: %v", callback)
 	}
-	if err := ValidateImage(filepath.Join(dir, callback[0][1])); err != nil {
+	if err := ValidateImage(context.Background(), filepath.Join(dir, callback[0][1])); err != nil {
 		t.Fatalf("renamed output invalid: %v", err)
 	}
 }
@@ -184,7 +184,7 @@ func TestCollagePipelineJPEGAndPNG(t *testing.T) {
 			if filepath.Ext(name) != ext {
 				t.Fatalf("output extension = %q, want %q", filepath.Ext(name), ext)
 			}
-			if err := ValidateImage(filepath.Join(dir, name)); err != nil {
+			if err := ValidateImage(context.Background(), filepath.Join(dir, name)); err != nil {
 				t.Fatalf("collage invalid: %v", err)
 			}
 			for _, source := range []string{f1, f2} {
@@ -205,14 +205,14 @@ func TestCollectRawPortraitsAndWorkerBounds(t *testing.T) {
 		"upload_portrait.jpg": {}, "remote_portrait.jpg": {}, "upload_landscape.jpg": {},
 		"upload_1x1_opt.h_hash.jpg": {}, "._sidecar.jpg": {}, "missing.jpg": {},
 	}
-	got := collectRawPortraits(dir, files, false)
+	got := collectRawPortraits(context.Background(), dir, files, false)
 	if len(got) != 0 {
 		t.Fatalf("collectRawPortraits(crop mode) = %v, want none", got)
 	}
 	if _, exists := files["._sidecar.jpg"]; exists {
 		t.Fatal("AppleDouble sidecar was not pruned")
 	}
-	got = collectRawPortraits(dir, files, true)
+	got = collectRawPortraits(context.Background(), dir, files, true)
 	if len(got) != 2 {
 		t.Fatalf("collectRawPortraits(all) = %v, want two portraits", got)
 	}

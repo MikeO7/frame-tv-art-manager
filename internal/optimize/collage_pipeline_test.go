@@ -2,6 +2,7 @@ package optimize
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"image"
 	"image/color"
@@ -21,7 +22,7 @@ func TestIsPortraitFile_SeekFailureFromNonSeekableSource(t *testing.T) {
 	portraitPath := filepath.Join(dir, "portrait.jpg")
 	writeJPEGToFIFO(t, portraitPath, 2, 4)
 
-	_, err := isPortraitFile(portraitPath)
+	_, err := isPortraitFile(context.Background(), portraitPath)
 	if err == nil || !strings.Contains(err.Error(), "seek") {
 		t.Fatalf("isPortraitFile() = %v, expected seek error", err)
 	}
@@ -32,7 +33,7 @@ func TestLoadAndRotateImage_SeekFailureFromNonSeekableSource(t *testing.T) {
 	portraitPath := filepath.Join(dir, "portrait.jpg")
 	writeJPEGToFIFO(t, portraitPath, 2, 4)
 
-	_, err := loadAndRotateImage(portraitPath)
+	_, err := loadAndRotateImage(context.Background(), portraitPath)
 	if err == nil || !strings.Contains(err.Error(), "seek") {
 		t.Fatalf("loadAndRotateImage() = %v, expected seek error", err)
 	}
@@ -45,7 +46,7 @@ func TestIsPortraitFile_DecodeConfigError(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	if _, err := isPortraitFile(path); err == nil {
+	if _, err := isPortraitFile(context.Background(), path); err == nil {
 		t.Fatal("expected decode config error")
 	}
 }
@@ -155,17 +156,17 @@ func TestCollageUtilsPortraitDetectionAndRotation(t *testing.T) {
 	writePNGForCollageTests(t, portraitPath, 2, 4)
 	writePNGForCollageTests(t, landscapePath, 4, 2)
 
-	isPortrait, err := isPortraitFile(portraitPath)
+	isPortrait, err := isPortraitFile(context.Background(), portraitPath)
 	if err != nil || !isPortrait {
 		t.Fatalf("isPortraitFile(portrait) = (%v, %v), want (true, nil)", isPortrait, err)
 	}
 
-	isPortrait, err = isPortraitFile(landscapePath)
+	isPortrait, err = isPortraitFile(context.Background(), landscapePath)
 	if err != nil || isPortrait {
 		t.Fatalf("isPortraitFile(landscape) = (%v, %v), want (false, nil)", isPortrait, err)
 	}
 
-	img, err := loadAndRotateImage(portraitPath)
+	img, err := loadAndRotateImage(context.Background(), portraitPath)
 	if err != nil {
 		t.Fatalf("loadAndRotateImage(portrait) = %v", err)
 	}
@@ -199,12 +200,12 @@ func TestLoadAndRotateImage_Errors(t *testing.T) {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	_, err := loadAndRotateImage(path)
+	_, err := loadAndRotateImage(context.Background(), path)
 	if err == nil || (!strings.Contains(err.Error(), "unknown format") && !strings.Contains(err.Error(), "image: ")) {
 		t.Fatalf("loadAndRotateImage() = %v", err)
 	}
 
-	_, err = loadAndRotateImage(filepath.Join(dir, "missing.jpg"))
+	_, err = loadAndRotateImage(context.Background(), filepath.Join(dir, "missing.jpg"))
 	if err == nil {
 		t.Fatal("expected open error for missing file")
 	}
@@ -260,7 +261,7 @@ func TestCollectRawPortraitsFiltersAppleDoubleFiles(t *testing.T) {
 		"upload_ignore.opt": {},
 	}
 
-	got := collectRawPortraits(dir, localFiles, true)
+	got := collectRawPortraits(context.Background(), dir, localFiles, true)
 	if len(got) != 1 {
 		t.Fatalf("collectRawPortraits() = %#v", got)
 	}
@@ -309,7 +310,7 @@ func TestIsPortraitFile_UsesExifOrientation(t *testing.T) {
 	portraitPath := filepath.Join(dir, "portrait_oriented.jpg")
 	writeJPEGWithExifOrientation(t, portraitPath, 4, 2, 8)
 
-	isPortrait, err := isPortraitFile(portraitPath)
+	isPortrait, err := isPortraitFile(context.Background(), portraitPath)
 	if err != nil {
 		t.Fatalf("isPortraitFile() = %v", err)
 	}
@@ -323,7 +324,7 @@ func TestLoadAndRotateImage_RespectsExifOrientation(t *testing.T) {
 	portraitPath := filepath.Join(dir, "portrait_oriented_for_load.jpg")
 	writeJPEGWithExifOrientation(t, portraitPath, 4, 2, 6)
 
-	got, err := loadAndRotateImage(portraitPath)
+	got, err := loadAndRotateImage(context.Background(), portraitPath)
 	if err != nil {
 		t.Fatalf("loadAndRotateImage() = %v", err)
 	}
@@ -354,7 +355,7 @@ func TestProcessCollagePair_FallbacksUnknownExtensionToJPEG(t *testing.T) {
 	if filepath.Ext(name) != extJPG {
 		t.Fatalf("expected fallback extension %s, got %s", extJPG, filepath.Ext(name))
 	}
-	if err := ValidateImage(filepath.Join(dir, name)); err != nil {
+	if err := ValidateImage(context.Background(), filepath.Join(dir, name)); err != nil {
 		t.Fatalf("output image invalid: %v", err)
 	}
 }

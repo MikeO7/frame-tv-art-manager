@@ -159,6 +159,7 @@ func parseExif(tiff []byte) (int, error) {
 	return findOrientationTag(tiff, bo, numEntries, entryOffset)
 }
 
+//nolint:nestif // TIFF entry bounds, type, count, and value checks must stay adjacent
 func findOrientationTag(tiff []byte, bo binary.ByteOrder, numEntries, entryOffset int) (int, error) {
 	for i := 0; i < numEntries; i++ {
 		if len(tiff) < entryOffset+12 {
@@ -166,14 +167,18 @@ func findOrientationTag(tiff []byte, bo binary.ByteOrder, numEntries, entryOffse
 		}
 		if bo.Uint16(tiff[entryOffset:]) == 0x0112 {
 			valType := bo.Uint16(tiff[entryOffset+2:])
-			switch valType {
-			case 3:
-				return int(bo.Uint16(tiff[entryOffset+8:])), nil
-			case 4:
-				return int(bo.Uint32(tiff[entryOffset+8:])), nil
-			default:
+			count := bo.Uint32(tiff[entryOffset+4:])
+			if valType != 3 {
 				return 1, fmt.Errorf("unexpected orientation tag type: %d", valType)
 			}
+			if count != 1 {
+				return 1, fmt.Errorf("unexpected orientation tag count: %d", count)
+			}
+			orientation := int(bo.Uint16(tiff[entryOffset+8:]))
+			if orientation < 1 || orientation > 8 {
+				return 1, fmt.Errorf("invalid orientation value: %d", orientation)
+			}
+			return orientation, nil
 		}
 		entryOffset += 12
 	}

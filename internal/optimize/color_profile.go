@@ -1,21 +1,25 @@
 package optimize
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 )
 
-func enforceColorProfilePolicy(file *os.File, extension, policy string) (string, error) {
+func enforceColorProfilePolicy(ctx context.Context, file *os.File, extension, policy string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if _, err := file.Seek(0, 0); err != nil {
 		return "", fmt.Errorf("seek color metadata: %w", err)
 	}
-	metadata, err := findColorMetadata(file, extension)
+	metadata, err := findColorMetadata(&contextReader{ctx: ctx, reader: file}, extension)
 	if err != nil {
 		return "", err
 	}
-	if metadata != "" && policy == "reject-embedded" {
+	if metadata != "" && policy == profileRejectEmbedded {
 		return metadata, fmt.Errorf("unsupported embedded color metadata %s", metadata)
 	}
 	return metadata, nil

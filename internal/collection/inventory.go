@@ -91,6 +91,7 @@ func scanEntries(
 	return items, nil
 }
 
+//nolint:gocyclo // the path/open/read identity checks form one fail-closed filesystem observation
 func inspectItem(ctx context.Context, root string, entry os.DirEntry, maxBytes, maxPixels int64) (Item, bool, error) {
 	if entry.Type()&os.ModeSymlink != 0 {
 		return Item{}, false, fmt.Errorf("artwork %s is a symlink", entry.Name())
@@ -110,17 +111,34 @@ func inspectItem(ctx context.Context, root string, entry os.DirEntry, maxBytes, 
 	if err != nil {
 		return Item{}, false, fmt.Errorf("open artwork %s: %w", entry.Name(), err)
 	}
+	opened, openedErr := file.Stat()
+	if openedErr != nil {
+		_ = file.Close()
+		return Item{}, false, fmt.Errorf("inspect opened artwork %s: %w", entry.Name(), openedErr)
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		_ = file.Close()
+		return Item{}, false, fmt.Errorf("artwork %s changed while opening", entry.Name())
+	}
 	validated, validateErr := readAndValidate(ctx, file, entry.Name(), maxBytes, maxPixels)
+	after, statErr := file.Stat()
+	pathAfter, pathErr := os.Lstat(path)
 	closeErr := file.Close()
 	if validateErr != nil {
 		return Item{}, false, fmt.Errorf("validate artwork %s: %w", entry.Name(), validateErr)
 	}
-	if closeErr != nil {
-		return Item{}, false, fmt.Errorf("close artwork %s: %w", entry.Name(), closeErr)
+	if err := errors.Join(statErr, pathErr, closeErr); err != nil {
+		return Item{}, false, fmt.Errorf("reinspect artwork %s: %w", entry.Name(), err)
+	}
+	if pathAfter.Mode()&os.ModeSymlink != 0 || !pathAfter.Mode().IsRegular() ||
+		!os.SameFile(opened, after) || !os.SameFile(after, pathAfter) ||
+		opened.Size() != after.Size() || !opened.ModTime().Equal(after.ModTime()) ||
+		after.Size() != int64(len(validated.data)) {
+		return Item{}, false, fmt.Errorf("artwork %s changed while reading", entry.Name())
 	}
 	return Item{
 		Name: entry.Name(), Key: entry.Name(), Path: path, Digest: validated.digest,
-		Type: validated.typeID, Size: info.Size(), Width: validated.width, Height: validated.height,
+		Type: validated.typeID, Size: after.Size(), Width: validated.width, Height: validated.height,
 		Origin: Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
 	}, true, nil
 }
@@ -136,6 +154,12 @@ func isSupportedName(name string) bool {
 
 func (s *store) plan(items []Item, input validatedImage, origin Origin) ([]Item, Change, bool) {
 	for index, item := range items {
+		// Upload origin records the digest of the operator's original bytes.
+		// A derivative has different current bytes but remains the same logical
+		// upload, so a repeated upload must resolve to that existing item.
+		if origin.Class == OriginOperatorUpload && item.Origin == origin {
+			return cloneItems(items), Change{Kind: ChangeDuplicate, Name: item.Name}, true
+		}
 		if item.Digest == input.digest {
 			if item.Origin != origin && origin.Class == OriginSource {
 				projected := cloneItems(items)

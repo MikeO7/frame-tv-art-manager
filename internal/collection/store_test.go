@@ -73,6 +73,44 @@ func TestImportDeduplicatesByFullDigest(t *testing.T) {
 	}
 }
 
+func TestReuploadOriginalBytesDeduplicatesAgainstCurrentDerivative(t *testing.T) {
+	root := t.TempDir()
+	store := newStore(t, root)
+	original := encodeImage(t, "png", 3, 2)
+	imported, err := store.Import(context.Background(), collection.ImportRequest{
+		Reader: bytes.NewReader(original), Hint: "vacation.png",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stage := t.TempDir()
+	const derivativeName = "vacation-transformed.png"
+	if err := os.WriteFile(filepath.Join(stage, derivativeName), encodeImage(t, "png", 4, 3), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	item := imported.Items[0]
+	transformed, err := store.Apply(context.Background(), collection.ApplyRequest{
+		Directory: stage,
+		Metadata: map[string]collection.ItemMetadata{derivativeName: {
+			Key: item.Key, Origin: item.Origin, TransformKey: strings.Repeat("a", sha256.Size*2),
+			Derivative: collection.DerivativeOptimized,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reuploaded, err := store.Import(context.Background(), collection.ImportRequest{
+		Reader: bytes.NewReader(original), Hint: "vacation-again.png",
+	})
+	if err != nil {
+		t.Fatalf("repeat original upload: %v", err)
+	}
+	if len(reuploaded.Items) != 1 || reuploaded.Items[0].Name != transformed.Items[0].Name ||
+		len(reuploaded.Changes) != 1 || reuploaded.Changes[0].Kind != collection.ChangeDuplicate {
+		t.Fatalf("re-upload result = %+v", reuploaded)
+	}
+}
+
 func TestSourceImportCommitsOriginAndAdoptsExactOperatorDigestWithoutClobber(t *testing.T) {
 	root := t.TempDir()
 	data := encodeImage(t, "jpeg", 4, 3)

@@ -16,14 +16,13 @@ import (
 )
 
 type rewriteParams struct {
-	f               *os.File
-	path, filename  string
-	width, height   int
-	needsAdjustment bool
-	cfg             Config
-	logger          *slog.Logger
-	ctx             context.Context
-	pixelWorkers    int
+	f              *os.File
+	path, filename string
+	width, height  int
+	cfg            Config
+	logger         *slog.Logger
+	ctx            context.Context
+	pixelWorkers   int
 }
 
 //nolint:funlen,gocognit,gocyclo // ordered decode, transform, validation, and durable publication pipeline
@@ -62,7 +61,8 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 	params.logger.Info("optimizing image", "file", params.filename, "original_dims", fmt.Sprintf("%dx%d", params.width, params.height))
 	rgba := toRGBA(RotateImage(img, orientation))
 	newW, newH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
-	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
+	resampled := newW != cfg.MaxWidth || newH != cfg.MaxHeight
+	if resampled {
 		if newH > newW && cfg.PortraitMode != "crop" {
 			rgba = padPortraitWithOptions(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.LinearLightResize)
 		} else {
@@ -75,13 +75,11 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 		return 0, 0, err
 	}
 
-	if params.needsAdjustment {
+	if resampled {
 		rgba = sharpenWithOptions(rgba, cfg.SharpenAmount, cfg.SharpenThreshold, params.pixelWorkers)
 	}
 	if cfg.MuseumModeEnabled {
 		rgba = applyMuseumModeWithWorkers(rgba, cfg.MuseumModeIntensity, params.pixelWorkers)
-	} else if cfg.DitherEnabled {
-		rgba = ditherWithWorkers(rgba, params.pixelWorkers)
 	}
 	if err := params.ctx.Err(); err != nil {
 		return 0, 0, err
@@ -95,7 +93,11 @@ func rewriteImage(params rewriteParams) (int, int, error) {
 		return 0, 0, err
 	}
 	defer func() { _ = os.Remove(tmpPath) }()
-	if err := ValidateImage(tmpPath); err != nil {
+	expectedFormat := formatJPEG
+	if strings.EqualFold(filepath.Ext(params.path), extPNG) {
+		expectedFormat = formatPNG
+	}
+	if err := validateImageOutput(params.ctx, tmpPath, expectedFormat, cfg.MaxWidth, cfg.MaxHeight); err != nil {
 		return 0, 0, fmt.Errorf("validate optimized image: %w", err)
 	}
 	if err := durablefs.Rename(params.ctx, tmpPath, params.path); err != nil {

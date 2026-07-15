@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,7 +32,11 @@ func RequiresStage(ctx context.Context, request StageRequest) (bool, error) {
 	if uncertain || len(rawPortraits) >= 2 {
 		return true, nil
 	}
-	return requiresIndividualStage(ctx, inputs, rawPortraits, request.Config)
+	logger := request.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+	return requiresIndividualStage(ctx, inputs, rawPortraits, request.Config, logger)
 }
 
 func preflightRawPortraits(ctx context.Context, inputs []StageInput, cfg Config) ([]string, bool, error) {
@@ -60,6 +65,7 @@ func requiresIndividualStage(
 	inputs []StageInput,
 	rawPortraits []string,
 	cfg Config,
+	logger *slog.Logger,
 ) (bool, error) {
 	var unpairedPortrait string
 	if len(rawPortraits) == 1 {
@@ -79,8 +85,18 @@ func requiresIndividualStage(
 			}
 			continue
 		}
-		if input.Width != cfg.MaxWidth || input.Height != cfg.MaxHeight || cfg.MuseumModeEnabled || cfg.DitherEnabled {
+		if input.Width != cfg.MaxWidth || input.Height != cfg.MaxHeight || cfg.MuseumModeEnabled {
 			return true, nil
+		}
+		colorMetadata, err := preflightColorMetadata(ctx, input, cfg.ColorProfilePolicy)
+		if err != nil {
+			return false, fmt.Errorf("preflight color metadata for %q: %w", input.Name, err)
+		}
+		if colorMetadata != "" {
+			logger.Warn(
+				"embedded color metadata is not transformed; treating decoded samples as sRGB",
+				"file", input.Name, "metadata", colorMetadata,
+			)
 		}
 		orientation, err := preflightOrientation(ctx, input)
 		if err != nil {
@@ -94,6 +110,29 @@ func requiresIndividualStage(
 		}
 	}
 	return false, nil
+}
+
+func preflightColorMetadata(ctx context.Context, input StageInput, policy string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	file, before, err := openPreflightInput(input)
+	if err != nil {
+		return "", err
+	}
+	extension := strings.ToLower(filepath.Ext(input.Name))
+	metadata, readErr := enforceColorProfilePolicy(ctx, file, extension, policy)
+	opened, statErr := file.Stat()
+	closeErr := file.Close()
+	after, pathErr := os.Lstat(input.Path)
+	if err := errors.Join(readErr, statErr, closeErr, pathErr); err != nil {
+		return "", err
+	}
+	if after.Mode()&os.ModeSymlink != 0 || !after.Mode().IsRegular() ||
+		!os.SameFile(before, opened) || !os.SameFile(opened, after) {
+		return "", fmt.Errorf("artwork %q changed while reading color metadata", input.Name)
+	}
+	return metadata, nil
 }
 
 func isRawCollageCandidate(input StageInput, cfg Config) bool {

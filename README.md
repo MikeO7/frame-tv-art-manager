@@ -254,7 +254,6 @@ the table below covers the settings most people change.
 | `IMAGE_LINEAR_LIGHT_RESIZE` | `true` | Resize RGB samples in linear light |
 | `IMAGE_SHARPEN_AMOUNT` | `0.25` | Luminance unsharp-mask amount (`0` disables) |
 | `IMAGE_SHARPEN_THRESHOLD` | `4` | Minimum luminance difference before sharpening |
-| `IMAGE_DITHER_ENABLED` | `false` | Add final-stage dither (normally unnecessary for JPEG/PNG) |
 | `IMAGE_COLOR_PROFILE_POLICY` | `assume-srgb` | `assume-srgb` or `reject-embedded` |
 | `PORTRAIT_MODE` | `crop` | `crop`, `pad`, or `collage` |
 | `SMART_CROP_ENABLED` | `false` | Enable heuristic saliency cropping |

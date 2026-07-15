@@ -14,7 +14,13 @@ import (
 
 const stagePattern = ".frame-tv-transform-*"
 
-const derivativeKindOptimized = "optimized"
+const (
+	DerivativeOptimized DerivativeKind = "optimized"
+	DerivativeCollage   DerivativeKind = "collage"
+)
+
+// DerivativeKind identifies the transformation that produced an artwork item.
+type DerivativeKind string
 
 // StageInput identifies one immutable artwork file to copy into an isolated
 // transformation workspace. Digest is the authoritative SHA-256 of its bytes.
@@ -27,7 +33,7 @@ type StageInput struct {
 	Height       int
 	SourceKeys   []string
 	TransformKey string
-	Derivative   string
+	Derivative   DerivativeKind
 }
 
 // StageRequest describes a complete isolated optimization pass.
@@ -60,7 +66,7 @@ type Derivative struct {
 	Name         string
 	Inputs       []string
 	TransformKey string
-	Kind         string
+	Kind         DerivativeKind
 }
 
 // Close removes the complete transformation workspace. It is idempotent.
@@ -142,9 +148,9 @@ func derivativesFromRenames(
 	for _, name := range names {
 		inputs := grouped[name]
 		sort.Strings(inputs)
-		kind := derivativeKindOptimized
-		if len(inputs) > 1 || metadata[inputs[0]].Derivative == portraitModeCollage {
-			kind = portraitModeCollage
+		kind := DerivativeOptimized
+		if len(inputs) > 1 || metadata[inputs[0]].Derivative == DerivativeCollage {
+			kind = DerivativeCollage
 		}
 		result = append(result, Derivative{Name: name, Inputs: inputs, TransformKey: transformKey, Kind: kind})
 	}

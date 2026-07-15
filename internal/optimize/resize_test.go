@@ -52,7 +52,7 @@ func TestOptimizeFile(t *testing.T) {
 	}
 
 	// Check if file still exists and is valid
-	if err := ValidateImage(filepath.Join(tmpDir, newName)); err != nil {
+	if err := ValidateImage(context.Background(), filepath.Join(tmpDir, newName)); err != nil {
 		t.Errorf("optimized image is invalid: %v", err)
 	}
 }
@@ -103,20 +103,12 @@ func TestSharpen(t *testing.T) {
 	}
 }
 
-func TestDither(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
-	dithered := dither(img)
-	if dithered.Bounds() != img.Bounds() {
-		t.Error("dithered image bounds mismatch")
-	}
-}
-
 func TestValidateImage_Invalid(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "invalid.jpg")
 	_ = os.WriteFile(path, []byte("not an image"), 0o600)
 
-	if err := ValidateImage(path); err == nil {
+	if err := ValidateImage(context.Background(), path); err == nil {
 		t.Error("expected error for invalid image")
 	}
 }
@@ -145,7 +137,7 @@ func TestValidateImageRejectsHeaderValidTruncatedJPEG(t *testing.T) {
 	if err := os.WriteFile(path, truncated, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateImage(path); err == nil {
+	if err := ValidateImage(context.Background(), path); err == nil {
 		t.Fatal("ValidateImage() accepted a truncated pixel stream")
 	}
 }
@@ -202,15 +194,7 @@ func TestFindBestDirectorCrop(t *testing.T) {
 	}
 }
 
-func BenchmarkDither(b *testing.B) {
-	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		dither(img)
-	}
-}
-
-func TestOptimizeFile_MuseumModeSkipsDither(t *testing.T) {
+func TestOptimizeFileMuseumMode(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "museum_dither.jpg")
 
@@ -242,7 +226,7 @@ func TestOptimizeFile_MuseumModeSkipsDither(t *testing.T) {
 	if !museumMod {
 		t.Error("expected modified to be true with museum mode")
 	}
-	if err := ValidateImage(filepath.Join(tmpDir, museumName)); err != nil {
+	if err := ValidateImage(context.Background(), filepath.Join(tmpDir, museumName)); err != nil {
 		t.Errorf("museum mode output is invalid: %v", err)
 	}
 
@@ -267,7 +251,7 @@ func TestOptimizeFile_MuseumModeSkipsDither(t *testing.T) {
 	if normalMod || normalName != filepath.Base(path2) {
 		t.Errorf("exact image without effects = (%q, %v), want unchanged", normalName, normalMod)
 	}
-	if err := ValidateImage(filepath.Join(tmpDir, normalName)); err != nil {
+	if err := ValidateImage(context.Background(), filepath.Join(tmpDir, normalName)); err != nil {
 		t.Errorf("normal mode output is invalid: %v", err)
 	}
 }
@@ -458,7 +442,7 @@ func TestHandleRenamePreservesExistingOperatorDestination(t *testing.T) {
 	if err := os.WriteFile(source, []byte("optimized bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	digest, err := fileDigest(source)
+	digest, err := fileDigest(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +487,7 @@ func TestHandleRename_RenameErrorPropagated(t *testing.T) {
 }
 
 func TestValidateImage_OpenError(t *testing.T) {
-	err := ValidateImage(filepath.Join(t.TempDir(), "does-not-exist.jpg"))
+	err := ValidateImage(context.Background(), filepath.Join(t.TempDir(), "does-not-exist.jpg"))
 	if err == nil {
 		t.Fatalf("expected ValidateImage open error")
 	}
@@ -572,7 +556,7 @@ func TestRewriteImage_PortraitModePadsInsteadOfCrop(t *testing.T) {
 	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
 		t.Fatalf("expected rewritten dimensions %dx%d, got %dx%d", cfg.MaxWidth, cfg.MaxHeight, newW, newH)
 	}
-	if err := ValidateImage(src); err != nil {
+	if err := ValidateImage(context.Background(), src); err != nil {
 		t.Fatalf("rewritten image invalid: %v", err)
 	}
 }
