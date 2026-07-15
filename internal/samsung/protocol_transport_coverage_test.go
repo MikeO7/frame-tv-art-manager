@@ -223,6 +223,12 @@ func (f *protocolTVFixture) serveArtApp(ctx context.Context, conn *websocket.Con
 				response["error_code"] = 911
 			}
 		case requestSendImage:
+			connInfo, ok := request["conn_info"].(map[string]any)
+			if !ok || fmt.Sprint(request["id"]) != fmt.Sprint(connInfo["id"]) ||
+				fmt.Sprint(request[keyRequestID]) != fmt.Sprint(connInfo["id"]) {
+				response["error_code"] = 400
+				break
+			}
 			port := f.d2dListener.Addr().(*net.TCPAddr).Port
 			response["conn_info"] = map[string]any{
 				"ip": "127.0.0.1", "port": port, "key": "fixture-key", "secured": false,
