@@ -48,7 +48,7 @@ func TestRunMigratesLegacyOwnedArtworkBeforePlanning(t *testing.T) {
 	digest := hex.EncodeToString(item.Digest[:])
 	binding, exists := result.State.Bindings[digest]
 	if !exists || binding.ContentID != "content-1" || binding.Name != item.Name ||
-		binding.CollectionGeneration != snapshot.Generation || binding.ConfirmedAt != testTime {
+		binding.Size != item.Size || binding.CollectionGeneration != snapshot.Generation || binding.ConfirmedAt != testTime {
 		t.Fatalf("migrated binding = %+v, exists = %v", binding, exists)
 	}
 	if _, err := os.Stat(newStateStore(directory).path(result.State.TV)); err != nil {

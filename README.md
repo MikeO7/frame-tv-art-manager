@@ -347,7 +347,12 @@ The HTTP server exposes:
   at least one successful cycle; return 503 while starting, stopping, failed,
   or after an unsuccessful cycle.
 - `GET /status` — returns process timing, current stage, last error, cycle
-  count, and the latest per-TV status.
+  count, and the latest per-TV status. When the TV reports its internal flash
+  capacity and every item in the observed TV Inventory has known byte-size
+  evidence, each TV also includes `free_space_bytes` and
+  `free_space_percent`; the cycle summary logs the same estimate in readable
+  units. Samsung exposes total flash capacity but not used/free bytes, so the
+  fields are omitted rather than guessed when any TV artwork is unaccounted.
 - `GET /upload` and `POST /upload` — available only when uploads are enabled.
 
 The container healthcheck calls the application's `-healthcheck` command,

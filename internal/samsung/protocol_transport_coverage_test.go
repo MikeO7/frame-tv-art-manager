@@ -194,6 +194,8 @@ func (f *protocolTVFixture) serveArtApp(ctx context.Context, conn *websocket.Con
 			response[keyValue] = stringOn
 		case keyGetContentList:
 			response["content_list"] = f.contentList()
+		case "get_device_info":
+			response["tv_flash_size"] = 16
 		case testProtocolGetSlideshow:
 			setting := f.slideshowSetting()
 			response[keyValue] = strconv.Itoa(setting.Interval)
@@ -383,6 +385,9 @@ func TestProtocolTransportObservesAndMutatesFrameTV(t *testing.T) {
 	}
 	if mode, err := transport.ArtMode(ctx); err != nil || mode != stringOn {
 		t.Fatalf("ArtMode() = %q, %v", mode, err)
+	}
+	if totalBytes, err := transport.StorageCapacity(ctx); err != nil || totalBytes != 16_000_000_000 {
+		t.Fatalf("StorageCapacity() = %d, %v", totalBytes, err)
 	}
 	inventory, err := transport.Inventory(ctx)
 	if err != nil || !strings.Contains(string(inventory), "art-1") {

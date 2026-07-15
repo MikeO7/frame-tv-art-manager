@@ -107,6 +107,28 @@ func writeTVSummary(sb *strings.Builder, tv TVSyncResult, padLine func(string) s
 			sb.WriteString(padLine("    Error:      " + errMsg))
 		}
 	}
+	if tv.StorageKnown {
+		sb.WriteString(padLine(fmt.Sprintf("    Free space: %s (%.1f%%)",
+			formatDecimalBytes(tv.FreeSpaceBytes), tv.FreeSpacePercent)))
+	}
+}
+
+func formatDecimalBytes(value int64) string {
+	const (
+		kilobyte int64 = 1_000
+		megabyte int64 = 1_000_000
+		gigabyte int64 = 1_000_000_000
+	)
+	switch {
+	case value >= gigabyte:
+		return fmt.Sprintf("%.1f GB", float64(value)/float64(gigabyte))
+	case value >= megabyte:
+		return fmt.Sprintf("%.1f MB", float64(value)/float64(megabyte))
+	case value >= kilobyte:
+		return fmt.Sprintf("%.1f kB", float64(value)/float64(kilobyte))
+	default:
+		return fmt.Sprintf("%d B", value)
+	}
 }
 
 func writeWarningsSummary(sb *strings.Builder, warnings []string, padLine func(string) string) {

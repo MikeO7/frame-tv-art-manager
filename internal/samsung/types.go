@@ -109,6 +109,7 @@ type artResponse struct {
 	ConnInfoRaw    json.RawMessage `json:"conn_info,omitempty"`
 	Status         string          `json:"status,omitempty"`
 	RequestData    string          `json:"request_data,omitempty"`
+	TVFlashSize    json.Number     `json:"tv_flash_size,omitempty"`
 }
 
 type protocolString string

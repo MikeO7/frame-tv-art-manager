@@ -152,7 +152,7 @@ func projectLegacyMapping(
 		usedDigests[digest] = name
 		usedContentIDs[contentID] = name
 		bindings[digest] = Binding{
-			Digest: digest, ContentID: contentID, Name: name,
+			Digest: digest, ContentID: contentID, Name: name, Size: item.Size,
 			CollectionGeneration: snapshot.Generation, ConfirmedAt: confirmedAt,
 		}
 	}

@@ -167,7 +167,35 @@ func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
 			summary.Slideshow = fmt.Sprintf("%s every %d min", setting.Kind, setting.Interval)
 		}
 	}
+	projectFreeSpace(&summary, result)
 	return summary
+}
+
+func projectFreeSpace(summary *TVSyncResult, result reconcile.Result) {
+	storage := result.Observation.Storage
+	inventory := result.Observation.Inventory
+	if !storage.Known || storage.TotalBytes <= 0 || !inventory.Known {
+		return
+	}
+	byContentID := make(map[string]reconcile.Binding, len(result.State.Bindings))
+	for _, binding := range result.State.Bindings {
+		if _, duplicate := byContentID[binding.ContentID]; duplicate {
+			return
+		}
+		byContentID[binding.ContentID] = binding
+	}
+	var usedBytes int64
+	for _, contentID := range inventory.ContentIDs {
+		binding, exists := byContentID[contentID]
+		if !exists || binding.Size <= 0 || binding.Size > storage.TotalBytes-usedBytes {
+			return
+		}
+		usedBytes += binding.Size
+	}
+	freeBytes := storage.TotalBytes - usedBytes
+	summary.StorageKnown = true
+	summary.FreeSpaceBytes = freeBytes
+	summary.FreeSpacePercent = float64(freeBytes) * 100 / float64(storage.TotalBytes)
 }
 
 func convergenceSkipStatus(disposition samsung.Disposition) string {

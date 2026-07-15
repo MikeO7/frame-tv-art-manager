@@ -114,6 +114,30 @@ func TestConvergenceSummaryReportsExactAppliedMutationCounts(t *testing.T) {
 	}
 }
 
+func TestConvergenceSummaryReportsFreeStorageWhenInventoryIsFullyAccounted(t *testing.T) {
+	result := reconcile.Result{
+		Status: reconcile.StatusComplete,
+		Observation: samsung.Observation{
+			Inventory: samsung.Inventory{ContentIDs: []string{"art-1", "art-2"}, Known: true},
+			Storage:   samsung.StorageObservation{TotalBytes: 16_000_000_000, Known: true},
+		},
+		State: reconcile.State{Bindings: map[string]reconcile.Binding{
+			"first":  {ContentID: "art-1", Size: 1_000_000_000},
+			"second": {ContentID: "art-2", Size: 3_000_000_000},
+		}},
+	}
+
+	summary := convergenceSummary("192.0.2.10", result)
+	if !summary.StorageKnown || summary.FreeSpaceBytes != 12_000_000_000 || summary.FreeSpacePercent != 75 {
+		t.Fatalf("storage summary = %+v", summary)
+	}
+
+	result.Observation.Inventory.ContentIDs = append(result.Observation.Inventory.ContentIDs, "unknown-art")
+	if got := convergenceSummary("192.0.2.10", result); got.StorageKnown {
+		t.Fatalf("partially accounted storage reported as known: %+v", got)
+	}
+}
+
 func TestConvergenceStatusProjectionIsExhaustive(t *testing.T) {
 	t.Parallel()
 

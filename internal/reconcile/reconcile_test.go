@@ -1297,7 +1297,8 @@ func TestAppliedUploadReceiptFoldsBinding(t *testing.T) {
 	got, _, err := concrete.handleReceipt(context.Background(), state, observation, samsung.Receipt{
 		CommandID: "command", Outcome: samsung.OutcomeApplied, ContentID: "new-content", CompletedAt: testTime,
 	}, nil)
-	if err != nil || got.Pending != nil || got.Bindings[digestHex("art")].ContentID != "new-content" {
+	if err != nil || got.Pending != nil || got.Bindings[digestHex("art")].ContentID != "new-content" ||
+		got.Bindings[digestHex("art")].Size != 3 {
 		t.Fatalf("state = %#v, error = %v", got, err)
 	}
 }

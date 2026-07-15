@@ -20,7 +20,10 @@ func TestLogCycleSummary_RendersStatusesAndWarnings(t *testing.T) {
 		FromSources:     1,
 		Optimized:       2,
 		TVs: []TVSyncResult{
-			{IP: "192.168.0.1", Model: "Mock", Status: "ok", ArtMode: true},
+			{
+				IP: "192.168.0.1", Model: "Mock", Status: "ok", ArtMode: true,
+				StorageKnown: true, FreeSpaceBytes: 12_000_000_000, FreeSpacePercent: 75,
+			},
 			{IP: "192.168.0.2", Status: statusBackoff, Model: "mocked"},
 			{IP: "192.168.0.3", Status: "error", ErrorMessage: strings.Repeat("x", 80)},
 		},
@@ -36,6 +39,9 @@ func TestLogCycleSummary_RendersStatusesAndWarnings(t *testing.T) {
 	}
 	if !strings.Contains(out, "Status:     ✔ Art Mode") {
 		t.Fatalf("expected OK status render, got %q", out)
+	}
+	if !strings.Contains(out, "Free space: 12.0 GB (75.0%)") {
+		t.Fatalf("expected free-space number and percentage, got %q", out)
 	}
 	if !strings.Contains(out, "Status:     ⏸ Backing off (unreachable)") {
 		t.Fatalf("expected backoff status render, got %q", out)
