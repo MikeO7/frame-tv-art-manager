@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -195,6 +196,22 @@ func TestAdapterUploadIsDigestBoundAndSingleUse(t *testing.T) {
 	}
 	if _, err := adapter.Apply(context.Background(), observation.Authorization, command); !errors.Is(err, ErrNotAuthorized) {
 		t.Fatalf("reused authorization error = %v, want ErrNotAuthorized", err)
+	}
+}
+
+func TestAdapterUploadPreservesDefiniteStorageFullOutcome(t *testing.T) {
+	_, command := testUploadCommand(t)
+	transport := mutationTransportForInventory(`[]`)
+	transport.inventories = []json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`[]`)}
+	transport.uploadErr = commandError("upload", OutcomeNotApplied, fmt.Errorf("image_added: %w", ErrStorageFull))
+	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+	observation := observeForCommand(t, adapter, CapabilityImageUpload)
+
+	receipt, err := adapter.Apply(context.Background(), observation.Authorization, command)
+	var typed *Error
+	if !errors.As(err, &typed) || typed.Kind != ErrorKindStorageFull ||
+		receipt.Outcome != OutcomeNotApplied || transport.uploadCalls != 1 {
+		t.Fatalf("Apply(upload) = %+v, %v; calls = %d", receipt, err, transport.uploadCalls)
 	}
 }
 

@@ -185,10 +185,15 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 			currentPlan.Commands = withoutCommand(currentPlan.Commands, CommandSelect)
 		}
 	}
+	state.Pending = nil
+	if currentPlan.CapacityLimited {
+		result.Status = StatusStorageFull
+		result.State = cloneState(state)
+		return result, samsung.ErrStorageFull
+	}
 	for digest := range pruneBindings {
 		delete(state.Bindings, digest)
 	}
-	state.Pending = nil
 	state.LastCompleteCycle = request.CycleID
 	state.LastCollectionGen = request.Snapshot.Generation
 	state.Revision++

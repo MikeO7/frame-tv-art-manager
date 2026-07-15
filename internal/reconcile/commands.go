@@ -176,6 +176,8 @@ func statusForError(err error) Status {
 		return StatusRecoveryRequired
 	case errors.Is(err, ErrUnsupportedIntent):
 		return StatusUnsupported
+	case errors.Is(err, samsung.ErrStorageFull):
+		return StatusStorageFull
 	default:
 		return StatusNotApplied
 	}

@@ -68,6 +68,7 @@ const (
 	StatusRecoveryRequired
 	StatusPersistenceUnknown
 	StatusNotApplied
+	StatusStorageFull
 )
 
 type Result struct {
@@ -163,6 +164,7 @@ type Plan struct {
 	CollectionGeneration string
 	PolicyFingerprint    [sha256.Size]byte
 	InventoryFingerprint [sha256.Size]byte
+	CapacityLimited      bool
 	Commands             []CommandIntent
 	PruneBindings        []string
 }

@@ -47,6 +47,7 @@ type protocolTVFixture struct {
 	deleteMutations []string
 	slideshow       SlideshowSetting
 	slideshowWrites []SlideshowSetting
+	imageAddedError int
 }
 
 func newProtocolTVFixture(t *testing.T) *protocolTVFixture {
@@ -240,9 +241,15 @@ func (f *protocolTVFixture) serveArtApp(ctx context.Context, conn *websocket.Con
 		if request[keyRequest] == requestSendImage {
 			select {
 			case <-f.d2dComplete:
-				_ = writeProtocolD2DResponse(ctx, conn, map[string]any{
+				imageAdded := map[string]any{
 					"event": "image_added", keyContentID: "uploaded-art",
-				})
+				}
+				f.stateMu.Lock()
+				if f.imageAddedError != 0 {
+					imageAdded["error_code"] = f.imageAddedError
+				}
+				f.stateMu.Unlock()
+				_ = writeProtocolD2DResponse(ctx, conn, imageAdded)
 			case <-f.d2dErr:
 				return
 			case <-ctx.Done():
@@ -484,6 +491,40 @@ func TestProtocolTransportObservesAndMutatesFrameTV(t *testing.T) {
 	}
 	if mode, err := os.Stat(tokenPath); err != nil || mode.Mode().Perm() != 0o600 {
 		t.Fatalf("token mode = %v, %v", mode, err)
+	}
+}
+
+func TestProtocolUploadClassifiesImageAddedStorageFullAsNotApplied(t *testing.T) {
+	fixture := newProtocolTVFixture(t)
+	fixture.stateMu.Lock()
+	fixture.imageAddedError = 507
+	fixture.stateMu.Unlock()
+	transport := newProtocolTransport(Config{
+		Address: fixture.address(t), ClientName: "storage-full-fixture",
+		TokenPath:      filepath.Join(t.TempDir(), "auth", "token"),
+		ConnectTimeout: 2 * time.Second, RequestTimeout: 2 * time.Second,
+	}, Dependencies{Logger: slog.New(slog.DiscardHandler)}).(*protocolTransport)
+	ctx := context.Background()
+	if err := transport.Connect(ctx, false); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	t.Cleanup(func() { _ = transport.Close(context.Background()) })
+
+	path := filepath.Join(t.TempDir(), "upload.jpg")
+	data := []byte("image-data")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	_, err = transport.Upload(ctx, preparedUpload{
+		file: file, fileType: "jpg", matte: "none", size: int64(len(data)), digest: sha256.Sum256(data),
+	})
+	if !errors.Is(err, ErrStorageFull) || protocolErrorOutcome(err) != OutcomeNotApplied {
+		t.Fatalf("Upload() error = %v, outcome = %d; want storage full/not applied", err, protocolErrorOutcome(err))
 	}
 }
 

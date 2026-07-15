@@ -804,6 +804,7 @@ func TestConstructionHelpersAndErrorStatus(t *testing.T) {
 		{ErrPersistenceUnknown, StatusPersistenceUnknown},
 		{ErrRecoveryRequired, StatusRecoveryRequired},
 		{ErrUnsupportedIntent, StatusUnsupported},
+		{samsung.ErrStorageFull, StatusStorageFull},
 		{errors.New("ordinary"), StatusNotApplied},
 	}
 	for _, check := range checks {

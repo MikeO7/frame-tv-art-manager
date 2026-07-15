@@ -27,6 +27,7 @@ const (
 	statusNotApplied         = "not applied"
 	statusPersistenceUnknown = "persistence unknown"
 	statusRecoveryRequired   = "recovery required"
+	statusStorageFull        = "storage full"
 	statusUnreachable        = "unreachable"
 	statusUnsupported        = "unsupported"
 )
@@ -92,6 +93,8 @@ func convergenceErrorStatus(status reconcile.Status, samsungErr *samsung.Error) 
 		return statusPersistenceUnknown, false
 	case reconcile.StatusUnsupported:
 		return statusUnsupported, false
+	case reconcile.StatusStorageFull:
+		return statusStorageFull, true
 	}
 	if samsungErr == nil {
 		return statusError, false
@@ -100,7 +103,7 @@ func convergenceErrorStatus(status reconcile.Status, samsungErr *samsung.Error) 
 	case samsung.ErrorKindUnauthorized:
 		return "authorization required", false
 	case samsung.ErrorKindStorageFull:
-		return "storage full", true
+		return statusStorageFull, true
 	case samsung.ErrorKindOutcomeUnknown:
 		return statusRecoveryRequired, false
 	case samsung.ErrorKindUnreachable, samsung.ErrorKindTimeout:
@@ -153,6 +156,9 @@ func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
 		summary.Status = statusPersistenceUnknown
 	case reconcile.StatusNotApplied:
 		summary.Status = statusNotApplied
+	case reconcile.StatusStorageFull:
+		summary.Status = statusStorageFull
+		summary.StorageFull = true
 	default:
 		summary.Status = statusError
 	}

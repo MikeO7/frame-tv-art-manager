@@ -45,6 +45,9 @@ func (t *protocolTransport) Upload(ctx context.Context, upload preparedUpload) (
 	}
 	contentID, err := waitForImageAdded(ctx, added, t.config.RequestTimeout)
 	if err != nil {
+		if errors.Is(err, ErrArtAPIError) || errors.Is(err, ErrStorageFull) {
+			return "", commandError("upload", OutcomeNotApplied, err)
+		}
 		return "", commandError("upload", OutcomeUnknown, err)
 	}
 	if strings.TrimSpace(contentID) == "" {

@@ -207,7 +207,9 @@ fresh known inventory and an explicit storage-full `NotApplied` upload result.
 Persist it inside the same per-TV state revision so mapping and capacity cannot
 diverge. A storage-full cycle is degraded-but-recoverable, performs no later
 uploads, and must not increment a success streak. Successful complete cycles
-may cautiously probe growth; dry runs never update evidence.
+may cautiously probe growth; a successful real-artwork probe clears the stale
+capacity bound and resumes normal uploads until another explicit storage-full
+rejection. Dry runs never update evidence.
 
 Any authoritative persistence failure is terminal for that TV's current cycle
 and reaches health. Metadata snapshots are optional telemetry only if their

@@ -357,9 +357,11 @@ override or disable the image healthcheck in your runtime configuration.
 The manager does not estimate free TV storage or upload test files to probe it.
 If the TV rejects a real desired artwork upload because storage is full, the
 Sync Cycle reports `storage full`, preserves existing artwork, and stops later
-mutations. It then suppresses additional upload attempts for 24 hours. After
-that interval, one real pending artwork upload is retried so synchronization
-can resume if the operator or TV has freed space.
+mutations. While the TV Inventory remains at the recorded full count, later
+cycles continue reporting `storage full` without another TV write. Removing an
+artwork lets uploads resume immediately; otherwise, after 24 hours, one real
+pending artwork upload is retried. A successful retry clears the full condition
+and normal Reconciliation resumes; another rejection restarts the quiet period.
 
 A failed healthcheck does not restart a container by itself. Use a Docker
 restart policy or an orchestrator policy if automatic recovery is required.

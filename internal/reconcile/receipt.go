@@ -40,9 +40,7 @@ func (s *service) handleAppliedReceipt(
 ) (State, samsung.Observation, error) {
 	updatedObservation := receiptObservation(observation, state.Pending.Command, receipt)
 	if state.Capacity.Probe && state.Pending.Command.Kind == CommandUpload {
-		state.Capacity = CapacityEvidence{
-			Known: true, Maximum: len(updatedObservation.Inventory.ContentIDs), ObservedAt: s.clock.Now(),
-		}
+		state.Capacity = CapacityEvidence{}
 	}
 	state.Revision++
 	state.Pending.Phase = PhaseApplied
@@ -72,14 +70,16 @@ func (s *service) handleDefiniteRejection(
 	applyErr error,
 ) (State, samsung.Observation, error) {
 	state.Revision++
-	if state.Capacity.Probe && state.Pending.Command.Kind == CommandUpload &&
+	commandKind := state.Pending.Command.Kind
+	if state.Capacity.Probe && commandKind == CommandUpload &&
 		receipt.Outcome == samsung.OutcomeNotApplied {
 		state.Capacity = CapacityEvidence{
 			Known: true, Maximum: len(observation.Inventory.ContentIDs), ObservedAt: s.clock.Now(),
 		}
 	}
 	state.Pending = nil
-	if receipt.Outcome == samsung.OutcomeNotApplied && errors.Is(applyErr, samsung.ErrStorageFull) {
+	if commandKind == CommandUpload && receipt.Outcome == samsung.OutcomeNotApplied &&
+		errors.Is(applyErr, samsung.ErrStorageFull) {
 		state.Capacity = CapacityEvidence{
 			Known: true, Maximum: len(observation.Inventory.ContentIDs), ObservedAt: s.clock.Now(),
 		}

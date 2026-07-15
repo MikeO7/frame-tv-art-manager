@@ -105,6 +105,7 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 	if state.Capacity.Known {
 		available := max(state.Capacity.Maximum-len(observation.Inventory.ContentIDs), 0)
 		if len(missing) > available {
+			plan.CapacityLimited = true
 			missing = missing[:available]
 		}
 	}

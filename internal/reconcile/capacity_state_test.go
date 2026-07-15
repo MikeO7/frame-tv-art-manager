@@ -96,14 +96,29 @@ func TestCapacityEvidenceSurvivesRestartAndPreventsAnotherFullUpload(t *testing.
 		CycleID: "after-restart", TV: restartedAdapter,
 		Snapshot: snapshot(artworkItem("first.jpg", "first"), artworkItem("second.jpg", "second")),
 	})
-	if err != nil {
-		t.Fatalf("restarted Run() error = %v", err)
-	}
-	if result.Status != StatusComplete || result.Applied != 0 || restartedAdapter.applyCalls != 0 {
+	if !errors.Is(err, samsung.ErrStorageFull) || result.Status != StatusStorageFull ||
+		result.Applied != 0 || restartedAdapter.applyCalls != 0 {
 		t.Fatalf("restarted result = %+v, apply calls = %d", result, restartedAdapter.applyCalls)
 	}
 	if !result.State.Capacity.Known || result.State.Capacity.Maximum != 2 || result.State.Capacity.ObservedAt != testTime {
 		t.Fatalf("restarted capacity evidence = %+v", result.State.Capacity)
+	}
+}
+
+func TestStorageFullFromNonUploadDoesNotPersistCapacityEvidence(t *testing.T) {
+	observation := knownObservation(samsung.PowerStateOn, "unknown-1")
+	adapter := &fakeAdapter{
+		observations: []samsung.Observation{observation, observation},
+		receipts:     []samsung.Receipt{{Outcome: samsung.OutcomeNotApplied}},
+		applyErrs:    []error{fmt.Errorf("delete rejected: %w", samsung.ErrStorageFull)},
+	}
+	service := newTestService(t, filepath.Join(t.TempDir(), "state"), Policy{RemoveUnknown: true})
+
+	result, err := service.Run(context.Background(), Request{
+		CycleID: "non-upload-storage-error", TV: adapter, Snapshot: snapshot(),
+	})
+	if !errors.Is(err, samsung.ErrStorageFull) || result.State.Capacity.Known {
+		t.Fatalf("Run() = %+v, %v; want storage error without capacity evidence", result, err)
 	}
 }
 
@@ -189,7 +204,7 @@ func TestVerifiedObsoleteDeletionFreesCapacityForUploadOnReplan(t *testing.T) {
 	}
 }
 
-func TestExpiredCapacityEvidenceAdmitsExactlyOneSuccessfulProbeAfterRestart(t *testing.T) {
+func TestSuccessfulCapacityProbeClearsEvidenceAndResumesAllUploads(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
 	full := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
 	identity, err := identityFromObservation(full)
@@ -202,10 +217,12 @@ func TestExpiredCapacityEvidenceAdmitsExactlyOneSuccessfulProbeAfterRestart(t *t
 		t.Fatal(err)
 	}
 	probeTime := testTime.Add(time.Hour)
+	afterProbe := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2", "probe-id")
 	adapter := &fakeAdapter{
-		observations: []samsung.Observation{full, full},
+		observations: []samsung.Observation{full, full, afterProbe},
 		receipts: []samsung.Receipt{
 			{CommandID: "probe", Outcome: samsung.OutcomeApplied, ContentID: "probe-id", CompletedAt: probeTime},
+			{CommandID: "remaining", Outcome: samsung.OutcomeApplied, ContentID: "remaining-id", CompletedAt: probeTime},
 		},
 	}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
@@ -222,18 +239,17 @@ func TestExpiredCapacityEvidenceAdmitsExactlyOneSuccessfulProbeAfterRestart(t *t
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if result.Status != StatusComplete || result.Applied != 1 || adapter.applyCalls != 1 {
+	if result.Status != StatusComplete || result.Applied != 2 || adapter.applyCalls != 2 {
 		t.Fatalf("Run() = %+v, apply calls = %d", result, adapter.applyCalls)
 	}
 	if len(result.Plan.Commands) != 1 || result.Plan.Commands[0].Kind != CommandUpload {
 		t.Fatalf("probe plan = %+v, want exactly one upload", result.Plan.Commands)
 	}
-	wantCapacity := CapacityEvidence{Known: true, Maximum: 3, ObservedAt: probeTime}
-	if result.State.Capacity != wantCapacity {
-		t.Fatalf("capacity after successful probe = %+v, want %+v", result.State.Capacity, wantCapacity)
+	if result.State.Capacity != (CapacityEvidence{}) {
+		t.Fatalf("capacity after successful probe = %+v, want cleared evidence", result.State.Capacity)
 	}
-	if len(result.State.Bindings) != 1 {
-		t.Fatalf("bindings after one probe = %+v", result.State.Bindings)
+	if len(result.State.Bindings) != 2 {
+		t.Fatalf("bindings after resumed uploads = %+v", result.State.Bindings)
 	}
 }
 
@@ -258,7 +274,8 @@ func TestCapacityEvidenceDoesNotProbeBeforeExpiryAfterRestart(t *testing.T) {
 		CycleID: "capacity-still-fresh", TV: adapter,
 		Snapshot: snapshot(artworkItem("first.jpg", "first"), artworkItem("second.jpg", "second")),
 	})
-	if err != nil || result.Status != StatusComplete || result.Applied != 0 || adapter.applyCalls != 0 {
+	if !errors.Is(err, samsung.ErrStorageFull) || result.Status != StatusStorageFull ||
+		result.Applied != 0 || adapter.applyCalls != 0 {
 		t.Fatalf("Run() = %+v, %v; apply calls = %d", result, err, adapter.applyCalls)
 	}
 	want := CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
@@ -267,7 +284,7 @@ func TestCapacityEvidenceDoesNotProbeBeforeExpiryAfterRestart(t *testing.T) {
 	}
 }
 
-func TestCapacityProbeRecalibratesAfterInventoryChangeAndStillUploadsOnlyOnce(t *testing.T) {
+func TestCapacityProbeRecalibratesAfterInventoryChangeAndResumesAllUploads(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
 	initial := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
 	beforeApply := knownObservation(samsung.PowerStateOn, "unknown-1")
@@ -278,10 +295,14 @@ func TestCapacityProbeRecalibratesAfterInventoryChangeAndStillUploadsOnlyOnce(t 
 		t.Fatal(err)
 	}
 	probeTime := testTime.Add(time.Hour)
+	afterFirst := knownObservation(samsung.PowerStateOn, "unknown-1", "probe-id")
+	afterSecond := knownObservation(samsung.PowerStateOn, "unknown-1", "probe-id", "second-id")
 	adapter := &fakeAdapter{
-		observations: []samsung.Observation{initial, beforeApply},
+		observations: []samsung.Observation{initial, beforeApply, afterFirst, afterSecond},
 		receipts: []samsung.Receipt{
 			{CommandID: "probe", Outcome: samsung.OutcomeApplied, ContentID: "probe-id", CompletedAt: probeTime},
+			{CommandID: "second", Outcome: samsung.OutcomeApplied, ContentID: "second-id", CompletedAt: probeTime},
+			{CommandID: "third", Outcome: samsung.OutcomeApplied, ContentID: "third-id", CompletedAt: probeTime},
 		},
 	}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
@@ -297,12 +318,11 @@ func TestCapacityProbeRecalibratesAfterInventoryChangeAndStillUploadsOnlyOnce(t 
 			artworkItem("first.jpg", "first"), artworkItem("second.jpg", "second"), artworkItem("third.jpg", "third"),
 		),
 	})
-	if err != nil || result.Status != StatusComplete || result.Applied != 1 || adapter.applyCalls != 1 {
+	if err != nil || result.Status != StatusComplete || result.Applied != 3 || adapter.applyCalls != 3 {
 		t.Fatalf("Run() = %+v, %v; apply calls = %d", result, err, adapter.applyCalls)
 	}
-	want := CapacityEvidence{Known: true, Maximum: 2, ObservedAt: probeTime}
-	if result.State.Capacity != want {
-		t.Fatalf("capacity after recalibrated probe = %+v, want %+v", result.State.Capacity, want)
+	if result.State.Capacity != (CapacityEvidence{}) || len(result.State.Bindings) != 3 {
+		t.Fatalf("state after resumed uploads = %+v", result.State)
 	}
 }
 
@@ -350,7 +370,8 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	}
 	request.CycleID, request.TV = "early-repeat", earlyAdapter
 	earlyResult, runErr := early.Run(context.Background(), request)
-	if runErr != nil || earlyResult.Applied != 0 || earlyAdapter.applyCalls != 0 {
+	if !errors.Is(runErr, samsung.ErrStorageFull) || earlyResult.Status != StatusStorageFull ||
+		earlyResult.Applied != 0 || earlyAdapter.applyCalls != 0 {
 		t.Fatalf("early restart = %+v, %v; apply calls = %d", earlyResult, runErr, earlyAdapter.applyCalls)
 	}
 
