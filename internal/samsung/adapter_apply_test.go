@@ -275,6 +275,7 @@ func TestAdapterSettingsRequireKnownPreviousAndVerifyDesired(t *testing.T) {
 func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 	off := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOff}
 	on := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOn}
+	standby := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringStandby}
 	t.Run("wake", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
 		transport.devices = []DeviceInfo{off, off, on}
@@ -285,9 +286,30 @@ func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 			t.Fatalf("receipt/error/calls = %+v/%v/%d", receipt, err, transport.wakeCalls)
 		}
 	})
+	t.Run("wake from standby", func(t *testing.T) {
+		transport := mutationTransportForInventory(`[]`)
+		transport.devices = []DeviceInfo{standby, standby, on}
+		adapter := newTestAdapterWithMAC(t, transport)
+		observation := observeForCommand(t, adapter, CapabilityRemotePower)
+		receipt, err := adapter.Apply(context.Background(), observation.Authorization, Wake{})
+		if err != nil || receipt.Outcome != OutcomeApplied || transport.wakeCalls != 1 {
+			t.Fatalf("receipt/error/calls = %+v/%v/%d", receipt, err, transport.wakeCalls)
+		}
+	})
 	t.Run("power off", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
 		transport.devices = []DeviceInfo{on, on, off}
+		transport.inventories = []json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`[]`)}
+		adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+		observation := observeForCommand(t, adapter, CapabilityRemotePower)
+		receipt, err := adapter.Apply(context.Background(), observation.Authorization, PowerOff{})
+		if err != nil || receipt.Outcome != OutcomeApplied || transport.powerOffCalls != 1 {
+			t.Fatalf("receipt/error/calls = %+v/%v/%d", receipt, err, transport.powerOffCalls)
+		}
+	})
+	t.Run("power off reaches standby", func(t *testing.T) {
+		transport := mutationTransportForInventory(`[]`)
+		transport.devices = []DeviceInfo{on, on, standby}
 		transport.inventories = []json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`[]`)}
 		adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 		observation := observeForCommand(t, adapter, CapabilityRemotePower)
@@ -389,6 +411,28 @@ func TestAdapterAuthorizationIsBoundToObservedCapability(t *testing.T) {
 	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Delete{ContentID: "id-1"})
 	if !errors.Is(err, ErrNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.deleteCalls != 0 {
 		t.Fatalf("receipt/error/delete calls = %+v/%v/%d", receipt, err, transport.deleteCalls)
+	}
+}
+
+func TestDesiredPowerObservedTreatsStandbyAsOff(t *testing.T) {
+	t.Parallel()
+	transport := mutationTransportForInventory(`[]`)
+	transport.device.PowerState = stringStandby
+
+	reached, err := desiredPowerObserved(context.Background(), transport, stringOff)
+	if err != nil || !reached {
+		t.Fatalf("desiredPowerObserved(standby, off) = %v, %v", reached, err)
+	}
+	reached, err = desiredPowerObserved(context.Background(), transport, stringOn)
+	if err != nil || reached {
+		t.Fatalf("desiredPowerObserved(standby, on) = %v, %v", reached, err)
+	}
+	if _, err := desiredPowerObserved(context.Background(), transport, "sleeping"); err == nil {
+		t.Fatal("desiredPowerObserved() accepted an unknown desired state")
+	}
+	transport.device.PowerState = "sleeping"
+	if _, err := desiredPowerObserved(context.Background(), transport, stringOff); err == nil {
+		t.Fatal("desiredPowerObserved() accepted an unknown actual state")
 	}
 }
 

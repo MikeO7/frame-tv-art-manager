@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -34,7 +33,15 @@ func desiredPowerObserved(ctx context.Context, transport mutationTransport, desi
 	if err := validateFrameTVDevice(device); err != nil {
 		return false, err
 	}
-	return strings.TrimSpace(device.PowerState) == desired, nil
+	actual, _ := parseDevicePowerState(device.PowerState)
+	switch desired {
+	case stringOn:
+		return actual == PowerStateOn, nil
+	case stringOff:
+		return actual == PowerStateOff, nil
+	default:
+		return false, fmt.Errorf("unrecognized desired power state %q", desired)
+	}
 }
 
 func waitForPowerPoll(ctx context.Context, interval time.Duration) error {

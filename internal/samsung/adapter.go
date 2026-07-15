@@ -194,10 +194,11 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 		FirmwareVersion: strings.TrimSpace(device.FirmwareVersion),
 		Known:           strings.TrimSpace(device.ModelName) != "",
 	}
-	switch strings.TrimSpace(device.PowerState) {
-	case stringOn:
+	power, _ := parseDevicePowerState(device.PowerState)
+	switch power {
+	case PowerStateOn:
 		observation.Power = PowerStateOn
-	case stringOff:
+	case PowerStateOff:
 		observation.Power = PowerStateOff
 		observation.Disposition = DispositionBlockedPowerOff
 		if _, supportsMutation := a.transport.(mutationTransport); supportsMutation &&

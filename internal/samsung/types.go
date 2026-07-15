@@ -22,6 +22,7 @@ const (
 	stringFalse         = "false"
 	stringOn            = "on"
 	stringOff           = "off"
+	stringStandby       = "standby"
 	jsonNull            = "null"
 )
 
@@ -31,7 +32,7 @@ type DeviceInfo struct {
 	ModelName       string `json:"modelName"`
 	FirmwareVersion string `json:"firmwareVersion"`
 	FrameTVSupport  string `json:"FrameTVSupport"` // "true" or "false"
-	PowerState      string `json:"PowerState"`     // "on" or "off"
+	PowerState      string `json:"PowerState"`     // "on", "off", or "standby"
 }
 
 // IsFrameTV returns true if the device reports Frame TV support.
@@ -41,7 +42,8 @@ func (d *DeviceInfo) IsFrameTV() bool {
 
 // IsOn returns true if the device is powered on.
 func (d *DeviceInfo) IsOn() bool {
-	return d.PowerState == stringOn
+	power, known := parseDevicePowerState(d.PowerState)
+	return known && power == PowerStateOn
 }
 
 func validateFrameTVDevice(info DeviceInfo) error {
@@ -51,11 +53,20 @@ func validateFrameTVDevice(info DeviceInfo) error {
 	if strings.TrimSpace(info.FrameTVSupport) != stringTrue {
 		return fmt.Errorf("device does not report Frame TV support: %w", ErrConnectionFailure)
 	}
-	switch strings.TrimSpace(info.PowerState) {
-	case stringOn, stringOff:
-		return nil
-	default:
+	if _, known := parseDevicePowerState(info.PowerState); !known {
 		return fmt.Errorf("unrecognized device power state %q", info.PowerState)
+	}
+	return nil
+}
+
+func parseDevicePowerState(value string) (PowerState, bool) {
+	switch strings.TrimSpace(value) {
+	case stringOn:
+		return PowerStateOn, true
+	case stringOff, stringStandby:
+		return PowerStateOff, true
+	default:
+		return PowerStateUnknown, false
 	}
 }
 
