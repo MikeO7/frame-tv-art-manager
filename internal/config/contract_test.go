@@ -31,7 +31,7 @@ func TestLoadDefaultContract(t *testing.T) {
 		MaxArtworkImages:               0,
 		MaxDownloadSizeMB:              20,
 		TokenDir:                       "/data/tokens",
-		SyncIntervalMin:                5,
+		SyncIntervalMin:                30,
 		ShutdownTimeout:                30 * time.Second,
 		MatteStyle:                     "none",
 		ClientName:                     "Frame Art Manager",

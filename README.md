@@ -98,7 +98,7 @@ of `CLIENT_NAME`. Choose **Allow** with the remote. The returned token is stored
 under `./data/tokens`, so keep that directory between container upgrades.
 
 Put `.jpg`, `.jpeg`, or `.png` files in `./data/artwork`. The first sync runs at
-startup; later cycles use `SYNC_INTERVAL_MINUTES`, which defaults to five
+startup; later cycles use `SYNC_INTERVAL_MINUTES`, which defaults to 30
 minutes.
 
 If the container cannot write to the bind mount, pre-create the directories and
@@ -261,7 +261,7 @@ the table below covers the settings most people change.
 | `TV_IPS` | required | Comma-separated TV addresses |
 | `ARTWORK_DIR` | `/data/artwork` | Local desired artwork collection |
 | `TOKEN_DIR` | `/data/tokens` | Pairing tokens and checksummed reconciliation state |
-| `SYNC_INTERVAL_MINUTES` | `5` | Time between sync cycles |
+| `SYNC_INTERVAL_MINUTES` | `30` | Time between sync cycles |
 | `CLIENT_NAME` | `Frame Art Manager` | Name shown in the TV authorization prompt |
 | `MATTE_STYLE` | `none` | Global Samsung matte style and color |
 | `MAX_ARTWORK_IMAGES` | `0` | Local/source image cap; zero means no configured cap |

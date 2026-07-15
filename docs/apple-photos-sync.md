@@ -26,7 +26,7 @@ The manager runs a lightweight HTTP upload endpoint on the same health server it
 
 1. You send an authenticated JPEG or PNG request to `POST http://<server>:8080/upload`.
 2. The manager saves it to the `artwork/` directory with a deterministic, hash-based filename.
-3. On the next sync cycle (default: every 5 minutes), the image is transformed to the configured target, framed with your chosen matte, and uploaded to the TV.
+3. On the next sync cycle (default: every 30 minutes), the image is transformed to the configured target, framed with your chosen matte, and uploaded to the TV.
 4. If you send the same image again, it's silently deduplicated — no wasted space.
 
 ---

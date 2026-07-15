@@ -49,7 +49,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		MaxArtworkImages:               env.integer("MAX_ARTWORK_IMAGES", 0),
 		MaxDownloadSizeMB:              env.integer("MAX_DOWNLOAD_SIZE_MB", 20),
 		TokenDir:                       env.str("TOKEN_DIR", "/data/tokens"),
-		SyncIntervalMin:                env.integer("SYNC_INTERVAL_MINUTES", 5),
+		SyncIntervalMin:                env.integer("SYNC_INTERVAL_MINUTES", 30),
 		ShutdownTimeout:                safeDuration(env.integer("SHUTDOWN_TIMEOUT_SECONDS", 30), time.Second),
 		MatteStyle:                     env.str("MATTE_STYLE", "none"),
 		ClientName:                     env.str("CLIENT_NAME", "Frame Art Manager"),

@@ -11,7 +11,7 @@ services:
 
       # --- Optional Settings (uncomment to customize) ---
 
-      # SYNC_INTERVAL_MINUTES: "5"
+      # SYNC_INTERVAL_MINUTES: "30"
       # CLIENT_NAME: "Frame Art Manager"
       # MATTE_STYLE: "none"
       # LOG_LEVEL: "info"
