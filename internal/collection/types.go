@@ -38,12 +38,10 @@ type Store interface {
 }
 
 type Config struct {
-	Root                        string
-	MaxItems                    int
-	MaxImportBytes              int64
-	MaxPixels                   int64
-	PerceptualDuplicates        bool
-	PerceptualDuplicateDistance int
+	Root           string
+	MaxItems       int
+	MaxImportBytes int64
+	MaxPixels      int64
 }
 
 type ImportRequest struct {
@@ -94,7 +92,6 @@ type Snapshot struct {
 	Items      []Item
 	Changes    []Change
 	Warnings   []string
-	Advisories []string
 	DryRun     bool
 }
 
@@ -110,11 +107,9 @@ type Item struct {
 	Origin Origin
 	// SourceKeys retains every stable Source Origin represented by this artwork,
 	// including sources combined into a derived collage.
-	SourceKeys      []string
-	TransformKey    string
-	Derivative      DerivativeKind
-	visualHash      uint64
-	visualHashValid bool
+	SourceKeys   []string
+	TransformKey string
+	Derivative   DerivativeKind
 }
 
 type FileType string

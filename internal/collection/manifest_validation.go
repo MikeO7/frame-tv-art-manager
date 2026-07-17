@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -51,9 +50,6 @@ func validateManifestItem(
 		Origin: Origin{Key: entry.OriginKey, Class: entry.Class}, SourceKeys: append([]string(nil), entry.SourceKeys...),
 		TransformKey: entry.TransformKey, Derivative: entry.Derivative,
 	}
-	if err := decodeManifestVisualHash(version, entry, &item); err != nil {
-		return Item{}, err
-	}
 	if version == 1 {
 		item.Key = item.Name
 		if item.Origin.Class == OriginSource {
@@ -64,22 +60,6 @@ func validateManifestItem(
 		return Item{}, err
 	}
 	return item, nil
-}
-
-func decodeManifestVisualHash(version int, entry manifestItem, item *Item) error {
-	if entry.VisualHash == "" {
-		return nil
-	}
-	if version < 3 || len(entry.VisualHash) != 16 || entry.VisualHash != strings.ToLower(entry.VisualHash) {
-		return fmt.Errorf("manifest item %q has invalid visual hash", entry.Name)
-	}
-	value, err := strconv.ParseUint(entry.VisualHash, 16, 64)
-	if err != nil {
-		return fmt.Errorf("manifest item %q has invalid visual hash", entry.Name)
-	}
-	item.visualHash = value
-	item.visualHashValid = true
-	return nil
 }
 
 func validateManifestName(name string, names map[string]struct{}) (string, error) {

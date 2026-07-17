@@ -14,7 +14,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
-func TestPrepareReportsProbableVisualDuplicatesWithoutRemovingArtwork(t *testing.T) {
+func TestPrepareKeepsVisuallySimilarArtworkWithoutWarning(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeGradient := func(name string, width, height int) {
@@ -35,7 +35,7 @@ func TestPrepareReportsProbableVisualDuplicatesWithoutRemovingArtwork(t *testing
 	}
 	writeGradient("large.png", 90, 80)
 	writeGradient("small.png", 45, 40)
-	store, err := collection.New(collection.Config{Root: root, PerceptualDuplicates: true, PerceptualDuplicateDistance: 6})
+	store, err := collection.New(collection.Config{Root: root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,15 +46,14 @@ func TestPrepareReportsProbableVisualDuplicatesWithoutRemovingArtwork(t *testing
 	if len(snapshot.Items) != 2 {
 		t.Fatalf("Prepare() retained %d items, want 2", len(snapshot.Items))
 	}
-	if len(snapshot.Warnings) != 0 {
-		t.Fatalf("Prepare() warnings = %v, want non-fatal advisory", snapshot.Warnings)
-	}
-	if len(snapshot.Advisories) != 1 || !strings.Contains(snapshot.Advisories[0], "probable visual duplicate") {
-		t.Fatalf("Prepare() advisories = %v", snapshot.Advisories)
+	for _, warning := range snapshot.Warnings {
+		if strings.Contains(strings.ToLower(warning), "visual duplicate") {
+			t.Fatalf("Prepare() warning = %q", warning)
+		}
 	}
 	for _, name := range []string{"large.png", "small.png"} {
 		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
-			t.Fatalf("advisory removed %s: %v", name, err)
+			t.Fatalf("prepare removed %s: %v", name, err)
 		}
 	}
 }

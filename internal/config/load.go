@@ -159,7 +159,6 @@ func validateRanges(cfg *Config) error {
 		{supportedColorProfilePolicy(cfg.ColorProfilePolicy), "IMAGE_COLOR_PROFILE_POLICY must be convert-srgb, assume-srgb, or reject-embedded"},
 		{betweenFloat(cfg.HDRSourcePeakNits, 100, 10_000), "IMAGE_HDR_SOURCE_PEAK_NITS must be between 100 and 10000"},
 		{betweenFloat(cfg.HDRTargetPeakNits, 80, 500), "IMAGE_HDR_TARGET_PEAK_NITS must be between 80 and 500"},
-		{between(cfg.PerceptualDuplicateDistance, 0, 64), "IMAGE_PERCEPTUAL_DUPLICATE_DISTANCE must be between 0 and 64"},
 		{between(cfg.MuseumModeIntensity, 1, 10), "IMAGE_MUSEUM_INTENSITY must be between 1 and 10"},
 		{between(cfg.HealthPort, 0, 65535), "HEALTH_PORT must be between 0 and 65535"},
 		{cfg.ConnectionTimeout > 0 && cfg.ConnectionTimeout <= 10*time.Minute, "CONNECTION_TIMEOUT_SECONDS must be between 1 and 600"},

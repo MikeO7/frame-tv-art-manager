@@ -226,9 +226,8 @@ matrix/TRC ICC v2/v4 profiles into sRGB before geometry or effects. Unsupported
 profiles and standalone PNG chromaticity/gamma metadata fall back to sRGB with
 a warning; `assume-srgb` skips conversion and `reject-embedded` fails closed.
 Metadata-declared PQ/HLG Rec. 2020 PNG input is tone-mapped to SDR using the
-ITU-R BT.2446 Method A luma curve by default. Exact-byte SHA-256 remains the
-only deduplication authority; optional difference-hash matching merely reports
-probable visual duplicates and never removes either image.
+ITU-R BT.2446 Method A luma curve by default. Exact-byte SHA-256 is the
+deduplication authority.
 `IMAGE_MUSEUM_MODE` enables the optional creative texture and color
 treatment; it is off by default. When enabled, its default intensity of 5 is
 the balanced preset intended for most artwork.
@@ -287,8 +286,6 @@ the table below covers the settings most people change.
 | `SMART_CROP_PROTECTION_STRENGTH` | `0.35` | Protected-region boundary penalty |
 | `SMART_CROP_PROVIDER` | `local` | `local` or opt-in `http` advanced crop service |
 | `SMART_CROP_PROVIDER_MIN_CONFIDENCE` | `0.7` | External proposal confidence required before use |
-| `IMAGE_PERCEPTUAL_DUPLICATES` | `true` | Report probable visual duplicates without deleting them |
-| `IMAGE_PERCEPTUAL_DUPLICATE_DISTANCE` | `6` | Maximum 64-bit difference-hash distance for an advisory |
 | `IMAGE_MUSEUM_MODE` | `false` | Enable the texture/color treatment |
 | `IMAGE_MUSEUM_INTENSITY` | `5` | Balanced creative-treatment strength (`1`-`10`) |
 | `UPLOAD_ENABLED` | `false` | Enable `GET` and `POST /upload` |

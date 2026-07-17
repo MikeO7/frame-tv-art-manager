@@ -52,3 +52,42 @@ func TestPrepareMigratesVersionOneManifestToDurableMetadata(t *testing.T) {
 		t.Fatalf("committed manifest = version %d, exists %v, error %v", committed.Version, exists, err)
 	}
 }
+
+func TestPrepareRemovesLegacyVisualHashFromManifest(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := value.Import(context.Background(), ImportRequest{
+		Reader: bytes.NewReader(encodeInternalImage(t, 2, 2)), Hint: "art.png",
+		Origin: Origin{Key: "operator:art.png", Class: OriginOperator},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	current, exists, err := readManifest(context.Background(), root)
+	if err != nil || !exists {
+		t.Fatalf("read current manifest: exists %v, error %v", exists, err)
+	}
+	current.Items[0].VisualHash = "legacy-invalid-hash"
+	encoded, err := json.Marshal(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(root, controlDirectory, manifestName)
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := value.Prepare(context.Background(), PrepareRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	migrated, exists, err := readManifest(context.Background(), root)
+	if err != nil || !exists {
+		t.Fatalf("read migrated manifest: exists %v, error %v", exists, err)
+	}
+	if got := migrated.Items[0].VisualHash; got != "" {
+		t.Fatalf("legacy visual hash retained as %q", got)
+	}
+}

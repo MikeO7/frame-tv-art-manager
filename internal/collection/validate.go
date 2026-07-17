@@ -16,19 +16,16 @@ import (
 )
 
 type validatedImage struct {
-	data            []byte
-	digest          [sha256.Size]byte
-	typeID          FileType
-	width           int
-	height          int
-	stem            string
-	visualHash      uint64
-	visualHashValid bool
+	data   []byte
+	digest [sha256.Size]byte
+	typeID FileType
+	width  int
+	height int
+	stem   string
 }
 
 type validationOptions struct {
 	maxBytes, maxPixels int64
-	computeVisualHash   bool
 }
 
 func readAndValidate(ctx context.Context, reader io.Reader, hint string, maxBytes, maxPixels int64) (validatedImage, error) {
@@ -54,8 +51,7 @@ func readAndValidateWithOptions(ctx context.Context, reader io.Reader, hint stri
 	if err != nil {
 		return validatedImage{}, err
 	}
-	imageData, err := fullyDecode(data, decoded.config, decoded.format)
-	if err != nil {
+	if _, err := fullyDecode(data, decoded.config, decoded.format); err != nil {
 		return validatedImage{}, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -64,13 +60,6 @@ func readAndValidateWithOptions(ctx context.Context, reader io.Reader, hint stri
 	result := validatedImage{
 		data: data, digest: sha256.Sum256(data), typeID: decoded.typeID,
 		width: decoded.config.Width, height: decoded.config.Height, stem: stem,
-	}
-	if options.computeVisualHash {
-		result.visualHash = differenceHash(imageData)
-		result.visualHashValid = true
-	}
-	if err := ctx.Err(); err != nil {
-		return validatedImage{}, fmt.Errorf("finish import fingerprint: %w", err)
 	}
 	return result, nil
 }

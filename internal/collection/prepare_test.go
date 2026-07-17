@@ -120,7 +120,6 @@ func TestPrepareReusesDigestBoundValidationForUnchangedArtwork(t *testing.T) {
 	writeArtwork(t, root, "stable.png", []byte("RUSE"))
 	store, err := collection.New(collection.Config{
 		Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20,
-		PerceptualDuplicates: true, PerceptualDuplicateDistance: 6,
 	})
 	if err != nil {
 		t.Fatalf("construct store: %v", err)

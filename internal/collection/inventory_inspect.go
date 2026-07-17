@@ -102,7 +102,7 @@ func (inspection artworkInspection) read(
 	if err != nil {
 		return Item{}, bytesRead, err
 	}
-	if item, reusable := reusableManifestItem(record, digest, limits.computeVisualHash); reusable {
+	if item, reusable := reusableManifestItem(record, digest); reusable {
 		return item, bytesRead, nil
 	}
 	if err := ctx.Err(); err != nil {
@@ -126,8 +126,7 @@ func (inspection artworkInspection) decode(
 	item := Item{
 		Name: name, Key: name, Path: inspection.path, Digest: validated.digest,
 		Type: validated.typeID, Size: inspection.before.Size(), Width: validated.width, Height: validated.height,
-		Origin:     Origin{Key: "operator:" + name, Class: OriginOperator},
-		visualHash: validated.visualHash, visualHashValid: validated.visualHashValid,
+		Origin: Origin{Key: "operator:" + name, Class: OriginOperator},
 	}
 	return item, int64(len(validated.data)), nil
 }
@@ -164,8 +163,8 @@ func inspectPrepareItem(ctx context.Context, root string, entry os.DirEntry, lim
 	return item, nil
 }
 
-func reusableManifestItem(record manifestRecord, digest [sha256.Size]byte, requireVisualHash bool) (Item, bool) {
-	if record.item.Digest != digest || requireVisualHash && !record.item.visualHashValid {
+func reusableManifestItem(record manifestRecord, digest [sha256.Size]byte) (Item, bool) {
+	if record.item.Digest != digest {
 		return Item{}, false
 	}
 	item := record.item

@@ -57,12 +57,15 @@ after the audit:
 - an opt-in, timeout-bounded HTTP crop-provider protocol with strict geometry
   and confidence validation plus deterministic local fallback; and
 - non-destructive 64-bit difference-hash similarity advisories. Exact SHA-256
-  remains authoritative and perceptual similarity never authorizes deletion.
+  remained authoritative and perceptual similarity never authorized deletion.
+
+The optional perceptual-similarity advisory was subsequently removed from the
+application and its operator configuration.
 
 The final review additionally made embedded-metadata inspection streaming
 (JPEG stops at SOS and PNG stops at IDAT), restricted HDR tone mapping to the
 declared Rec. 2020 PQ/HLG contract the converter supports, aligned preflight
-with execution for unsupported PNG color hints, and reuses ingress decodes for
+with execution for unsupported PNG color hints, and reused ingress decodes for
 perceptual hashes instead of decoding every catalog item twice.
 
 The resulting settings use conservative, general-purpose presets when a feature
@@ -78,8 +81,7 @@ performed, the 3% gate is deliberately described as a conservative engineering
 default rather than an empirically calibrated preference threshold.
 
 The creative museum-mode operations remain deliberately opt-in. Exact
-encoded-byte SHA-256 remains the mutation-safe identity; perceptual similarity
-is reported separately and cannot authorize deletion.
+encoded-byte SHA-256 remains the mutation-safe identity.
 
 ## Complete algorithm and transform inventory
 

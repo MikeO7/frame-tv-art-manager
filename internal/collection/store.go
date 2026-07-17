@@ -14,13 +14,11 @@ const (
 )
 
 type store struct {
-	root                        string
-	maxItems                    int
-	maxImportBytes              int64
-	maxPixels                   int64
-	perceptualDuplicates        bool
-	perceptualDuplicateDistance int
-	mutation                    chan struct{}
+	root           string
+	maxItems       int
+	maxImportBytes int64
+	maxPixels      int64
+	mutation       chan struct{}
 }
 
 func New(cfg Config) (Store, error) {
@@ -30,7 +28,7 @@ func New(cfg Config) (Store, error) {
 	if !filepath.IsAbs(cfg.Root) {
 		return nil, fmt.Errorf("collection root %q is not absolute", cfg.Root)
 	}
-	if cfg.MaxItems < 0 || cfg.MaxImportBytes < 0 || cfg.MaxPixels < 0 || cfg.PerceptualDuplicateDistance < 0 || cfg.PerceptualDuplicateDistance > 64 {
+	if cfg.MaxItems < 0 || cfg.MaxImportBytes < 0 || cfg.MaxPixels < 0 {
 		return nil, errors.New("collection limits must not be negative")
 	}
 	if cfg.MaxImportBytes == 0 {
@@ -40,13 +38,11 @@ func New(cfg Config) (Store, error) {
 		cfg.MaxPixels = defaultMaxPixels
 	}
 	return &store{
-		root:                        filepath.Clean(cfg.Root),
-		maxItems:                    cfg.MaxItems,
-		maxImportBytes:              cfg.MaxImportBytes,
-		maxPixels:                   cfg.MaxPixels,
-		perceptualDuplicates:        cfg.PerceptualDuplicates,
-		perceptualDuplicateDistance: cfg.PerceptualDuplicateDistance,
-		mutation:                    make(chan struct{}, 1),
+		root:           filepath.Clean(cfg.Root),
+		maxItems:       cfg.MaxItems,
+		maxImportBytes: cfg.MaxImportBytes,
+		maxPixels:      cfg.MaxPixels,
+		mutation:       make(chan struct{}, 1),
 	}, nil
 }
 

@@ -34,11 +34,9 @@ func NewManagedEngine(
 		logger = slog.Default()
 	}
 	store, err := collectionpkg.New(collectionpkg.Config{
-		Root:                        cfg.ArtworkDir,
-		MaxItems:                    cfg.MaxArtworkImages,
-		MaxImportBytes:              int64(cfg.MaxDownloadSizeMB) << 20,
-		PerceptualDuplicates:        cfg.PerceptualDuplicates,
-		PerceptualDuplicateDistance: cfg.PerceptualDuplicateDistance,
+		Root:           cfg.ArtworkDir,
+		MaxItems:       cfg.MaxArtworkImages,
+		MaxImportBytes: int64(cfg.MaxDownloadSizeMB) << 20,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct authoritative collection: %w", err)

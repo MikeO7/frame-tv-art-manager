@@ -19,7 +19,7 @@ func (s *store) prepare(ctx context.Context, request PrepareRequest) (Snapshot, 
 		return Snapshot{}, err
 	}
 	changes := inventoryChanges(inventory.current, inventory.items)
-	projected := buildSnapshotWithNotices(s.root, inventory.items, changes, inventory.warnings, inventory.advisories, request.DryRun)
+	projected := buildSnapshotWithWarnings(s.root, inventory.items, changes, inventory.warnings, request.DryRun)
 	if err := s.validatePreparedSnapshot(projected); err != nil {
 		return Snapshot{}, err
 	}
@@ -53,7 +53,7 @@ func (s *store) beginPrepare(ctx context.Context, dryRun bool) error {
 }
 
 func (s *store) commitPrepared(ctx context.Context, inventory preparedInventory, changes []Change) (Snapshot, error) {
-	projected := buildSnapshotWithNotices(s.root, inventory.items, changes, inventory.warnings, inventory.advisories, false)
+	projected := buildSnapshotWithWarnings(s.root, inventory.items, changes, inventory.warnings, false)
 	if err := s.validatePreparedSnapshot(projected); err != nil {
 		return Snapshot{}, err
 	}
@@ -69,7 +69,7 @@ func (s *store) commitPrepared(ctx context.Context, inventory preparedInventory,
 		return Snapshot{}, fmt.Errorf("commit collection inventory: %w", err)
 	}
 	limits := inventoryLimits{
-		maxBytes: s.maxImportBytes, maxPixels: s.maxPixels, computeVisualHash: s.perceptualDuplicates,
+		maxBytes: s.maxImportBytes, maxPixels: s.maxPixels,
 	}
 	committed, committedWarnings, err := scanPrepare(ctx, s.root, limits)
 	if err != nil {
@@ -78,11 +78,7 @@ func (s *store) commitPrepared(ctx context.Context, inventory preparedInventory,
 	if err := verifyExpected(inventory.items, committed); err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed manifest: %w", err)
 	}
-	committedAdvisories, err := s.perceptualAdvisories(ctx, committed)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("verify perceptual duplicate advisories: %w", err)
-	}
-	verified := buildSnapshotWithNotices(s.root, committed, changes, committedWarnings, committedAdvisories, false)
+	verified := buildSnapshotWithWarnings(s.root, committed, changes, committedWarnings, false)
 	if err := s.validatePreparedSnapshot(verified); err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed collection snapshot: %w", err)
 	}

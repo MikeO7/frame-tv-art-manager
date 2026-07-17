@@ -20,11 +20,13 @@ type manifest struct {
 }
 
 type manifestItem struct {
-	Name         string         `json:"name"`
-	Digest       string         `json:"digest"`
-	Type         FileType       `json:"type"`
-	Width        int            `json:"width"`
-	Height       int            `json:"height"`
+	Name   string   `json:"name"`
+	Digest string   `json:"digest"`
+	Type   FileType `json:"type"`
+	Width  int      `json:"width"`
+	Height int      `json:"height"`
+	// VisualHash is retained only so manifests written by older releases can
+	// be validated and migrated without rejecting their legacy field.
 	VisualHash   string         `json:"visual_hash,omitempty"`
 	OriginKey    string         `json:"origin_key"`
 	Class        OriginClass    `json:"class"`
@@ -39,11 +41,6 @@ func buildSnapshot(root string, items []Item, changes []Change, dryRun bool) Sna
 }
 
 func buildSnapshotWithWarnings(root string, items []Item, changes []Change, warnings []string, dryRun bool) Snapshot {
-	return buildSnapshotWithNotices(root, items, changes, warnings, nil, dryRun)
-}
-
-//nolint:revive // warnings and non-fatal advisories are intentionally distinct snapshot facts
-func buildSnapshotWithNotices(root string, items []Item, changes []Change, warnings, advisories []string, dryRun bool) Snapshot {
 	cloned := cloneItems(items)
 	sortItems(cloned)
 	for index := range cloned {
@@ -54,7 +51,6 @@ func buildSnapshotWithNotices(root string, items []Item, changes []Change, warni
 		Items:      cloned,
 		Changes:    append([]Change(nil), changes...),
 		Warnings:   append([]string(nil), warnings...),
-		Advisories: append([]string(nil), advisories...),
 		DryRun:     dryRun,
 	}
 }
@@ -64,7 +60,7 @@ func newManifest(items []Item) manifest {
 	for _, item := range items {
 		entries = append(entries, manifestItem{
 			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
-			Width: item.Width, Height: item.Height, VisualHash: encodeVisualHash(item),
+			Width: item.Width, Height: item.Height,
 			OriginKey: item.Origin.Key, Class: item.Origin.Class, Key: item.Key,
 			SourceKeys:   append([]string(nil), item.SourceKeys...),
 			TransformKey: item.TransformKey, Derivative: item.Derivative,

@@ -98,8 +98,6 @@ func (env *environment) loadConfig() (*Config, error) {
 		HDRToneMap:                     env.boolean("IMAGE_HDR_TONE_MAP", true),
 		HDRSourcePeakNits:              env.decimal("IMAGE_HDR_SOURCE_PEAK_NITS", 1000),
 		HDRTargetPeakNits:              env.decimal("IMAGE_HDR_TARGET_PEAK_NITS", 100),
-		PerceptualDuplicates:           env.boolean("IMAGE_PERCEPTUAL_DUPLICATES", true),
-		PerceptualDuplicateDistance:    env.integer("IMAGE_PERCEPTUAL_DUPLICATE_DISTANCE", 6),
 		MuseumModeEnabled:              env.boolean("IMAGE_MUSEUM_MODE", false),
 		MuseumModeIntensity:            env.integer("IMAGE_MUSEUM_INTENSITY", 5),
 		HealthPort:                     env.integer("HEALTH_PORT", 8080),

@@ -192,11 +192,6 @@ type Config struct {
 	// HDRTargetPeakNits is the target SDR peak luminance.
 	HDRTargetPeakNits float64
 
-	// PerceptualDuplicates enables non-destructive visual-similarity advisories.
-	PerceptualDuplicates bool
-	// PerceptualDuplicateDistance is the maximum 64-bit difference-hash Hamming distance.
-	PerceptualDuplicateDistance int
-
 	// MuseumModeEnabled applies canvas texture, black lifting, and warming for a "real art" look.
 	MuseumModeEnabled bool
 
