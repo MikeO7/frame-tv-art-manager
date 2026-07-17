@@ -90,6 +90,33 @@ func readBounded(reader io.Reader, maxBytes int64) ([]byte, error) {
 	return data, nil
 }
 
+func hashBounded(ctx context.Context, reader io.Reader, maxBytes int64) ([sha256.Size]byte, int64, error) {
+	limited := &io.LimitedReader{R: &contextReader{ctx: ctx, reader: reader}, N: maxBytes + 1}
+	hash := sha256.New()
+	read, err := io.Copy(hash, limited)
+	if err != nil {
+		return [sha256.Size]byte{}, read, fmt.Errorf("hash artwork: %w", err)
+	}
+	if read > maxBytes {
+		return [sha256.Size]byte{}, read, fmt.Errorf("artwork exceeds %d-byte limit", maxBytes)
+	}
+	var digest [sha256.Size]byte
+	copy(digest[:], hash.Sum(nil))
+	return digest, read, nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader *contextReader) Read(buffer []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return reader.reader.Read(buffer)
+}
+
 type decodedConfiguration struct {
 	config image.Config
 	format string

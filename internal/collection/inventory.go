@@ -25,7 +25,7 @@ type inventoryLimits struct {
 }
 
 func scan(ctx context.Context, root string, maxBytes, maxPixels int64) ([]Item, error) {
-	origins, err := readManifestOrigins(ctx, root)
+	records, err := readManifestRecords(ctx, root)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func scan(ctx context.Context, root string, maxBytes, maxPixels int64) ([]Item, 
 	if !exists {
 		return []Item{}, nil
 	}
-	return scanEntries(ctx, root, entries, origins, inventoryLimits{maxBytes: maxBytes, maxPixels: maxPixels})
+	return scanEntries(ctx, root, entries, records, inventoryLimits{maxBytes: maxBytes, maxPixels: maxPixels})
 }
 
 func readRoot(root string) ([]os.DirEntry, bool, error) {
@@ -61,7 +61,7 @@ func scanEntries(
 	ctx context.Context,
 	root string,
 	entries []os.DirEntry,
-	origins map[string]manifestOrigin,
+	records map[string]manifestRecord,
 	limits inventoryLimits,
 ) ([]Item, error) {
 	items := make([]Item, 0, len(entries))
@@ -73,76 +73,24 @@ func scanEntries(
 		if isReserved(strings.ToLower(name)) || !isSupportedName(name) {
 			continue
 		}
-		item, include, err := inspectItem(ctx, root, entry, limits.maxBytes, limits.maxPixels)
+		record := records[name]
+		item, include, err := inspectItem(ctx, root, entry, limits, record)
 		if err != nil {
 			return nil, err
 		}
 		if include {
-			if metadata, ok := origins[item.Name]; ok && metadata.digest == item.Digest {
-				item.Key = metadata.key
-				item.Origin = metadata.origin
-				item.SourceKeys = append([]string(nil), metadata.sourceKeys...)
-				item.TransformKey = metadata.transformKey
-				item.Derivative = metadata.derivative
+			if metadata, ok := records[item.Name]; ok && metadata.item.Digest == item.Digest {
+				item.Key = metadata.item.Key
+				item.Origin = metadata.item.Origin
+				item.SourceKeys = append([]string(nil), metadata.item.SourceKeys...)
+				item.TransformKey = metadata.item.TransformKey
+				item.Derivative = metadata.item.Derivative
 			}
 			items = append(items, item)
 		}
 	}
 	sortItems(items)
 	return items, nil
-}
-
-//nolint:gocyclo // the path/open/read identity checks form one fail-closed filesystem observation
-func inspectItem(ctx context.Context, root string, entry os.DirEntry, maxBytes, maxPixels int64) (Item, bool, error) {
-	if entry.Type()&os.ModeSymlink != 0 {
-		return Item{}, false, fmt.Errorf("artwork %s is a symlink", entry.Name())
-	}
-	info, err := entry.Info()
-	if err != nil {
-		return Item{}, false, fmt.Errorf("inspect artwork %s: %w", entry.Name(), err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return Item{}, false, fmt.Errorf("artwork %s is not a regular non-symlink file", entry.Name())
-	}
-	if info.Size() > maxBytes {
-		return Item{}, false, fmt.Errorf("artwork %s exceeds %d-byte limit", entry.Name(), maxBytes)
-	}
-	path := filepath.Join(root, entry.Name())
-	file, err := os.Open(path)
-	if err != nil {
-		return Item{}, false, fmt.Errorf("open artwork %s: %w", entry.Name(), err)
-	}
-	opened, openedErr := file.Stat()
-	if openedErr != nil {
-		_ = file.Close()
-		return Item{}, false, fmt.Errorf("inspect opened artwork %s: %w", entry.Name(), openedErr)
-	}
-	if !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
-		_ = file.Close()
-		return Item{}, false, fmt.Errorf("artwork %s changed while opening", entry.Name())
-	}
-	validated, validateErr := readAndValidate(ctx, file, entry.Name(), maxBytes, maxPixels)
-	after, statErr := file.Stat()
-	pathAfter, pathErr := os.Lstat(path)
-	closeErr := file.Close()
-	if validateErr != nil {
-		return Item{}, false, fmt.Errorf("validate artwork %s: %w", entry.Name(), validateErr)
-	}
-	if err := errors.Join(statErr, pathErr, closeErr); err != nil {
-		return Item{}, false, fmt.Errorf("reinspect artwork %s: %w", entry.Name(), err)
-	}
-	if pathAfter.Mode()&os.ModeSymlink != 0 || !pathAfter.Mode().IsRegular() ||
-		!os.SameFile(opened, after) || !os.SameFile(after, pathAfter) ||
-		opened.Size() != after.Size() || !opened.ModTime().Equal(after.ModTime()) ||
-		after.Size() != int64(len(validated.data)) {
-		return Item{}, false, fmt.Errorf("artwork %s changed while reading", entry.Name())
-	}
-	return Item{
-		Name: entry.Name(), Key: entry.Name(), Path: path, Digest: validated.digest,
-		Type: validated.typeID, Size: after.Size(), Width: validated.width, Height: validated.height,
-		Origin:     Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
-		visualHash: validated.visualHash, visualHashValid: validated.visualHashValid,
-	}, true, nil
 }
 
 func isSupportedName(name string) bool {

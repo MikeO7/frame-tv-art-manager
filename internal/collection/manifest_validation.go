@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
-func validateManifestItems(value manifest) (map[string]manifestOrigin, error) {
-	origins := make(map[string]manifestOrigin, len(value.Items))
+func validateManifestItems(value manifest) (map[string]manifestRecord, error) {
+	records := make(map[string]manifestRecord, len(value.Items))
 	names := make(map[string]struct{}, len(value.Items))
 	keys := make(map[string]struct{}, len(value.Items))
 	digests := make(map[[sha256.Size]byte]struct{}, len(value.Items))
@@ -21,17 +22,13 @@ func validateManifestItems(value manifest) (map[string]manifestOrigin, error) {
 		if err != nil {
 			return nil, err
 		}
-		origins[entry.Name] = manifestOrigin{
-			digest: item.Digest, key: item.Key, origin: item.Origin,
-			sourceKeys:   append([]string(nil), item.SourceKeys...),
-			transformKey: item.TransformKey, derivative: item.Derivative,
-		}
+		records[entry.Name] = manifestRecord{item: item}
 		names[strings.ToLower(entry.Name)] = struct{}{}
 		keys[strings.ToLower(item.Key)] = struct{}{}
 		digests[item.Digest] = struct{}{}
 		items = append(items, item)
 	}
-	return validateManifestGeneration(value.Version, value.Generation, items, origins)
+	return validateManifestGeneration(value.Version, value.Generation, items, records)
 }
 
 func validateManifestItem(
@@ -54,6 +51,9 @@ func validateManifestItem(
 		Origin: Origin{Key: entry.OriginKey, Class: entry.Class}, SourceKeys: append([]string(nil), entry.SourceKeys...),
 		TransformKey: entry.TransformKey, Derivative: entry.Derivative,
 	}
+	if err := decodeManifestVisualHash(version, entry, &item); err != nil {
+		return Item{}, err
+	}
 	if version == 1 {
 		item.Key = item.Name
 		if item.Origin.Class == OriginSource {
@@ -64,6 +64,22 @@ func validateManifestItem(
 		return Item{}, err
 	}
 	return item, nil
+}
+
+func decodeManifestVisualHash(version int, entry manifestItem, item *Item) error {
+	if entry.VisualHash == "" {
+		return nil
+	}
+	if version < 3 || len(entry.VisualHash) != 16 || entry.VisualHash != strings.ToLower(entry.VisualHash) {
+		return fmt.Errorf("manifest item %q has invalid visual hash", entry.Name)
+	}
+	value, err := strconv.ParseUint(entry.VisualHash, 16, 64)
+	if err != nil {
+		return fmt.Errorf("manifest item %q has invalid visual hash", entry.Name)
+	}
+	item.visualHash = value
+	item.visualHashValid = true
+	return nil
 }
 
 func validateManifestName(name string, names map[string]struct{}) (string, error) {
@@ -128,8 +144,8 @@ func validateManifestGeneration(
 	version int,
 	generationValue string,
 	items []Item,
-	origins map[string]manifestOrigin,
-) (map[string]manifestOrigin, error) {
+	records map[string]manifestRecord,
+) (map[string]manifestRecord, error) {
 	if !validGeneration(generationValue) {
 		return nil, errors.New("collection manifest generation is invalid")
 	}
@@ -141,7 +157,7 @@ func validateManifestGeneration(
 	if generationValue != want {
 		return nil, errors.New("collection manifest generation does not match its items")
 	}
-	return origins, nil
+	return records, nil
 }
 
 func legacyGeneration(items []Item) string {

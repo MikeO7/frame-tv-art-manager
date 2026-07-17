@@ -368,6 +368,10 @@ restart policy or an orchestrator policy if automatic recovery is required.
 
 Application logs are JSON. Every TV reconciliation outcome includes the cycle,
 TV address, status, mutation counts, and the complete error when one occurs.
+Each inventory pass logs `inventorying local artwork` before scanning and adds
+`duration_ms` to `local artwork inventory complete` (or
+`local artwork inventory failed`), so log viewers show progress during large
+collection scans.
 Samsung failures also include stable `error_kind`, `operation`, `outcome`, and
 `retryable` fields; backoff entries include `retry_at` and the consecutive
 failure count. Mutation retry warnings include the current, next, and maximum

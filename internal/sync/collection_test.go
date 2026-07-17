@@ -3,12 +3,14 @@ package sync
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"image"
 	"image/jpeg"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
@@ -70,6 +72,104 @@ func TestArtworkCollectionBoundaryValidationAndCancellation(t *testing.T) {
 		t.Fatalf("canceled prepareCycle() error = %v, want context cancellation", err)
 	}
 	<-local.mutation
+}
+
+func TestLocalCollectionLogsInventoryBoundaryAndDuration(t *testing.T) {
+	root := t.TempDir()
+	var output bytes.Buffer
+	store := &gatedCollectionStore{
+		CollectionStore: newTestCollectionStore(t, root),
+		started:         make(chan struct{}),
+		release:         make(chan struct{}),
+	}
+	collection := &localCollection{
+		cfg:    &config.Config{ArtworkDir: root},
+		logger: slog.New(slog.NewJSONHandler(&output, nil)),
+		store:  store,
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := collection.prepareAuthoritativeSnapshot(context.Background(), nil)
+		done <- err
+	}()
+	<-store.started
+	if !strings.Contains(output.String(), `"msg":"inventorying local artwork"`) {
+		t.Fatal("inventory did not log progress before blocking work")
+	}
+	close(store.release)
+	if err := <-done; err != nil {
+		t.Fatalf("prepareAuthoritativeSnapshot() error = %v", err)
+	}
+
+	var completed map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatalf("decode structured log: %v; line=%q", err, line)
+		}
+		if entry["msg"] == "local artwork inventory complete" {
+			completed = entry
+		}
+	}
+	if completed == nil {
+		t.Fatal("inventory completion was not logged")
+	}
+	if _, ok := completed["duration_ms"].(float64); !ok {
+		t.Fatalf("completion duration = %#v; entry=%#v", completed["duration_ms"], completed)
+	}
+}
+
+func TestLocalCollectionLogsInventoryFailureDuration(t *testing.T) {
+	root := t.TempDir()
+	var output bytes.Buffer
+	wantErr := errors.New("inventory unavailable")
+	release := make(chan struct{})
+	close(release)
+	store := &gatedCollectionStore{
+		CollectionStore: newTestCollectionStore(t, root),
+		started:         make(chan struct{}),
+		release:         release,
+		err:             wantErr,
+	}
+	collection := &localCollection{
+		cfg:    &config.Config{ArtworkDir: root},
+		logger: slog.New(slog.NewJSONHandler(&output, nil)),
+		store:  store,
+	}
+
+	_, err := collection.prepareAuthoritativeSnapshot(context.Background(), nil)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("prepareAuthoritativeSnapshot() error = %v, want %v", err, wantErr)
+	}
+	logs := output.String()
+	if !strings.Contains(logs, `"msg":"local artwork inventory failed"`) ||
+		!strings.Contains(logs, `"duration_ms":`) {
+		t.Fatalf("inventory failure timing log missing: %s", logs)
+	}
+}
+
+type gatedCollectionStore struct {
+	CollectionStore
+	started chan struct{}
+	release chan struct{}
+	err     error
+}
+
+func (store *gatedCollectionStore) Prepare(
+	ctx context.Context,
+	request collectionpkg.PrepareRequest,
+) (collectionpkg.Snapshot, error) {
+	close(store.started)
+	select {
+	case <-store.release:
+		if store.err != nil {
+			return collectionpkg.Snapshot{}, store.err
+		}
+		return store.CollectionStore.Prepare(ctx, request)
+	case <-ctx.Done():
+		return collectionpkg.Snapshot{}, ctx.Err()
+	}
 }
 
 type recordingCollectionStore struct {

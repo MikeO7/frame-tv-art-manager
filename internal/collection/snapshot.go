@@ -25,6 +25,7 @@ type manifestItem struct {
 	Type         FileType       `json:"type"`
 	Width        int            `json:"width"`
 	Height       int            `json:"height"`
+	VisualHash   string         `json:"visual_hash,omitempty"`
 	OriginKey    string         `json:"origin_key"`
 	Class        OriginClass    `json:"class"`
 	Key          string         `json:"key,omitempty"`
@@ -63,13 +64,13 @@ func newManifest(items []Item) manifest {
 	for _, item := range items {
 		entries = append(entries, manifestItem{
 			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
-			Width: item.Width, Height: item.Height,
+			Width: item.Width, Height: item.Height, VisualHash: encodeVisualHash(item),
 			OriginKey: item.Origin.Key, Class: item.Origin.Class, Key: item.Key,
 			SourceKeys:   append([]string(nil), item.SourceKeys...),
 			TransformKey: item.TransformKey, Derivative: item.Derivative,
 		})
 	}
-	return manifest{Version: 2, Generation: generation(items), Items: entries}
+	return manifest{Version: 3, Generation: generation(items), Items: entries}
 }
 
 func generation(items []Item) string {

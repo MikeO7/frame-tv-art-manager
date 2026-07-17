@@ -48,7 +48,7 @@ func TestPrepareMigratesVersionOneManifestToDurableMetadata(t *testing.T) {
 		t.Fatalf("migrated metadata = %+v", got)
 	}
 	committed, exists, err := readManifest(context.Background(), root)
-	if err != nil || !exists || committed.Version != 2 {
+	if err != nil || !exists || committed.Version != 3 {
 		t.Fatalf("committed manifest = version %d, exists %v, error %v", committed.Version, exists, err)
 	}
 }

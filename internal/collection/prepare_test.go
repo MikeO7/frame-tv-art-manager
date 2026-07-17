@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/color"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,6 +99,50 @@ func TestPrepareCommitsAdoptedInventoryAndStableGeneration(t *testing.T) {
 	}
 	if second.Generation != first.Generation || len(second.Changes) != 0 {
 		t.Fatalf("stable inventory changed: first=%+v second=%+v", first, second)
+	}
+}
+
+func TestPrepareReusesDigestBoundValidationForUnchangedArtwork(t *testing.T) {
+	var fullDecodes atomic.Int64
+	image.RegisterFormat(
+		"png",
+		"RUSE",
+		func(io.Reader) (image.Image, error) {
+			fullDecodes.Add(1)
+			return image.NewRGBA(image.Rect(0, 0, 2, 2)), nil
+		},
+		func(io.Reader) (image.Config, error) {
+			return image.Config{ColorModel: color.RGBAModel, Width: 2, Height: 2}, nil
+		},
+	)
+
+	root := t.TempDir()
+	writeArtwork(t, root, "stable.png", []byte("RUSE"))
+	store, err := collection.New(collection.Config{
+		Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20,
+		PerceptualDuplicates: true, PerceptualDuplicateDistance: 6,
+	})
+	if err != nil {
+		t.Fatalf("construct store: %v", err)
+	}
+	first, err := store.Prepare(context.Background(), collection.PrepareRequest{})
+	if err != nil {
+		t.Fatalf("prepare initial collection: %v", err)
+	}
+	decodesAfterInitial := fullDecodes.Load()
+	if decodesAfterInitial == 0 {
+		t.Fatal("initial preparation did not fully decode artwork")
+	}
+
+	second, err := store.Prepare(context.Background(), collection.PrepareRequest{})
+	if err != nil {
+		t.Fatalf("prepare unchanged collection: %v", err)
+	}
+	if got := fullDecodes.Load(); got != decodesAfterInitial {
+		t.Fatalf("unchanged artwork full decodes = %d, want %d", got, decodesAfterInitial)
+	}
+	if second.Generation != first.Generation || len(second.Changes) != 0 {
+		t.Fatalf("unchanged snapshot = %+v, first generation %q", second, first.Generation)
 	}
 }
 

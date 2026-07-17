@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
@@ -269,31 +268,4 @@ func (c *localCollection) authoritativeSnapshot(
 	result.snapshot = snapshot
 	result.warnings = append(result.warnings, snapshot.Advisories...)
 	return result, nil
-}
-
-func (c *localCollection) prepareAuthoritativeSnapshot(
-	ctx context.Context,
-	origins map[string]collectionpkg.Origin,
-) (collectionpkg.Snapshot, error) {
-	snapshot, err := c.store.Prepare(ctx, collectionpkg.PrepareRequest{Origins: origins, DryRun: c.cfg.DryRun})
-	if err != nil {
-		return collectionpkg.Snapshot{}, fmt.Errorf("prepare authoritative collection snapshot: %w", err)
-	}
-	if err := c.validateAuthoritativeSnapshot(snapshot); err != nil {
-		return collectionpkg.Snapshot{}, err
-	}
-	return snapshot, nil
-}
-
-func (c *localCollection) validateAuthoritativeSnapshot(snapshot collectionpkg.Snapshot) error {
-	if len(snapshot.Warnings) > 0 {
-		return fmt.Errorf(
-			"authoritative collection snapshot is incomplete: %s",
-			strings.Join(snapshot.Warnings, "; "),
-		)
-	}
-	if err := collectionpkg.ValidateSnapshot(c.cfg.ArtworkDir, snapshot); err != nil {
-		return fmt.Errorf("authoritative collection snapshot is invalid: %w", err)
-	}
-	return nil
 }

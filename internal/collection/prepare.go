@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -100,7 +99,7 @@ func scanPrepare(
 	if len(originOverrides) > 0 {
 		overrides = originOverrides[0]
 	}
-	origins, err := readManifestOrigins(ctx, root)
+	records, err := readManifestRecords(ctx, root)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -114,7 +113,7 @@ func scanPrepare(
 	items := make([]Item, 0, len(entries))
 	warnings := make([]string, 0)
 	for _, entry := range entries {
-		result, err := scanPrepareEntry(ctx, root, entry, limits)
+		result, err := scanPrepareEntry(ctx, root, entry, limits, records[entry.Name()])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -122,7 +121,7 @@ func scanPrepare(
 			warnings = append(warnings, result.warning)
 		}
 		if result.include {
-			item, err := prepareItemOrigin(result.item, origins, overrides)
+			item, err := prepareItemOrigin(result.item, records, overrides)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -136,15 +135,15 @@ func scanPrepare(
 
 func prepareItemOrigin(
 	item Item,
-	committed map[string]manifestOrigin,
+	committed map[string]manifestRecord,
 	overrides map[string]Origin,
 ) (Item, error) {
-	if metadata, ok := committed[item.Name]; ok && metadata.digest == item.Digest {
-		item.Key = metadata.key
-		item.Origin = metadata.origin
-		item.SourceKeys = append([]string(nil), metadata.sourceKeys...)
-		item.TransformKey = metadata.transformKey
-		item.Derivative = metadata.derivative
+	if metadata, ok := committed[item.Name]; ok && metadata.item.Digest == item.Digest {
+		item.Key = metadata.item.Key
+		item.Origin = metadata.item.Origin
+		item.SourceKeys = append([]string(nil), metadata.item.SourceKeys...)
+		item.TransformKey = metadata.item.TransformKey
+		item.Derivative = metadata.item.Derivative
 	}
 	origin, overridden := overrides[item.Name]
 	if !overridden {
@@ -171,6 +170,7 @@ func scanPrepareEntry(
 	root string,
 	entry os.DirEntry,
 	limits inventoryLimits,
+	record manifestRecord,
 ) (scannedPrepareEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return scannedPrepareEntry{}, fmt.Errorf("scan collection: %w", err)
@@ -181,7 +181,7 @@ func scanPrepareEntry(
 	if entry.Type()&os.ModeSymlink != 0 {
 		return scannedPrepareEntry{}, fmt.Errorf("artwork %s is a symlink", entry.Name())
 	}
-	item, err := inspectPrepareItem(ctx, root, entry, limits)
+	item, _, err := inspectItem(ctx, root, entry, limits, record)
 	if err == nil {
 		return scannedPrepareEntry{item: item, include: true}, nil
 	}
@@ -189,46 +189,6 @@ func scanPrepareEntry(
 		return scannedPrepareEntry{}, err
 	}
 	return scannedPrepareEntry{warning: fmt.Sprintf("excluded artwork %s: %v", entry.Name(), err)}, nil
-}
-
-func inspectPrepareItem(
-	ctx context.Context,
-	root string,
-	entry os.DirEntry,
-	limits inventoryLimits,
-) (Item, error) {
-	info, err := entry.Info()
-	if err != nil {
-		return Item{}, fmt.Errorf("inspect: %w", err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return Item{}, errors.New("symlink is not allowed")
-	}
-	if !info.Mode().IsRegular() {
-		return Item{}, errors.New("not a regular file")
-	}
-	if info.Size() > limits.maxBytes {
-		return Item{}, fmt.Errorf("exceeds %d-byte limit", limits.maxBytes)
-	}
-	path := filepath.Join(root, entry.Name())
-	file, err := os.Open(path)
-	if err != nil {
-		return Item{}, fmt.Errorf("open: %w", err)
-	}
-	validated, validateErr := readAndValidateWithOptions(ctx, file, entry.Name(), validationOptions(limits))
-	closeErr := file.Close()
-	if validateErr != nil {
-		return Item{}, fmt.Errorf("validate: %w", errors.Join(validateErr, closeErr))
-	}
-	if closeErr != nil {
-		return Item{}, fmt.Errorf("close: %w", closeErr)
-	}
-	return Item{
-		Name: entry.Name(), Key: entry.Name(), Path: path, Digest: validated.digest,
-		Type: validated.typeID, Size: info.Size(), Width: validated.width, Height: validated.height,
-		Origin:     Origin{Key: "operator:" + entry.Name(), Class: OriginOperator},
-		visualHash: validated.visualHash, visualHashValid: validated.visualHashValid,
-	}, nil
 }
 
 func inventoryChanges(current manifest, items []Item) []Change {
@@ -269,6 +229,7 @@ func manifestsEqual(left, right manifest) bool {
 		leftItem, rightItem := left.Items[index], right.Items[index]
 		if leftItem.Name != rightItem.Name || leftItem.Digest != rightItem.Digest || leftItem.Type != rightItem.Type ||
 			leftItem.Width != rightItem.Width || leftItem.Height != rightItem.Height ||
+			leftItem.VisualHash != rightItem.VisualHash ||
 			leftItem.OriginKey != rightItem.OriginKey || leftItem.Class != rightItem.Class ||
 			leftItem.Key != rightItem.Key || leftItem.TransformKey != rightItem.TransformKey ||
 			leftItem.Derivative != rightItem.Derivative || !slices.Equal(leftItem.SourceKeys, rightItem.SourceKeys) {

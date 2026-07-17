@@ -131,7 +131,6 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("prepare artwork collection: %w", err)
 	}
-	cycleLog.Info("local artwork ready", "total", len(prepared.snapshot.Items), "optimized", prepared.optimized)
 
 	mattes, err := config.ReadMatteConfig(ctx, engine.cfg.ArtworkDir)
 	if err != nil {
