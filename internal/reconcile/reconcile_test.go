@@ -322,6 +322,84 @@ func TestRunUploadFoldsVerifiedReceipt(t *testing.T) {
 	}
 }
 
+func TestRunHandlesAppliedUploadWhenTVReusesContentID(t *testing.T) {
+	tests := []struct {
+		name      string
+		recovery  bool
+		wantApply int
+	}{
+		{name: "same cycle", wantApply: 1},
+		{name: "restart recovery", recovery: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			directory := filepath.Join(t.TempDir(), "state")
+			observation := knownObservation(samsung.PowerStateOn, "reused-content")
+			identity, err := identityFromObservation(observation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldItem := artworkItem("old.jpg", "old")
+			newItem := artworkItem("new.jpg", "new")
+			desiredSnapshot := snapshot(oldItem, newItem)
+			oldDigest := hex.EncodeToString(oldItem.Digest[:])
+			newDigest := hex.EncodeToString(newItem.Digest[:])
+			state := initialState(identity)
+			state.Bindings[oldDigest] = Binding{
+				Digest: oldDigest, ContentID: "reused-content", Name: oldItem.Name,
+				CollectionGeneration: digestHex("old-generation"), ConfirmedAt: testTime,
+			}
+			pending := Pending{
+				OperationID: "operation", CycleID: "previous-cycle", CollectionGen: desiredSnapshot.Generation,
+				PolicyFingerprint: sha256.Sum256([]byte("policy")),
+				InventoryBefore:   InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+				Command: CommandIntent{
+					Kind: CommandUpload, Digest: newDigest, Name: newItem.Name, Path: newItem.Path,
+					FileType: newItem.Type, Size: newItem.Size, Matte: defaultMatte,
+				},
+				Phase: PhaseApplied,
+				Receipt: &ReceiptSummary{
+					CommandID: "upload", Outcome: samsung.OutcomeApplied,
+					ContentID: "reused-content", CompletedAt: testTime,
+				},
+			}
+			adapter := &fakeAdapter{observations: []samsung.Observation{observation}}
+			if test.recovery {
+				state.Pending = &pending
+			} else {
+				adapter.observations = append(adapter.observations, observation)
+				adapter.receipts = []samsung.Receipt{{
+					CommandID: pending.Receipt.CommandID, Outcome: pending.Receipt.Outcome,
+					ContentID: pending.Receipt.ContentID, CompletedAt: pending.Receipt.CompletedAt,
+				}}
+			}
+			if err := newStateStore(directory).save(context.Background(), state); err != nil {
+				t.Fatalf("seed reconciliation state: %v", err)
+			}
+			service := newTestService(t, directory, Policy{})
+
+			result, err := service.Run(context.Background(), Request{
+				CycleID: "reuse-cycle", TV: adapter, Snapshot: desiredSnapshot,
+			})
+			if !errors.Is(err, samsung.ErrStorageFull) {
+				t.Fatalf("Run() error = %v, want storage full", err)
+			}
+			if result.Status != StatusStorageFull || result.State.Pending != nil || adapter.applyCalls != test.wantApply {
+				t.Fatalf("result = %#v; apply calls = %d", result, adapter.applyCalls)
+			}
+			if !result.State.Capacity.Known || result.State.Capacity.Maximum != 1 {
+				t.Fatalf("capacity evidence = %#v, want maximum 1", result.State.Capacity)
+			}
+			if len(result.State.Bindings) != 1 || result.State.Bindings[newDigest].ContentID != "reused-content" {
+				t.Fatalf("bindings = %#v", result.State.Bindings)
+			}
+			if _, exists := result.State.Bindings[oldDigest]; exists {
+				t.Fatalf("superseded binding %s was retained", oldDigest)
+			}
+		})
+	}
+}
+
 func TestRunPowerOffPersistsIntentReceiptAndCompletion(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
 	on := knownObservation(samsung.PowerStateOn)
@@ -1453,7 +1531,7 @@ func TestAppliedReceiptResolutionMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			state := cloneState(base)
 			state.Pending = &Pending{Command: test.command, Receipt: &test.receipt, Phase: PhaseApplied, CollectionGen: digestHex("generation")}
-			got, resolved, err := resolveAppliedReceipt(state, testTime)
+			got, resolved, err := resolveAppliedReceipt(state, knownObservation(samsung.PowerStateOn), testTime)
 			if resolved != test.resolved || (err == nil) != test.resolved {
 				t.Fatalf("state = %#v, resolved = %v, error = %v", got, resolved, err)
 			}

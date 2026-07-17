@@ -66,7 +66,9 @@ func receiptObservation(
 ) samsung.Observation {
 	switch intent.Kind {
 	case CommandUpload:
-		observation.Inventory.ContentIDs = append(observation.Inventory.ContentIDs, receipt.ContentID)
+		if !slices.Contains(observation.Inventory.ContentIDs, receipt.ContentID) {
+			observation.Inventory.ContentIDs = append(observation.Inventory.ContentIDs, receipt.ContentID)
+		}
 		slices.Sort(observation.Inventory.ContentIDs)
 	case CommandDeleteOwned, CommandDeleteUnknown:
 		observation.Inventory.ContentIDs = slices.DeleteFunc(observation.Inventory.ContentIDs, func(id string) bool {
@@ -99,7 +101,7 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 		return result, true, nil
 	}
 	if pending.Phase == PhaseApplied && pending.Receipt != nil && pending.Receipt.Outcome == samsung.OutcomeApplied {
-		return resolveAppliedReceipt(result, now)
+		return resolveAppliedReceipt(result, observation, now)
 	}
 	contains := func(contentID string) bool {
 		for _, observed := range observation.Inventory.ContentIDs {
@@ -160,14 +162,14 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 	return result, true, nil
 }
 
-func resolveAppliedReceipt(state State, now time.Time) (State, bool, error) {
+func resolveAppliedReceipt(state State, observation samsung.Observation, now time.Time) (State, bool, error) {
 	pending := state.Pending
 	switch pending.Command.Kind {
 	case CommandUpload:
 		if strings.TrimSpace(pending.Receipt.ContentID) == "" {
 			return state, false, ErrRecoveryRequired
 		}
-		state.Bindings[pending.Command.Digest] = uploadBinding(pending, now)
+		foldUploadBinding(&state, pending, observation, now)
 	case CommandDeleteOwned:
 		delete(state.Bindings, pending.Command.Digest)
 		delete(state.Tombstones, pending.Command.ContentID)
@@ -181,6 +183,24 @@ func resolveAppliedReceipt(state State, now time.Time) (State, bool, error) {
 	}
 	state.Pending = nil
 	return state, true, nil
+}
+
+func foldUploadBinding(state *State, pending *Pending, observation samsung.Observation, confirmedAt time.Time) {
+	reusedContentID := false
+	for digest, binding := range state.Bindings {
+		if digest != pending.Command.Digest && binding.ContentID == pending.Receipt.ContentID {
+			delete(state.Bindings, digest)
+			reusedContentID = true
+		}
+	}
+	state.Bindings[pending.Command.Digest] = uploadBinding(pending, confirmedAt)
+	if reusedContentID && observation.Inventory.Known &&
+		pending.InventoryBefore.Digest == observation.Inventory.Fingerprint &&
+		slices.Contains(observation.Inventory.ContentIDs, pending.Receipt.ContentID) {
+		state.Capacity = CapacityEvidence{
+			Known: true, Maximum: len(observation.Inventory.ContentIDs), ObservedAt: confirmedAt,
+		}
+	}
 }
 
 func uploadBinding(pending *Pending, confirmedAt time.Time) Binding {

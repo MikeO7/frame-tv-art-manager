@@ -357,7 +357,10 @@ override or disable the image healthcheck in your runtime configuration.
 The manager does not estimate free TV storage or upload test files to probe it.
 If the TV rejects a real desired artwork upload because storage is full, the
 Sync Cycle reports `storage full`, preserves existing artwork, and stops later
-mutations. While the TV Inventory remains at the recorded full count, later
+mutations. The same fail-safe applies when the TV acknowledges an upload by
+reusing an existing content ID without increasing the TV Inventory: ownership
+moves to the acknowledged artwork, and the unchanged count becomes the known
+capacity. While the TV Inventory remains at the recorded full count, later
 cycles continue reporting `storage full` without another artwork upload. Removing an
 artwork lets uploads resume immediately; otherwise, after 24 hours, one real
 pending artwork upload is retried. A successful retry clears the full condition
