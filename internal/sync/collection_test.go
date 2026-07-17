@@ -90,7 +90,7 @@ func TestLocalCollectionLogsInventoryBoundaryAndDuration(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := collection.prepareAuthoritativeSnapshot(context.Background(), nil)
+		_, err := collection.Prepare(context.Background(), collectionpkg.PrepareRequest{})
 		done <- err
 	}()
 	<-store.started
@@ -99,7 +99,7 @@ func TestLocalCollectionLogsInventoryBoundaryAndDuration(t *testing.T) {
 	}
 	close(store.release)
 	if err := <-done; err != nil {
-		t.Fatalf("prepareAuthoritativeSnapshot() error = %v", err)
+		t.Fatalf("Prepare() error = %v", err)
 	}
 
 	var completed map[string]any
@@ -138,9 +138,9 @@ func TestLocalCollectionLogsInventoryFailureDuration(t *testing.T) {
 		store:  store,
 	}
 
-	_, err := collection.prepareAuthoritativeSnapshot(context.Background(), nil)
+	_, err := collection.Prepare(context.Background(), collectionpkg.PrepareRequest{})
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("prepareAuthoritativeSnapshot() error = %v, want %v", err, wantErr)
+		t.Fatalf("Prepare() error = %v, want %v", err, wantErr)
 	}
 	logs := output.String()
 	if !strings.Contains(logs, `"msg":"local artwork inventory failed"`) ||

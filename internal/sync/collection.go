@@ -87,7 +87,7 @@ func (c *localCollection) Prepare(
 		return collectionpkg.Snapshot{}, err
 	}
 	defer c.release()
-	return c.store.Prepare(ctx, request)
+	return c.prepareInventory(ctx, request)
 }
 
 func (c *localCollection) Import(
