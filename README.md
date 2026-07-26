@@ -1,17 +1,32 @@
 # Frame TV Art Manager
 
 [![CI](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml)
+[![GitHub Pages](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/pages.yml/badge.svg)](https://mikeo7.github.io/frame-tv-art-manager/)
 
-Frame TV Art Manager is a small, self-hosted service that keeps a folder of
-JPEG and PNG images in sync with one or more Samsung Frame TVs. It was built
-for the ordinary home-server case: put pictures in a directory, let a container
-run in the background, and stop fighting the SmartThings upload flow every time
-you want to change the art.
+**Automatically sync artwork to your Samsung Frame TV.**
 
-The manager can also download images from a source file, resize them for a 4K
-Frame, handle portrait photographs, apply Samsung mattes, and adjust a few Art
-Mode settings. It talks directly to the TV over the local network. There is no
-Samsung cloud account involved.
+Frame TV Art Manager is a self-hosted Docker service that uploads, resizes, and
+keeps personal artwork synchronized with one or more Samsung The Frame TVs.
+It runs quietly on a home server, talks directly to each TV over the local
+network, and requires no SmartThings flow or Samsung cloud account.
+
+[Explore the project website](https://mikeo7.github.io/frame-tv-art-manager/)
+or [jump to the Docker Compose quick start](#quick-start-with-docker-compose).
+
+### Why use it?
+
+- **Set it and forget it:** scheduled sync keeps every configured TV aligned
+  with your local artwork collection.
+- **Made for the Frame:** automatic orientation, portrait handling, smart
+  cropping, Samsung mattes, and exact 3840×2160 output.
+- **Local TV control:** synchronization talks directly to each TV over your
+  LAN; local-only collections need no cloud service. Optional remote artwork
+  providers contact their respective APIs.
+- **Conservative by design:** transient failures preserve last-known-good art,
+  unknown TV state cannot authorize destructive work, and dry runs do not
+  mutate local or TV state.
+- **Flexible artwork sources:** local files, browser uploads, Unsplash, NASA,
+  Art Institute of Chicago, Pexels, Pixabay, and direct image URLs.
 
 The current target is Samsung Frame hardware running Tizen 8.0 or newer. Other
 firmware may work, but Samsung's private Art Mode protocol changes between
