@@ -33,7 +33,7 @@ jobs:
       - name: Build public site artifact
         run: |
           mkdir -p _site/assets _site/guides
-          cp docs/index.html docs/styles.css docs/robots.txt docs/sitemap.xml docs/llms.txt docs/.nojekyll _site/
+          cp docs/index.html docs/styles.css docs/robots.txt docs/sitemap.xml docs/llms.txt _site/
           cp docs/assets/frame-tv-art-manager-social.png _site/assets/
           cp docs/guides/*.html _site/guides/
 
