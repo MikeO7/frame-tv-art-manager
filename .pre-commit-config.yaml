@@ -31,3 +31,10 @@ repos:
         entry: ./scripts/check-anti-slop.sh
         language: script
         pass_filenames: false
+
+    -   id: pages-site
+        name: GitHub Pages site validation
+        entry: python3 scripts/validate-pages-site.py
+        language: system
+        files: ^(docs/site/|scripts/validate-pages-site\.py$|\.github/workflows/pages\.yml$)
+        pass_filenames: false

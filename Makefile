@@ -1,4 +1,4 @@
-.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix shell-test tool-versions benchmark-optimize
+.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix shell-test site-check tool-versions benchmark-optimize
 .NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
 
 PRE_COMMIT := $(shell command -v pre-commit 2>/dev/null)
@@ -85,6 +85,10 @@ actionlint:
 shell-test:
 	@bash scripts/agent-loop_test.sh
 
+site-check:
+	@echo "🌐 Validating GitHub Pages site..."
+	python3 scripts/validate-pages-site.py
+
 fmt:
 	@echo "🧹 Formatting code..."
 	go fmt ./...
@@ -115,7 +119,7 @@ agent-fix:
 # Ordered for fast feedback: cheap/structural checks and the most common
 # failures (formatting, actionlint, lint, anti-slop) run before the slow
 # test suite and govulncheck, so failures surface as early as possible.
-check: tidy fmt actionlint lint shell-test precommit coverage-check vuln
+check: tidy fmt actionlint site-check lint shell-test precommit coverage-check vuln
 	@echo "✅ All local checks passed!"
 
 tools:

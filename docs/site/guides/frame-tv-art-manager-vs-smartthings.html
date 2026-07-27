@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Frame TV Art Manager vs SmartThings for Samsung Art Uploads</title>
+    <meta name="description" content="Compare SmartThings phone uploads with self-hosted Samsung Frame TV art synchronization for NAS, home-server, and multi-TV setups.">
+    <meta name="robots" content="index,follow,max-image-preview:large">
+    <link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html">
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+    <link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager project facts">
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:site_name" content="Frame TV Art Manager">
+    <meta property="og:title" content="Frame TV Art Manager vs. SmartThings">
+    <meta property="og:description" content="Compare occasional phone uploads with recurring artwork synchronization from a NAS or home server.">
+    <meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html">
+    <meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1729">
+    <meta property="og:image:height" content="910">
+    <meta property="og:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <meta property="article:published_time" content="2026-07-26">
+    <meta property="article:modified_time" content="2026-07-26">
+    <meta property="article:section" content="SmartThings comparison">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Frame TV Art Manager vs. SmartThings">
+    <meta name="twitter:description" content="Phone-first uploads or a maintained home-server art workflow: see which fits.">
+    <meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta name="twitter:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html#article",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html",
+            "headline": "Frame TV Art Manager vs. SmartThings",
+            "description": "A factual comparison of recurring local Frame TV artwork synchronization and Samsung’s supported consumer workflow.",
+            "inLanguage": "en",
+            "datePublished": "2026-07-26",
+            "dateModified": "2026-07-26",
+            "author": { "@id": "https://github.com/MikeO7#person" },
+            "publisher": { "@id": "https://github.com/MikeO7#person" },
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "mainEntity": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software" },
+            "mainEntityOfPage": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html#webpage" },
+            "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+            "about": ["Samsung Frame TV", "SmartThings", "Art Mode", "artwork synchronization"],
+            "citation": [
+              "https://github.com/MikeO7/frame-tv-art-manager#what-it-actually-does",
+              "https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE"
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html#webpage",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html",
+            "name": "Frame TV Art Manager vs SmartThings for Samsung Art Uploads",
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "breadcrumb": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html#breadcrumbs" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html#breadcrumbs",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Frame TV Art Manager", "item": "https://mikeo7.github.io/frame-tv-art-manager/" },
+              { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://mikeo7.github.io/frame-tv-art-manager/#guides" },
+              { "@type": "ListItem", "position": 3, "name": "SmartThings comparison", "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html" }
+            ]
+          },
+          { "@type": "Person", "@id": "https://github.com/MikeO7#person", "name": "MikeO7", "url": "https://github.com/MikeO7" }
+        ]
+      }
+    </script>
+  </head>
+  <body class="article-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <nav aria-label="Main navigation"><a href="../">Home</a><a href="../#install">Install</a><a href="../#guides">Guides</a><a class="nav-cta" href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></nav>
+    </header>
+    <main id="main">
+      <header class="article-header">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+          <ol><li><a href="../">Frame TV Art Manager</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">SmartThings comparison</li></ol>
+        </nav>
+        <p class="eyebrow">Artwork workflow comparison</p>
+        <h1>Frame TV Art Manager vs. SmartThings</h1>
+        <p class="article-summary"><strong>Short answer:</strong> use Samsung’s supported consumer workflow for occasional phone uploads. Consider Frame TV Art Manager when you already run a NAS or home server and want recurring folder reconciliation, repeatable image preparation, or the same collection maintained across multiple TVs.</p>
+        <p class="article-meta"><span>Maintained by <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Updated <time datetime="2026-07-26">July 26, 2026</time></span></p>
+      </header>
+      <article class="article-body">
+        <nav class="article-toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+            <li><a href="#comparison">Workflow comparison</a></li>
+            <li><a href="#choose-manager">Choose the manager when</a></li>
+            <li><a href="#choose-smartthings">Choose SmartThings when</a></li>
+            <li><a href="#scope">What it does not replace</a></li>
+            <li><a href="#upload-script">Why not a simple script?</a></li>
+            <li><a href="#tradeoff">The main tradeoff</a></li>
+          </ul>
+        </nav>
+
+        <p>This comparison is limited to managing personal Art Mode images. Frame TV Art Manager is independent, noncommercial source-available software. It uses Samsung’s private Art Mode protocol, targets Tizen 8.0 or newer, and is not affiliated with or endorsed by Samsung.</p>
+
+        <h2 id="comparison">Workflow comparison</h2>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Frame TV Art Manager and SmartThings workflow comparison">
+          <table>
+            <caption>Samsung Frame TV personal-art workflows</caption>
+            <thead><tr><th scope="col">Capability</th><th scope="col">Frame TV Art Manager</th><th scope="col">SmartThings workflow</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Primary interaction</th><td>Scheduled folder reconciliation</td><td>Samsung’s supported consumer app workflow</td></tr>
+              <tr><th scope="row">Server required</th><td>Yes, as a container or Go service</td><td>No home-server process required</td></tr>
+              <tr><th scope="row">Multiple Frame TVs</th><td>One committed collection can be reconciled independently with multiple configured TVs</td><td>Each device is handled through the consumer application</td></tr>
+              <tr><th scope="row">Image preparation</th><td>Default orientation, crop or padding, color handling, sharpening, and 3840×2160 output; optional smart crop and collages</td><td>Interactive upload-oriented workflow</td></tr>
+              <tr><th scope="row">Artwork sources</th><td>Local folder, authenticated uploads, providers, and direct URLs</td><td>Phone-centered personal image selection</td></tr>
+              <tr><th scope="row">TV connection</th><td>Direct TV communication over the LAN; optional sources may contact external services</td><td>Samsung’s supported consumer ecosystem</td></tr>
+              <tr><th scope="row">Setup</th><td>Docker or Go service, stable TV IP, persistent storage, LAN access, and TV approval</td><td>Designed for ordinary mobile setup</td></tr>
+              <tr><th scope="row">License and support</th><td>PolyForm Noncommercial source-available; community-maintained; private protocol</td><td>Official Samsung consumer workflow</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="choose-manager">Choose Frame TV Art Manager when…</h2>
+        <ul>
+          <li>You already operate a NAS, mini PC, Mac, or home server.</li>
+          <li>You want changes to a folder reflected in the TV’s uploaded-art inventory on a schedule.</li>
+          <li>You maintain more than one Samsung Frame TV.</li>
+          <li>You regularly use portrait photographs that need consistent preparation.</li>
+          <li>You want authenticated uploads or configured museum and photography sources.</li>
+          <li>You value ownership-aware removal and fail-closed behavior when state is incomplete.</li>
+        </ul>
+
+        <h2 id="choose-smartthings">Choose the SmartThings workflow when…</h2>
+        <ul>
+          <li>You upload personal art only occasionally.</li>
+          <li>You do not want to run or maintain a home-server service.</li>
+          <li>You prefer Samsung’s supported consumer application.</li>
+          <li>You want an interactive phone-first workflow rather than folder reconciliation.</li>
+          <li>You need broader SmartThings functionality rather than a focused artwork synchronizer.</li>
+        </ul>
+
+        <h2 id="scope">Does Frame TV Art Manager replace every SmartThings feature?</h2>
+        <p>No. It is focused on maintaining user-managed artwork and a defined set of Art Mode settings. It is not a general SmartThings replacement, a complete TV remote, a mobile app, or an official Samsung client.</p>
+        <p>It also preserves the artwork currently displayed. The manager synchronizes the uploaded-art inventory but does not automatically choose what appears on screen.</p>
+
+        <h2 id="upload-script">Why not use a simple upload script?</h2>
+        <p>An upload command solves only one step. A long-running synchronizer must know whether a collection observation is complete, which TV artwork it owns, whether the TV state is trustworthy, how to recover from interrupted writes, and what to do after a partial provider or network failure.</p>
+        <p>Frame TV Art Manager preserves that evidence in checksummed manifests and per-TV reconciliation state. It refuses destructive or display-changing work when required state is unknown.</p>
+
+        <h2 id="tradeoff">What is the main tradeoff?</h2>
+        <p>Frame TV Art Manager trades initial setup and ongoing server ownership for repeatability. You configure a service, persistent storage, and TV addresses; later collection changes can be handled automatically. SmartThings avoids that server administration and remains the supported consumer route.</p>
+
+        <section class="article-cta">
+          <h2 id="see-workflow">See the automatic workflow</h2>
+          <p>Learn how a local folder becomes a maintained Frame TV art collection.</p>
+          <a class="button primary" href="./automatically-upload-art-samsung-frame-tv.html">Read the automation guide</a>
+        </section>
+
+        <section class="references" aria-labelledby="references">
+          <h2 id="references">Project references</h2>
+          <ul>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager#what-it-actually-does">Frame TV Art Manager behavior and scope</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Configuration and optional features</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">PolyForm Noncommercial license</a></li>
+          </ul>
+        </section>
+
+        <section class="related-guides" aria-labelledby="related-guides">
+          <h2 id="related-guides">Related guides</h2>
+          <div class="related-grid">
+            <a href="./automatically-upload-art-samsung-frame-tv.html"><strong>Automatic artwork uploads</strong><p>See the collection, processing, and reconciliation steps.</p></a>
+            <a href="./samsung-frame-tv-docker.html"><strong>Docker and NAS setup</strong><p>Review the prerequisites for operating the service.</p></a>
+          </div>
+        </section>
+      </article>
+    </main>
+    <footer class="site-footer">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <p>Independent, noncommercial source-available software. Not affiliated with or endorsed by Samsung.</p>
+      <div class="footer-links"><a href="../#guides">Guides</a><a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Issues</a><a rel="license" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">License</a></div>
+    </footer>
+  </body>
+</html>

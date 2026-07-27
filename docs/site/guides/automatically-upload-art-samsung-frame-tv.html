@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>How to Automatically Upload Art to a Samsung Frame TV</title>
+    <meta name="description" content="Sync photos and artwork from a local folder to Samsung The Frame with a self-hosted service for NAS and home-server owners.">
+    <meta name="robots" content="index,follow,max-image-preview:large">
+    <link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html">
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+    <link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager project facts">
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:site_name" content="Frame TV Art Manager">
+    <meta property="og:title" content="How to Automatically Upload Art to a Samsung Frame TV">
+    <meta property="og:description" content="Use a local folder and a self-hosted service to reconcile personal artwork with one or more Samsung Frame TVs.">
+    <meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html">
+    <meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1729">
+    <meta property="og:image:height" content="910">
+    <meta property="og:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <meta property="article:published_time" content="2026-07-26">
+    <meta property="article:modified_time" content="2026-07-26">
+    <meta property="article:section" content="Samsung Frame TV automation">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="How to Automatically Upload Art to a Samsung Frame TV">
+    <meta name="twitter:description" content="A folder-driven workflow for recurring Samsung Frame TV artwork uploads.">
+    <meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta name="twitter:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html#article",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html",
+            "headline": "How to Automatically Upload Art to a Samsung Frame TV",
+            "description": "A local, folder-driven workflow for automatically synchronizing personal artwork with Samsung Frame TVs.",
+            "inLanguage": "en",
+            "datePublished": "2026-07-26",
+            "dateModified": "2026-07-26",
+            "proficiencyLevel": "Beginner",
+            "author": { "@id": "https://github.com/MikeO7#person" },
+            "publisher": { "@id": "https://github.com/MikeO7#person" },
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "mainEntity": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software" },
+            "mainEntityOfPage": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html#webpage" },
+            "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+            "about": ["Samsung Frame TV", "Art Mode", "artwork synchronization", "self-hosting"],
+            "citation": [
+              "https://github.com/MikeO7/frame-tv-art-manager#what-it-actually-does",
+              "https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example"
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html#webpage",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html",
+            "name": "How to Automatically Upload Art to a Samsung Frame TV",
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "breadcrumb": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html#breadcrumbs" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html#breadcrumbs",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Frame TV Art Manager", "item": "https://mikeo7.github.io/frame-tv-art-manager/" },
+              { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://mikeo7.github.io/frame-tv-art-manager/#guides" },
+              { "@type": "ListItem", "position": 3, "name": "Automatic artwork uploads", "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html" }
+            ]
+          },
+          { "@type": "Person", "@id": "https://github.com/MikeO7#person", "name": "MikeO7", "url": "https://github.com/MikeO7" }
+        ]
+      }
+    </script>
+  </head>
+  <body class="article-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <nav aria-label="Main navigation"><a href="../">Home</a><a href="../#install">Install</a><a href="../#guides">Guides</a><a class="nav-cta" href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></nav>
+    </header>
+    <main id="main">
+      <header class="article-header">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+          <ol><li><a href="../">Frame TV Art Manager</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">Automatic uploads</li></ol>
+        </nav>
+        <p class="eyebrow">Samsung Frame TV automation guide</p>
+        <h1>How to automatically upload art to a Samsung Frame TV</h1>
+        <p class="article-summary"><strong>Short answer:</strong> run Frame TV Art Manager on a NAS or home server, point it at a folder of JPEG or PNG images, and provide the TV’s local IP address. It prepares files when needed and reconciles missing manager-owned art on a schedule.</p>
+        <p class="article-meta"><span>Maintained by <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Updated <time datetime="2026-07-26">July 26, 2026</time></span></p>
+      </header>
+      <article class="article-body">
+        <nav class="article-toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+            <li><a href="#what-it-does">What the automation does</a></li>
+            <li><a href="#requirements">What you need</a></li>
+            <li><a href="#sync-workflow">How synchronization works</a></li>
+            <li><a href="#safety">Safety and deletion rules</a></li>
+            <li><a href="#multiple-tvs">Multiple TVs</a></li>
+            <li><a href="#remote-sources">Remote artwork sources</a></li>
+          </ul>
+        </nav>
+
+        <p>Samsung’s SmartThings workflow is useful for occasional manual uploads. It becomes repetitive when artwork changes often, when several TVs need the same collection, or when a NAS or home server already holds the source images. Frame TV Art Manager turns that repeated upload task into a maintained synchronization process.</p>
+
+        <section class="answer-block" aria-labelledby="what-it-does">
+          <h2 id="what-it-does">What the automation does</h2>
+          <p>A sync cycle reads a complete collection snapshot, validates and prepares each image, observes the Art Mode inventory on every configured TV, uploads missing files, and removes obsolete manager-owned files only when the required state is trustworthy. It preserves the artwork currently selected on the TV.</p>
+        </section>
+
+        <h2 id="requirements">What you need</h2>
+        <ul>
+          <li>A Samsung Frame TV reachable on the same local network.</li>
+          <li>Samsung Frame hardware running Tizen 8.0 or newer, which is the project’s current target.</li>
+          <li>A Linux home server, compatible NAS, mini PC, or Mac capable of running Docker or the Go binary.</li>
+          <li>A stable IP address for each TV and persistent storage for artwork, pairing tokens, and reconciliation state.</li>
+          <li>JPEG or PNG artwork.</li>
+        </ul>
+
+        <h2 id="sync-workflow">How automatic Frame TV art sync works</h2>
+        <h3 id="desired-collection">1. Treat a local folder as the desired collection</h3>
+        <p>Files in the artwork directory are what the manager should maintain on every configured TV. Removing a local file normally makes its manager-owned TV copy eligible for removal on a later safe cycle. Control files, hidden files, temporary files, JSON, YAML, and symlinks are excluded from the artwork catalog.</p>
+        <p>The default policy does not reduce the managed TV collection to zero: if the desired collection becomes empty and no successor is bound, the final known-good manager-owned item is preserved.</p>
+
+        <h3 id="prepare-artwork">2. Prepare artwork for the display</h3>
+        <p>Supported images are decoded and validated before use. When a transform is needed, the manager can orient, crop or pad, resize, sharpen, convert supported color profiles to sRGB, and produce the configured output size. The default is 3840×2160. Portrait images can be cropped, padded, or paired into landscape collages.</p>
+        <p>Optimization is enabled by default. Smart crop and museum treatment are separate optional controls and are disabled by default.</p>
+
+        <h3 id="local-connection">3. Connect directly over the local network</h3>
+        <p>The service uses the TV’s private Art Mode protocol. The television displays an Allow/Deny prompt on the first connection; approving it returns a pairing token stored under the persistent data directory. A local-only collection does not require a Samsung cloud account.</p>
+
+        <h3 id="scheduled-reconciliation">4. Reconcile on a schedule</h3>
+        <p>The first cycle starts with the service. Later cycles run according to <code>SYNC_INTERVAL_MINUTES</code>, which defaults to 30 minutes. Unchanged images are not needlessly uploaded again.</p>
+
+        <h2 id="safety">Why the safety and deletion rules matter</h2>
+        <p>Artwork synchronization can become destructive if an incomplete folder scan or unreachable TV is mistaken for an empty collection. Frame TV Art Manager fails closed: incomplete source resolution is not accepted as a trustworthy collection, unknown TV state cannot authorize deletion or display-changing work, and transient failures retain last-known-good art.</p>
+        <p>By default, artwork already on the TV that is not owned by the manager is preserved. The separate <code>REMOVE_UNKNOWN_IMAGES</code> option changes that rule and must be enabled explicitly. Dry-run mode does not pair, persist tokens, upload, delete, wake a TV, or change the display.</p>
+        <p>The manager also preserves the currently displayed artwork. Automatic selection is disabled until the private protocol exposes an observable, recoverable selection postcondition.</p>
+
+        <h2 id="multiple-tvs">Can it sync more than one Samsung Frame TV?</h2>
+        <p>Yes. <code>TV_IPS</code> accepts a comma-separated list of TV addresses. Each TV is observed and reconciled independently against the same committed collection snapshot, and pairing state is stored per TV.</p>
+
+        <h2 id="remote-sources">Can it find artwork automatically?</h2>
+        <p>Yes. In addition to local files and authenticated browser uploads, the manager can resolve configured images from Unsplash, NASA, the Art Institute of Chicago, Pexels, Pixabay, and direct HTTP or HTTPS URLs.</p>
+        <p>Those integrations contact external services. Downloaded images remain in the local artwork directory until the operator removes them; deleting a source entry does not automatically delete files it downloaded. If a provider fails during a cycle, the previous source collection is retained instead of being pruned from an incomplete result.</p>
+
+        <section class="article-cta">
+          <h2 id="start-syncing">Start automatic artwork sync</h2>
+          <p>Use the Docker Compose setup, approve the television once, and add images to the persistent artwork directory.</p>
+          <a class="button primary" href="../#install">View the installation example</a>
+        </section>
+
+        <section class="references" aria-labelledby="references">
+          <h2 id="references">Project references</h2>
+          <ul>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager#what-it-actually-does">Synchronization and safety behavior</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Complete configuration reference</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">PolyForm Noncommercial license</a></li>
+          </ul>
+        </section>
+
+        <section class="related-guides" aria-labelledby="related-guides">
+          <h2 id="related-guides">Related guides</h2>
+          <div class="related-grid">
+            <a href="./samsung-frame-tv-docker.html"><strong>Docker and NAS setup</strong><p>Configure persistent storage, pairing, and network access.</p></a>
+            <a href="./apple-photos-to-samsung-frame-tv.html"><strong>Apple Photos uploads</strong><p>Send favorites and albums from an iPhone, iPad, or Mac.</p></a>
+          </div>
+        </section>
+      </article>
+    </main>
+    <footer class="site-footer">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <p>Independent, noncommercial source-available software. Not affiliated with or endorsed by Samsung.</p>
+      <div class="footer-links"><a href="../#guides">Guides</a><a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Issues</a><a rel="license" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">License</a></div>
+    </footer>
+  </body>
+</html>

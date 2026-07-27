@@ -3,34 +3,46 @@
 [![CI](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml)
 [![GitHub Pages](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/pages.yml/badge.svg)](https://mikeo7.github.io/frame-tv-art-manager/)
 
-**Automatically sync artwork to your Samsung Frame TV.**
+**Keep a folder of photos and artwork synchronized with Samsung The Frame.**
 
-Frame TV Art Manager is a self-hosted Docker service that uploads, resizes, and
-keeps personal artwork synchronized with one or more Samsung The Frame TVs.
-It runs quietly on a home server, talks directly to each TV over the local
-network, and requires no SmartThings flow or Samsung cloud account.
+Frame TV Art Manager is a self-hosted service for NAS and home-server owners.
+It prepares JPEG and PNG files, then reconciles manager-owned art across one or
+more Samsung Frame TVs over the local network. A local-only collection requires
+neither SmartThings nor a Samsung cloud account.
 
-[Explore the project website](https://mikeo7.github.io/frame-tv-art-manager/)
-or [jump to the Docker Compose quick start](#quick-start-with-docker-compose).
+[View the project website](https://mikeo7.github.io/frame-tv-art-manager/),
+[jump to the Docker Compose quick start](#quick-start-with-docker-compose), or
+read the [Apple Photos upload guide](https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html).
+
+> [!IMPORTANT]
+> This is noncommercial source-available software under the
+> [PolyForm Noncommercial License 1.0.0](LICENSE), not an open-source license.
+> Commercial use is not permitted by the current license. The project is
+> independent and is not affiliated with or endorsed by Samsung.
 
 ### Why use it?
 
-- **Set it and forget it:** scheduled sync keeps every configured TV aligned
-  with your local artwork collection.
-- **Made for the Frame:** automatic orientation, portrait handling, smart
-  cropping, Samsung mattes, and exact 3840×2160 output.
-- **Local TV control:** synchronization talks directly to each TV over your
-  LAN; local-only collections need no cloud service. Optional remote artwork
-  providers contact their respective APIs.
-- **Conservative by design:** transient failures preserve last-known-good art,
-  unknown TV state cannot authorize destructive work, and dry runs do not
-  mutate local or TV state.
-- **Flexible artwork sources:** local files, browser uploads, Unsplash, NASA,
-  Art Institute of Chicago, Pexels, Pixabay, and direct image URLs.
+- **Scheduled collection reconciliation:** one committed folder can be
+  maintained independently across multiple configured TVs without re-uploading
+  unchanged files.
+- **Display preparation by default:** optimization includes orientation, crop
+  or padding, color handling, sharpening, and configurable output dimensions;
+  the default is 3840×2160. Smart crop is optional and disabled by default.
+- **Direct TV connection:** synchronization talks to each TV over the LAN.
+  Optional artwork providers and the optional HTTP crop provider use external
+  network access only when configured.
+- **Ownership-aware changes:** unknown TV artwork is preserved by default, the
+  current artwork selection is not changed, and an empty desired collection
+  keeps the final known-good manager-owned item.
+- **Several artwork inputs:** local files, authenticated browser uploads,
+  Apple Photos workflows, Unsplash, NASA, Art Institute of Chicago, Pexels,
+  Pixabay, and direct image URLs.
 
 The current target is Samsung Frame hardware running Tizen 8.0 or newer. Other
 firmware may work, but Samsung's private Art Mode protocol changes between
-models and releases.
+models and releases. Operating the service requires persistent storage, a
+stable TV address, LAN reachability, and approval on the TV at first pairing.
+SmartThings is likely simpler for occasional manual uploads.
 
 ## What it actually does
 
@@ -40,8 +52,14 @@ Each sync cycle follows the same basic path:
 2. Recover and verify the versioned collection manifest against the artwork bytes.
 3. Validate and, when enabled, optimize those images.
 4. Connect to each configured TV and read its current Art Mode inventory.
-5. Upload missing files and remove tracked files that no longer exist locally.
+5. Upload missing files and remove tracked files that no longer exist locally
+   when the collection and TV state are trustworthy.
 6. Apply explicitly configured slideshow, brightness, and auto-off settings.
+
+The manager preserves the artwork currently selected on the TV. If the desired
+collection becomes empty, the default policy also preserves the final
+known-good manager-owned item instead of reducing the managed collection to
+zero.
 
 The local artwork directory is the desired collection. Files such as JSON,
 YAML, hidden files, temporary files, and symlinks are not treated as artwork.
@@ -152,9 +170,10 @@ useful from iOS Shortcuts.
 Uploads require HTTP Basic authentication. Use username `frame` and the value
 of `UPLOAD_TOKEN` as the password; the token must contain at least 16
 characters. Keep the endpoint on a trusted network and do not expose port 8080
-directly to the public internet. See
-[the Apple Photos guide](docs/apple-photos-sync.md) for an example Shortcut and
-macOS workflows.
+directly to the public internet. See the public
+[Apple Photos to Samsung Frame TV guide](https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html)
+for iPhone, iPad, macOS, and `curl` workflows. The repository also keeps the
+[detailed source notes](docs/apple-photos-sync.md).
 
 ### Remote sources
 
@@ -362,8 +381,8 @@ The HTTP server exposes:
   count, and the latest per-TV status.
 - `GET /upload` and `POST /upload` — available only when uploads are enabled.
 
-The container healthcheck calls the application's `-healthcheck` command,
-which reads `/health` on `HEALTH_PORT`. Set `HEALTH_PORT=0` only if you also
+The container healthcheck calls the application's `-livenesscheck` command,
+which reads `/live` on `HEALTH_PORT`. Set `HEALTH_PORT=0` only if you also
 override or disable the image healthcheck in your runtime configuration.
 
 The manager does not estimate free TV storage or upload test files to probe it.

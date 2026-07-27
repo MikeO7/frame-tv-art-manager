@@ -2,22 +2,22 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://mikeo7.github.io/frame-tv-art-manager/</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
+    <lastmod>2026-07-26</lastmod>
   </url>
   <url>
     <loc>https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.9</priority>
+    <lastmod>2026-07-26</lastmod>
   </url>
   <url>
     <loc>https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.9</priority>
+    <lastmod>2026-07-26</lastmod>
+  </url>
+  <url>
+    <loc>https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html</loc>
+    <lastmod>2026-07-26</lastmod>
   </url>
   <url>
     <loc>https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <lastmod>2026-07-26</lastmod>
   </url>
 </urlset>

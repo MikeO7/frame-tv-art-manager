@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sync Apple Photos to Samsung Frame TV</title>
+    <meta name="description" content="Send Apple Photos favorites or albums to Samsung The Frame from an iPhone, iPad, or Mac using Frame TV Art Manager’s authenticated upload endpoint.">
+    <meta name="robots" content="index,follow,max-image-preview:large">
+    <link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html">
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+    <link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager project facts">
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:site_name" content="Frame TV Art Manager">
+    <meta property="og:title" content="Sync Apple Photos to Samsung Frame TV">
+    <meta property="og:description" content="Upload Apple Photos favorites and albums from an iPhone, iPad, or Mac to a self-hosted Frame TV artwork collection.">
+    <meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html">
+    <meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1729">
+    <meta property="og:image:height" content="910">
+    <meta property="og:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <meta property="article:published_time" content="2026-07-26">
+    <meta property="article:modified_time" content="2026-07-26">
+    <meta property="article:section" content="Apple Photos uploads">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Sync Apple Photos to Samsung Frame TV">
+    <meta name="twitter:description" content="Send favorites and albums from Apple Photos to a self-hosted Frame TV art collection.">
+    <meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta name="twitter:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html#article",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html",
+            "headline": "Sync Apple Photos to Samsung Frame TV",
+            "description": "Use Frame TV Art Manager’s authenticated local upload endpoint to send Apple Photos favorites or albums from an iPhone, iPad, or Mac.",
+            "inLanguage": "en",
+            "datePublished": "2026-07-26",
+            "dateModified": "2026-07-26",
+            "proficiencyLevel": "Intermediate",
+            "author": { "@id": "https://github.com/MikeO7#person" },
+            "publisher": { "@id": "https://github.com/MikeO7#person" },
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "mainEntity": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software" },
+            "mainEntityOfPage": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html#webpage" },
+            "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+            "about": ["Apple Photos", "Samsung Frame TV", "iOS Shortcuts", "photo upload", "self-hosting"],
+            "citation": [
+              "https://github.com/MikeO7/frame-tv-art-manager/blob/main/docs/apple-photos-sync.md",
+              "https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example"
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html#webpage",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html",
+            "name": "Sync Apple Photos to Samsung Frame TV",
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "breadcrumb": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html#breadcrumbs" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html#breadcrumbs",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Frame TV Art Manager", "item": "https://mikeo7.github.io/frame-tv-art-manager/" },
+              { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://mikeo7.github.io/frame-tv-art-manager/#guides" },
+              { "@type": "ListItem", "position": 3, "name": "Apple Photos", "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html" }
+            ]
+          },
+          { "@type": "Person", "@id": "https://github.com/MikeO7#person", "name": "MikeO7", "url": "https://github.com/MikeO7" }
+        ]
+      }
+    </script>
+  </head>
+  <body class="article-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <nav aria-label="Main navigation"><a href="../">Home</a><a href="../#install">Install</a><a href="../#guides">Guides</a><a class="nav-cta" href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></nav>
+    </header>
+    <main id="main">
+      <header class="article-header">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+          <ol><li><a href="../">Frame TV Art Manager</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">Apple Photos</li></ol>
+        </nav>
+        <p class="eyebrow">iPhone, iPad, and Mac uploads</p>
+        <h1>Sync Apple Photos to Samsung Frame TV</h1>
+        <p class="article-summary"><strong>Short answer:</strong> enable Frame TV Art Manager’s authenticated upload endpoint, convert HEIC photos to JPEG when necessary, and send favorites or album images from an iPhone Shortcut, a Mac export, or <code>curl</code>. Uploaded files join the persistent artwork collection and sync on a later cycle.</p>
+        <p class="article-meta"><span>Maintained by <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Updated <time datetime="2026-07-26">July 26, 2026</time></span></p>
+      </header>
+      <article class="article-body">
+        <nav class="article-toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+            <li><a href="#workflow">How the upload workflow works</a></li>
+            <li><a href="#enable-uploads">Enable authenticated uploads</a></li>
+            <li><a href="#iphone">iPhone and iPad Shortcut</a></li>
+            <li><a href="#mac">Mac automation</a></li>
+            <li><a href="#curl">Upload with curl</a></li>
+            <li><a href="#processing">Processing and removal</a></li>
+            <li><a href="#security">Security notes</a></li>
+          </ul>
+        </nav>
+
+        <p>This workflow is useful when Apple Photos is where you already choose favorites or maintain albums, but a NAS or home server runs Frame TV Art Manager. The upload path stays between your device and the server on your network. Your Photos library may still use iCloud depending on your Apple setup; Frame TV Art Manager does not control that.</p>
+
+        <h2 id="workflow">How the Apple Photos upload workflow works</h2>
+        <ol>
+          <li>Your iPhone, iPad, or Mac sends an authenticated JPEG or PNG to <code>POST /upload</code>.</li>
+          <li>The manager validates the image, calculates an exact byte digest, and saves it under a safe generated filename in the persistent artwork directory.</li>
+          <li>An identical upload is deduplicated.</li>
+          <li>On the next synchronization cycle—30 minutes by default—the image is prepared to the configured target and reconciled with each TV.</li>
+        </ol>
+        <p>Uploaded files are durable user-owned artwork. They remain in the local collection until you remove them from the artwork directory.</p>
+
+        <h2 id="enable-uploads">Enable authenticated uploads</h2>
+        <p>The endpoint is disabled by default. Add these settings to the container environment:</p>
+        <figure class="code-window">
+          <figcaption class="code-title"><span></span><span></span><span></span><strong>compose.yaml</strong></figcaption>
+          <pre><code><span class="code-key">environment:</span>
+  <span class="code-key">UPLOAD_ENABLED:</span> <span class="code-string">"true"</span>
+  <span class="code-key">UPLOAD_TOKEN:</span> <span class="code-string">"replace-with-at-least-16-characters"</span>
+<span class="code-key">ports:</span>
+  - <span class="code-string">"8080:8080"</span></code></pre>
+        </figure>
+        <p>The HTTP Basic username is <code>frame</code>; <code>UPLOAD_TOKEN</code> is the password. The health server must also be enabled, which it is by default on port 8080.</p>
+
+        <h2 id="iphone">Method 1: iPhone or iPad Shortcut</h2>
+        <p>Create a Shortcut that finds the photos you want, repeats over the results, converts each image to JPEG, and sends the converted file to your server’s upload URL.</p>
+        <ol>
+          <li>Add <strong>Find Photos</strong> and filter by Favorite, an album, or another selection that matches your workflow.</li>
+          <li>Limit the number of results while testing.</li>
+          <li>Add <strong>Repeat with Each</strong>.</li>
+          <li>Inside the loop, add <strong>Convert Image</strong> and choose JPEG. This avoids sending HEIC, which is not an accepted upload format.</li>
+          <li>Add <strong>Get Contents of URL</strong>, use <code>http://SERVER-IP:8080/upload</code>, select POST, and send the converted image as the request body or file.</li>
+          <li>Add an <code>Authorization</code> header containing HTTP Basic credentials for <code>frame:UPLOAD_TOKEN</code>.</li>
+        </ol>
+        <p>Apple occasionally changes labels and layout in Shortcuts. The required behavior is stable even when the exact control names move: select images, convert to JPEG, repeat, and POST each file with Basic authentication.</p>
+        <p>After the Shortcut works manually, you can run it from a personal automation. Whether iOS can run without a confirmation prompt depends on the selected trigger and current operating-system behavior.</p>
+
+        <h2 id="mac">Method 2: export favorites or an album from a Mac</h2>
+        <p>A Mac can export selected Photos content to a temporary directory and upload the JPEG files. One option is the third-party <code>osxphotos</code> command-line tool, which requires access to the local Photos library.</p>
+        <figure class="code-window">
+          <figcaption class="code-title"><span></span><span></span><span></span><strong>frame-tv-photos.sh</strong></figcaption>
+          <pre><code>#!/bin/bash
+set -eu
+
+SERVER="http://192.168.1.150:8080"
+UPLOAD_TOKEN="replace-with-your-upload-token"
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
+osxphotos export "$TEMP_DIR" \
+  --favorite \
+  --convert-to-jpeg \
+  --jpeg-quality 0.95 \
+  --skip-live \
+  --skip-raw \
+  --update
+
+for file in "$TEMP_DIR"/*.jpeg "$TEMP_DIR"/*.jpg; do
+  [ -f "$file" ] || continue
+  curl --fail --silent --show-error \
+    -u "frame:$UPLOAD_TOKEN" \
+    -F "file=@$file" \
+    "$SERVER/upload"
+done</code></pre>
+        </figure>
+        <p>Replace <code>--favorite</code> with an album selector if you maintain a dedicated Frame TV album. A scheduler such as <code>launchd</code> can run the script later, but test the export and authentication interactively first.</p>
+
+        <h2 id="curl">Method 3: upload a photo with curl</h2>
+        <p>This is the fastest way to test the endpoint from a terminal:</p>
+        <figure class="code-window">
+          <figcaption class="code-title"><span></span><span></span><span></span><strong>Terminal</strong></figcaption>
+          <pre><code>curl --fail --show-error \
+  -u "frame:$UPLOAD_TOKEN" \
+  -F "file=@/path/to/photo.jpg" \
+  http://192.168.1.150:8080/upload</code></pre>
+        </figure>
+        <p>Replace the example address with the Frame TV Art Manager server—not the television’s IP address.</p>
+
+        <h2 id="processing">How uploaded Apple Photos are processed and removed</h2>
+        <p>The upload handler accepts JPEG and PNG files within the configured size limit. It validates the content, deduplicates exact bytes, and writes a safe hash-based name. On a later cycle, normal image settings apply: orientation, configured portrait handling, crop or padding, color conversion, sharpening, and target sizing. The default target is 3840×2160; it is configurable.</p>
+        <p>Smart crop is optional and disabled by default. If you configure the external HTTP crop provider, a maximum-512-pixel JPEG preview may be sent to the service you selected.</p>
+        <p>To remove an uploaded photo, delete its file from the persistent artwork directory. On a later safe cycle, the manager can remove the corresponding manager-owned TV art. If the desired collection becomes empty, the default safety policy preserves the final known-good managed item.</p>
+
+        <h2 id="security">Security notes</h2>
+        <ul>
+          <li>The upload endpoint is disabled by default and requires a token of at least 16 characters.</li>
+          <li>HTTP Basic authentication does not encrypt the token or image. Keep plain HTTP on a trusted LAN or put the endpoint behind TLS.</li>
+          <li>Do not expose the upload port directly to the public internet.</li>
+          <li>Uploaded bytes become persistent artwork. Review available storage and remove files you no longer want.</li>
+          <li>Use a separate high-entropy upload token rather than reusing another password.</li>
+        </ul>
+
+        <section class="article-cta">
+          <h2 id="set-up-server">Set up the server first</h2>
+          <p>Install Frame TV Art Manager, pair the TV, and confirm a local folder sync before adding the upload workflow.</p>
+          <a class="button primary" href="./samsung-frame-tv-docker.html">Read the Docker setup guide</a>
+        </section>
+
+        <section class="references" aria-labelledby="references">
+          <h2 id="references">Project references</h2>
+          <ul>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/docs/apple-photos-sync.md">Detailed Apple Photos source guide</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Upload and image environment variables</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager#supplying-artwork">Supported artwork inputs</a></li>
+          </ul>
+        </section>
+
+        <section class="related-guides" aria-labelledby="related-guides">
+          <h2 id="related-guides">Related guides</h2>
+          <div class="related-grid">
+            <a href="./samsung-frame-tv-docker.html"><strong>Docker and NAS setup</strong><p>Configure the server, persistent storage, and TV pairing.</p></a>
+            <a href="./automatically-upload-art-samsung-frame-tv.html"><strong>Automatic artwork uploads</strong><p>Understand how the uploaded file is reconciled with the TV.</p></a>
+          </div>
+        </section>
+      </article>
+    </main>
+    <footer class="site-footer">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <p>Independent, noncommercial source-available software. Not affiliated with or endorsed by Samsung.</p>
+      <div class="footer-links"><a href="../#guides">Guides</a><a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Issues</a><a rel="license" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">License</a></div>
+    </footer>
+  </body>
+</html>
