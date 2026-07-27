@@ -151,7 +151,7 @@
 
         <h2 id="upload-script">Why not use a simple upload script?</h2>
         <p>An upload command solves only one step. A long-running synchronizer must know whether a collection observation is complete, which TV artwork it owns, whether the TV state is trustworthy, how to recover from interrupted writes, and what to do after a partial provider or network failure.</p>
-        <p>Frame TV Art Manager preserves that evidence in checksummed manifests and per-TV reconciliation state. It refuses destructive or display-changing work when required state is unknown.</p>
+        <p>Frame TV Art Manager stores those records in checksummed manifests and per-TV reconciliation state. It refuses destructive or display-changing work when required state is unknown.</p>
 
         <h2 id="tradeoff">What is the main tradeoff?</h2>
         <p>Frame TV Art Manager trades initial setup and ongoing server ownership for repeatability. You configure a service, persistent storage, and TV addresses; later collection changes can be handled automatically. SmartThings avoids that server administration and remains the supported consumer route.</p>

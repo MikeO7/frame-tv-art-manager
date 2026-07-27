@@ -3,6 +3,8 @@
 [![CI](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/ci.yml)
 [![GitHub Pages](https://github.com/MikeO7/frame-tv-art-manager/actions/workflows/pages.yml/badge.svg)](https://mikeo7.github.io/frame-tv-art-manager/)
 
+[![Frame TV Art Manager connects a home-server artwork collection to Samsung The Frame](docs/site/assets/frame-tv-art-manager-social.png)](https://mikeo7.github.io/frame-tv-art-manager/)
+
 **Keep a folder of photos and artwork synchronized with Samsung The Frame.**
 
 Frame TV Art Manager is a self-hosted service for NAS and home-server owners.
