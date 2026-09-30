@@ -63,7 +63,7 @@ const (
 
 // String returns the stable operator-facing name used in structured logs.
 //
-//nolint:gocyclo,goconst // An exhaustive enum mapping is clearer and safer than a positional name table.
+//nolint:gocyclo // An exhaustive enum mapping is clearer and safer than a positional name table.
 func (kind ErrorKind) String() string {
 	switch kind {
 	case ErrorKindNone:
@@ -108,8 +108,6 @@ const (
 )
 
 // String returns the stable operator-facing name used in structured logs.
-//
-//nolint:goconst // These are stable enum names, not interchangeable domain constants.
 func (outcome Outcome) String() string {
 	switch outcome {
 	case OutcomeNotAttempted:

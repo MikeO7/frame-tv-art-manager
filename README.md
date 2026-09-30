@@ -104,6 +104,8 @@ file and `0700` directory modes.
 
 ## Quick start with Docker Compose
 
+The container uses a digest-pinned Debian 13 distroless runtime.
+
 Create a directory for the service and add this `compose.yaml`:
 
 ```yaml
