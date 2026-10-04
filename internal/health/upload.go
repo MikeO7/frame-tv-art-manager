@@ -63,10 +63,16 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 func validUploadOrigin(request *http.Request) bool {
 	origin := request.Header.Get("Origin")
 	if origin == "" {
-		return true
+		return len(request.Header.Values("Origin")) == 0
+	}
+	if len(origin) > 2048 || len(request.Header.Values("Origin")) != 1 {
+		return false
 	}
 	parsed, err := url.Parse(origin)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return false
+	}
+	if parsed.User != nil || parsed.Path != "" || parsed.ForceQuery || parsed.RawQuery != "" || strings.Contains(origin, "#") {
 		return false
 	}
 	return strings.EqualFold(parsed.Host, request.Host)

@@ -44,3 +44,7 @@ tmp/
 CLAUDE.md
 GEMINI.md
 .github/copilot-instructions.md
+
+# End-to-end runner dependencies and isolated runtime artifacts
+node_modules
+.e2e/

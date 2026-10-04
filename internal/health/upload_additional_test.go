@@ -111,6 +111,33 @@ func TestUploadRejectsCrossOriginBrowserPost(t *testing.T) {
 	}
 }
 
+func TestUploadRejectsMalformedOriginsWithoutImport(t *testing.T) {
+	for _, origin := range []string{
+		"http://frame.local/path", "http://frame.local/", "http://frame.local?query",
+		"http://frame.local?", "http://frame.local#fragment", "http://frame.local#",
+		"http://attacker@frame.local", "null", "ftp://frame.local", "http://other.local",
+		"", "http://frame.local" + strings.Repeat("a", 2048),
+	} {
+		t.Run(origin, func(t *testing.T) {
+			cfg := testConfig(0, true, t.TempDir())
+			server := NewServer(cfg, NewStatus(), silentLogger(), nil)
+			request := httptest.NewRequest(http.MethodPost, "http://frame.local/upload", bytes.NewReader(encodedTestImage(t, "png")))
+			request.Header.Set("Origin", origin)
+			response := httptest.NewRecorder()
+			server.HandleUpload(response, request)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("upload status = %d, want 403 before importer is called", response.Code)
+			}
+		})
+	}
+	request := httptest.NewRequest(http.MethodPost, "http://frame.local/upload", nil)
+	request.Header.Add("Origin", "http://frame.local")
+	request.Header.Add("Origin", "http://frame.local")
+	if validUploadOrigin(request) {
+		t.Fatal("duplicate Origin headers must be rejected")
+	}
+}
+
 func TestUploadEndpointIsDisabledDuringDryRun(t *testing.T) {
 	cfg := testConfig(0, true, t.TempDir())
 	cfg.DryRun = true

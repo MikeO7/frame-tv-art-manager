@@ -1,4 +1,4 @@
-.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix shell-test site-check tool-versions benchmark-optimize
+.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix shell-test site-check tool-versions benchmark-optimize e2e
 .NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
 
 PRE_COMMIT := $(shell command -v pre-commit 2>/dev/null)
@@ -30,6 +30,9 @@ all: check build
 test:
 	@echo "🔍 Running tests..."
 	go test $(GO_TEST_FLAGS) $(GO_TEST_VERBOSE) -coverprofile=coverage.out ./...
+
+e2e:
+	pnpm test:e2e
 
 coverage: test
 	@echo "📊 Generating coverage report..."

@@ -59,11 +59,14 @@ find . -type f \( \
 \) \
 -not -path "*/.git/*" \
 -not -path "*/.venv/*" \
+-not -path "*/node_modules/*" \
+-not -path "*/.e2e/*" \
 -not -path "*/.agents/skills/*" \
 -not -path "*/scripts/check-anti-slop.sh" \
 -not -path "*/.pre-commit-config.yaml" \
 -not -path "*/.golangci.yml" \
 -not -name "package-lock.json" \
+-not -name "pnpm-lock.yaml" \
 -not -name "go.sum" \
 -print0 | xargs -0 grep -inE "$REGEX_PATTERN" > "$GREP_OUT" || true
 

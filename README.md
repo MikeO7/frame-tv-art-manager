@@ -446,6 +446,21 @@ make docker      # build the local container image
 must remain at or above 90 percent. More detail is in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+Run the isolated browser and API journeys with Node.js 26 and pnpm 12:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec e2e-web install chromium --with-deps
+make e2e
+```
+
+The suite uses [tester-army/e2e](https://github.com/tester-army/e2e) without model
+calls. It starts the actual binary with fresh temporary directories and a
+loopback TV address. It never reads operator configuration or contacts a real TV.
+Telemetry is disabled. Reports, screenshots, logs, and revision metadata are
+saved under `.e2e/`. See [the flow inventory](tests/e2e/README.md) for coverage
+and device limits.
+
 ## License
 
 The project is licensed under the
