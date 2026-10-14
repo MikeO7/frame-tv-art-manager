@@ -96,7 +96,7 @@ jobs:
         with:
           version: v2.14.0
       - name: actionlint
-        uses: reviewdog/action-actionlint@2085657ab2c7f48c58edcc767fba576f63bea76b # v1.77.0
+        uses: reviewdog/action-actionlint@a8ac3eea598697a830f7d8e701fc9fcbfde88974 # v1.80.0
 
   # Lane 2: Test, build, and coverage
   test-build:
