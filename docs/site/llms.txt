@@ -1,64 +1,95 @@
 # Frame TV Art Manager
 
-Frame TV Art Manager is a noncommercial source-available Go service for NAS and home-server owners who want to prepare and synchronize personal artwork with one or more Samsung Frame TVs over a local network.
+> Frame TV Art Manager is a self-hosted service that keeps the art on one or more Samsung Frame TVs (The Frame) in sync with a folder of JPEG and PNG images on a NAS or home server. It prepares each picture for the TV's 3840x2160 screen, uploads it over the local network, and rotates art automatically when the TV's storage is full. No Samsung or SmartThings account is needed.
 
-Last substantive update: 2026-07-26
-Maintainer: MikeO7 — https://github.com/MikeO7
-Canonical website: https://mikeo7.github.io/frame-tv-art-manager/
-Source repository: https://github.com/MikeO7/frame-tv-art-manager
-License: PolyForm Noncommercial License 1.0.0; commercial use is not permitted by the current license.
-Affiliation: independent software; not affiliated with or endorsed by Samsung.
+Last substantive update: 2026-10-24
+Maintainer: MikeO7 (https://github.com/MikeO7)
+Website: https://mikeo7.github.io/frame-tv-art-manager/
+Source: https://github.com/MikeO7/frame-tv-art-manager
+License: PolyForm Noncommercial License 1.0.0. Free for personal and other noncommercial use. Source-available, not open source. Commercial use is not permitted.
+Affiliation: independent project; not affiliated with or endorsed by Samsung.
 
-## Intended use
+## Key facts
 
-- Maintain a local JPEG and PNG artwork collection on Samsung Frame TVs.
-- Run continuously with Docker Compose or as a compiled Go binary.
-- Replace repeated phone uploads when a folder changes often or multiple TVs use the same collection.
-- Target Samsung Frame hardware running Tizen 8.0 or newer. Other firmware may work but is not the primary target.
+- Who it is for: Samsung Frame TV owners who run an always-on NAS, Unraid server, mini PC, Raspberry Pi-class Linux board, or Mac.
+- Supported TVs: Samsung Frame TVs running Tizen 8.0 or newer. Other firmware may work, but Samsung's private Art Mode protocol varies between models and releases.
+- Install: Docker image ghcr.io/mikeo7/frame-tv-art-manager:latest (amd64, arm64, armv7), or build a single Go binary.
+- Only required setting: TV_IPS, a comma-separated list of TV IP addresses. Several TVs are supported.
+- Storage: a persistent /data volume. Art lives in /data/artwork; pairing tokens and per-TV state live in /data/tokens (saved with 0600 permissions).
+- Pairing: on first connection the TV shows an Allow/Deny prompt named by CLIENT_NAME (default "Frame Art Manager"). Approve once.
+- Schedule: first sync at startup, then every SYNC_INTERVAL_MINUTES (default 30).
+- Connection: talks directly to the TV on the local network. A folder-only setup needs no SmartThings, Samsung account, or cloud service.
 
-## Minimal operation
+## Adding art
 
-- Required environment variable: one or more TV addresses in `TV_IPS`.
-- Operational prerequisites: persistent `/data` storage, a stable TV address, LAN reachability, and one approval on the television.
-- The first synchronization cycle starts with the service. Later cycles default to every 30 minutes.
-- Multiple TVs are supported through a comma-separated `TV_IPS` list.
+- Local folder of JPEG and PNG files (.jpg, .jpeg, .png). Exact duplicates are detected by file contents.
+- Optional web uploader: UPLOAD_ENABLED=true; HTTP Basic auth with username "frame" and password UPLOAD_TOKEN (at least 16 characters); GET or POST /upload on port 8080; form field "file"; size limit MAX_DOWNLOAD_SIZE_MB (default 20). Works from a browser, iOS Shortcuts, and curl. Keep it on a trusted network.
+- Optional sources file (ARTWORK_SOURCES_FILE): Unsplash, NASA (APOD and search), Art Institute of Chicago, Pexels, Pixabay, and direct image URLs.
 
-## Artwork and image defaults
+## Image preparation (on by default)
 
-- Accepted local and upload formats: JPEG and PNG.
-- Image optimization is enabled by default.
-- Default output dimensions: 3840 by 2160 pixels; dimensions are configurable.
-- Smart crop and museum treatment are optional and disabled by default.
-- Portrait images can be cropped, padded, or combined into landscape collages.
+- EXIF orientation, portrait handling (PORTRAIT_MODE: crop by default, pad, or collage), resize to exactly 3840x2160 (configurable with IMAGE_MAX_WIDTH and IMAGE_MAX_HEIGHT), color-profile conversion to sRGB, HDR PNG tone mapping, light sharpening, JPEG quality 95.
+- The prepared version replaces the original file in the artwork folder, so users should copy pictures in and keep originals elsewhere.
+- Memory budget per picture: IMAGE_MAX_WORKING_MEMORY_MB (default 512). A 24-megapixel photo takes about 1-2 seconds and about 250 MiB. 8K photos fit.
+- Optional and off by default: smart (saliency) crop, an external HTTP crop service, and a "museum mode" canvas and warmth effect.
+- Samsung mattes: MATTE_STYLE (default none, for example shadowbox_polar), with per-file overrides in mattes.json.
 
-## Network behavior
+## Full TVs and rotation
 
-- TV synchronization communicates directly over the LAN using Samsung's private Art Mode protocol.
-- A local-only collection does not require SmartThings or a Samsung cloud account.
-- Configured remote artwork providers contact their external APIs.
-- The optional HTTP smart-crop provider may receive a maximum-512-pixel JPEG preview at an operator-configured URL.
-- The authenticated upload endpoint is disabled by default. Plain HTTP Basic authentication should remain on a trusted LAN or behind TLS.
+- The manager learns a TV's capacity the first time the TV rejects an upload because storage is full. It does not estimate or probe.
+- If the collection is larger than the TV holds, each piece the manager uploaded stays at least ROTATION_INTERVAL_DAYS (default 14; fractions allowed; 0 disables), then is swapped for waiting art: never-shown pieces first, then the pieces away longest.
+- Rotated-out art does not return until it has been away for the same interval, so large collections cycle fully.
+- Each swap is one delete followed immediately by one upload; the TV is never more than one piece short.
+- Only art the manager uploaded is rotated. Art added another way is never touched. Local files are never deleted by rotation.
+- /status shows rotating, artwork_waiting, and next_rotation for each TV.
+- If uploads keep failing after space was freed (TVs that limit by size rather than count), rotation pauses after 3 such failures until an upload succeeds.
+- With rotation off, a full TV reports "storage full", keeps its existing art, and retries one upload every 24 hours.
 
-## Retention and deletion behavior
+## Safety rules
 
-- Unknown or unowned TV artwork is preserved unless `REMOVE_UNKNOWN_IMAGES=true` is explicitly enabled.
-- The artwork currently selected on the TV is preserved.
-- An empty desired collection preserves the final known-good manager-owned item under the default policy.
-- Removing a remote source does not automatically delete files it previously downloaded; downloaded files remain local until the operator removes them.
-- Incomplete collection or TV observations cannot authorize destructive changes.
-- Dry-run mode does not pair, persist tokens, wake a TV, upload, delete, or change the display.
+- Never deletes TV art it did not upload unless REMOVE_UNKNOWN_IMAGES=true.
+- Does not choose which artwork is displayed. If the piece on screen is removed or rotated out, the TV shows another piece.
+- Keeps the last piece it uploaded if the folder becomes empty.
+- A failed source download never deletes previously downloaded art.
+- Makes no changes to a TV whose state it cannot confirm.
+- DRY_RUN=true reads and plans without uploading, deleting, saving state, or waking the TV. It needs an existing pairing.
 
-## Canonical pages
+## Optional TV controls
 
-- Overview and installation: https://mikeo7.github.io/frame-tv-art-manager/
-- Automatic artwork uploads: https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html
-- Docker and NAS setup: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html
-- Apple Photos uploads: https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html
-- SmartThings comparison: https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html
+- Slideshow: SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), SLIDESHOW_TYPE (shuffle or sequential). Untouched unless set.
+- Brightness: fixed with BRIGHTNESS (0-50), or following the sun with SOLAR_BRIGHTNESS_ENABLED plus latitude, longitude, and timezone.
+- Nightly power-off for TVs in Art Mode: AUTO_OFF_TIME.
+- Wake-on-LAN: TV_MAC, sent only when the TV is known to be off; single TV only.
 
-## Authoritative repository references
+## Monitoring
 
-- README and full behavior: https://github.com/MikeO7/frame-tv-art-manager#readme
-- Configuration reference: https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example
+- GET /live, /ready, /health, and /status on HEALTH_PORT (default 8080). /ready and /health return 200 after a successful sync.
+- Logs are structured JSON.
+
+## Common questions
+
+- Does it need a Samsung account? No, not for a local folder.
+- Will it delete art I added myself? No, unless REMOVE_UNKNOWN_IMAGES=true.
+- What happens when the TV is full? It rotates the art it uploaded, 14 days per piece by default.
+- Does it pick what is on screen? No. The TV and its slideshow decide.
+- Can it manage several TVs? Yes, list them in TV_IPS.
+- What does it run on? Docker on amd64, arm64, or armv7, or a Go binary on Linux or macOS.
+- Is it open source? No. It is source-available under PolyForm Noncommercial 1.0.0 and free for noncommercial use.
+- When is SmartThings better? For occasional manual uploads from a phone without a home server.
+
+## Pages
+
+- Overview, install, and FAQ: https://mikeo7.github.io/frame-tv-art-manager/
+- Automatically upload art to a Samsung Frame TV: https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html
+- Docker, NAS, and home-server setup: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html
+- Frame TV storage full and automatic art rotation: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html
+- Send Apple Photos to a Samsung Frame TV: https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html
+- Frame TV Art Manager vs. SmartThings: https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html
+
+## Repository references
+
+- README: https://github.com/MikeO7/frame-tv-art-manager#readme
+- Docker Compose quick start: https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose
+- All settings with defaults: https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example
 - License: https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE
-- Support and issues: https://github.com/MikeO7/frame-tv-art-manager/issues
+- Issues and support: https://github.com/MikeO7/frame-tv-art-manager/issues

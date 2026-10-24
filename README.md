@@ -91,6 +91,8 @@ docker compose logs -f frame-tv-art-manager
    The pairing token is saved in `./data/tokens`; keep that folder when you
    upgrade or the TV will ask again.
 2. **Add art.** Copy `.jpg`, `.jpeg`, or `.png` files into `./data/artwork`.
+   Copy, don't move: each file is replaced by its prepared version, so keep
+   your originals somewhere else.
 3. **Wait for a sync.** The first sync runs at startup, then every 30 minutes
    (`SYNC_INTERVAL_MINUTES`).
 
@@ -109,8 +111,11 @@ delete files to take them off. Identical files are detected by their contents,
 so the same image is never uploaded twice. Other files in the folder (JSON,
 YAML, hidden and temporary files, symlinks) are ignored.
 
-Images the manager prepares are renamed to a readable name plus a short content
-hash, for example `summer-vacation--8f14e45fceea167a.jpg`.
+With image preparation on (the default), each file that needs work is
+**replaced in place** by its prepared 3840×2160 version and renamed to a
+readable name plus a short content hash, for example
+`summer-vacation--8f14e45fceea167a.jpg`. Treat the folder as the TV's copy of
+your art and keep your originals elsewhere.
 
 ### The web uploader
 
@@ -132,7 +137,9 @@ curl -u "frame:$UPLOAD_TOKEN" -F "file=@photo.jpg" http://<server-address>:8080/
 ```
 
 Each upload is checked as a real image and is limited to
-`MAX_DOWNLOAD_SIZE_MB` (20 MB by default). The page uses plain HTTP Basic
+`MAX_DOWNLOAD_SIZE_MB` (20 MB by default). Uploads are handled one at a time;
+a second upload sent at the same moment gets `429 Too Many Requests` and
+should be retried. The page uses plain HTTP Basic
 authentication, so keep it on your home network or behind a TLS reverse proxy,
 and never expose port 8080 to the internet. The
 [Apple Photos guide](https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html)
@@ -205,8 +212,9 @@ record decides what it is allowed to remove:
 - **When in doubt, it waits.** If the TV's state or the collection can't be read
   completely, that TV is skipped until the next sync.
 
-`DRY_RUN=true` runs the whole process read-only, without pairing, saving
-anything, waking the TV, or uploading. It's useful to preview a new setup.
+`DRY_RUN=true` runs the whole process read-only: it doesn't pair, save
+anything, wake the TV, or upload. The TV must already be paired, so run once
+normally first. Each TV then reports the status `dry-run`.
 
 ## When the TV is full: artwork rotation
 
@@ -234,9 +242,9 @@ resumes once an upload succeeds.
 
 Set `ROTATION_INTERVAL_DAYS=0` to turn rotation off. A full TV then reports
 `storage full`, keeps what's on it, and stops uploading. It retries one upload
-a day, or immediately once something on the TV is removed. Rotation also can't
-help when the TV is full of art the manager didn't upload; that reports
-`storage full` too.
+a day, or immediately once something on the TV is removed. Rotation needs at
+least two pieces the manager uploaded on the TV, so it can't help when the TV
+is full of your own art; that reports `storage full` too.
 
 ## Image preparation
 
