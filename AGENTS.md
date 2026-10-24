@@ -28,7 +28,10 @@ the core engine dependency-light and prefer the Go standard library.
 - Artwork files may be `0644` where SMB/NFS readability requires it.
 - Add regression tests for behavior changes. Prefer table-driven tests and
   `httptest` for network protocols.
-- Keep aggregate test coverage at or above 90 percent.
+- Test behavior, not lines: never add a test only to raise coverage. Aggregate
+  coverage must stay at or above the floor in `make coverage-check`; raise the
+  floor when real coverage grows, and lower it only when removing tests that
+  asserted nothing.
 - Update `README.md` when configuration or operator-visible behavior changes.
 - Preserve unrelated worktree changes.
 
@@ -54,6 +57,15 @@ make agent-fix
 If it fails, fix every reported problem and rerun it until it exits zero with
 no warnings. The command covers formatting, GitHub Actions validation, linting,
 pre-commit checks, tests, coverage, vulnerability scanning, and anti-slop rules.
+Run `make race` as well when a change touches concurrency.
+
+## Delivery
+
+The `CI` workflow is the deploy gate. Every pull request runs lint, hooks,
+tests, race tests, the vulnerability scan, end-to-end journeys, and an image
+build with a smoke test. Merging to `main` publishes the multi-arch image only
+after all of them pass; pushing a `v*` tag also publishes the GitHub release.
+Keep pull requests small and green so they can merge and deploy immediately.
 
 ## Skills
 
