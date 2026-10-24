@@ -78,7 +78,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.sum
       - name: Test and coverage
-        run: make coverage-check GO_TEST_FLAGS="-count=1 -shuffle=on" GO_TEST_VERBOSE=
+        run: make coverage-check GO_TEST_FLAGS="-count=1 -shuffle=on"
       - name: Build
         run: go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
 
@@ -209,17 +209,11 @@ jobs:
           cache-image: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GitHub Container Registry
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for attempt in 1 2 3 4 5; do
-            if printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" -u "$GITHUB_ACTOR" --password-stdin; then
-              exit 0
-            fi
-            echo "GHCR login attempt ${attempt} failed, retrying in 10s..."
-            sleep 10
-          done
-          exit 1
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -281,17 +275,11 @@ jobs:
           merge-multiple: true
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GitHub Container Registry
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for attempt in 1 2 3 4 5; do
-            if printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" -u "$GITHUB_ACTOR" --password-stdin; then
-              exit 0
-            fi
-            echo "GHCR login attempt ${attempt} failed, retrying in 10s..."
-            sleep 10
-          done
-          exit 1
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Create manifest list and push
         working-directory: /tmp/digests
         env:

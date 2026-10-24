@@ -1,143 +1,78 @@
-.PHONY: all test race lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix site-check tool-versions bench e2e
-.NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
+.PHONY: all test race e2e coverage coverage-check lint precommit vuln actionlint fmt tidy build docker bench fix agent-fix check tools clean
 
-PRE_COMMIT := $(shell command -v pre-commit 2>/dev/null)
-ifeq ($(PRE_COMMIT),)
-PRE_COMMIT := $(shell python3 -m pre_commit --version >/dev/null 2>&1 && echo "python3 -m pre_commit")
-endif
-GOLANGCI_LINT := $(shell command -v golangci-lint 2>/dev/null)
-GOVULNCHECK := $(shell command -v govulncheck 2>/dev/null)
-
-ifeq ($(GOLANGCI_LINT),)
-GOLANGCI_LINT := $(shell go env GOPATH)/bin/golangci-lint
-endif
-
-ifeq ($(GOVULNCHECK),)
-GOVULNCHECK := $(shell go env GOPATH)/bin/govulncheck
-endif
-
-GO_TEST_FLAGS ?= -shuffle=on
-GO_TEST_VERBOSE ?= -v
 GOLANGCI_LINT_VERSION := 2.15.0
 GOVULNCHECK_VERSION := 1.9.0
 ACTIONLINT_VERSION := 1.7.12
 PRE_COMMIT_VERSION := 4.7.0
 COVERAGE_THRESHOLD ?= 90
+GO_TEST_FLAGS ?= -shuffle=on
+
+GOLANGCI_LINT := $(or $(wildcard $(shell go env GOPATH)/bin/golangci-lint),$(shell command -v golangci-lint 2>/dev/null),golangci-lint)
+PRE_COMMIT := $(or $(shell command -v pre-commit 2>/dev/null),python3 -m pre_commit)
 
 all: check build
 
-
 test:
-	@echo "🔍 Running tests..."
-	go test $(GO_TEST_FLAGS) $(GO_TEST_VERBOSE) -coverprofile=coverage.out ./...
+	go test $(GO_TEST_FLAGS) -coverprofile=coverage.out ./...
 
 race:
-	@echo "🏁 Running race tests..."
 	go test -race -count=1 -shuffle=on ./...
 
 e2e:
 	pnpm test:e2e
 
 coverage: test
-	@echo "📊 Generating coverage report..."
 	go tool cover -html=coverage.out
 
 coverage-check: test
-	@echo "📈 Checking coverage threshold ($(COVERAGE_THRESHOLD)%)..."
-	@TOTAL_COVERAGE=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $$3); print $$3}'); \
-	echo "Total coverage: $$TOTAL_COVERAGE%"; \
-	if awk "BEGIN { exit !($$TOTAL_COVERAGE < $(COVERAGE_THRESHOLD)) }"; then \
-		echo "❌ Coverage is below $(COVERAGE_THRESHOLD)%"; \
-		exit 1; \
-	fi
-	@echo "✅ Coverage check passed!"
+	@total=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $$3); print $$3}'); \
+	echo "Total coverage: $$total% (floor $(COVERAGE_THRESHOLD)%)"; \
+	awk "BEGIN { exit !($$total >= $(COVERAGE_THRESHOLD)) }" || { echo "❌ Coverage is below the floor"; exit 1; }
 
-tool-versions:
-	@version="$$($(GOLANGCI_LINT) version 2>/dev/null | head -n 1)"; \
-	case "$$version" in \
-		*"version $(GOLANGCI_LINT_VERSION)"*) ;; \
-		*) echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required; found: $${version:-not installed}. Run 'make tools'."; exit 1 ;; \
-	esac
-
-lint: tool-versions
-	@echo "✨ Running linter..."
+lint:
+	@$(GOLANGCI_LINT) version 2>/dev/null | grep -qF "version $(GOLANGCI_LINT_VERSION)" || \
+		{ echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required. Run 'make tools'."; exit 1; }
 	$(GOLANGCI_LINT) run --timeout 5m
 
-PRE_COMMIT_VENV := .venv
-PRE_COMMIT_BIN := $(PRE_COMMIT_VENV)/bin/pre-commit
-
 precommit:
-	@echo "🎨 Running all pre-commit hooks..."
-	@if [ -n "$(PRE_COMMIT)" ]; then \
-		$(PRE_COMMIT) run --all-files; \
-	elif [ -x "$(PRE_COMMIT_BIN)" ]; then \
-		$(PRE_COMMIT_BIN) run --all-files; \
-	else \
-		echo "📦 Bootstrapping pre-commit in $(PRE_COMMIT_VENV)..."; \
-		python3 -m venv $(PRE_COMMIT_VENV) && \
-		$(PRE_COMMIT_VENV)/bin/pip install -q pre-commit==$(PRE_COMMIT_VERSION) && \
-		$(PRE_COMMIT_BIN) run --all-files; \
-	fi
+	$(PRE_COMMIT) run --all-files
 
 vuln:
-	@echo "🛡️  Checking for vulnerabilities..."
-	$(GOVULNCHECK) ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION) ./...
 
 actionlint:
-	@echo "🤖 Checking GitHub Actions..."
-	@command -v actionlint >/dev/null 2>&1 || { echo "actionlint $(ACTIONLINT_VERSION) is required. Run 'make tools'."; exit 1; }
-	@actionlint -version | grep -F "$(ACTIONLINT_VERSION)" >/dev/null || { echo "actionlint $(ACTIONLINT_VERSION) is required. Run 'make tools'."; exit 1; }
-	actionlint
-
-site-check:
-	@echo "🌐 Validating GitHub Pages site..."
-	python3 scripts/validate-pages-site.py
+	go run github.com/rhysd/actionlint/cmd/actionlint@v$(ACTIONLINT_VERSION)
 
 fmt:
-	@echo "🧹 Formatting code..."
 	go fmt ./...
 
 tidy:
-	@echo "📦 Tidying modules..."
 	go mod tidy
 
 build:
-	@echo "🔨 Building binary..."
 	go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
 
 docker:
-	@echo "🐳 Building Docker image (local)..."
 	docker build -t frame-tv-art-manager:local .
 
 bench:
 	go test ./internal/optimize -run '^$$' -bench . -benchmem
 
 fix: tidy fmt
-	@echo "🔧 Auto-fixing linter issues..."
 	-$(GOLANGCI_LINT) run --fix --timeout 5m
 
 agent-fix:
-	@chmod +x scripts/agent-loop.sh
 	./scripts/agent-loop.sh
 
-# Ordered for fast feedback: cheap/structural checks and the most common
-# failures (formatting, actionlint, lint, anti-slop) run before the slow
-# test suite and govulncheck, so failures surface as early as possible.
+# Cheap structural checks run before the slower tests and vulnerability scan.
 check: tidy fmt actionlint lint precommit coverage-check vuln
 	@echo "✅ All local checks passed!"
 
-# Tools are built with the toolchain go.mod selects, so golangci-lint can load
-# configuration for the module's Go version.
+# golangci-lint is built with the toolchain go.mod selects so it can load the
+# module's Go version; govulncheck and actionlint run pinned via `go run`.
 tools:
-	@echo "🛠️  Installing development tools..."
 	GOTOOLCHAIN=$$(go env GOVERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
-	GOTOOLCHAIN=$$(go env GOVERSION) go install golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION)
-	GOTOOLCHAIN=$$(go env GOVERSION) go install github.com/rhysd/actionlint/cmd/actionlint@v$(ACTIONLINT_VERSION)
-	@if [ -z "$(PRE_COMMIT)" ]; then \
-		pip install pre-commit==$(PRE_COMMIT_VERSION); \
-	fi
+	command -v pre-commit >/dev/null 2>&1 || pip install pre-commit==$(PRE_COMMIT_VERSION)
 
 clean:
-	rm -f frame-tv-art-manager
-	rm -f coverage.out
-	rm -f coverage.html
+	rm -f frame-tv-art-manager coverage.out coverage.html
