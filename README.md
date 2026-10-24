@@ -7,10 +7,13 @@
 
 **Keep your Samsung Frame TV's art in sync with a folder on your home server.**
 
-Drop photos and artwork into a folder. Frame TV Art Manager prepares them for
-the screen and keeps every Frame TV in your house up to date, over your local
-network, without SmartThings or a Samsung account. When a TV runs out of space,
-it rotates your collection through automatically.
+Frame TV Art Manager is a self-hosted service that automatically uploads your
+photos and artwork to Samsung Frame TVs (The Frame) from a NAS or home server.
+Drop JPEG or PNG files into a folder; it prepares them for the 4K screen and
+keeps every Frame TV in your house up to date over your local network, without
+SmartThings or a Samsung account. When a TV runs out of space, it rotates your
+collection through automatically. It runs in Docker and is free for personal,
+noncommercial use.
 
 [Project website](https://mikeo7.github.io/frame-tv-art-manager/) ·
 [Quick start](#quick-start-with-docker-compose) ·
@@ -458,6 +461,48 @@ hooks, tests, race tests, a vulnerability scan, the end-to-end journeys, and a
 container build with a smoke test. Merging to `main` publishes the multi-arch
 image to GHCR only after all of them pass, and `v*` tags also publish a GitHub
 release.
+
+## FAQ
+
+**Can it automatically upload art to a Samsung Frame TV?**
+Yes. It checks a folder on a schedule (every 30 minutes by default) and uploads
+new images to every configured Frame TV over your local network.
+
+**Do I need SmartThings or a Samsung account?**
+No. It talks directly to the TV on your network. Only optional online sources
+such as Unsplash or NASA contact the internet.
+
+**Which Frame TVs does it support?**
+Samsung Frame TVs running Tizen 8.0 or newer. Older firmware may work, but
+Samsung's private Art Mode protocol varies between models and releases.
+
+**What happens when the Frame TV's storage is full?**
+It rotates art: each piece stays at least 14 days by default
+(`ROTATION_INTERVAL_DAYS`), then is swapped for art that hasn't been shown yet.
+Your own TV uploads and your local files are never deleted.
+
+**Will it delete art I uploaded to the TV myself?**
+No. It only removes art it uploaded, unless you turn on
+`REMOVE_UNKNOWN_IMAGES`.
+
+**Does it work with portrait photos?**
+Yes. Portrait photos are cropped to fill the screen by default, or padded on a
+blurred background, or paired side by side (`PORTRAIT_MODE`). Output is
+3840×2160 by default.
+
+**Can I send photos from an iPhone or Apple Photos?**
+Yes. Turn on the password-protected upload page and use an iPhone or Mac
+Shortcut; see the
+[Apple Photos guide](https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html).
+
+**Can I run it on Synology, Unraid, or a Raspberry Pi?**
+Yes, anywhere Docker runs and the TV is reachable on the network. The image
+supports `amd64`, `arm64`, and `armv7`.
+
+**Is it open source?**
+It is source-available under the PolyForm Noncommercial License 1.0.0: free for
+personal and other noncommercial use, but commercial use is not permitted, so
+it is not open source by the OSI definition.
 
 ## License
 
