@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Samsung Frame TV Storage Full? Rotate Art Automatically</title>
+    <meta name="description" content="When a Samsung Frame TV is full, Frame TV Art Manager rotates your art: each piece stays 14 days, then swaps for art not yet shown. Your own art stays.">
+    <meta name="theme-color" content="#f4efe6">
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+    <link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html">
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+    <link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager fact sheet">
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:site_name" content="Frame TV Art Manager">
+    <meta property="og:title" content="Samsung Frame TV storage full? Rotate your art automatically">
+    <meta property="og:description" content="How Frame TV Art Manager handles a full Frame TV: it learns the TV's limit and cycles a large collection through it, 14 days per piece by default.">
+    <meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html">
+    <meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1729">
+    <meta property="og:image:height" content="910">
+    <meta property="og:image:alt" content="Frame TV Art Manager sending art from a home server folder to a Samsung Frame TV">
+    <meta property="article:published_time" content="2026-10-24">
+    <meta property="article:modified_time" content="2026-10-24">
+    <meta property="article:section" content="Storage and rotation">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Samsung Frame TV storage full? Rotate your art automatically">
+    <meta name="twitter:description" content="Frame TV Art Manager cycles a large art collection through a full Frame TV, 14 days per piece by default.">
+    <meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+    <meta name="twitter:image:alt" content="Frame TV Art Manager sending art from a home server folder to a Samsung Frame TV">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "TechArticle",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html#article",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html",
+            "headline": "Samsung Frame TV storage full? Rotate your art automatically",
+            "description": "When a Samsung Frame TV runs out of room, Frame TV Art Manager rotates the art it uploaded: each piece stays at least 14 days, then is swapped for art that has not been shown yet. Art you added yourself is never touched.",
+            "inLanguage": "en",
+            "datePublished": "2026-10-24",
+            "dateModified": "2026-10-24",
+            "proficiencyLevel": "Beginner",
+            "author": { "@id": "https://github.com/MikeO7#person" },
+            "publisher": { "@id": "https://github.com/MikeO7#person" },
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "about": [
+              { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software" },
+              "Samsung Frame TV storage",
+              "Art Mode",
+              "art rotation"
+            ],
+            "mainEntityOfPage": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html#webpage" },
+            "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+            "citation": [
+              "https://github.com/MikeO7/frame-tv-art-manager#readme",
+              "https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example"
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html#webpage",
+            "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html",
+            "name": "Samsung Frame TV Storage Full? Rotate Art Automatically",
+            "datePublished": "2026-10-24",
+            "dateModified": "2026-10-24",
+            "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
+            "breadcrumb": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html#breadcrumbs" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html#breadcrumbs",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Frame TV Art Manager", "item": "https://mikeo7.github.io/frame-tv-art-manager/" },
+              { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://mikeo7.github.io/frame-tv-art-manager/#guides" },
+              { "@type": "ListItem", "position": 3, "name": "Storage full and rotation", "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html" }
+            ]
+          },
+          { "@type": "Person", "@id": "https://github.com/MikeO7#person", "name": "MikeO7", "url": "https://github.com/MikeO7" }
+        ]
+      }
+    </script>
+  </head>
+  <body class="article-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <nav aria-label="Main navigation"><a href="../">Home</a><a href="../#install">Install</a><a href="../#guides">Guides</a><a href="../#faq">FAQ</a><a class="nav-cta" href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></nav>
+    </header>
+    <main id="main">
+      <header class="article-header">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+          <ol><li><a href="../">Frame TV Art Manager</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">Storage full and rotation</li></ol>
+        </nav>
+        <p class="eyebrow">Storage full</p>
+        <h1>Samsung Frame TV storage full? Rotate your art automatically</h1>
+        <p class="article-summary"><strong>Short answer:</strong> a Samsung Frame TV can only store so many of your own pictures, and once it’s full it refuses new uploads. Frame TV Art Manager handles this by rotating: each piece it uploaded stays on the TV for at least 14 days, then it is swapped for art from your folder that’s waiting its turn, never-shown pieces first. Art you added yourself is never touched, and no files are deleted from your folder.</p>
+        <p class="article-meta"><span>Maintained by <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-10-24">October 24, 2026</time></span><span>Last updated: <time datetime="2026-10-24">October 24, 2026</time></span></p>
+      </header>
+      <article class="article-body">
+        <nav class="article-toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+            <li><a href="#why-full">Why the TV fills up</a></li>
+            <li><a href="#what-happens">What happens when it’s full</a></li>
+            <li><a href="#how-rotation-works">How rotation works</a></li>
+            <li><a href="#example">A worked example</a></li>
+            <li><a href="#never-touched">What rotation never touches</a></li>
+            <li><a href="#slideshow-vs-rotation">Rotation vs. slideshow</a></li>
+            <li><a href="#settings">Settings</a></li>
+            <li><a href="#checking-status">Checking on rotation</a></li>
+            <li><a href="#uploads-still-fail">If uploads still fail</a></li>
+            <li><a href="#rotation-off">With rotation turned off</a></li>
+          </ul>
+        </nav>
+
+        <p>This guide is for Frame TV owners whose art collection has outgrown the TV, for example a photo library with hundreds of favorites or a folder that keeps growing from NASA or museum sources. It explains what Frame TV Art Manager does when the TV says it’s full and how to tune it.</p>
+
+        <h2 id="why-full">Why does a Samsung Frame TV run out of room for art?</h2>
+        <p>The Frame keeps your uploaded pictures in its own built-in storage, and that space is limited. When it runs out, the TV rejects the next upload. How many pictures fit depends on the model and on what else is stored, so Frame TV Art Manager doesn’t try to guess the number in advance.</p>
+        <p>Without some kind of rotation, a full TV means new pictures in your folder simply never appear, and you’re back to deleting old art by hand in the SmartThings app.</p>
+
+        <section class="answer-block" aria-labelledby="what-happens">
+          <h2 id="what-happens">What does Frame TV Art Manager do when the TV is full?</h2>
+          <p>It learns the TV’s limit from the TV itself. Frame TV Art Manager doesn’t estimate free space or upload test files. The first time the TV rejects a real upload because storage is full, it records how many pieces were on the TV at that moment as that TV’s capacity.</p>
+          <p>If your folder holds more art than that, rotation starts automatically. A full TV is then a normal, healthy state: the sync succeeds and <code>/health</code> stays green.</p>
+        </section>
+
+        <h2 id="how-rotation-works">How does automatic art rotation work?</h2>
+        <p>Rotation follows three simple rules, all based on one setting, <code>ROTATION_INTERVAL_DAYS</code>, which defaults to 14 days.</p>
+
+        <h3 id="how-long">How long each piece stays</h3>
+        <p>Each piece Frame TV Art Manager uploaded stays on the TV for at least the rotation interval. After that it becomes eligible to be swapped out.</p>
+
+        <h3 id="what-comes-next">What goes up next</h3>
+        <p>Art in your folder that isn’t on the TV waits its turn. Pieces that have never been shown go first, then pieces that have been away the longest. A piece that rotated out can’t come back until it has been away for the same interval, so a large collection cycles all the way through instead of the same few pieces bouncing in and out.</p>
+        <p>New pictures you add to the folder count as never shown, so they move to the front of the queue. They still wait until a piece on the TV has had its full interval.</p>
+
+        <h3 id="one-swap">One swap at a time</h3>
+        <p>Each swap is one delete followed immediately by one upload of the replacement. The TV is never more than one piece short of full, even if a sync is interrupted partway through.</p>
+        <ol class="timeline" aria-label="Lifecycle of a rotation swap">
+          <li><strong>Upload</strong>A piece goes onto the TV and its clock starts.</li>
+          <li><strong>Stay</strong>It stays for at least 14 days, or your chosen interval.</li>
+          <li><strong>Swap</strong>It is deleted from the TV and the next waiting piece is uploaded straight away.</li>
+          <li><strong>Wait</strong>It sits out for at least the same interval before it can return.</li>
+        </ol>
+        <p>Swaps happen during the regular sync, so a piece rotates out at the first sync after its time is up (within 30 minutes with the default <code>SYNC_INTERVAL_MINUTES</code>).</p>
+
+        <h2 id="example">What does rotation look like with a large collection?</h2>
+        <p>Here is an example with made-up round numbers. Say your folder has 150 pictures and the TV turns out to hold 60.</p>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Example rotation schedule">
+          <table class="compact">
+            <caption>Example: 150 pictures, a TV that holds 60, default 14-day interval</caption>
+            <thead><tr><th scope="col">When</th><th scope="col">What happens</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Day 0</th><td>Pictures upload until the TV refuses one as full. Frame TV Art Manager records 60 as the TV’s capacity. 90 pictures are waiting.</td></tr>
+              <tr><th scope="row">Day 14</th><td>The first 60 have had their 14 days. Each is swapped for one of the 90 never-shown pictures, one delete and one upload at a time.</td></tr>
+              <tr><th scope="row">Day 28</th><td>The second group has had 14 days. The last 30 never-shown pictures go up, plus the 30 from the first group that have been away longest.</td></tr>
+              <tr><th scope="row">After that</th><td>Every picture has now been on the TV. The cycle keeps going, always bringing back the art that has been away longest.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A shorter interval cycles faster. With <code>ROTATION_INTERVAL_DAYS=7</code>, the same collection would have been fully shown by about day 14.</p>
+
+        <h2 id="never-touched">What does rotation never touch?</h2>
+        <ul>
+          <li><strong>Art you added yourself.</strong> Pictures you put on the TV through the SmartThings app or any other way are never rotated out. Only pieces Frame TV Art Manager uploaded are swapped.</li>
+          <li><strong>Your folder.</strong> Rotation only removes pieces from the TV. Nothing is deleted from your artwork folder; a rotated-out picture just waits for its next turn.</li>
+          <li><strong>The TV’s choice of what’s on screen.</strong> Frame TV Art Manager doesn’t pick the piece being displayed. If the piece on screen is the one being rotated out, the TV moves on to another piece.</li>
+        </ul>
+        <p class="note">If the TV is full mostly of art you added yourself, rotation can’t free any room, because it won’t delete those pieces. The TV reports <code>storage full</code> instead. Remove some of your own pieces on the TV or in the SmartThings app to make room. Setting <code>REMOVE_UNKNOWN_IMAGES=true</code> would also free space, but it deletes every piece Frame TV Art Manager didn’t upload, so treat it as a last resort.</p>
+
+        <h2 id="slideshow-vs-rotation">How is this different from the Frame TV’s slideshow?</h2>
+        <p>They solve different problems, and they work well together.</p>
+        <ul>
+          <li><strong>Slideshow</strong> changes which stored piece is on screen, as often as every 3 minutes or once a day. It only cycles through pictures already on the TV.</li>
+          <li><strong>Rotation</strong> changes which pieces are stored on the TV, every 14 days by default. It brings the rest of your collection onto the TV over time.</li>
+        </ul>
+        <p>Frame TV Art Manager can also set the slideshow for you. Leave these unset and your TV’s own slideshow settings stay as they are:</p>
+        <figure class="code-window">
+          <figcaption class="code-title"><span></span><span></span><span></span><strong>compose.yaml (environment)</strong></figcaption>
+          <pre><code><span class="code-key">SLIDESHOW_ENABLED:</span> <span class="code-string">"true"</span>
+<span class="code-key">SLIDESHOW_INTERVAL:</span> <span class="code-string">"60"</span>      <span class="code-comment"># minutes: 3, 15, 60, 720, or 1440</span>
+<span class="code-key">SLIDESHOW_TYPE:</span> <span class="code-string">"shuffle"</span>     <span class="code-comment"># or sequential</span></code></pre>
+        </figure>
+
+        <h2 id="settings">Which setting controls rotation?</h2>
+        <p>One environment variable, <code>ROTATION_INTERVAL_DAYS</code>. Rotation is on by default, and there is nothing to set up unless you want a different pace.</p>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="ROTATION_INTERVAL_DAYS examples">
+          <table class="compact">
+            <caption>ROTATION_INTERVAL_DAYS values</caption>
+            <thead><tr><th scope="col">Value</th><th scope="col">Effect</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>14</code></th><td>Default. Each piece stays at least two weeks.</td></tr>
+              <tr><th scope="row"><code>7</code></th><td>Weekly rotation.</td></tr>
+              <tr><th scope="row"><code>0.5</code></th><td>Fractions are allowed: 0.5 is 12 hours.</td></tr>
+              <tr><th scope="row"><code>0</code></th><td>Turns rotation off. A full TV reports <code>storage full</code> instead (see below).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The maximum is 365 days. Rotation needs no extra storage, account, or service; it uses the same connection as normal syncing.</p>
+
+        <h2 id="checking-status">How can I check that rotation is working?</h2>
+        <p>Open <code>http://SERVER-IP:8080/status</code> in a browser. While a TV is rotating, its entry shows three extra fields:</p>
+        <ul>
+          <li><code>rotating</code>: <code>true</code> while rotation is active for that TV.</li>
+          <li><code>artwork_waiting</code>: how many pictures from your folder are waiting for a turn.</li>
+          <li><code>next_rotation</code>: the earliest time the next swap can happen, in UTC.</li>
+        </ul>
+        <figure class="code-window">
+          <figcaption class="code-title"><span></span><span></span><span></span><strong>Example /status excerpt</strong></figcaption>
+          <pre><code>"tvs": {
+  "192.168.1.150": {
+    "ip": "192.168.1.150",
+    "status": "ok",
+    "art_mode": true,
+    "image_count": 60,
+    "rotating": true,
+    "artwork_waiting": 90,
+    "next_rotation": "2026-11-07T09:30:00Z"
+  }
+}</code></pre>
+        </figure>
+        <p>The JSON logs carry the same <code>rotating</code>, <code>artwork_waiting</code>, and <code>next_rotation</code> fields for each TV after every sync.</p>
+
+        <h2 id="uploads-still-fail">What if uploads still fail after space is freed?</h2>
+        <p>Some TVs limit storage by total size rather than by number of pictures, so freeing one slot doesn’t always make room for a larger replacement. If the TV keeps rejecting uploads as full even after a piece was removed, Frame TV Art Manager pauses rotation after three such rejections, so it doesn’t keep deleting art without anything replacing it. Rotation resumes on its own once an upload succeeds again.</p>
+        <p>Frame TV Art Manager also keeps at least one piece it uploaded on the TV at all times, so rotation never empties your managed art.</p>
+
+        <h2 id="rotation-off">What happens with rotation turned off?</h2>
+        <p>With <code>ROTATION_INTERVAL_DAYS=0</code>, a full TV is reported as <code>storage full</code> in <code>/status</code> and the logs. Frame TV Art Manager keeps all the art already on the TV and stops trying to upload more. Once a day it retries one waiting upload to see whether space has opened up. If you remove a piece from the TV yourself, uploads resume at the next sync.</p>
+        <p>The same <code>storage full</code> report appears with rotation on if the TV is full of art Frame TV Art Manager doesn’t own, as described above.</p>
+
+        <section class="article-cta">
+          <h2 id="get-started">Not running Frame TV Art Manager yet?</h2>
+          <p>Rotation is on by default. Install the service, point it at your TV, and fill the folder with as much art as you like.</p>
+          <a class="button primary" href="./samsung-frame-tv-docker.html">Read the Docker setup guide</a>
+        </section>
+
+        <section class="references" aria-labelledby="references">
+          <h2 id="references">Project references</h2>
+          <ul>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager#readme">Frame TV Art Manager README</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Every setting, with defaults (.env.example)</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Report a problem or a TV model that behaves differently</a></li>
+          </ul>
+        </section>
+
+        <section class="related-guides" aria-labelledby="related-guides">
+          <h2 id="related-guides">Related guides</h2>
+          <div class="related-grid">
+            <a href="./automatically-upload-art-samsung-frame-tv.html"><strong>Automatically upload art to a Frame TV</strong><p>How the folder sync works, start to finish.</p></a>
+            <a href="./samsung-frame-tv-docker.html"><strong>Run Frame TV Art Manager with Docker</strong><p>Set it up on a NAS, mini PC, or Mac.</p></a>
+          </div>
+        </section>
+      </article>
+    </main>
+    <footer class="site-footer">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
+      <p>Free for noncommercial use under PolyForm Noncommercial 1.0.0. Source-available, not open source. Independent; not affiliated with or endorsed by Samsung.</p>
+      <div class="footer-links"><a href="../#guides">Guides</a><a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Issues</a><a rel="license" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">License</a></div>
+    </footer>
+  </body>
+</html>

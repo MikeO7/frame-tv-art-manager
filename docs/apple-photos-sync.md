@@ -1,145 +1,178 @@
-# Syncing Apple Photos to Samsung Frame TV
+# Sending Apple Photos to a Samsung Frame TV
 
-Push your **Favorites**, albums, or any photos from Apple Photos to your Samsung Frame TV — no plugins, no cloud APIs, no third-party accounts.
+Frame TV Art Manager can receive photos from an iPhone, iPad, or Mac through a
+password-protected upload page on your home network. Uploaded photos join the
+artwork folder and reach your Samsung Frame TV on the next sync, within 30
+minutes by default. No plugins, cloud APIs, or extra accounts are involved.
 
-The manager runs a lightweight HTTP upload endpoint on the same health server it already uses. You send images to it from any device on your LAN (Mac, iPhone, iPad, or a plain `curl` command), and the manager handles the rest: optimization, dedup, matte framing, and TV sync.
+The same steps are on the project website:
+[How to send Apple Photos to a Samsung Frame TV](https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html).
 
----
+## How it works
 
-## How It Works
-
-```
-┌──────────────┐     POST /upload      ┌───────────────────────┐
-│  Your Mac    │ ──────────────────────▶│  Frame TV Art Manager │
-│  or iPhone   │    (LAN / Wi-Fi)       │  (Docker on Linux)    │
-└──────────────┘                        └───────┬───────────────┘
-                                                │
-                                          ┌─────▼─────┐
-                                          │ artwork/   │
-                                          │ directory  │
-                                          └─────┬─────┘
-                                                │
-                                        auto-optimize,
-                                        dedup, matte,
-                                        sync to TV
+```text
+iPhone, iPad, or Mac  ──POST /upload──▶  Frame TV Art Manager  ──▶  /data/artwork
+   (your home Wi-Fi)                      (Docker or binary)            │
+                                                                        ▼
+                                                     next sync: prepare and upload
+                                                     to every TV in TV_IPS
 ```
 
-1. You send an authenticated JPEG or PNG request to `POST http://<server>:8080/upload`.
-2. The manager saves it to the `artwork/` directory with a deterministic, hash-based filename.
-3. On the next sync cycle (default: every 30 minutes), the image is transformed to the configured target, framed with your chosen matte, and uploaded to the TV.
-4. If you send the same image again, it's silently deduplicated — no wasted space.
+1. Your device sends a JPEG or PNG to `http://SERVER-IP:8080/upload`, signed in
+   with HTTP Basic authentication.
+2. Frame TV Art Manager checks that the file is a complete JPEG or PNG within
+   the size limit and saves it in the artwork folder under a generated name.
+   Sending the exact same file again stores it once.
+3. On the next sync (every 30 minutes by default) the photo is prepared for the
+   screen and uploaded to each TV, with your `MATTE_STYLE` if you set one.
 
----
+`SERVER-IP` means the machine running Frame TV Art Manager, not the TV.
 
-## Prerequisites
+## Turn on the uploader
 
-- The manager's health server must be enabled (it is by default on port `8080`). If you set `HEALTH_PORT=0`, the upload endpoint is disabled.
-- The upload feature must be enabled via `UPLOAD_ENABLED=true` in your `.env` (disabled by default for security).
-- `UPLOAD_TOKEN` must be set to a secret of at least 16 characters. Uploads use HTTP Basic authentication with username `frame`.
-- Your Mac or iPhone must be on the same local network as the server.
+The uploader is off by default. Add these settings and restart the container:
 
----
+```yaml
+environment:
+  TV_IPS: "192.168.1.150"
+  UPLOAD_ENABLED: "true"
+  UPLOAD_TOKEN: "a-long-random-password-of-16-plus-characters"
+ports:
+  - "8080:8080"
+```
 
-## Method 1: iPhone/iPad — iOS Shortcut
+- The username is always `frame`. The password is `UPLOAD_TOKEN`, which must be
+  at least 16 characters. Use a new random value you don't use anywhere else.
+- The uploader runs on the health server, port `8080` by default
+  (`HEALTH_PORT`). Setting `HEALTH_PORT=0` turns it off.
+- Each upload can be up to `MAX_DOWNLOAD_SIZE_MB` (20 MB by default).
+- Uploads are unavailable while `DRY_RUN=true`.
+- Your device must be on the same network as the server.
 
-This method uses the built-in **Shortcuts** app on your iPhone or iPad to send your favorited photos directly to the server over Wi-Fi. No SSH, no WebDAV, no extra apps.
+## Method 1: the upload page in Safari
 
-### Step 1: Create the Shortcut
+Open `http://SERVER-IP:8080/upload` in Safari on your iPhone, iPad, or Mac and
+sign in. Tap the drop area and choose one or more photos; the page sends them
+one at a time and shows each result. On a Mac you can drag files onto it.
 
-1. Open the **Shortcuts** app on your iPhone or iPad.
-2. Tap the **`+`** icon in the top right to create a new shortcut. Name it **"Sync to Frame TV"**.
-3. Add a **Find Photos** action:
-   - Add filter: **`Favorite is Yes`** (or `Album is [Your Album]`).
-   - Add filter: **`Media Type is Image`** (excludes videos).
-   - Turn on **`Limit`** and set it to **`50`** (recommended to keep syncs fast).
-4. Add a **Repeat with Each** action (passing the found photos).
-5. Inside the loop, add a **Convert Image** action:
-   - Convert **`Repeat Item`** to **`JPEG`** *(Critical: Frame TVs do not support iPhone's default HEIC format)*.
-6. Still inside the loop, add a **Get Contents of URL** action:
-   - Set the URL to: `http://192.168.1.150:8080/upload` (replace with your server's IP).
-   - Set the method to **`POST`**.
-   - Set **Request Body** to **`File`** (or **`Converted Image`**).
-   - Under **Headers**, add `Authorization` with value `Basic <credentials>`, where `<credentials>` is the Base64 encoding of `frame:YOUR_UPLOAD_TOKEN`.
-7. Done! Tap the **Play** button to test the upload.
+The page only accepts JPEG and PNG. iOS normally converts HEIC photos to JPEG
+when a page asks for those formats. If a photo is rejected, use the Shortcut in
+Method 2, which converts explicitly.
 
-> 🔒 **iOS Permissions Troubleshooting:** If Shortcuts reports a permission error when running, open the **Settings** app on your device, select **Shortcuts** → **Advanced**, and turn on the toggles for **Allow Running Scripts** and **Allow Sharing Large Amounts of Data (if visible)**.
+## Method 2: iPhone or iPad Shortcut
 
-### Step 2: Automate it (Optional)
+A Shortcut can send your Favorites or an album in one tap, or on a schedule.
 
-You can make this run silently in the background:
-1. Tap the **Automation** tab in the Shortcuts app.
-2. Tap the **`+`** icon in the top right corner.
-3. Tap **Time of Day**:
-   - Choose your preferred time (e.g. **`02:00 AM`**).
-   - Set repeat to **`Daily`**.
-   - Under *How to Run*, select **`Run Immediately`** *(critical to run without manual confirmation prompts)*.
-   - Tap **Next**.
-4. Set the action to **Run Shortcut** ➔ select **"Sync to Frame TV"**.
-5. Turn **Off** the toggle for **`Notify When Run`** to prevent nightly notification spam.
-6. Tap **Done**.
+### Make the sign-in value
 
----
-
-## Method 2: macOS — Export Favorites Automatically
-
-This method uses a short shell script on your Mac to export favorites from Apple Photos and upload them to the server. No AppleScript permissions headaches — it uses the `osxphotos` CLI tool which reads the Photos database directly.
-
-### Step 1: Grant Terminal Full Disk Access
-
-Because macOS secures your local Photos library, you must grant your Terminal app access to read it:
-1. Open **System Settings** → **Privacy & Security** → **Full Disk Access**.
-2. Toggle **Terminal** (or **iTerm**) to **On**.
-
-### Step 2: Install osxphotos
+The Shortcut sends an `Authorization` header containing your credentials in
+Base64. On a Mac or Linux computer, run this with your own token and copy the
+output:
 
 ```bash
-pip3 install osxphotos
+printf '%s' 'frame:YOUR_UPLOAD_TOKEN' | base64
 ```
 
-### Step 3: Create the sync script
+### Build the Shortcut
 
-Save this as `~/frame-tv-sync.sh`:
+1. Open the **Shortcuts** app, tap **+**, and name the shortcut
+   **Send to Frame TV**.
+2. Add **Find Photos**. Filter for favorites or an album, add a filter for
+   **Media Type is Image** so videos are skipped, and turn on **Limit** with a
+   small number while you test.
+3. Add **Repeat with Each** and pass it the photos.
+4. Inside the loop, add **Convert Image** and convert **Repeat Item** to
+   **JPEG**. iPhone photos are usually HEIC, which the uploader does not accept.
+5. Still inside the loop, add **Get Contents of URL**:
+   - URL: `http://SERVER-IP:8080/upload`
+   - Method: **POST**
+   - Request Body: **Form**, with a **File** field named `file` containing the
+     converted image
+   - Headers: `Authorization` with the value `Basic ` followed by the Base64
+     output from above
+6. Tap the play button. Each photo should return `File imported successfully`,
+   or `File already exists (deduplicated)` if it was sent before.
+
+Apple sometimes renames these actions between iOS versions. If a label doesn't
+match, look for the same idea: find photos, convert each to JPEG, and POST it
+with the `Authorization` header.
+
+If Shortcuts reports a permission error, check **Settings → Apps → Shortcuts →
+Advanced** (or **Settings → Shortcuts → Advanced** on older iOS versions) for
+options that allow sharing larger amounts of data.
+
+### Run it on a schedule (optional)
+
+1. Open the **Automation** tab and tap **+**.
+2. Choose **Time of Day**, pick a time such as 2:00 AM, and set it to repeat
+   daily.
+3. Choose to run it immediately rather than asking first, and turn off the
+   notification if you don't want one each night.
+4. Select **Send to Frame TV**.
+
+Whether iOS runs it without a confirmation depends on your iOS version.
+
+Each run re-sends the photos it finds. Identical files are skipped, but if iOS
+produces a slightly different JPEG for the same photo on a later run, that copy
+is stored as a new picture. Keep the album or favorites list focused, or use
+the Limit option.
+
+## Method 3: Mac script with osxphotos
+
+On a Mac, the free third-party tool [osxphotos](https://github.com/RhetTbull/osxphotos)
+can export favorites or an album as JPEGs, and a short script uploads them.
+
+### 1. Allow access to the Photos library
+
+Open **System Settings → Privacy & Security → Full Disk Access** and turn on
+Terminal (or iTerm).
+
+### 2. Install osxphotos
+
+```bash
+pipx install osxphotos
+```
+
+### 3. Create the script
+
+Save this as `~/frame-tv-sync.sh`, fill in your server address and token, and
+make it executable with `chmod +x ~/frame-tv-sync.sh`:
 
 ```bash
 #!/bin/bash
-# Sync Apple Photos favorites to Frame TV Art Manager
-SERVER="http://192.168.1.150:8080"
-UPLOAD_TOKEN="replace-with-your-upload-token"
-TEMP_DIR=$(mktemp -d)
+set -euo pipefail
 
-# Add Homebrew and pip bin paths for launchd environment
-export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/Library/Python/3.9/bin:$PATH"
+SERVER="http://192.168.1.20:8080"     # the Frame TV Art Manager server, not the TV
+UPLOAD_TOKEN="your-upload-token"
+EXPORT_DIR="$HOME/Pictures/frame-tv-export"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-# Export favorites as JPEG (converts HEIC automatically)
-osxphotos export "$TEMP_DIR" \
+mkdir -p "$EXPORT_DIR"
+osxphotos export "$EXPORT_DIR" \
   --favorite \
-  --convert-to-jpeg \
-  --jpeg-quality 0.95 \
-  --skip-edited \
-  --skip-live \
-  --skip-raw \
-  --update \
-  --cleanup \
-  2>/dev/null
+  --convert-to-jpeg --jpeg-quality 0.95 \
+  --skip-live --skip-raw \
+  --update --cleanup
 
-# Upload each exported photo
-for f in "$TEMP_DIR"/*.jpeg "$TEMP_DIR"/*.jpg; do
-  [ -f "$f" ] || continue
-  curl -s -u "frame:$UPLOAD_TOKEN" -X POST -F "file=@$f" "$SERVER/upload"
+for file in "$EXPORT_DIR"/*.jpeg "$EXPORT_DIR"/*.jpg; do
+  [ -f "$file" ] || continue
+  curl --fail --silent --show-error \
+    -u "frame:$UPLOAD_TOKEN" \
+    -F "file=@$file" \
+    "$SERVER/upload"
+  echo
 done
-
-rm -rf "$TEMP_DIR"
 ```
 
-Make it executable:
+The export folder is kept between runs, so `--update` only exports new photos
+and files that were already uploaded are recognized as duplicates.
 
-```bash
-chmod +x ~/frame-tv-sync.sh
-```
+To send an album instead of favorites, replace `--favorite` with
+`--album "Frame TV"`.
 
-### Step 4: Run on a schedule (optional)
+### 4. Run it every hour (optional)
 
-To sync every hour automatically, add a Launch Agent. Save this as `~/Library/LaunchAgents/com.frametv.photosync.plist`:
+Save this as `~/Library/LaunchAgents/com.example.frametv-photos.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -147,18 +180,16 @@ To sync every hour automatically, add a Launch Agent. Save this as `~/Library/La
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key>
-    <string>com.frametv.photosync</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>~/frame-tv-sync.sh</string>
-    </array>
-    <key>StartInterval</key>
-    <integer>3600</integer>
-    <key>RunAtLoad</key>
-    <true/>
+  <key>Label</key>
+  <string>com.example.frametv-photos</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>~/frame-tv-sync.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>3600</integer>
 </dict>
 </plist>
 ```
@@ -166,80 +197,96 @@ To sync every hour automatically, add a Launch Agent. Save this as `~/Library/La
 Load it:
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.frametv.photosync.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.frametv-photos.plist
 ```
 
-#### Syncing a specific album instead of favorites
+If the script works by hand but fails on schedule, macOS is probably blocking
+Photos access for the background job. Granting Full Disk Access to `/bin/bash`
+is the usual fix.
 
-Replace the `--favorite` flag with `--album "Album Name"`:
+## Method 4: curl
 
-```bash
-osxphotos export "$TEMP_DIR" \
-  --album "Travel 2024" \
-  --convert-to-jpeg \
-  --jpeg-quality 0.95 \
-  --update --cleanup
-```
-
----
-
-## Method 3: Quick Upload with `curl`
-
-The fastest way to push a single image from any terminal:
+Upload one photo from any terminal on your network:
 
 ```bash
-curl -X POST \
-  -u "frame:$UPLOAD_TOKEN" \
+curl -u "frame:$UPLOAD_TOKEN" \
   -F "file=@/path/to/photo.jpg" \
-  http://192.168.1.150:8080/upload
+  http://SERVER-IP:8080/upload
 ```
 
-Upload an entire folder of photos:
+Upload a folder, one file at a time:
 
 ```bash
-for f in ~/Desktop/frame-photos/*.jpg; do
-  curl -s -u "frame:$UPLOAD_TOKEN" -X POST -F "file=@$f" http://192.168.1.150:8080/upload
-  echo "  → uploaded $(basename "$f")"
+for file in ~/Desktop/frame-photos/*.jpg; do
+  curl --fail --silent --show-error \
+    -u "frame:$UPLOAD_TOKEN" \
+    -F "file=@$file" \
+    http://SERVER-IP:8080/upload
+  echo
 done
 ```
 
-Replace `192.168.1.150` with your server's IP address.
+The form field must be named `file`. The endpoint also accepts the image as the
+raw request body. It handles one upload at a time, so don't send files in
+parallel.
 
----
+## What happens after upload
 
-## How the Manager Processes Uploads
+1. **Checked.** The file must be a complete, valid JPEG or PNG within
+   `MAX_DOWNLOAD_SIZE_MB`.
+2. **Deduplicated.** The SHA-256 of the exact file bytes identifies it. If the
+   same bytes were uploaded before, the response says
+   `File already exists (deduplicated)` and nothing new is stored.
+3. **Saved.** The file is written to the artwork folder under a generated name:
+   a short label, two hyphens, and the start of its SHA-256 in hex. Your
+   original filename is never used. The response JSON includes the saved
+   `filename`.
+4. **Prepared.** On the next sync, the normal image settings apply: EXIF
+   orientation, your `PORTRAIT_MODE` (crop by default, or pad or collage),
+   sRGB color conversion, light sharpening, and resizing to exactly 3840×2160
+   by default. The prepared version replaces the uploaded file in the folder and
+   may get a new name.
+5. **Uploaded.** The photo is sent to every TV in `TV_IPS` and appears in Art
+   Mode. If a TV is full, it joins the
+   [rotation](https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html).
 
-Once an image arrives at the `/upload` endpoint:
+### Removing an uploaded photo
 
-1. **Validation.** The server checks the file is a valid JPEG or PNG and is within the size limit (`MAX_DOWNLOAD_SIZE_MB`, default 20 MB).
-2. **Identity & dedup.** An exact encoded-byte SHA-256 hash is computed. If the same file was uploaded before, the duplicate is silently discarded.
-3. **Saved to artwork/.** The file keeps its format and is written with a bounded readable label plus a prefix of its exact byte digest, such as `summer-photo--8f14e45fceea167a.png`. The filename may change when the manager transforms the bytes; durable manifest identity makes re-uploads and matte overrides independent of that display name.
-4. **Optimization.** On the next sync cycle, the optimizer applies orientation, the configured portrait/crop policy, and exact target sizing (3840×2160 by default). PNG processing, smart crop, sharpening, and museum treatment follow their image settings.
-5. **TV sync.** The image is uploaded to the TV via the Samsung Art API and appears in Art Mode.
+Uploaded photos stay in the artwork folder until you delete them; Frame TV Art
+Manager never deletes them from the folder on its own. To take one off the TV,
+delete its file from the artwork folder (in Docker, `data/artwork`). The next
+sync removes the copy it uploaded from the TV.
 
-### What about removal?
+## Troubleshooting
 
-Uploaded photos are treated as **user-owned files** — the manager never deletes them automatically. If you want to remove a photo from the TV:
+| Response | Meaning and fix |
+| --- | --- |
+| `401` Authentication required | Wrong username or password. The username is always `frame`. Check the Base64 value in your Shortcut. |
+| `403` Upload endpoint is disabled | Set `UPLOAD_ENABLED=true` and restart. |
+| `403` Upload endpoint is unavailable during dry-run | Turn off `DRY_RUN`. |
+| `403` Cross-origin uploads are not allowed | The request came from a web page on a different address. Upload from the server's own `/upload` page, a Shortcut, or curl. |
+| `400` file too large | Over `MAX_DOWNLOAD_SIZE_MB` (20 MB by default). Raise the limit or send a smaller export. |
+| `400` Invalid or unsafe image | Not a complete JPEG or PNG. HEIC photos end up here; convert to JPEG first. |
+| `400` missing 'file' parameter | The form field isn't named `file`. |
+| `429` Another artwork import is in progress | Two uploads arrived at once. Send them one after another. |
 
-- Delete the file from the `artwork/` directory (or the Docker volume).
-- On the next sync cycle, the manager detects it's gone and removes it from the TV.
-
----
-
-## Environment Variables
+## Settings
 
 | Variable | Default | Description |
-|---|---|---|
-| `UPLOAD_ENABLED` | `false` | Set to `true` to enable the `/upload` endpoint. |
-| `UPLOAD_TOKEN` | required | HTTP Basic-auth password; minimum 16 characters. |
-| `MAX_DOWNLOAD_SIZE_MB` | `20` | Maximum file size per upload in megabytes. |
-| `HEALTH_PORT` | `8080` | Port for the health server (and the upload endpoint). |
+| --- | --- | --- |
+| `UPLOAD_ENABLED` | `false` | Set to `true` to turn on `GET` and `POST /upload`. |
+| `UPLOAD_TOKEN` | required with uploads | HTTP Basic password for user `frame`; at least 16 characters. |
+| `MAX_DOWNLOAD_SIZE_MB` | `20` | Largest accepted upload, in megabytes. |
+| `HEALTH_PORT` | `8080` | Port for the health, status, and upload pages; `0` turns them off. |
+| `HEALTH_BIND_ADDRESS` | `0.0.0.0` | Address the server listens on; use `127.0.0.1` behind a local reverse proxy. |
 
----
+## Security
 
-## Security Notes
-
-- The upload endpoint is **disabled by default**. You must explicitly set `UPLOAD_ENABLED=true`.
-- Every upload requires HTTP Basic authentication. Keep the endpoint on a trusted LAN because plain HTTP does not encrypt the token or image; use a TLS reverse proxy before crossing untrusted networks.
-- Files are validated (magic bytes, size limits) before being written to disk.
-- Filenames are sanitized — the original filename is never used. The server generates a safe, hash-based name.
+- The uploader is off until you set `UPLOAD_ENABLED=true`, and every request
+  needs the password.
+- Plain HTTP doesn't encrypt the password or your photos. Keep the uploader on
+  your home network, or put a TLS reverse proxy in front of it.
+- Never forward port 8080 from your router to the internet.
+- Files are fully decoded and size-checked before they're saved, and the server
+  chooses the filename.
+- Uploaded photos use disk space on the server until you delete them.

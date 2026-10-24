@@ -3,32 +3,33 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Samsung Frame TV Art Manager with Docker Compose</title>
-    <meta name="description" content="Run Samsung Frame TV artwork sync with Docker Compose on a NAS or home server. Covers storage, pairing, network access, and safe first-run settings.">
-    <meta name="robots" content="index,follow,max-image-preview:large">
+    <title>Samsung Frame TV Art on Docker: NAS and Home Server Setup</title>
+    <meta name="description" content="Set up Frame TV Art Manager with Docker Compose on Synology, Unraid, mini PC, Raspberry Pi, or Mac to sync art to a Samsung Frame TV. One required setting.">
+    <meta name="theme-color" content="#f4efe6">
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
     <link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html">
     <link rel="stylesheet" href="../styles.css">
     <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
-    <link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager project facts">
+    <link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager fact sheet">
     <meta property="og:type" content="article">
     <meta property="og:locale" content="en_US">
     <meta property="og:site_name" content="Frame TV Art Manager">
-    <meta property="og:title" content="Samsung Frame TV Art Manager with Docker Compose">
-    <meta property="og:description" content="Install Frame TV artwork synchronization on a NAS, mini PC, or home server.">
+    <meta property="og:title" content="Run Frame TV Art Manager with Docker on a NAS or home server">
+    <meta property="og:description" content="Step-by-step Docker Compose setup for syncing art to a Samsung Frame TV, with Synology, Unraid, Raspberry Pi, and Mac notes.">
     <meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html">
     <meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1729">
     <meta property="og:image:height" content="910">
-    <meta property="og:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <meta property="og:image:alt" content="Frame TV Art Manager sending art from a home server folder to a Samsung Frame TV">
     <meta property="article:published_time" content="2026-07-26">
-    <meta property="article:modified_time" content="2026-07-26">
+    <meta property="article:modified_time" content="2026-10-24">
     <meta property="article:section" content="Docker and NAS installation">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Samsung Frame TV Art Manager with Docker Compose">
-    <meta name="twitter:description" content="Set up Frame TV Art Manager on a NAS or home server.">
+    <meta name="twitter:title" content="Run Frame TV Art Manager with Docker on a NAS or home server">
+    <meta name="twitter:description" content="Docker Compose setup for Samsung Frame TV art sync, with NAS, Raspberry Pi, and Mac notes.">
     <meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
-    <meta name="twitter:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <meta name="twitter:image:alt" content="Frame TV Art Manager sending art from a home server folder to a Samsung Frame TV">
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -37,29 +38,60 @@
             "@type": "TechArticle",
             "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#article",
             "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html",
-            "headline": "Run a Samsung Frame TV Art Manager with Docker",
-            "description": "Install automatic Samsung Frame TV artwork synchronization with Docker Compose on a NAS or home server.",
+            "headline": "Run Frame TV Art Manager with Docker on a NAS or home server",
+            "description": "How to install Frame TV Art Manager with Docker Compose to sync art to a Samsung Frame TV, including persistent data, pairing, NAS notes, monitoring, and troubleshooting.",
             "inLanguage": "en",
             "datePublished": "2026-07-26",
-            "dateModified": "2026-07-26",
+            "dateModified": "2026-10-24",
             "proficiencyLevel": "Beginner",
             "author": { "@id": "https://github.com/MikeO7#person" },
             "publisher": { "@id": "https://github.com/MikeO7#person" },
             "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
-            "mainEntity": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software" },
+            "about": [
+              { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software" },
+              "Samsung Frame TV",
+              "Docker Compose",
+              "NAS",
+              "self-hosting"
+            ],
             "mainEntityOfPage": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#webpage" },
             "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
-            "about": ["Samsung Frame TV", "Docker Compose", "NAS", "self-hosting"],
             "citation": [
               "https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose",
               "https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example"
             ]
           },
           {
+            "@type": "HowTo",
+            "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#howto",
+            "name": "Install Frame TV Art Manager with Docker Compose",
+            "description": "Install Frame TV Art Manager on a NAS or home server with Docker Compose and pair it with a Samsung Frame TV.",
+            "inLanguage": "en",
+            "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+            "supply": [
+              { "@type": "HowToSupply", "name": "Samsung Frame TV running Tizen 8.0 or newer" },
+              { "@type": "HowToSupply", "name": "JPEG or PNG pictures" }
+            ],
+            "tool": [
+              { "@type": "HowToTool", "name": "An always-on computer or NAS with Docker Compose" },
+              { "@type": "HowToTool", "name": "Router access to reserve the TV's IP address" }
+            ],
+            "step": [
+              { "@type": "HowToStep", "position": 1, "name": "Give the TV a fixed IP address", "text": "In your router, create a DHCP reservation so the Frame TV always gets the same IP address. You can find the TV's current address in its network settings.", "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#step-ip" },
+              { "@type": "HowToStep", "position": 2, "name": "Create the compose file", "text": "Make a folder for the service, save the compose.yaml shown on this page inside it, and replace 192.168.1.150 with your TV's address.", "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#step-compose" },
+              { "@type": "HowToStep", "position": 3, "name": "Start the container", "text": "Run docker compose up -d in that folder, then docker compose logs -f frame-tv-art-manager to watch it connect.", "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#step-start" },
+              { "@type": "HowToStep", "position": 4, "name": "Approve the connection on the TV", "text": "With the TV switched on, an Allow/Deny prompt named Frame Art Manager appears. Choose Allow with the remote. This happens only once.", "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#step-allow" },
+              { "@type": "HowToStep", "position": 5, "name": "Add pictures", "text": "Copy .jpg, .jpeg, or .png files into the data/artwork folder. They are prepared and uploaded on the next sync.", "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#step-art" },
+              { "@type": "HowToStep", "position": 6, "name": "Check that it worked", "text": "Open http://SERVER-IP:8080/status in a browser. Your TV should be listed with status ok, and the pictures appear in Art Mode on the TV.", "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#step-check" }
+            ]
+          },
+          {
             "@type": "WebPage",
             "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#webpage",
             "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html",
-            "name": "Samsung Frame TV Art Manager with Docker Compose",
+            "name": "Samsung Frame TV Art on Docker: NAS and Home Server Setup",
+            "datePublished": "2026-07-26",
+            "dateModified": "2026-10-24",
             "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
             "breadcrumb": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html#breadcrumbs" },
             "inLanguage": "en"
@@ -70,7 +102,7 @@
             "itemListElement": [
               { "@type": "ListItem", "position": 1, "name": "Frame TV Art Manager", "item": "https://mikeo7.github.io/frame-tv-art-manager/" },
               { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://mikeo7.github.io/frame-tv-art-manager/#guides" },
-              { "@type": "ListItem", "position": 3, "name": "Docker Compose", "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html" }
+              { "@type": "ListItem", "position": 3, "name": "Docker and NAS setup", "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html" }
             ]
           },
           { "@type": "Person", "@id": "https://github.com/MikeO7#person", "name": "MikeO7", "url": "https://github.com/MikeO7" }
@@ -82,37 +114,49 @@
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
-      <nav aria-label="Main navigation"><a href="../">Home</a><a href="../#install">Install</a><a href="../#guides">Guides</a><a class="nav-cta" href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></nav>
+      <nav aria-label="Main navigation"><a href="../">Home</a><a href="../#install">Install</a><a href="../#guides">Guides</a><a href="../#faq">FAQ</a><a class="nav-cta" href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></nav>
     </header>
     <main id="main">
       <header class="article-header">
         <nav class="breadcrumbs" aria-label="Breadcrumb">
-          <ol><li><a href="../">Frame TV Art Manager</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">Docker Compose</li></ol>
+          <ol><li><a href="../">Frame TV Art Manager</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">Docker and NAS setup</li></ol>
         </nav>
-        <p class="eyebrow">Docker Compose installation</p>
-        <h1>Run a Samsung Frame TV art manager with Docker</h1>
-        <p class="article-summary"><strong>Short answer:</strong> deploy the GHCR container with the TV’s local IP in <code>TV_IPS</code> and a persistent <code>/data</code> volume. Approve the first connection on the TV, then add JPEG or PNG files to <code>data/artwork</code>.</p>
-        <p class="article-meta"><span>Maintained by <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Updated <time datetime="2026-07-26">July 26, 2026</time></span></p>
+        <p class="eyebrow">Docker and NAS setup</p>
+        <h1>Run Frame TV Art Manager with Docker on a NAS or home server</h1>
+        <p class="article-summary"><strong>Short answer:</strong> run the <code>ghcr.io/mikeo7/frame-tv-art-manager:latest</code> image with your Samsung Frame TV’s IP address in <code>TV_IPS</code> and a <code>./data:/data</code> volume. Approve the connection once on the TV, then copy JPEG or PNG files into <code>data/artwork</code>. The image runs on amd64, arm64, and armv7, so it fits a Synology or Unraid box, a mini PC, a Raspberry Pi-class board, or a Mac.</p>
+        <p class="article-meta"><span>Maintained by <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Last updated: <time datetime="2026-10-24">October 24, 2026</time></span></p>
       </header>
       <article class="article-body">
         <nav class="article-toc" aria-label="On this page">
           <strong>On this page</strong>
           <ul>
-            <li><a href="#compose">Compose file</a></li>
-            <li><a href="#installation">Installation steps</a></li>
-            <li><a href="#persistent-data">Persistent data</a></li>
-            <li><a href="#networking">Network requirements</a></li>
-            <li><a href="#nas">NAS notes</a></li>
-            <li><a href="#monitoring">Monitoring</a></li>
-            <li><a href="#first-run">Safe first run</a></li>
-            <li><a href="#uploads">Upload endpoint</a></li>
+            <li><a href="#before-you-start">Before you start</a></li>
+            <li><a href="#compose">The compose file</a></li>
+            <li><a href="#installation">Install step by step</a></li>
+            <li><a href="#persistent-data">The data folder</a></li>
+            <li><a href="#networking">Networking</a></li>
+            <li><a href="#nas">Synology, Unraid, Pi, and Mac</a></li>
+            <li><a href="#monitoring">Checking on it</a></li>
+            <li><a href="#first-run">Dry runs</a></li>
+            <li><a href="#updating">Updating</a></li>
+            <li><a href="#troubleshooting">Troubleshooting</a></li>
+            <li><a href="#uploads">Turning on uploads</a></li>
+            <li><a href="#without-docker">Without Docker</a></li>
           </ul>
         </nav>
 
-        <p>Docker Compose is the simplest way to run Frame TV Art Manager continuously on a Linux server, mini PC, or compatible NAS. The container packages the Go service and image-processing dependencies while the persistent data directory holds artwork, pairing tokens, and reconciliation state.</p>
+        <p>Docker Compose is the easiest way to keep Frame TV Art Manager running around the clock. The container holds the service; a <code>data</code> folder next to it holds your art, the TV’s pairing token, and the record of what it uploaded to each TV.</p>
 
-        <h2 id="compose">Minimal Docker Compose configuration</h2>
-        <p><code>TV_IPS</code> is the only required environment variable for basic local-folder operation. A working installation also needs persistent storage, a stable TV address, LAN reachability, and first-connection approval on the television.</p>
+        <h2 id="before-you-start">What do I need before installing?</h2>
+        <ul>
+          <li>A Samsung Frame TV running Tizen 8.0 or newer, on your home network. Other firmware may work, but Samsung’s private Art Mode protocol varies.</li>
+          <li>An always-on machine on the same network with Docker and Docker Compose.</li>
+          <li>Access to your router, to give the TV a fixed IP address.</li>
+          <li>The TV switched on and in reach of its remote for the one-time approval.</li>
+        </ul>
+
+        <h2 id="compose">What does the Docker Compose file look like?</h2>
+        <p>This is a complete working setup. <code>TV_IPS</code> is the only required setting; everything else has a default.</p>
         <figure class="code-window">
           <figcaption class="code-title"><span></span><span></span><span></span><strong>compose.yaml</strong></figcaption>
           <pre><code><span class="code-key">services:</span>
@@ -121,82 +165,132 @@
     <span class="code-key">container_name:</span> frame-tv-art-manager
     <span class="code-key">restart:</span> unless-stopped
     <span class="code-key">environment:</span>
-      <span class="code-key">TV_IPS:</span> <span class="code-string">"192.168.1.150"</span>
-      <span class="code-key">CLIENT_NAME:</span> <span class="code-string">"Frame Art Manager"</span>
+      <span class="code-key">TV_IPS:</span> <span class="code-string">"192.168.1.150"</span>           <span class="code-comment"># your TV; comma-separate several</span>
+      <span class="code-key">CLIENT_NAME:</span> <span class="code-string">"Frame Art Manager"</span>  <span class="code-comment"># name on the TV's prompt</span>
     <span class="code-key">ports:</span>
-      - <span class="code-string">"8080:8080"</span>
+      - <span class="code-string">"8080:8080"</span>                      <span class="code-comment"># health and status pages</span>
     <span class="code-key">volumes:</span>
-      - <span class="code-string">./data:/data</span></code></pre>
+      - <span class="code-string">./data:/data</span>                     <span class="code-comment"># art, tokens, and state</span></code></pre>
         </figure>
-        <p>Publishing port 8080 exposes the health and status endpoints. It does not enable uploads by itself; the upload endpoint remains disabled until <code>UPLOAD_ENABLED=true</code> and a valid <code>UPLOAD_TOKEN</code> are configured.</p>
+        <p>Port 8080 serves the health and status pages. It doesn’t accept uploads unless you turn the uploader on (see <a href="#uploads">below</a>).</p>
 
-        <h2 id="installation">Installation steps</h2>
+        <h2 id="installation">How do I install it, step by step?</h2>
         <ol>
-          <li>Give the Samsung Frame TV a stable LAN address through a DHCP reservation or equivalent router setting.</li>
-          <li>Replace <code>192.168.1.150</code> with that address.</li>
-          <li>Run <code>docker compose up -d</code>.</li>
-          <li>When the TV shows an Allow/Deny prompt for “Frame Art Manager,” choose Allow with the remote.</li>
-          <li>Place <code>.jpg</code>, <code>.jpeg</code>, or <code>.png</code> files in <code>data/artwork</code>.</li>
+          <li id="step-ip"><strong>Give the TV a fixed IP address.</strong> In your router, create a DHCP reservation so the Frame TV always gets the same IP address. You can find the TV’s current address in its network settings.</li>
+          <li id="step-compose"><strong>Create the compose file.</strong> Make a folder for the service, save the <code>compose.yaml</code> above inside it, and replace <code>192.168.1.150</code> with your TV’s address.</li>
+          <li id="step-start"><strong>Start the container.</strong> Run <code>docker compose up -d</code> in that folder, then <code>docker compose logs -f frame-tv-art-manager</code> to watch it connect.</li>
+          <li id="step-allow"><strong>Approve the connection on the TV.</strong> With the TV switched on, an Allow/Deny prompt named “Frame Art Manager” appears. Choose Allow with the remote. This happens only once.</li>
+          <li id="step-art"><strong>Add pictures.</strong> Copy <code>.jpg</code>, <code>.jpeg</code>, or <code>.png</code> files into the <code>data/artwork</code> folder. They are prepared and uploaded on the next sync.</li>
+          <li id="step-check"><strong>Check that it worked.</strong> Open <code>http://SERVER-IP:8080/status</code> in a browser. Your TV should be listed with status <code>ok</code>, and the pictures appear in Art Mode on the TV.</li>
         </ol>
+        <p>The first sync runs as soon as the container starts and then every 30 minutes. To pick up new pictures sooner, restart the container or lower <code>SYNC_INTERVAL_MINUTES</code>.</p>
+        <p class="note warning"><strong>Keep your originals elsewhere.</strong> With image preparation on (the default), each picture in <code>data/artwork</code> is replaced by its 3840×2160 version and may be renamed. Copy pictures in; don’t move your only copies.</p>
 
-        <h2 id="persistent-data">Which data must be persistent?</h2>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Persistent Frame TV Art Manager data paths">
+        <h2 id="persistent-data">What is stored in the data folder?</h2>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Frame TV Art Manager data folders">
           <table>
-            <caption>Persistent data paths used by the container</caption>
-            <thead><tr><th scope="col">Path</th><th scope="col">Purpose</th><th scope="col">Why persistence matters</th></tr></thead>
+            <caption>Folders inside the <code>/data</code> volume</caption>
+            <thead><tr><th scope="col">Folder</th><th scope="col">What’s in it</th><th scope="col">If you lose it</th></tr></thead>
             <tbody>
-              <tr><th scope="row"><code>/data/artwork</code></th><td>Desired artwork collection and its private manifest</td><td>It is the durable source of truth for synchronization.</td></tr>
-              <tr><th scope="row"><code>/data/tokens</code></th><td>Pairing tokens and per-TV reconciliation state</td><td>Losing it can require pairing again and loses the record of which artwork the manager uploaded.</td></tr>
+              <tr><th scope="row"><code>/data/artwork</code></th><td>Your art collection, plus a hidden <code>.frame-tv-art-manager</code> folder that tracks it</td><td>The TV keeps what it has, but there’s nothing left to sync.</td></tr>
+              <tr><th scope="row"><code>/data/tokens</code></th><td>Each TV’s pairing token and the record of which pieces Frame TV Art Manager uploaded</td><td>You approve the TV again, and art it uploaded earlier looks like art you added yourself, so it won’t be cleaned up or rotated automatically.</td></tr>
             </tbody>
           </table>
         </div>
-        <p>Mounting the complete <code>/data</code> directory, as in the example, preserves both locations across container upgrades. Losing token state can make previously uploaded art indistinguishable from unknown TV art.</p>
+        <p>Mount the whole <code>/data</code> folder, as in the example, and both survive container updates. Pairing tokens and state files are saved readable only by their owner (mode <code>0600</code>). Art files are readable by others (<code>0644</code>) so you can browse them over SMB or NFS.</p>
 
-        <h2 id="networking">Does Docker need host networking?</h2>
-        <p>No in the documented setup. The container connects to a known TV IP and only needs a route that can reach the television. Network isolation, VLANs, or firewall rules must permit the TV connection.</p>
-        <p>The service targets Samsung Frame hardware running Tizen 8.0 or newer. Other firmware may work, but the private Art Mode protocol varies between models and releases.</p>
+        <h2 id="networking">Does the container need host networking?</h2>
+        <p>No. Frame TV Art Manager connects out to the TV’s IP address, so normal bridge networking works. The only requirement is that the machine can reach the TV. If your TV is on a separate VLAN or IoT network, your firewall has to allow the connection.</p>
+        <p>The service doesn’t need inbound access from the internet. Keep port 8080 on your home network.</p>
 
-        <h2 id="nas">Running on Synology, Unraid, or another NAS</h2>
-        <p>A NAS is suitable when it can run the container and reach the TV’s LAN address. Preserve the data mount and ensure the container account can write to it. If bind-mount ownership is a problem, pre-create <code>data/artwork</code> and <code>data/tokens</code>, then use the documented <code>PUID</code>/<code>PGID</code> or rootless-container approach.</p>
+        <h2 id="nas">Notes for Synology, Unraid, Raspberry Pi, and Mac</h2>
 
-        <h2 id="monitoring">Monitoring the container</h2>
-        <p>The service exposes <code>/live</code> for process liveness, <code>/ready</code> and <code>/health</code> for readiness after a successful cycle, and <code>/status</code> for current and per-TV synchronization information.</p>
-        <p>The container image healthcheck calls the application’s <code>-livenesscheck</code> command, which checks <code>/live</code>. A failed Docker healthcheck does not restart a container by itself; restart behavior is controlled by Docker or the orchestrator.</p>
+        <h3 id="synology">Synology</h3>
+        <p>On DSM 7.2 and later, open Container Manager, create a Project, choose a folder such as <code>/volume1/docker/frame-tv-art-manager</code>, and paste the compose file. The <code>./data</code> path is then created inside that folder, where you can reach it from File Station or a network share.</p>
 
-        <h2 id="first-run">Safe configuration for a first run</h2>
-        <p>Set <code>DRY_RUN=true</code> when you want to observe the collection and TV plan without persistent local mutation, pairing, uploads, deletions, Wake-on-LAN, or display changes. Keep <code>REMOVE_UNKNOWN_IMAGES=false</code> unless you deliberately want the manager to remove TV artwork it does not own.</p>
+        <h3 id="unraid">Unraid</h3>
+        <p>Use the Docker Compose Manager plugin with the same file, or add the container from the Docker tab: repository <code>ghcr.io/mikeo7/frame-tv-art-manager:latest</code>, a variable <code>TV_IPS</code>, port 8080, and a path mapping from <code>/mnt/user/appdata/frame-tv-art-manager</code> to <code>/data</code>.</p>
 
-        <h2 id="uploads">What should I know about browser and Apple Photos uploads?</h2>
-        <p>Uploads are disabled by default. Enabling them requires <code>UPLOAD_ENABLED=true</code> and an <code>UPLOAD_TOKEN</code> of at least 16 characters. Authentication uses HTTP Basic with username <code>frame</code>.</p>
-        <p class="note"><strong>Keep plain HTTP on a trusted LAN.</strong> HTTP Basic authentication does not encrypt the token or image. Use a TLS reverse proxy before making the endpoint reachable across an untrusted network.</p>
+        <h3 id="raspberry-pi">Raspberry Pi and other small boards</h3>
+        <p>The image is built for arm64 and armv7, so it runs on 64-bit and 32-bit Raspberry Pi OS. Image preparation is the heaviest job: a 24-megapixel photo needs roughly 250 MB of memory for a second or two, and each picture is limited to 512 MB by default (<code>IMAGE_MAX_WORKING_MEMORY_MB</code>). 8K photos fit within that default.</p>
+
+        <h3 id="mac">Mac</h3>
+        <p>Docker Desktop runs the same compose file. Make sure the Mac stays awake, or the sync stops while it sleeps. You can also build and run the binary directly (see <a href="#without-docker">Without Docker</a>).</p>
+
+        <h3 id="permissions">Folder permissions</h3>
+        <p>If the logs show the container can’t write to <code>data</code>, create the folders first with <code>mkdir -p data/artwork data/tokens</code>. The image starts as root so it can set ownership using <code>PUID</code> and <code>PGID</code> (for example <code>PUID=1000</code>, <code>PGID=1000</code>). To run without root, give both folders to your user, set <code>user: "1000:1000"</code> in the compose file, and leave <code>PUID</code> and <code>PGID</code> unset.</p>
+
+        <h2 id="monitoring">How do I check that it’s working?</h2>
+        <p>Four pages on port 8080 tell you how things are going:</p>
+        <ul>
+          <li><code>/live</code>: the process is running.</li>
+          <li><code>/ready</code> and <code>/health</code>: return 200 once a sync has succeeded, and 503 while starting or after a failed sync. Point an uptime monitor here.</li>
+          <li><code>/status</code>: details for each TV, including its status, how many pieces it holds, whether it’s in Art Mode, the last error, and <a href="./samsung-frame-tv-storage-full-art-rotation.html#checking-status">rotation progress</a>.</li>
+        </ul>
+        <p>The container’s built-in health check watches <code>/live</code>. Docker doesn’t restart an unhealthy container on its own; <code>restart: unless-stopped</code> covers crashes. Logs are JSON, one line per event, with the TV address, status, and counts of uploads and deletions.</p>
+
+        <h2 id="first-run">Can I see what it would do without changing anything?</h2>
+        <p>Yes. Set <code>DRY_RUN=true</code> and Frame TV Art Manager reads your folder and the TV and works out its plan, but uploads, deletes, and saves nothing, and it won’t wake the TV. Each TV reports <code>dry-run</code> in <code>/status</code>. A dry run uses an existing pairing, so approve the TV once in normal mode first. The uploader is unavailable during a dry run.</p>
+        <p>Leave <code>REMOVE_UNKNOWN_IMAGES</code> at its default of <code>false</code> unless you really want Frame TV Art Manager to delete every piece it didn’t upload itself.</p>
+
+        <h2 id="updating">How do I update it?</h2>
+        <p>Run <code>docker compose pull</code> and then <code>docker compose up -d</code>. Your art, pairing, and history live in <code>data</code>, so nothing needs to be set up again.</p>
+
+        <h2 id="troubleshooting">Troubleshooting common problems</h2>
+        <h3 id="no-prompt">The TV never shows the Allow prompt</h3>
+        <p>Make sure the TV is switched on and that <code>TV_IPS</code> matches the address in the TV’s network settings. From the server, check that it can reach the TV, then look at <code>docker compose logs</code> for the connection error.</p>
+        <h3 id="prompt-every-time">The TV asks for approval again after a restart</h3>
+        <p>The pairing token isn’t being kept. Check that <code>./data:/data</code> is mounted and that <code>data/tokens</code> exists and is writable. Changing <code>CLIENT_NAME</code> also makes the TV ask again, so pick a name and keep it.</p>
+        <h3 id="tv-unreachable">Status says unreachable</h3>
+        <p>The TV was off, asleep, or not on the network during that sync. Frame TV Art Manager tries again on the next one. To wake a single TV first, set <code>TV_MAC</code> to its network MAC address; Wake-on-LAN is only sent when the TV is known to be off, and it’s disabled when you list more than one TV.</p>
+        <h3 id="storage-full">Status says storage full</h3>
+        <p>The TV is out of room. With rotation on (the default), this clears once rotation starts; if it stays, the TV is probably full of art you added yourself. See the <a href="./samsung-frame-tv-storage-full-art-rotation.html">storage-full guide</a>.</p>
+
+        <h2 id="uploads">How do I turn on browser and iPhone uploads?</h2>
+        <p>The uploader is off by default. Set <code>UPLOAD_ENABLED=true</code> and an <code>UPLOAD_TOKEN</code> of at least 16 characters, then open <code>http://SERVER-IP:8080/upload</code>. Sign in with username <code>frame</code> and the token as the password.</p>
+        <p class="note"><strong>Keep it on your home network.</strong> Plain HTTP doesn’t encrypt the password or the pictures. Don’t expose port 8080 to the internet; put a TLS reverse proxy in front if you need access from outside.</p>
+        <p>The <a href="./apple-photos-to-samsung-frame-tv.html">Apple Photos guide</a> covers iPhone Shortcuts, a Mac script, and <code>curl</code>.</p>
+
+        <h2 id="without-docker">Can I run it without Docker?</h2>
+        <p>Yes. Frame TV Art Manager is a single Go program. Build it with the Go version named in the repository’s <code>go.mod</code>:</p>
+        <figure class="code-window">
+          <figcaption class="code-title"><span></span><span></span><span></span><strong>Terminal</strong></figcaption>
+          <pre><code>go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
+TV_IPS=192.168.1.150 \
+ARTWORK_DIR="$PWD/data/artwork" \
+TOKEN_DIR="$PWD/data/tokens" \
+./frame-tv-art-manager</code></pre>
+        </figure>
 
         <section class="article-cta">
-          <h2 id="configuration">Continue with the configuration reference</h2>
-          <p>The repository documents every environment variable, source provider, image control, and monitoring endpoint.</p>
-          <a class="button primary" href="https://github.com/MikeO7/frame-tv-art-manager#configuration">Open configuration documentation</a>
+          <h2 id="configuration">See every setting</h2>
+          <p>Brightness, slideshow, mattes, image options, art sources, and more are listed with their defaults in <code>.env.example</code>.</p>
+          <a class="button primary" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Open the settings reference</a>
         </section>
 
         <section class="references" aria-labelledby="references">
           <h2 id="references">Project references</h2>
           <ul>
-            <li><a href="https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose">Docker Compose quick start</a></li>
-            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Complete environment reference</a></li>
-            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">PolyForm Noncommercial license</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose">Docker Compose quick start in the README</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Every setting, with defaults (.env.example)</a></li>
+            <li><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Report a problem</a></li>
           </ul>
         </section>
 
         <section class="related-guides" aria-labelledby="related-guides">
           <h2 id="related-guides">Related guides</h2>
           <div class="related-grid">
-            <a href="./automatically-upload-art-samsung-frame-tv.html"><strong>Automatic artwork uploads</strong><p>Understand the collection and TV reconciliation workflow.</p></a>
-            <a href="./apple-photos-to-samsung-frame-tv.html"><strong>Apple Photos uploads</strong><p>Configure the authenticated endpoint for an iPhone, iPad, or Mac.</p></a>
+            <a href="./automatically-upload-art-samsung-frame-tv.html"><strong>Automatically upload art to a Frame TV</strong><p>What the sync does once it’s running.</p></a>
+            <a href="./samsung-frame-tv-storage-full-art-rotation.html"><strong>Frame TV storage full? Rotate your art</strong><p>How a large collection takes turns on the TV.</p></a>
+            <a href="./apple-photos-to-samsung-frame-tv.html"><strong>Send Apple Photos to a Frame TV</strong><p>Turn on the uploader and use it from an iPhone or Mac.</p></a>
+            <a href="./frame-tv-art-manager-vs-smartthings.html"><strong>Frame TV Art Manager vs. SmartThings</strong><p>Check it’s the right tool before you install.</p></a>
           </div>
         </section>
       </article>
     </main>
     <footer class="site-footer">
       <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
-      <p>Independent, noncommercial source-available software. Not affiliated with or endorsed by Samsung.</p>
+      <p>Free for noncommercial use under PolyForm Noncommercial 1.0.0. Source-available, not open source. Independent; not affiliated with or endorsed by Samsung.</p>
       <div class="footer-links"><a href="../#guides">Guides</a><a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Issues</a><a rel="license" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">License</a></div>
     </footer>
   </body>

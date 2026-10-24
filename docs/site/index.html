@@ -3,30 +3,30 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Frame TV Art Manager — Sync Art from a NAS or Home Server</title>
-    <meta name="description" content="Self-hosted Samsung Frame TV art sync for NAS and home-server owners. Prepare and reconcile your own photos and artwork over the local network.">
+    <title>Frame TV Art Manager: Auto-Sync Art to Samsung Frame TV</title>
+    <meta name="description" content="Self-hosted app that keeps your Samsung Frame TV art in sync with a folder on your NAS or home server. Prepares photos for 4K. No Samsung account.">
     <meta name="theme-color" content="#f4efe6">
-    <meta name="robots" content="index,follow,max-image-preview:large">
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
     <link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/">
     <link rel="stylesheet" href="./styles.css">
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
-    <link rel="alternate" href="./llms.txt" type="text/plain" title="Frame TV Art Manager project facts">
+    <link rel="alternate" href="./llms.txt" type="text/plain" title="Frame TV Art Manager fact sheet">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="en_US">
     <meta property="og:site_name" content="Frame TV Art Manager">
-    <meta property="og:title" content="Frame TV Art Manager — Folder-to-TV Art Sync">
-    <meta property="og:description" content="Keep photos and artwork from a NAS or home server synchronized with one or more Samsung Frame TVs over your LAN.">
+    <meta property="og:title" content="Frame TV Art Manager: keep Samsung Frame TV art in sync with a folder">
+    <meta property="og:description" content="A self-hosted service for NAS and home-server owners. Drop pictures in a folder; it prepares them for the 4K screen and uploads them to your Frame TVs.">
     <meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/">
     <meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1729">
     <meta property="og:image:height" content="910">
-    <meta property="og:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <meta property="og:image:alt" content="Frame TV Art Manager sending art from a home server folder to a Samsung Frame TV">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Frame TV Art Manager — Folder-to-TV Art Sync">
-    <meta name="twitter:description" content="Self-hosted art synchronization for Samsung Frame TV owners with a NAS or home server.">
+    <meta name="twitter:title" content="Frame TV Art Manager: keep Samsung Frame TV art in sync with a folder">
+    <meta name="twitter:description" content="Self-hosted art sync for Samsung Frame TV owners with a NAS or home server. No Samsung account needed.">
     <meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
-    <meta name="twitter:image:alt" content="Frame TV Art Manager connecting a home server art collection to a Samsung Frame TV">
+    <meta name="twitter:image:alt" content="Frame TV Art Manager sending art from a home server folder to a Samsung Frame TV">
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -42,7 +42,7 @@
             "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website",
             "url": "https://mikeo7.github.io/frame-tv-art-manager/",
             "name": "Frame TV Art Manager",
-            "description": "Product documentation and installation guides for a self-hosted Samsung Frame TV artwork synchronization service.",
+            "description": "Documentation and setup guides for Frame TV Art Manager, a self-hosted service that keeps Samsung Frame TV art in sync with a folder.",
             "inLanguage": "en",
             "publisher": { "@id": "https://github.com/MikeO7#person" }
           },
@@ -50,32 +50,49 @@
             "@type": "WebPage",
             "@id": "https://mikeo7.github.io/frame-tv-art-manager/#webpage",
             "url": "https://mikeo7.github.io/frame-tv-art-manager/",
-            "name": "Frame TV Art Manager — Sync Art from a NAS or Home Server",
-            "description": "Self-hosted Samsung Frame TV art sync for NAS and home-server owners.",
+            "name": "Frame TV Art Manager: Auto-Sync Art to Samsung Frame TV",
+            "description": "Self-hosted app that keeps your Samsung Frame TV art in sync with a folder on your NAS or home server.",
+            "dateModified": "2026-10-24",
             "isPartOf": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website" },
             "mainEntity": { "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software" },
+            "primaryImageOfPage": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
             "inLanguage": "en"
           },
           {
             "@type": "SoftwareApplication",
             "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software",
             "name": "Frame TV Art Manager",
-            "applicationCategory": "HomeApplication",
+            "applicationCategory": "MultimediaApplication",
+            "applicationSubCategory": "Samsung Frame TV art management",
             "operatingSystem": "Linux, macOS",
-            "description": "A self-hosted service that prepares and synchronizes personal artwork with one or more Samsung Frame TVs over a local network.",
+            "description": "Frame TV Art Manager is a self-hosted service that keeps the art on one or more Samsung Frame TVs in sync with a folder of JPEG and PNG images, preparing each picture for the 3840x2160 screen and uploading it over the local network.",
             "url": "https://mikeo7.github.io/frame-tv-art-manager/",
+            "downloadUrl": "https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose",
             "softwareHelp": "https://github.com/MikeO7/frame-tv-art-manager#readme",
             "license": "https://polyformproject.org/licenses/noncommercial/1.0.0/",
+            "isAccessibleForFree": true,
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD",
+              "description": "Free for personal and other noncommercial use under the PolyForm Noncommercial License 1.0.0. Commercial use is not permitted."
+            },
             "author": { "@id": "https://github.com/MikeO7#person" },
             "sameAs": "https://github.com/MikeO7/frame-tv-art-manager",
+            "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
             "featureList": [
-              "Scheduled artwork reconciliation",
-              "Multiple Samsung Frame TVs",
-              "JPEG and PNG preparation",
-              "Direct local-network TV communication",
-              "Ownership-aware artwork removal"
+              "Syncs a folder of JPEG and PNG images to Samsung Frame TVs every 30 minutes",
+              "Supports several Frame TVs from one collection",
+              "Prepares pictures at 3840x2160 with portrait crop, pad, or collage",
+              "Rotates art automatically when the TV's storage is full",
+              "Never removes art it did not upload unless configured to",
+              "Talks to the TV directly on the local network with no Samsung account",
+              "Optional web uploader for iPhone Shortcuts and curl",
+              "Optional art sources: Unsplash, NASA, Art Institute of Chicago, Pexels, Pixabay, direct URLs",
+              "Optional brightness, slideshow, nightly power-off, and Wake-on-LAN controls",
+              "Health and status endpoints on port 8080"
             ],
-            "softwareRequirements": "Samsung Frame TV running Tizen 8.0 or newer; Docker or a compiled Go binary; local network access"
+            "softwareRequirements": "Samsung Frame TV running Tizen 8.0 or newer on the same local network; Docker (amd64, arm64, or armv7) or a Go build"
           },
           {
             "@type": "SoftwareSourceCode",
@@ -95,38 +112,53 @@
             "mainEntity": [
               {
                 "@type": "Question",
+                "name": "What is Frame TV Art Manager?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Frame TV Art Manager is a self-hosted service for Samsung Frame TV owners who run a NAS or home server. It keeps the TV's art in sync with a folder of JPEG and PNG images: it prepares each picture for the 3840×2160 screen and uploads it over your home network, checking for changes every 30 minutes." }
+              },
+              {
+                "@type": "Question",
                 "name": "Can it automatically upload art to a Samsung Frame TV?",
-                "acceptedAnswer": { "@type": "Answer", "text": "Yes. Frame TV Art Manager regularly compares a committed artwork collection with each configured TV and uploads missing manager-owned images over the local network." }
+                "acceptedAnswer": { "@type": "Answer", "text": "Yes. Add a picture to the artwork folder and Frame TV Art Manager uploads it on the next sync, which runs at startup and then every 30 minutes by default (SYNC_INTERVAL_MINUTES). Remove a picture from the folder and the copy it uploaded is removed from the TV. Pictures that have not changed are not uploaded again." }
               },
               {
                 "@type": "Question",
-                "name": "Do I need SmartThings or a Samsung cloud account?",
-                "acceptedAnswer": { "@type": "Answer", "text": "No for a local-only collection. The manager talks directly to the TV on your LAN. Configured remote artwork providers still contact their external services." }
+                "name": "Do I need SmartThings or a Samsung account?",
+                "acceptedAnswer": { "@type": "Answer", "text": "No. Frame TV Art Manager talks to the TV directly on your local network, so a folder-based setup needs no SmartThings app, Samsung account, or cloud service. Optional online art sources such as Unsplash or NASA contact those services only when you turn them on." }
               },
               {
                 "@type": "Question",
-                "name": "Will it delete artwork already on my TV?",
-                "acceptedAnswer": { "@type": "Answer", "text": "By default it removes only artwork it owns and tracks. Unknown TV artwork is preserved unless REMOVE_UNKNOWN_IMAGES is explicitly enabled." }
+                "name": "Will it delete art I already put on my TV?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Not by default. Frame TV Art Manager only removes art it uploaded itself. Art you added another way, for example with the SmartThings app, stays on the TV unless you deliberately set REMOVE_UNKNOWN_IMAGES=true." }
               },
               {
                 "@type": "Question",
-                "name": "Does it change the artwork currently displayed?",
-                "acceptedAnswer": { "@type": "Answer", "text": "No. The manager preserves the current artwork selection because the private TV protocol does not provide the recoverable selection state required for a safe automatic change." }
+                "name": "What happens when my Frame TV's storage is full?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Frame TV Art Manager rotates your art. The first time the TV refuses an upload because it is full, it learns how many pieces the TV holds. From then on, each piece it uploaded stays on the TV for at least 14 days (ROTATION_INTERVAL_DAYS) and is then swapped for waiting art, never-shown pieces first, so a large collection takes turns. Art you added yourself is never rotated out." }
               },
               {
                 "@type": "Question",
-                "name": "Can it prepare portrait photos for a 4K Frame TV?",
-                "acceptedAnswer": { "@type": "Answer", "text": "Yes. Portrait images can be cropped, padded, or combined into a collage. The default output is 3840 by 2160 pixels, and the dimensions are configurable." }
+                "name": "Will it change the artwork showing on my TV?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Frame TV Art Manager does not choose which artwork is on screen; that stays with the TV and its slideshow settings. If a piece it manages is removed or rotated out while it is showing, the TV moves on to another piece." }
               },
               {
                 "@type": "Question",
-                "name": "Can I run it on a NAS or home server?",
-                "acceptedAnswer": { "@type": "Answer", "text": "Yes. Docker Compose is the simplest deployment for a Linux home server or compatible NAS that can reach the TV on the local network." }
+                "name": "How does it handle portrait photos?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Portrait photos are cropped to fill the 16:9 screen by default (PORTRAIT_MODE=crop). You can instead place them over a blurred background (pad) or pair two portraits side by side (collage). Every picture is resized to exactly 3840×2160 unless you choose a different size." }
               },
               {
                 "@type": "Question",
-                "name": "Is Frame TV Art Manager open source?",
-                "acceptedAnswer": { "@type": "Answer", "text": "It is noncommercial source-available software under the PolyForm Noncommercial License 1.0.0. Commercial use is not permitted by that license." }
+                "name": "What hardware can I run it on?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Any always-on machine on the same network as the TV that can run Docker: a Synology or other NAS, an Unraid server, a mini PC, a Raspberry Pi-class Linux board, or a Mac. The container image is built for amd64, arm64, and armv7, and you can also build a single Go binary." }
+              },
+              {
+                "@type": "Question",
+                "name": "Which Frame TVs does it work with?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Frame TV Art Manager targets Samsung Frame TVs running Tizen 8.0 or newer. Older firmware may work, but Samsung's private Art Mode protocol changes between models and releases, so it is not guaranteed. You can manage several TVs at once by listing their addresses in TV_IPS." }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Frame TV Art Manager free and open source?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Frame TV Art Manager is free for personal and other noncommercial use under the PolyForm Noncommercial License 1.0.0. It is source-available, not open source: the code is public, but commercial use is not permitted. It is an independent project, not affiliated with or endorsed by Samsung." }
               }
             ]
           }
@@ -143,9 +175,9 @@
       </a>
       <nav aria-label="Main navigation">
         <a href="#how-it-works">How it works</a>
-        <a href="#fit">Good fit</a>
         <a href="#guides">Guides</a>
         <a href="#install">Install</a>
+        <a href="#faq">FAQ</a>
         <a class="nav-cta" href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a>
       </nav>
     </header>
@@ -153,52 +185,68 @@
     <main id="main">
       <section class="hero" id="top">
         <div class="hero-copy">
-          <p class="eyebrow">For Samsung The Frame owners with a NAS or home server</p>
-          <h1>Keep a folder of art synced to <em>Samsung Frame TV.</em></h1>
-          <p class="lede">Frame TV Art Manager is a self-hosted service that prepares your JPEG and PNG files, then reconciles manager-owned art across one or more Tizen 8+ Frame TVs over your local network.</p>
+          <p class="eyebrow">For Samsung Frame TV owners with a home server</p>
+          <h1>Keep your Samsung Frame TV art in sync with <em>a folder.</em></h1>
+          <p class="lede">Frame TV Art Manager is a self-hosted service that runs on your NAS, mini PC, or Mac. Put pictures in a folder and it prepares each one for the TV’s 4K screen, then uploads it to your Frame TVs over your home network, checking every 30 minutes. It never touches art you added yourself.</p>
           <div class="hero-actions">
-            <a class="button primary" href="#install">Install with Docker Compose</a>
-            <a class="button secondary" href="https://github.com/MikeO7/frame-tv-art-manager#readme">Review source and license</a>
+            <a class="button primary" href="#install">Set it up with Docker</a>
+            <a class="button secondary" href="./guides/automatically-upload-art-samsung-frame-tv.html">How automatic uploads work</a>
           </div>
-          <ul class="trust-list" aria-label="Key product facts">
-            <li>Direct LAN connection</li>
-            <li>Current selection preserved</li>
-            <li>PolyForm Noncommercial license</li>
+          <ul class="trust-list" aria-label="Key facts">
+            <li>No Samsung account</li>
+            <li>Rotates art when the TV is full</li>
+            <li>Free for noncommercial use</li>
           </ul>
         </div>
         <figure class="hero-visual">
           <div class="gallery-wall">
             <div class="tv">
-              <div class="artwork" role="img" aria-label="Abstract landscape artwork displayed on a Frame-style television">
+              <div class="artwork" role="img" aria-label="Illustration of a landscape painting shown on a Frame-style TV">
                 <span class="sun"></span>
                 <span class="hill hill-back"></span>
                 <span class="hill hill-front"></span>
               </div>
             </div>
-            <div class="status-pill"><span></span> Collection synchronized</div>
+            <div class="status-pill" aria-hidden="true"><span></span>in sync with /data/artwork</div>
           </div>
-          <figcaption class="visually-hidden">A local artwork collection synchronized to a Frame-style television.</figcaption>
+          <figcaption class="visually-hidden">Illustration of a Frame TV showing art synced from a folder on a home server.</figcaption>
         </figure>
       </section>
 
+      <section class="section at-a-glance" id="at-a-glance" aria-labelledby="at-a-glance-title">
+        <h2 class="visually-hidden" id="at-a-glance-title">Frame TV Art Manager at a glance</h2>
+        <dl class="facts">
+          <div><dt>What it is</dt><dd>A self-hosted service that syncs a folder of JPEG and PNG art to Samsung Frame TVs</dd></div>
+          <div><dt>Runs on</dt><dd>Docker (amd64, arm64, armv7) or a Go binary on a NAS, mini PC, Pi-class board, or Mac</dd></div>
+          <div><dt>Works with</dt><dd>Samsung Frame TVs on Tizen 8.0 or newer, one or several</dd></div>
+          <div><dt>Required setting</dt><dd>Just <code>TV_IPS</code>, the TV’s IP address</dd></div>
+          <div><dt>Sync schedule</dt><dd>At startup, then every 30 minutes</dd></div>
+          <div><dt>Picture output</dt><dd>Exactly 3840×2160, sRGB, with portrait crop, pad, or collage</dd></div>
+          <div><dt>When the TV is full</dt><dd>Rotates art, every 14 days by default</dd></div>
+          <div><dt>Accounts</dt><dd>No Samsung or SmartThings account for a local folder</dd></div>
+          <div><dt>License</dt><dd>Free for noncommercial use (PolyForm Noncommercial 1.0.0). Source-available, not open source</dd></div>
+        </dl>
+      </section>
+
       <section class="problem section" id="how-it-works">
-        <p class="eyebrow">Folder-to-TV workflow</p>
-        <h2>Update the folder. Let the service handle the repeat uploads.</h2>
+        <p class="eyebrow">How it works</p>
+        <h2>You manage a folder. Frame TV Art Manager handles the TV.</h2>
+        <p class="section-intro">Uploading photos one at a time from a phone gets old quickly, especially with more than one TV. Frame TV Art Manager treats a folder as the list of what should be on your Frame TV and keeps the two matched.</p>
         <div class="steps">
           <article>
             <span class="step-number">01</span>
-            <h3>Add photos and artwork</h3>
-            <p>Use a local JPEG or PNG folder, the authenticated upload endpoint, or an optional configured artwork provider.</p>
+            <h3>Add pictures</h3>
+            <p>Copy JPEG or PNG files into the artwork folder over a network share, send them from your phone with the optional web uploader, or pull art from sources like NASA and the Art Institute of Chicago.</p>
           </article>
           <article>
             <span class="step-number">02</span>
-            <h3>Prepare files for the display</h3>
-            <p>Images that need transformation are oriented, cropped or padded, and resized. The default output is 3840×2160; dimensions are configurable.</p>
+            <h3>It prepares each one</h3>
+            <p>Sideways photos are turned upright, portraits are cropped or padded, colors are converted to sRGB, and each picture is resized to exactly 3840×2160, the Frame’s 4K resolution.</p>
           </article>
           <article>
             <span class="step-number">03</span>
-            <h3>Reconcile every configured TV</h3>
-            <p>The service observes each TV, uploads missing files, and removes obsolete manager-owned art only when the required state is trustworthy.</p>
+            <h3>It keeps every TV matched</h3>
+            <p>New pictures are uploaded, pictures you delete from the folder are removed from the TV, and if the TV runs out of room the art takes turns.</p>
           </article>
         </div>
       </section>
@@ -206,36 +254,79 @@
       <section class="features section" id="features">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">What makes it useful</p>
-            <h2>Built for recurring synchronization, not one-off uploads.</h2>
+            <p class="eyebrow">Features</p>
+            <h2>Built to run unattended for months.</h2>
           </div>
-          <p>The differentiator is the reconciliation state: the manager knows which TV art it owns, preserves unknown art by default, and refuses destructive work when the collection or TV observation is incomplete.</p>
+          <p>Frame TV Art Manager is meant to be set up once and then left alone. It keeps track of which pieces it put on each TV, so it can tidy up after itself without touching anything else.</p>
         </div>
         <div class="feature-grid">
-          <article class="feature feature-wide">
-            <span class="icon sync-icon" aria-hidden="true">↻</span>
-            <h3>One collection for multiple TVs</h3>
-            <p><code>TV_IPS</code> accepts one or more addresses. Each TV is reconciled independently against the same committed collection snapshot.</p>
+          <article class="feature">
+            <span class="icon" aria-hidden="true">TVs</span>
+            <h3>One folder, every TV</h3>
+            <p>List several addresses in <code>TV_IPS</code>. Each TV gets the same collection and is tracked separately, so one TV being off doesn’t hold up the others.</p>
           </article>
           <article class="feature">
             <span class="icon" aria-hidden="true">4K</span>
-            <h3>Display preparation by default</h3>
-            <p>Optimization is enabled by default with orientation, crop or padding, color handling, sharpening, and 3840×2160 output. Smart crop is optional and off by default.</p>
+            <h3>Pictures that fit the screen</h3>
+            <p>Upright orientation, portrait handling, sRGB color, HDR PNG tone mapping, light sharpening, and JPEG quality 95. A 24-megapixel photo takes about 1–2 seconds.</p>
           </article>
-          <article class="feature">
-            <span class="icon" aria-hidden="true">LAN</span>
-            <h3>Direct TV connection</h3>
-            <p>Local-only collections require no Samsung cloud account. Remote providers and the optional HTTP crop provider use external network access only when configured.</p>
+          <article class="feature highlight">
+            <span class="icon" aria-hidden="true">↻</span>
+            <h3>Rotation for full TVs</h3>
+            <p>When the TV runs out of room, each piece stays 14 days, then swaps for art that hasn’t been shown. <a href="./guides/samsung-frame-tv-storage-full-art-rotation.html">How rotation works</a></p>
           </article>
           <article class="feature">
             <span class="icon" aria-hidden="true">+</span>
-            <h3>Several ways to supply art</h3>
-            <p>Use a folder, authenticated browser uploads, Apple Photos workflows, Unsplash, NASA, Art Institute of Chicago, Pexels, Pixabay, or direct URLs.</p>
+            <h3>Add art from anywhere</h3>
+            <p>A shared folder, a password-protected upload page, iPhone Shortcuts, Unsplash, NASA, the Art Institute of Chicago, Pexels, Pixabay, or direct links. Exact duplicates are skipped.</p>
           </article>
-          <article class="feature feature-wide safety">
+          <article class="feature">
+            <span class="icon" aria-hidden="true">LAN</span>
+            <h3>No cloud account</h3>
+            <p>It connects straight to the TV on your network. You approve it once on the TV, and nothing goes through Samsung’s servers.</p>
+          </article>
+          <article class="feature">
+            <span class="icon" aria-hidden="true">▢</span>
+            <h3>Samsung mattes</h3>
+            <p>Pick a matte for everything with <code>MATTE_STYLE</code>, such as <code>shadowbox_polar</code>, or set one per picture in a <code>mattes.json</code> file. Default is full-screen.</p>
+          </article>
+          <article class="feature">
+            <span class="icon" aria-hidden="true">☼</span>
+            <h3>Optional TV controls</h3>
+            <p>Brightness that follows the sun, slideshow timing and shuffle, a nightly power-off for TVs left in Art Mode, and Wake-on-LAN. Each stays off until you set it.</p>
+          </article>
+          <article class="feature">
             <span class="icon" aria-hidden="true">✓</span>
-            <h3>Checks the collection and TV state before making changes</h3>
-            <p>Unknown TV artwork is preserved by default. An empty desired collection keeps the final known-good managed item, and transient source failures retain the previous source collection.</p>
+            <h3>Easy to check on</h3>
+            <p><code>/health</code> and <code>/status</code> on port 8080 show whether the last sync worked and what each TV is doing. Logs are structured JSON.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="safety">
+        <p class="eyebrow">Careful by default</p>
+        <h2>What Frame TV Art Manager will and won’t do</h2>
+        <p class="section-intro">Software that deletes things from your TV should be predictable. These are the rules it follows out of the box.</p>
+        <div class="promise-grid">
+          <article>
+            <h3>It will</h3>
+            <ul class="check-list">
+              <li>Upload new pictures from your folder on the next sync.</li>
+              <li>Remove a piece it uploaded once you delete that picture from the folder.</li>
+              <li>Swap pieces it uploaded on a full TV, every 14 days by default.</li>
+              <li>Replace each picture in the artwork folder with its prepared 3840×2160 version, so keep your originals somewhere else.</li>
+              <li>Pick up where it left off after the TV was off or unreachable.</li>
+            </ul>
+          </article>
+          <article>
+            <h3>It won’t</h3>
+            <ul class="cross-list">
+              <li>Delete art you added yourself, unless you set <code>REMOVE_UNKNOWN_IMAGES=true</code>.</li>
+              <li>Choose which piece is on screen. That stays with the TV and its slideshow.</li>
+              <li>Empty the TV if the folder is emptied. It keeps the last piece it uploaded.</li>
+              <li>Drop downloaded art because a source website is down for a while.</li>
+              <li>Change anything on a TV whose state it can’t confirm, or anything at all with <code>DRY_RUN=true</code>.</li>
+            </ul>
           </article>
         </div>
       </section>
@@ -243,31 +334,37 @@
       <section class="fit section" id="fit">
         <div class="fit-grid">
           <article>
-            <p class="eyebrow">A good fit when</p>
-            <h2>You already run something at home.</h2>
+            <p class="eyebrow">Is it right for you?</p>
+            <h2>A good fit if you already run something at home.</h2>
             <ul class="check-list">
-              <li>You have a NAS, Unraid or Synology system, mini PC, Mac, or Linux server.</li>
-              <li>Your Frame TV targets Tizen 8.0 or newer and is reachable on the LAN.</li>
-              <li>You update a photo or art folder regularly, or maintain more than one TV.</li>
-              <li>You want unattended inventory sync rather than repeating a phone upload flow.</li>
+              <li>You have an always-on machine: Synology or another NAS, Unraid, a mini PC, a Raspberry Pi-class board, or a Mac.</li>
+              <li>Your Frame TV runs Tizen 8.0 or newer and is on the same network.</li>
+              <li>You change your art often, have a big collection, or have more than one Frame TV.</li>
+              <li>You’d rather drop files in a folder than repeat uploads from a phone.</li>
             </ul>
           </article>
-          <article class="fit-note">
-            <p class="eyebrow">Know before installing</p>
-            <h3>This is a home-server service.</h3>
-            <p>You need a stable TV address, persistent <code>/data</code> storage, LAN reachability, and one approval on the television. SmartThings is likely simpler for occasional manual uploads.</p>
-            <p>The project targets Tizen 8+. Other firmware may work, but Samsung’s private Art Mode protocol varies by model and release.</p>
-            <p><strong>License:</strong> noncommercial source-available software under PolyForm Noncommercial 1.0.0. It is independent of and not endorsed by Samsung.</p>
-          </article>
+          <aside class="fit-note" aria-labelledby="not-a-fit">
+            <p class="eyebrow">Know before you install</p>
+            <h3 id="not-a-fit">When something else is better</h3>
+            <p>If you only add a photo now and then and don’t run a home server, Samsung’s SmartThings app is simpler. <a href="./guides/frame-tv-art-manager-vs-smartthings.html">Compare the two</a>.</p>
+            <p>Frame TV Art Manager uses Samsung’s private Art Mode protocol. It targets Tizen 8.0 and newer; other firmware may work, but that protocol varies between models and updates.</p>
+            <p><strong>License:</strong> free for personal and other noncommercial use under PolyForm Noncommercial 1.0.0. It is source-available, not open source, and commercial use is not permitted. Independent project, not affiliated with or endorsed by Samsung.</p>
+          </aside>
         </div>
       </section>
 
       <section class="install section" id="install">
         <div class="install-copy">
-          <p class="eyebrow">Minimal Docker setup</p>
-          <h2>One required environment variable.</h2>
-          <p>Set <code>TV_IPS</code>, mount persistent storage, give the TV a stable LAN address, and approve the first connection. The first synchronization cycle starts with the service.</p>
-          <a class="text-link" href="./guides/samsung-frame-tv-docker.html">Read the Docker and NAS setup guide <span>→</span></a>
+          <p class="eyebrow">Install</p>
+          <h2>One setting to get started.</h2>
+          <p>The only required setting is <code>TV_IPS</code>. Everything else has a sensible default.</p>
+          <ol>
+            <li>Give the TV a fixed IP address with a DHCP reservation in your router.</li>
+            <li>Save this <code>compose.yaml</code> with your TV’s address and run <code>docker compose up -d</code>.</li>
+            <li>With the TV on, choose <strong>Allow</strong> when “Frame Art Manager” asks to connect. You only do this once.</li>
+            <li>Copy JPEG or PNG files into <code>data/artwork</code>. They reach the TV on the next sync.</li>
+          </ol>
+          <a class="text-link" href="./guides/samsung-frame-tv-docker.html">Full Docker and NAS setup guide <span aria-hidden="true">→</span></a>
         </div>
         <figure class="code-window">
           <figcaption class="code-title"><span></span><span></span><span></span><strong>compose.yaml</strong></figcaption>
@@ -277,89 +374,113 @@
     <span class="code-key">restart:</span> unless-stopped
     <span class="code-key">environment:</span>
       <span class="code-key">TV_IPS:</span> <span class="code-string">"192.168.1.150"</span>
+    <span class="code-key">ports:</span>
+      - <span class="code-string">"8080:8080"</span>
     <span class="code-key">volumes:</span>
       - <span class="code-string">./data:/data</span></code></pre>
-          <div class="command"><span>$</span> docker compose up -d</div>
+          <div class="command"><span>$</span>docker compose up -d</div>
         </figure>
       </section>
 
       <section class="guides section" id="guides">
-        <p class="eyebrow">Practical Samsung Frame TV guides</p>
-        <h2>Start with the workflow that matches your setup.</h2>
+        <p class="eyebrow">Guides</p>
+        <h2>Samsung Frame TV guides</h2>
+        <p class="section-intro">Each guide answers one question in plain steps.</p>
         <div class="guide-grid">
           <a href="./guides/automatically-upload-art-samsung-frame-tv.html">
             <span>Automation</span>
-            <h3>Automatically upload art to Samsung Frame TV</h3>
-            <p>How folder-driven reconciliation replaces repeated SmartThings uploads.</p>
+            <h3>How to automatically upload art to a Samsung Frame TV</h3>
+            <p>How a watched folder replaces one-at-a-time uploads, what gets removed, and what never does.</p>
             <strong>Read the automation guide →</strong>
           </a>
           <a href="./guides/samsung-frame-tv-docker.html">
             <span>Docker and NAS</span>
-            <h3>Run Frame TV Art Manager with Docker Compose</h3>
-            <p>Set up the service, persistent storage, pairing, and network access.</p>
+            <h3>Run Frame TV Art Manager with Docker on a NAS</h3>
+            <p>Compose file, pairing, Synology and Unraid notes, health checks, and troubleshooting.</p>
             <strong>Read the Docker guide →</strong>
+          </a>
+          <a href="./guides/samsung-frame-tv-storage-full-art-rotation.html">
+            <span>Storage full</span>
+            <h3>Frame TV storage full? Rotate your art automatically</h3>
+            <p>What happens when the TV runs out of room, and how a large collection takes turns.</p>
+            <strong>Read the rotation guide →</strong>
           </a>
           <a href="./guides/apple-photos-to-samsung-frame-tv.html">
             <span>Apple Photos</span>
-            <h3>Send Apple Photos to Samsung Frame TV</h3>
-            <p>Use an iPhone Shortcut, a Mac, or curl with the authenticated upload endpoint.</p>
+            <h3>Send Apple Photos to a Samsung Frame TV</h3>
+            <p>Use the upload page, an iPhone Shortcut, a Mac script, or curl.</p>
             <strong>Read the Apple Photos guide →</strong>
           </a>
           <a href="./guides/frame-tv-art-manager-vs-smartthings.html">
             <span>Comparison</span>
             <h3>Frame TV Art Manager vs. SmartThings</h3>
-            <p>Choose between occasional phone uploads and a maintained home-server workflow.</p>
-            <strong>Compare the workflows →</strong>
+            <p>Which one fits how you use your TV, side by side.</p>
+            <strong>Compare the two →</strong>
           </a>
         </div>
       </section>
 
       <section class="faq section" id="faq">
-        <p class="eyebrow">Common questions</p>
-        <h2>What the service does—and deliberately does not do.</h2>
+        <p class="eyebrow">FAQ</p>
+        <h2>Common questions</h2>
         <div class="faq-list">
           <details>
+            <summary>What is Frame TV Art Manager?</summary>
+            <p>Frame TV Art Manager is a self-hosted service for Samsung Frame TV owners who run a NAS or home server. It keeps the TV’s art in sync with a folder of JPEG and PNG images: it prepares each picture for the 3840×2160 screen and uploads it over your home network, checking for changes every 30 minutes.</p>
+          </details>
+          <details>
             <summary>Can it automatically upload art to a Samsung Frame TV?</summary>
-            <p>Yes. Frame TV Art Manager regularly compares a committed artwork collection with each configured TV and uploads missing manager-owned images over the local network.</p>
+            <p>Yes. Add a picture to the artwork folder and Frame TV Art Manager uploads it on the next sync, which runs at startup and then every 30 minutes by default (<code>SYNC_INTERVAL_MINUTES</code>). Remove a picture from the folder and the copy it uploaded is removed from the TV. Pictures that have not changed are not uploaded again.</p>
           </details>
           <details>
-            <summary>Do I need SmartThings or a Samsung cloud account?</summary>
-            <p>No for a local-only collection. The manager talks directly to the TV on your LAN. Configured remote artwork providers still contact their external services.</p>
+            <summary>Do I need SmartThings or a Samsung account?</summary>
+            <p>No. Frame TV Art Manager talks to the TV directly on your local network, so a folder-based setup needs no SmartThings app, Samsung account, or cloud service. Optional online art sources such as Unsplash or NASA contact those services only when you turn them on.</p>
           </details>
           <details>
-            <summary>Will it delete artwork already on my TV?</summary>
-            <p>By default it removes only artwork it owns and tracks. Unknown TV artwork is preserved unless <code>REMOVE_UNKNOWN_IMAGES</code> is explicitly enabled.</p>
+            <summary>Will it delete art I already put on my TV?</summary>
+            <p>Not by default. Frame TV Art Manager only removes art it uploaded itself. Art you added another way, for example with the SmartThings app, stays on the TV unless you deliberately set <code>REMOVE_UNKNOWN_IMAGES=true</code>.</p>
           </details>
           <details>
-            <summary>Does it change the artwork currently displayed?</summary>
-            <p>No. The manager preserves the current artwork selection because the private TV protocol does not provide the recoverable selection state required for a safe automatic change.</p>
+            <summary>What happens when my Frame TV's storage is full?</summary>
+            <p>Frame TV Art Manager rotates your art. The first time the TV refuses an upload because it is full, it learns how many pieces the TV holds. From then on, each piece it uploaded stays on the TV for at least 14 days (<code>ROTATION_INTERVAL_DAYS</code>) and is then swapped for waiting art, never-shown pieces first, so a large collection takes turns. Art you added yourself is never rotated out. <a href="./guides/samsung-frame-tv-storage-full-art-rotation.html">Read the rotation guide</a>.</p>
           </details>
           <details>
-            <summary>Can it prepare portrait photos for a 4K Frame TV?</summary>
-            <p>Yes. Portrait images can be cropped, padded, or combined into a collage. The default output is 3840×2160, and the dimensions are configurable.</p>
+            <summary>Will it change the artwork showing on my TV?</summary>
+            <p>Frame TV Art Manager does not choose which artwork is on screen; that stays with the TV and its slideshow settings. If a piece it manages is removed or rotated out while it is showing, the TV moves on to another piece.</p>
           </details>
           <details>
-            <summary>Can I run it on a NAS or home server?</summary>
-            <p>Yes. Docker Compose is the simplest deployment for a Linux home server or compatible NAS that can reach the TV on the local network.</p>
+            <summary>How does it handle portrait photos?</summary>
+            <p>Portrait photos are cropped to fill the 16:9 screen by default (<code>PORTRAIT_MODE=crop</code>). You can instead place them over a blurred background (<code>pad</code>) or pair two portraits side by side (<code>collage</code>). Every picture is resized to exactly 3840×2160 unless you choose a different size.</p>
           </details>
           <details>
-            <summary>Is Frame TV Art Manager open source?</summary>
-            <p>It is noncommercial source-available software under the PolyForm Noncommercial License 1.0.0. Commercial use is not permitted by that license.</p>
+            <summary>What hardware can I run it on?</summary>
+            <p>Any always-on machine on the same network as the TV that can run Docker: a Synology or other NAS, an Unraid server, a mini PC, a Raspberry Pi-class Linux board, or a Mac. The container image is built for amd64, arm64, and armv7, and you can also build a single Go binary.</p>
+          </details>
+          <details>
+            <summary>Which Frame TVs does it work with?</summary>
+            <p>Frame TV Art Manager targets Samsung Frame TVs running Tizen 8.0 or newer. Older firmware may work, but Samsung’s private Art Mode protocol changes between models and releases, so it is not guaranteed. You can manage several TVs at once by listing their addresses in <code>TV_IPS</code>.</p>
+          </details>
+          <details>
+            <summary>Is Frame TV Art Manager free and open source?</summary>
+            <p>Frame TV Art Manager is free for personal and other noncommercial use under the PolyForm Noncommercial License 1.0.0. It is source-available, not open source: the code is public, but commercial use is not permitted. It is an independent project, not affiliated with or endorsed by Samsung.</p>
           </details>
         </div>
       </section>
 
-      <section class="final-cta">
-        <p class="eyebrow">Ready to run it at home?</p>
-        <h2>Keep your uploaded Frame TV art collection synchronized.</h2>
-        <p>Review the prerequisites and license, then start with the Docker Compose example.</p>
-        <a class="button primary" href="https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose">View installation and license</a>
+      <section class="final-cta" aria-labelledby="final-cta-title">
+        <p class="eyebrow">Ready to try it?</p>
+        <h2 id="final-cta-title">Install it, approve it once, add a few pictures.</h2>
+        <p>Frame TV Art Manager runs its first sync as soon as it starts, so uploads begin as soon as you approve the connection on the TV. After that, it keeps the TV in sync on its own.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose">Quick start on GitHub</a>
+          <a class="button secondary" href="./guides/samsung-frame-tv-docker.html">Step-by-step Docker guide</a>
+        </div>
       </section>
     </main>
 
     <footer class="site-footer">
       <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"></span><span>Frame TV Art Manager</span></a>
-      <p>Independent, noncommercial source-available software. Not affiliated with or endorsed by Samsung.</p>
+      <p>Free for noncommercial use under PolyForm Noncommercial 1.0.0. Source-available, not open source. Independent; not affiliated with or endorsed by Samsung.</p>
       <div class="footer-links">
         <a href="./#guides">Guides</a>
         <a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a>
