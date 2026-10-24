@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/app"
@@ -38,7 +40,7 @@ func TestApplicationPreparationFailurePreventsChildrenFromStarting(t *testing.T)
 		t.Fatal("RunCycle started after preparation failed")
 	}
 	wantStates := []app.State{app.StateStarting, app.StateFailed}
-	if !equalStates(states, wantStates) {
+	if !slices.Equal(states, wantStates) {
 		t.Fatalf("states = %v, want %v", states, wantStates)
 	}
 }
@@ -162,7 +164,7 @@ func TestApplicationBindFailurePreventsChildrenFromStarting(t *testing.T) {
 		t.Fatal("RunCycle started after HTTP bind failed")
 	}
 	wantStates := []app.State{app.StateStarting, app.StateFailed}
-	if !equalStates(states, wantStates) {
+	if !slices.Equal(states, wantStates) {
 		t.Fatalf("states = %v, want %v", states, wantStates)
 	}
 }
@@ -202,7 +204,7 @@ func TestApplicationCancellationStopsCycleCleanly(t *testing.T) {
 	}
 	waitClosed(t, cycleStopped, "Sync Cycle stop")
 	wantStates := []app.State{app.StateStarting, app.StateReady, app.StateStopping}
-	if got := states.snapshot(); !equalStates(got, wantStates) {
+	if got := states.snapshot(); !slices.Equal(got, wantStates) {
 		t.Fatalf("states = %v, want %v", got, wantStates)
 	}
 }
@@ -210,61 +212,57 @@ func TestApplicationCancellationStopsCycleCleanly(t *testing.T) {
 func TestApplicationOwnsHTTPAndCycleUntilShutdownCompletes(t *testing.T) {
 	t.Parallel()
 
-	server := newBlockingHTTPServer()
-	cycleStarted := make(chan struct{})
-	cycleStopped := make(chan struct{})
-	var cycleStarts atomic.Int32
-	application, err := app.New(app.Options{
-		RunCycle: func(ctx context.Context) error {
-			cycleStarts.Add(1)
-			close(cycleStarted)
-			<-ctx.Done()
-			close(cycleStopped)
-			return ctx.Err()
-		},
-		BindHTTP: func(context.Context) (app.HTTPServer, error) { return server, nil },
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() { result <- application.Run(ctx) }()
-	waitClosed(t, cycleStarted, "Sync Cycle start")
-	waitClosed(t, server.serveStarted, "HTTP serve start")
-
-	cancel()
-	waitClosed(t, server.shutdownStarted, "HTTP shutdown start")
-	waitClosed(t, cycleStopped, "Sync Cycle stop")
-	waitClosed(t, server.serveStopped, "HTTP serve stop")
-	select {
-	case err := <-result:
-		t.Fatalf("Run() returned before HTTP shutdown completed: %v", err)
-	case <-time.After(25 * time.Millisecond):
-	}
-	close(server.allowShutdown)
-
-	select {
-	case err := <-result:
+	synctest.Test(t, func(t *testing.T) {
+		server := newBlockingHTTPServer()
+		cycleStopped := make(chan struct{})
+		var cycleStarts atomic.Int32
+		application, err := app.New(app.Options{
+			RunCycle: func(ctx context.Context) error {
+				cycleStarts.Add(1)
+				<-ctx.Done()
+				close(cycleStopped)
+				return ctx.Err()
+			},
+			BindHTTP: func(context.Context) (app.HTTPServer, error) { return server, nil },
+		})
 		if err != nil {
+			t.Fatalf("New() error = %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		result := make(chan error, 1)
+		go func() { result <- application.Run(ctx) }()
+		synctest.Wait()
+		waitClosed(t, server.serveStarted, "HTTP serve start")
+
+		cancel()
+		synctest.Wait()
+		waitClosed(t, server.shutdownStarted, "HTTP shutdown start")
+		waitClosed(t, cycleStopped, "Sync Cycle stop")
+		waitClosed(t, server.serveStopped, "HTTP serve stop")
+		select {
+		case err := <-result:
+			t.Fatalf("Run() returned before HTTP shutdown completed: %v", err)
+		default:
+		}
+		close(server.allowShutdown)
+
+		if err := <-result; err != nil {
 			t.Fatalf("Run() error = %v, want nil", err)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("Run() did not return after HTTP shutdown completed")
-	}
-	if got := cycleStarts.Load(); got != 1 {
-		t.Fatalf("Sync Cycle starts = %d, want 1", got)
-	}
-	if got := server.serveCalls.Load(); got != 1 {
-		t.Fatalf("HTTP Serve calls = %d, want 1", got)
-	}
-	if got := server.shutdownCalls.Load(); got != 1 {
-		t.Fatalf("HTTP Shutdown calls = %d, want 1", got)
-	}
-	if got := server.closeCalls.Load(); got != 0 {
-		t.Fatalf("HTTP Close calls = %d, want 0", got)
-	}
+		if got := cycleStarts.Load(); got != 1 {
+			t.Fatalf("Sync Cycle starts = %d, want 1", got)
+		}
+		if got := server.serveCalls.Load(); got != 1 {
+			t.Fatalf("HTTP Serve calls = %d, want 1", got)
+		}
+		if got := server.shutdownCalls.Load(); got != 1 {
+			t.Fatalf("HTTP Shutdown calls = %d, want 1", got)
+		}
+		if got := server.closeCalls.Load(); got != 0 {
+			t.Fatalf("HTTP Close calls = %d, want 0", got)
+		}
+	})
 }
 
 func TestApplicationReturnsUnexpectedCycleErrorAndStopsHTTP(t *testing.T) {
@@ -303,7 +301,7 @@ func TestApplicationReturnsUnexpectedCycleErrorAndStopsHTTP(t *testing.T) {
 	waitClosed(t, server.shutdownStarted, "HTTP shutdown")
 	waitClosed(t, server.serveStopped, "HTTP serve stop")
 	wantStates := []app.State{app.StateStarting, app.StateReady, app.StateFailed}
-	if got := states.snapshot(); !equalStates(got, wantStates) {
+	if got := states.snapshot(); !slices.Equal(got, wantStates) {
 		t.Fatalf("states = %v, want %v", got, wantStates)
 	}
 }
@@ -522,18 +520,6 @@ func TestApplicationBoundsBlockingResourceCleanup(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Run() exceeded cleanup deadline")
 	}
-}
-
-func equalStates(got, want []app.State) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for index := range got {
-		if got[index] != want[index] {
-			return false
-		}
-	}
-	return true
 }
 
 type stateRecorder struct {

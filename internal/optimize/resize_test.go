@@ -3,6 +3,7 @@ package optimize
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -14,23 +15,6 @@ import (
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
-
-func TestDefaultConfigUsesBalancedImagePresets(t *testing.T) {
-	t.Parallel()
-	cfg := DefaultConfig()
-	if cfg.SmartCropEnabled || cfg.SmartCropMinGain != 0.03 {
-		t.Fatalf("smart crop defaults = enabled %t, gain %v", cfg.SmartCropEnabled, cfg.SmartCropMinGain)
-	}
-	if cfg.MuseumModeEnabled || cfg.MuseumModeIntensity != 5 {
-		t.Fatalf("museum defaults = enabled %t, intensity %d", cfg.MuseumModeEnabled, cfg.MuseumModeIntensity)
-	}
-	if cfg.SharpenAmount != 0.25 || cfg.SharpenThreshold != 4 {
-		t.Fatalf("sharpen defaults = amount %v, threshold %d", cfg.SharpenAmount, cfg.SharpenThreshold)
-	}
-	if !cfg.LinearLightResize || !cfg.OptimizePNG || cfg.ColorProfilePolicy != "convert-srgb" || !cfg.HDRToneMap {
-		t.Fatalf("safe processing defaults = %+v", cfg)
-	}
-}
 
 func TestTransformKeyTracksCurrentImageAlgorithmRevision(t *testing.T) {
 	t.Parallel()
@@ -115,31 +99,6 @@ func TestOptimizeFile_MuseumMode(t *testing.T) {
 	}
 }
 
-func TestSharpen(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-	// Set a pixel to create contrast
-	img.Set(5, 5, color.RGBA{255, 255, 255, 255})
-
-	sharpened := sharpen(img)
-	if sharpened.Bounds() != img.Bounds() {
-		t.Error("sharpened image bounds mismatch")
-	}
-	// The center pixel should be different
-	if sharpened.At(5, 5) == img.At(5, 5) {
-		t.Log("Note: Sharpening 1x1 white pixel in 10x10 black might not change value due to kernel, but it should run")
-	}
-}
-
-func TestValidateImage_Invalid(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "invalid.jpg")
-	_ = os.WriteFile(path, []byte("not an image"), 0o600)
-
-	if err := ValidateImage(context.Background(), path); err == nil {
-		t.Error("expected error for invalid image")
-	}
-}
-
 func TestValidateImageRejectsHeaderValidTruncatedJPEG(t *testing.T) {
 	t.Parallel()
 	var encoded bytes.Buffer
@@ -188,36 +147,6 @@ func TestOptimizeFileColorProfilePolicy(t *testing.T) {
 	cfg.ColorProfilePolicy = "reject-embedded"
 	if _, _, err := OptimizeFile(path, cfg, slog.Default()); err == nil || !strings.Contains(err.Error(), "JPEG ICC") {
 		t.Fatalf("OptimizeFile(reject embedded profile) error = %v", err)
-	}
-}
-
-func BenchmarkSharpen(b *testing.B) {
-	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		sharpen(img)
-	}
-}
-
-func TestFindBestDirectorCrop(t *testing.T) {
-	// Create an image with a high-saliency area (red block) on the right
-	img := image.NewRGBA(image.Rect(0, 0, 300, 100))
-	// Right side: high contrast red/blue
-	for y := 0; y < 100; y++ {
-		for x := 200; x < 300; x++ {
-			if (x+y)%2 == 0 {
-				img.Set(x, y, color.RGBA{255, 0, 0, 255})
-			} else {
-				img.Set(x, y, color.RGBA{0, 0, 255, 255})
-			}
-		}
-	}
-
-	// Target 100x100 crop
-	bestOffset := findBestDirectorCrop(img, 100, 100, true)
-	// bestOffset should be around 200 (the right side)
-	if bestOffset < 150 {
-		t.Errorf("expected best offset to be on the right (>150), got %d", bestOffset)
 	}
 }
 
@@ -513,13 +442,6 @@ func TestHandleRename_RenameErrorPropagated(t *testing.T) {
 	}
 }
 
-func TestValidateImage_OpenError(t *testing.T) {
-	err := ValidateImage(context.Background(), filepath.Join(t.TempDir(), "does-not-exist.jpg"))
-	if err == nil {
-		t.Fatalf("expected ValidateImage open error")
-	}
-}
-
 func TestOptimizeFile_DecodeImageErrorAfterConfig(t *testing.T) {
 	dir := t.TempDir()
 	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
@@ -557,7 +479,7 @@ func TestOptimizeFile_DecodeImageErrorAfterConfig(t *testing.T) {
 func TestRewriteImage_PortraitModePadsInsteadOfCrop(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "portrait.jpg")
-	writeJPEGTestImage(t, src, 3, 5)
+	writeTestImage(t, src, 3, 5)
 
 	f, err := os.Open(src)
 	if err != nil {
@@ -588,29 +510,129 @@ func TestRewriteImage_PortraitModePadsInsteadOfCrop(t *testing.T) {
 	}
 }
 
-func TestRewriteImage_ReplaceFailureReturnsRenameError(t *testing.T) {
-	dir := t.TempDir()
-	src := filepath.Join(dir, "source.jpg")
-	writeJPEGTestImage(t, src, 4, 4)
-	target := filepath.Join(dir, "blocked")
-	if err := os.Mkdir(target, 0o700); err != nil {
-		t.Fatalf("create blocked target: %v", err)
+func TestRewriteImageReportsEachIOFailure(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T) (*os.File, string)
+		want    string
+	}{
+		{
+			name: "closed source", want: "seek to start",
+			prepare: func(t *testing.T) (*os.File, string) {
+				source := openRewriteSource(t, true)
+				_ = source.Close()
+				return source, filepath.Join(t.TempDir(), "renamed.jpg")
+			},
+		},
+		{
+			name: "undecodable source", want: "decode image",
+			prepare: func(t *testing.T) (*os.File, string) {
+				return openRewriteSource(t, false), filepath.Join(t.TempDir(), "bad.jpg")
+			},
+		},
+		{
+			name: "temporary file directory is a file", want: "create optimized temporary file",
+			prepare: func(t *testing.T) (*os.File, string) {
+				blocker := filepath.Join(t.TempDir(), "blocked")
+				if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return openRewriteSource(t, true), filepath.Join(blocker, "out.jpg")
+			},
+		},
+		{
+			name: "destination is a directory", want: "replace optimized image",
+			prepare: func(t *testing.T) (*os.File, string) {
+				target := filepath.Join(t.TempDir(), "blocked")
+				if err := os.Mkdir(target, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				return openRewriteSource(t, true), target
+			},
+		},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			source, path := test.prepare(t)
+			_, _, err := rewriteImage(rewriteParams{
+				f: source, path: path, filename: filepath.Base(path), width: 8, height: 8,
+				cfg: DefaultConfig(), logger: discardLogger(),
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("rewriteImage() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
 
-	f, err := os.Open(src)
+func openRewriteSource(t *testing.T, valid bool) *os.File {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "source.jpg")
+	if valid {
+		writeTestImage(t, path, 8, 8)
+	} else if err := os.WriteFile(path, []byte("not-an-image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("open source image: %v", err)
 	}
-	_, _, err = rewriteImage(rewriteParams{
-		f:        f,
-		path:     target,
-		filename: "source.jpg",
-		width:    4,
-		height:   4,
-		cfg:      DefaultConfig(),
-		logger:   slog.Default(),
-	})
-	if err == nil || !strings.Contains(err.Error(), "replace optimized image") {
-		t.Fatalf("expected replace failure, got %v", err)
+	t.Cleanup(func() { _ = file.Close() })
+	return file
+}
+
+func TestOptimizeFileRejectsUnreadableInputsAndUnsafeTargets(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	valid := filepath.Join(directory, "valid.jpg")
+	writeTestImage(t, valid, 8, 6)
+	notImage := filepath.Join(directory, "bad.jpg")
+	if err := os.WriteFile(notImage, []byte("not a jpeg"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		path      string
+		configure func(*Config)
+		want      string
+	}{
+		{name: "undecodable header", path: notImage, configure: func(cfg *Config) { cfg.MaxWidth, cfg.MaxHeight = 10, 10 }, want: "decode image config"},
+		{name: "invalid target", path: valid, configure: func(cfg *Config) { cfg.MaxWidth = 0 }},
+		{name: "working set over budget", path: valid, configure: func(cfg *Config) { cfg.MaxWidth, cfg.MaxHeight, cfg.MaxWorkingBytes = 8, 6, 1 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := DefaultConfig()
+			test.configure(&cfg)
+			if _, _, err := OptimizeFile(test.path, cfg, discardLogger()); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("OptimizeFile() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+
+	file, err := os.Open(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	if err := validateOptimizedPixels(context.Background(), file, 1, 1); err == nil {
+		t.Fatal("validateOptimizedPixels(wrong dimensions) error = nil")
+	}
+}
+
+func TestOptimizeFileContextHonorsCancellationBeforeIO(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	path := filepath.Join(t.TempDir(), "missing.jpg")
+
+	name, modified, err := optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, DefaultConfig(), discardLogger(), defaultPixelWorkers())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("OptimizeFileContext() error = %v, want context.Canceled", err)
+	}
+	if name != "missing.jpg" || modified {
+		t.Fatalf("OptimizeFileContext() = (%q, %t), want (missing.jpg, false)", name, modified)
 	}
 }

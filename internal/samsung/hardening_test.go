@@ -107,7 +107,7 @@ func TestAdapterRejectsUnverifiedFrameTVIdentity(t *testing.T) {
 			if err == nil {
 				t.Fatal("Observe() error = nil")
 			}
-			if observation.Disposition != DispositionUnsafeUnknown || !observation.Authorization.isZero() {
+			if observation.Disposition != DispositionUnsafeUnknown || !unauthorized(observation.Authorization) {
 				t.Fatalf("observation = %+v, want unsafe and unauthorized", observation)
 			}
 			if transport.artModeCalls != 0 || transport.inventoryCalls != 0 {

@@ -869,11 +869,10 @@ func TestConstructionHelpersAndErrorStatus(t *testing.T) {
 	if err != nil || service == nil {
 		t.Fatalf("default construction: %v", err)
 	}
-	if _, err := (randomIDs{}).NewID(); err != nil {
-		t.Fatal(err)
-	}
-	if (wallClock{}).Now().IsZero() {
-		t.Fatal("wall clock returned zero")
+	first, firstErr := (randomIDs{}).NewID()
+	second, secondErr := (randomIDs{}).NewID()
+	if firstErr != nil || secondErr != nil || first == "" || first == second {
+		t.Fatalf("operation IDs = %q/%v, %q/%v; want distinct identifiers", first, firstErr, second, secondErr)
 	}
 	checks := []struct {
 		err  error

@@ -75,47 +75,6 @@ func sourceURLIdentity(provider, rawURL string) string {
 	return sourceIdentity(provider, parsed.String(), label)
 }
 
-// slugFromArticURL derives a stable slug from an Art Institute IIIF URL.
-func slugFromArticURL(u string) string {
-	if !strings.Contains(u, "artic.edu") {
-		return URLToSlug(u)
-	}
-	urlParts := strings.Split(u, "/")
-	if len(urlParts) <= 5 {
-		return URLToSlug(u)
-	}
-	return capSlug(Filename(urlParts[5]))
-}
-
-// slugFromNASAURL derives a stable slug from a NASA image URL.
-func slugFromNASAURL(u string) string {
-	if !strings.Contains(u, "nasa.gov") {
-		return URLToSlug(u)
-	}
-	urlParts := strings.Split(u, "/")
-	if len(urlParts) == 0 {
-		return URLToSlug(u)
-	}
-	last := urlParts[len(urlParts)-1]
-	id := strings.Split(last, "~")[0]
-	slug := strings.ReplaceAll(Filename(id), " ", "-")
-	return capSlug(slug)
-}
-
-// URLToSlug generates a deterministic slug from a URL.
-func URLToSlug(url string) string {
-	if u, err := neturl.Parse(url); err == nil && u.Host != "" {
-		host := strings.TrimPrefix(u.Host, "www.")
-		path := strings.Trim(u.Path, "/")
-		if parts := strings.Split(path, "/"); len(parts) > 0 {
-			path = parts[0]
-		}
-		slug := strings.ReplaceAll(Filename(host+"_"+path), " ", "-")
-		return capSlug(slug)
-	}
-	return slugDirectSource
-}
-
 var (
 	// reSpaces collapses multiple consecutive spaces into one.
 	reSpaces = regexp.MustCompile(` +`)

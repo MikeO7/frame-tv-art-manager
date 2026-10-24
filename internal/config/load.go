@@ -20,14 +20,6 @@ const (
 	smartCropProviderHTTP   = "http"
 )
 
-// Load reads configuration from environment variables, applies defaults,
-// and validates the result. Returns an error if required values are missing
-// or constraints are violated.
-func Load() (*Config, error) {
-	cfg, _, err := LoadWithWarnings()
-	return cfg, err
-}
-
 // LoadWithWarnings reads and validates the process environment and returns
 // compatibility warnings for the composition root to report.
 func LoadWithWarnings() (*Config, []Warning, error) {

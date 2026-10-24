@@ -85,7 +85,6 @@ func itemsEqual(left, right []Item) bool {
 		return false
 	}
 	for index := range left {
-		//nolint:gosec // equal lengths are checked above before the paired index walk
 		if !itemEqual(left[index], right[index]) {
 			return false
 		}

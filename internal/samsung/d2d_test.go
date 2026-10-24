@@ -49,6 +49,7 @@ func TestWriteD2DPartRejectsShortWrite(t *testing.T) {
 }
 
 func TestUploadImageD2DFileStopsWhenCanceledMidTransfer(t *testing.T) {
+	t.Parallel()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

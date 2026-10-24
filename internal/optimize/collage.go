@@ -8,46 +8,12 @@ import (
 	"log/slog"
 )
 
-const (
-	collageWidth  = 3840
-	collageHeight = 2160
-)
-
 type collageRenderRequest struct {
 	ctx                       context.Context
 	cfg                       Config
 	logger                    *slog.Logger
 	leftSharpen, rightSharpen float64
 	sharpenThreshold, workers int
-}
-
-// CreateCollage joins two upright portrait images side-by-side into a single
-// 4K (3840x2160) landscape canvas, center-cropping each to a half-width panel
-// and drawing a clean dark divider line down the seam.
-func CreateCollage(img1, img2 *image.RGBA, smart bool) *image.RGBA {
-	return CreateCollageForTarget(img1, img2, collageWidth, collageHeight, smart)
-}
-
-// CreateCollageForTarget joins two upright portraits into the requested
-// landscape pixel contract.
-func CreateCollageForTarget(img1, img2 *image.RGBA, targetWidth, targetHeight int, smart bool) *image.RGBA {
-	return createCollageForTarget(img1, img2, targetWidth, targetHeight, smart, 0.03, true)
-}
-
-//nolint:revive // explicit target and crop-quality controls keep this renderer independent of global config
-func createCollageForTarget(
-	img1, img2 *image.RGBA,
-	targetWidth, targetHeight int,
-	smart bool,
-	minGain float64,
-	linearLight bool,
-) *image.RGBA {
-	cfg := DefaultConfig()
-	cfg.MaxWidth, cfg.MaxHeight = targetWidth, targetHeight
-	cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.LinearLightResize = smart, minGain, linearLight
-	return renderCollage(img1, img2, collageRenderRequest{
-		ctx: context.Background(), cfg: cfg, logger: slog.New(slog.DiscardHandler), workers: defaultPixelWorkers(),
-	})
 }
 
 func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.RGBA {

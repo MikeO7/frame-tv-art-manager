@@ -22,10 +22,9 @@ type recordingCatalog struct {
 	renames [][2]string
 }
 
-// OptimizeFile preserves concise package-test setup without adding a
-// contextless production I/O surface.
+// OptimizeFile runs the production single-file transform with concise test setup.
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
-	return optimizeFile(context.Background(), path, cfg, logger, defaultPixelWorkers())
+	return optimizeFileWithPolicy(context.Background(), path, filepath.Base(path), false, cfg, logger, defaultPixelWorkers())
 }
 
 func (c *recordingCatalog) SupportedFiles() (map[string]struct{}, error) {
@@ -79,9 +78,9 @@ func writeTestImage(t *testing.T, path string, width, height int) {
 func TestOptimizeCatalogValidationAndErrors(t *testing.T) {
 	t.Run("catalog error", func(t *testing.T) {
 		wantErr := errors.New("catalog unavailable")
-		count, err := OptimizeCatalog(context.Background(), t.TempDir(), &recordingCatalog{err: wantErr}, DefaultConfig(), nil, discardLogger())
+		count, err := optimizeCatalog(context.Background(), t.TempDir(), &recordingCatalog{err: wantErr}, DefaultConfig(), nil, discardLogger(), nil)
 		if count != 0 || !errors.Is(err, wantErr) {
-			t.Fatalf("OptimizeCatalog() = (%d, %v), want (0, %v)", count, err, wantErr)
+			t.Fatalf("optimizeCatalog() = (%d, %v), want (0, %v)", count, err, wantErr)
 		}
 	})
 
@@ -94,18 +93,18 @@ func TestOptimizeCatalogValidationAndErrors(t *testing.T) {
 		catalog := &recordingCatalog{files: map[string]struct{}{"valid.jpg": {}, "corrupt.jpg": {}, "._sidecar.jpg": {}}}
 		cfg := DefaultConfig()
 		cfg.Enabled = false
-		count, err := OptimizeCatalog(context.Background(), dir, catalog, cfg, nil, discardLogger())
+		count, err := optimizeCatalog(context.Background(), dir, catalog, cfg, nil, discardLogger(), nil)
 		if err != nil || count != 0 {
-			t.Fatalf("OptimizeCatalog() = (%d, %v), want (0, nil)", count, err)
+			t.Fatalf("optimizeCatalog() = (%d, %v), want (0, nil)", count, err)
 		}
 	})
 
 	t.Run("canceled context is returned", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		count, err := OptimizeCatalog(ctx, t.TempDir(), &recordingCatalog{files: map[string]struct{}{}}, DefaultConfig(), nil, discardLogger())
+		count, err := optimizeCatalog(ctx, t.TempDir(), &recordingCatalog{files: map[string]struct{}{}}, DefaultConfig(), nil, discardLogger(), nil)
 		if count != 0 || !errors.Is(err, context.Canceled) {
-			t.Fatalf("OptimizeCatalog() = (%d, %v), want canceled", count, err)
+			t.Fatalf("optimizeCatalog() = (%d, %v), want canceled", count, err)
 		}
 	})
 }
@@ -120,12 +119,12 @@ func TestOptimizeCatalogRenamesImage(t *testing.T) {
 	cfg.MaxHeight = 6
 	var callback [][2]string
 
-	count, err := OptimizeCatalog(context.Background(), dir, catalog, cfg, func(oldName, newName string) error {
+	count, err := optimizeCatalog(context.Background(), dir, catalog, cfg, func(oldName, newName string) error {
 		callback = append(callback, [2]string{oldName, newName})
 		return nil
-	}, discardLogger())
+	}, discardLogger(), nil)
 	if err != nil {
-		t.Fatalf("OptimizeCatalog: %v", err)
+		t.Fatalf("optimizeCatalog: %v", err)
 	}
 	if count != 1 || len(callback) != 1 || len(catalog.renames) != 1 {
 		t.Fatalf("count=%d callback=%v catalog=%v", count, callback, catalog.renames)
@@ -150,11 +149,11 @@ func TestOptimizeCatalogReturnsRenameObserverFailure(t *testing.T) {
 	cfg.MaxHeight = 6
 	wantErr := errors.New("persist TV mapping")
 
-	count, err := OptimizeCatalog(context.Background(), dir, catalog, cfg, func(_, _ string) error {
+	count, err := optimizeCatalog(context.Background(), dir, catalog, cfg, func(_, _ string) error {
 		return wantErr
-	}, discardLogger())
+	}, discardLogger(), nil)
 	if count != 1 || !errors.Is(err, wantErr) {
-		t.Fatalf("OptimizeCatalog() = (%d, %v), want (1, %v)", count, err, wantErr)
+		t.Fatalf("optimizeCatalog() = (%d, %v), want (1, %v)", count, err, wantErr)
 	}
 }
 
@@ -168,8 +167,7 @@ func TestCollagePipelineJPEGAndPNG(t *testing.T) {
 			writeTestImage(t, filepath.Join(dir, f2), 8, 12)
 			catalog := &recordingCatalog{}
 			cfg := DefaultConfig()
-			cfg.MaxWidth = 3840
-			cfg.MaxHeight = 2160
+			cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
 			name, err := processCollagePair(collageJob{
 				artworkDir: dir,
 				f1:         f1,
@@ -234,6 +232,7 @@ func TestProcessCollagesUpdatesBatchState(t *testing.T) {
 	var callbacks [][2]string
 	cfg := DefaultConfig()
 	cfg.PortraitMode = portraitModeCollage
+	cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
 	if err := processCollages(collageBatch{
 		artworkDir: dir,
 		localFiles: localFiles,

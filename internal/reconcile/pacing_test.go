@@ -427,8 +427,6 @@ func TestMutationExecutionOptions(t *testing.T) {
 		{name: "excessive pacing", option: WithMutationPacing(maximumMutationPacing + time.Nanosecond)},
 		{name: "zero attempts", option: WithMutationAttempts(0)},
 		{name: "excessive attempts", option: WithMutationAttempts(maximumMutationAttempts + 1)},
-		{name: "zero capacity TTL", option: WithCapacityEvidenceTTL(0)},
-		{name: "excessive capacity TTL", option: WithCapacityEvidenceTTL(maximumCapacityTTL + time.Nanosecond)},
 		{name: "nil option", option: nil},
 	}
 	for _, test := range tests {

@@ -2,19 +2,14 @@ package samsung
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,16 +19,15 @@ import (
 	"github.com/coder/websocket"
 )
 
+const (
+	testProtocolDeleteImage  = "delete_image_list"
+	testProtocolGetSlideshow = "get_slideshow_status"
+)
+
 type d2dCapture struct {
 	header  map[string]any
 	payload []byte
 }
-
-const (
-	testProtocolDeleteImage   = "delete_image_list"
-	testProtocolGetSlideshow  = "get_slideshow_status"
-	testProtocolJPEGExtension = ".jpg"
-)
 
 type protocolTVFixture struct {
 	server          *httptest.Server
@@ -360,213 +354,42 @@ func writeProtocolD2DResponse(ctx context.Context, conn *websocket.Conn, respons
 	})
 }
 
-func protocolErrorOutcome(err error) Outcome {
-	var typed *Error
-	if errors.As(err, &typed) {
-		return typed.Outcome
-	}
-	return OutcomeNotAttempted
+// ProtocolTVFixture is the test-only local Samsung protocol server used by
+// production-boundary integration tests.
+type ProtocolTVFixture = protocolTVFixture
+
+// NewProtocolTVFixture starts the shared local Samsung protocol fixture.
+func NewProtocolTVFixture(t *testing.T) *ProtocolTVFixture {
+	t.Helper()
+	return newProtocolTVFixture(t)
 }
 
-func TestProtocolTransportObservesAndMutatesFrameTV(t *testing.T) {
-	fixture := newProtocolTVFixture(t)
-	tokenPath := filepath.Join(t.TempDir(), "auth", "token")
-	transport := newProtocolTransport(Config{
-		Address: fixture.address(t), ClientName: "protocol-fixture", TokenPath: tokenPath,
-		ConnectTimeout: 2 * time.Second, RequestTimeout: 2 * time.Second,
-	}, Dependencies{Logger: slog.New(slog.DiscardHandler)}).(*protocolTransport)
-	ctx := context.Background()
-
-	if err := transport.Connect(ctx, false); err != nil {
-		t.Fatalf("Connect() error = %v", err)
-	}
-	if err := transport.Connect(ctx, false); err != nil {
-		t.Fatalf("second Connect() error = %v", err)
-	}
-	info, err := transport.DeviceInfo(ctx)
-	if err != nil {
-		t.Fatalf("DeviceInfo() error = %v", err)
-	}
-	if info.ModelName != "QN55LS03D" || !info.IsFrameTV() || !info.IsOn() {
-		t.Fatalf("DeviceInfo() = %+v", info)
-	}
-	if mode, err := transport.ArtMode(ctx); err != nil || mode != stringOn {
-		t.Fatalf("ArtMode() = %q, %v", mode, err)
-	}
-	inventory, err := transport.Inventory(ctx)
-	if err != nil || !strings.Contains(string(inventory), "art-1") {
-		t.Fatalf("Inventory() = %s, %v", inventory, err)
-	}
-	if err := transport.Delete(ctx, "art-1"); err != nil {
-		t.Fatalf("Delete() error = %v", err)
-	}
-	if err := transport.Select(ctx, "art-1"); err != nil {
-		t.Fatalf("Select() error = %v", err)
-	}
-	wantObservedSlideshow := SlideshowSetting{Interval: 30, Kind: SlideshowShuffle}
-	if value, err := transport.Slideshow(ctx); err != nil || value != wantObservedSlideshow {
-		t.Fatalf("Slideshow() = %+v, %v", value, err)
-	}
-	disabled := SlideshowSetting{Kind: SlideshowShuffle}
-	if err := transport.ConfigureSlideshow(ctx, disabled); err != nil {
-		t.Fatalf("ConfigureSlideshow(off) error = %v", err)
-	}
-	sequential := SlideshowSetting{Interval: 15, Kind: SlideshowSequential}
-	if err := transport.ConfigureSlideshow(ctx, sequential); err != nil {
-		t.Fatalf("ConfigureSlideshow(15) error = %v", err)
-	}
-	if got := fixture.slideshowSetting(); got != sequential {
-		t.Fatalf("wire slideshow setting = %+v, want %+v", got, sequential)
-	}
-	if got := fixture.slideshowMutations(); len(got) != 2 || got[0] != disabled || got[1] != sequential {
-		t.Fatalf("wire slideshow mutations = %+v", got)
-	}
-	if value, err := transport.Brightness(ctx); err != nil || value != 42 {
-		t.Fatalf("Brightness() = %d, %v", value, err)
-	}
-	if err := transport.ConfigureBrightness(ctx, 61); err != nil {
-		t.Fatalf("ConfigureBrightness() error = %v", err)
-	}
-
-	imagePath := filepath.Join(t.TempDir(), "upload.jpg")
-	if err := os.WriteFile(imagePath, []byte("image-data"), 0o600); err != nil {
-		t.Fatalf("write upload fixture: %v", err)
-	}
-	file, err := os.Open(imagePath)
-	if err != nil {
-		t.Fatalf("open upload fixture: %v", err)
-	}
-	defer func() { _ = file.Close() }()
-	fileType := strings.TrimPrefix(testProtocolJPEGExtension, ".")
-	contentID, err := transport.Upload(ctx, preparedUpload{
-		file: file, fileType: fileType, matte: "none", size: int64(len("image-data")),
-		digest: sha256.Sum256([]byte("image-data")),
-	})
-	if err != nil || contentID != "uploaded-art" {
-		t.Fatalf("Upload() = %q, %v", contentID, err)
-	}
-	select {
-	case capture := <-fixture.d2dCapture:
-		if string(capture.payload) != "image-data" || capture.header["secKey"] != "fixture-key" || capture.header["fileType"] != fileType {
-			t.Fatalf("D2D capture = %+v, payload %q", capture.header, capture.payload)
-		}
-	case err := <-fixture.d2dErr:
-		t.Fatalf("D2D capture error = %v", err)
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for D2D capture")
-	}
-
-	if err := transport.Delete(ctx, "storage-full"); !errors.Is(err, ErrStorageFull) || protocolErrorOutcome(err) != OutcomeNotApplied {
-		t.Fatalf("Delete(storage-full) error = %v, outcome = %d", err, protocolErrorOutcome(err))
-	}
-	if err := transport.Select(ctx, "api-error"); !errors.Is(err, ErrArtAPIError) || protocolErrorOutcome(err) != OutcomeNotApplied {
-		t.Fatalf("Select(api-error) error = %v, outcome = %d", err, protocolErrorOutcome(err))
-	}
-
-	powerCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
-	defer cancel()
-	if err := transport.PowerOff(powerCtx); err != nil {
-		t.Fatalf("PowerOff() error = %v", err)
-	}
-	for _, want := range []string{"Press", "Release"} {
-		select {
-		case got := <-fixture.remoteCommands:
-			if got != want {
-				t.Fatalf("remote command = %q, want %q", got, want)
-			}
-		case <-time.After(time.Second):
-			t.Fatalf("timed out waiting for remote command %q", want)
-		}
-	}
-
-	if err := transport.Close(ctx); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-	if err := transport.Close(ctx); err != nil {
-		t.Fatalf("second Close() error = %v", err)
-	}
-	if _, err := transport.ArtMode(ctx); !errors.Is(err, ErrNotConnected) {
-		t.Fatalf("ArtMode() after close error = %v, want ErrNotConnected", err)
-	}
-	if token, err := os.ReadFile(tokenPath); err != nil || string(token) != "fixture-token" {
-		t.Fatalf("persisted token = %q, %v", token, err)
-	}
-	if mode, err := os.Stat(tokenPath); err != nil || mode.Mode().Perm() != 0o600 {
-		t.Fatalf("token mode = %v, %v", mode, err)
-	}
+// Address returns the fixture's TLS WebSocket and device-info address.
+func (f *protocolTVFixture) Address(t *testing.T) string {
+	t.Helper()
+	return f.address(t)
 }
 
-func TestProtocolUploadClassifiesImageAddedStorageFullAsNotApplied(t *testing.T) {
-	fixture := newProtocolTVFixture(t)
-	fixture.stateMu.Lock()
-	fixture.imageAddedError = 507
-	fixture.stateMu.Unlock()
-	transport := newProtocolTransport(Config{
-		Address: fixture.address(t), ClientName: "storage-full-fixture",
-		TokenPath:      filepath.Join(t.TempDir(), "auth", "token"),
-		ConnectTimeout: 2 * time.Second, RequestTimeout: 2 * time.Second,
-	}, Dependencies{Logger: slog.New(slog.DiscardHandler)}).(*protocolTransport)
-	ctx := context.Background()
-	if err := transport.Connect(ctx, false); err != nil {
-		t.Fatalf("Connect() error = %v", err)
-	}
-	t.Cleanup(func() { _ = transport.Close(context.Background()) })
-
-	path := filepath.Join(t.TempDir(), "upload.jpg")
-	data := []byte("image-data")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = file.Close() }()
-	_, err = transport.Upload(ctx, preparedUpload{
-		file: file, fileType: "jpg", matte: "none", size: int64(len(data)), digest: sha256.Sum256(data),
-	})
-	if !errors.Is(err, ErrStorageFull) || protocolErrorOutcome(err) != OutcomeNotApplied {
-		t.Fatalf("Upload() error = %v, outcome = %d; want storage full/not applied", err, protocolErrorOutcome(err))
-	}
+// DeleteMutations returns successful delete commands observed on the wire.
+func (f *protocolTVFixture) DeleteMutations() []string {
+	f.stateMu.Lock()
+	defer f.stateMu.Unlock()
+	return append([]string(nil), f.deleteMutations...)
 }
 
-func TestProtocolTransportRejectsUnsafeOrInvalidCommands(t *testing.T) {
-	tokenPath := filepath.Join(t.TempDir(), "missing-token")
-	transport := &protocolTransport{
-		config: Config{Address: "127.0.0.1:1", TokenPath: tokenPath, ConnectTimeout: time.Millisecond},
-		logger: slog.New(slog.DiscardHandler),
-	}
-	if err := transport.Connect(context.Background(), true); !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("dry-run Connect() error = %v, want ErrUnauthorized", err)
-	}
-	if _, err := transport.Brightness(context.Background()); !errors.Is(err, ErrNotConnected) {
-		t.Fatalf("Brightness() error = %v, want ErrNotConnected", err)
-	}
-	canceledCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := transport.Wake(canceledCtx); !errors.Is(err, context.Canceled) || protocolErrorOutcome(err) != OutcomeNotAttempted {
-		t.Fatalf("Wake(canceled) error = %v, outcome = %d", err, protocolErrorOutcome(err))
-	}
+// Inventory returns the fixture's current user-art content IDs.
+func (f *protocolTVFixture) Inventory() []string {
+	f.stateMu.Lock()
+	defer f.stateMu.Unlock()
+	return append([]string(nil), f.inventory...)
+}
 
-	for _, test := range []struct {
-		address  string
-		wantHost string
-		wantPort int
-		wantErr  bool
-	}{
-		{address: "frame-tv.local", wantHost: "frame-tv.local", wantPort: portArtWSS},
-		{address: "127.0.0.1:9443", wantHost: "127.0.0.1", wantPort: 9443},
-		{address: " ", wantErr: true},
-		{address: "127.0.0.1:99999", wantErr: true},
-	} {
-		host, port, err := observationAddress(test.address)
-		if (err != nil) != test.wantErr || host != test.wantHost || port != test.wantPort {
-			t.Fatalf("observationAddress(%q) = %q, %d, %v", test.address, host, port, err)
-		}
-	}
+// SlideshowSetting returns the fixture's current typed slideshow state.
+func (f *protocolTVFixture) SlideshowSetting() SlideshowSetting {
+	return f.slideshowSetting()
+}
 
-	unknown := tokenPersistenceError(errors.New("disk failed"))
-	if protocolErrorOutcome(unknown) != OutcomeNotAttempted {
-		t.Fatalf("tokenPersistenceError() outcome = %d", protocolErrorOutcome(unknown))
-	}
+// SlideshowMutations returns typed slideshow writes observed on the wire.
+func (f *protocolTVFixture) SlideshowMutations() []SlideshowSetting {
+	return f.slideshowMutations()
 }

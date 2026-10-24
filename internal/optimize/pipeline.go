@@ -82,22 +82,6 @@ const (
 	maxOptimizeWorkers = 1
 )
 
-// OptimizeCatalog resizes, validates, and (optionally) collages the catalog's
-// images in parallel, invoking onRename for any file renamed during the pass.
-// It returns the number of optimized files and any context-cancellation error.
-//
-//nolint:revive // top-level public entry point; arguments are orthogonal and ctx is conventionally separate
-func OptimizeCatalog(
-	ctx context.Context,
-	artworkDir string,
-	catalog Catalog,
-	cfg Config,
-	onRename RenameObserver,
-	logger *slog.Logger,
-) (int, error) {
-	return optimizeCatalog(ctx, artworkDir, catalog, cfg, onRename, logger, nil)
-}
-
 //nolint:revive // internal orchestration seam keeps filesystem, catalog, policy, observer, and metadata explicit
 func optimizeCatalog(
 	ctx context.Context,

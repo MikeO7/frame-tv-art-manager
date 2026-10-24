@@ -3,6 +3,7 @@ package collection
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ func TestPrepareMigratesVersionOneManifestToDurableMetadata(t *testing.T) {
 	legacy := manifest{
 		Version: 1, Generation: legacyGeneration(seed.Items),
 		Items: []manifestItem{{
-			Name: item.Name, Digest: stringHex(item.Digest[:]), Type: item.Type,
+			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
 			Width: item.Width, Height: item.Height, OriginKey: item.Origin.Key, Class: item.Origin.Class,
 		}},
 	}

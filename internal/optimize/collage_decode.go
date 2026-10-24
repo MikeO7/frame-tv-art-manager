@@ -40,20 +40,6 @@ func isPortraitFile(ctx context.Context, path string) (bool, error) {
 	return h > w, nil
 }
 
-func loadAndRotateImage(ctx context.Context, path string) (*image.RGBA, error) {
-	return loadAndRotateImageWithPolicy(ctx, path, profileAssumeSRGB, slog.New(slog.DiscardHandler))
-}
-
-func loadAndRotateImageWithPolicy(
-	ctx context.Context,
-	path, profilePolicy string,
-	logger *slog.Logger,
-) (*image.RGBA, error) {
-	cfg := DefaultConfig()
-	cfg.ColorProfilePolicy = profilePolicy
-	return loadAndRotateImageWithConfig(ctx, path, cfg, logger)
-}
-
 func loadAndRotateImageWithConfig(ctx context.Context, path string, cfg Config, logger *slog.Logger) (*image.RGBA, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

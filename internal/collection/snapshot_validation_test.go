@@ -2,6 +2,7 @@ package collection
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func TestValidateSnapshot(t *testing.T) {
 		},
 		{
 			Name: "second.jpg", Key: "second.jpg", Digest: secondDigest, Type: FileTypeJPEG, Size: 6, Width: 2, Height: 3,
-			Origin: Origin{Key: "upload:" + stringHex(secondDigest[:]), Class: OriginOperatorUpload},
+			Origin: Origin{Key: "upload:" + hex.EncodeToString(secondDigest[:]), Class: OriginOperatorUpload},
 		},
 	}, nil, false)
 

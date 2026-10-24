@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -182,7 +183,7 @@ func TestPrepareRecoversBatchTransaction(t *testing.T) {
 	}
 	tx := transaction{
 		Version: 1, Kind: transactionKindBatch, Additions: []transactionEffect{effect},
-		Deletions: []transactionEffect{{Final: seed.Items[0].Path, Digest: stringHex(seed.Items[0].Digest[:])}},
+		Deletions: []transactionEffect{{Final: seed.Items[0].Path, Digest: hex.EncodeToString(seed.Items[0].Digest[:])}},
 		Next:      newManifest(items),
 	}
 	if err := writeJournal(context.Background(), root, tx); err != nil {
@@ -446,7 +447,7 @@ func TestPrepareCompletesIdempotentBatchRecovery(t *testing.T) {
 		Version: 1, Kind: transactionKindBatch, Next: newManifest(items),
 		Additions: []transactionEffect{effect},
 		Deletions: []transactionEffect{{
-			Final: filepath.Join(root, "already-absent.png"), Digest: stringHex(retiredDigest[:]),
+			Final: filepath.Join(root, "already-absent.png"), Digest: hex.EncodeToString(retiredDigest[:]),
 		}},
 	}
 	if err := writeJournal(context.Background(), root, tx); err != nil {
@@ -533,7 +534,7 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 		}
 		tx := transaction{
 			Version: 1, Kind: transactionKindBatch, Next: newManifest(nil),
-			Deletions: []transactionEffect{{Final: final, Digest: stringHex(originalDigest[:])}},
+			Deletions: []transactionEffect{{Final: final, Digest: hex.EncodeToString(originalDigest[:])}},
 		}
 		if err := writeJournal(context.Background(), root, tx); err != nil {
 			t.Fatalf("write batch intent: %v", err)
@@ -550,7 +551,7 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 
 func TestPrepareRejectsMalformedBatchTransactionIntents(t *testing.T) {
 	digest := sha256.Sum256([]byte("expected"))
-	digestText := stringHex(digest[:])
+	digestText := hex.EncodeToString(digest[:])
 	tests := []struct {
 		name   string
 		mutate func(string, *transaction)
@@ -808,7 +809,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 		digest := sha256.Sum256([]byte("preserve"))
 		tx := transaction{
 			Next:      newManifest(nil),
-			Deletions: []transactionEffect{{Final: link, Digest: stringHex(digest[:])}},
+			Deletions: []transactionEffect{{Final: link, Digest: hex.EncodeToString(digest[:])}},
 		}
 		if err := recoverBatchTransaction(context.Background(), root, tx); err == nil {
 			t.Fatal("recovery accepted a symlink deletion target")
@@ -872,7 +873,7 @@ func TestStableBatchSourceAndCleanupRejectUnsafeInputs(t *testing.T) {
 	}
 }
 
-func TestBatchApplyCancellationAndDefensiveBranches(t *testing.T) {
+func TestBatchApplyHonorsCancellationAndRejectsUnsafeRecovery(t *testing.T) {
 	t.Run("store mutation wait", func(t *testing.T) {
 		valueStore, err := New(Config{Root: filepath.Join(t.TempDir(), "collection")})
 		if err != nil {
@@ -931,9 +932,6 @@ func TestBatchApplyCancellationAndDefensiveBranches(t *testing.T) {
 		}
 	})
 
-	if itemsEqual(nil, []Item{{Name: "extra.png"}}) {
-		t.Fatal("item slices with different lengths compare equal")
-	}
 	valueStore, err := New(Config{Root: t.TempDir()})
 	if err != nil {
 		t.Fatalf("new store: %v", err)

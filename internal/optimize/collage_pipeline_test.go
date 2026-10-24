@@ -36,9 +36,9 @@ func TestLoadAndRotateImage_SeekFailureFromNonSeekableSource(t *testing.T) {
 	portraitPath := filepath.Join(dir, "portrait.jpg")
 	writeJPEGToFIFO(t, portraitPath, 2, 4)
 
-	_, err := loadAndRotateImage(context.Background(), portraitPath)
+	_, err := loadAndRotateImageWithConfig(context.Background(), portraitPath, DefaultConfig(), discardLogger())
 	if err == nil || !strings.Contains(err.Error(), "seek") {
-		t.Fatalf("loadAndRotateImage() = %v, expected seek error", err)
+		t.Fatalf("loadAndRotateImageWithConfig() = %v, expected seek error", err)
 	}
 }
 
@@ -188,9 +188,9 @@ func TestCollageUtilsPortraitDetectionAndRotation(t *testing.T) {
 		t.Fatalf("isPortraitFile(landscape) = (%v, %v), want (false, nil)", isPortrait, err)
 	}
 
-	img, err := loadAndRotateImage(context.Background(), portraitPath)
+	img, err := loadAndRotateImageWithConfig(context.Background(), portraitPath, DefaultConfig(), discardLogger())
 	if err != nil {
-		t.Fatalf("loadAndRotateImage(portrait) = %v", err)
+		t.Fatalf("loadAndRotateImageWithConfig(portrait) = %v", err)
 	}
 	if got := img.Bounds().Dy(); got != 4 {
 		t.Fatalf("loadAndRotateImage width x height = %d x %d", img.Bounds().Dx(), got)
@@ -265,12 +265,12 @@ func TestLoadAndRotateImage_Errors(t *testing.T) {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	_, err := loadAndRotateImage(context.Background(), path)
+	_, err := loadAndRotateImageWithConfig(context.Background(), path, DefaultConfig(), discardLogger())
 	if err == nil || (!strings.Contains(err.Error(), "unknown format") && !strings.Contains(err.Error(), "image: ")) {
-		t.Fatalf("loadAndRotateImage() = %v", err)
+		t.Fatalf("loadAndRotateImageWithConfig() = %v", err)
 	}
 
-	_, err = loadAndRotateImage(context.Background(), filepath.Join(dir, "missing.jpg"))
+	_, err = loadAndRotateImageWithConfig(context.Background(), filepath.Join(dir, "missing.jpg"), DefaultConfig(), discardLogger())
 	if err == nil {
 		t.Fatal("expected open error for missing file")
 	}
@@ -291,6 +291,7 @@ func TestProcessCollagesOddUploadPortraitSkipsOne(t *testing.T) {
 	var count int64
 	cfg := DefaultConfig()
 	cfg.PortraitMode = portraitModeCollage
+	cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
 	if err := processCollages(collageBatch{
 		artworkDir:     dir,
 		localFiles:     localFiles,
@@ -321,9 +322,10 @@ func TestCollectRawPortraitsFiltersAppleDoubleFiles(t *testing.T) {
 	writePNGForCollageTests(t, filepath.Join(dir, "upload_ok.jpg"), 4, 8)
 
 	localFiles := map[string]struct{}{
-		"._ignore.png":      {},
-		"upload_ok.jpg":     {},
-		"upload_ignore.opt": {},
+		"._ignore.png":       {},
+		"upload_ok.jpg":      {},
+		"upload_ignore.opt":  {},
+		"upload_missing.jpg": {},
 	}
 
 	got := collectRawPortraits(context.Background(), dir, localFiles, true)
@@ -354,7 +356,7 @@ func TestProcessCollagePair_OnRenameErrorReturnedAsWrap(t *testing.T) {
 	cfg.MaxWidth = 8
 	cfg.MaxHeight = 12
 
-	_, err := processCollagePair(collageJob{
+	name, err := processCollagePair(collageJob{
 		artworkDir: dir,
 		f1:         "upload_a.jpg",
 		f2:         "upload_b.jpg",
@@ -367,6 +369,9 @@ func TestProcessCollagePair_OnRenameErrorReturnedAsWrap(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "rename hook failed") {
 		t.Fatalf("expected wrapped rename hook error, got %v", err)
+	}
+	if name == "" {
+		t.Fatal("observer failure discarded the committed collage name")
 	}
 }
 
@@ -389,9 +394,9 @@ func TestLoadAndRotateImage_RespectsExifOrientation(t *testing.T) {
 	portraitPath := filepath.Join(dir, "portrait_oriented_for_load.jpg")
 	writeJPEGWithExifOrientation(t, portraitPath, 4, 2, 6)
 
-	got, err := loadAndRotateImage(context.Background(), portraitPath)
+	got, err := loadAndRotateImageWithConfig(context.Background(), portraitPath, DefaultConfig(), discardLogger())
 	if err != nil {
-		t.Fatalf("loadAndRotateImage() = %v", err)
+		t.Fatalf("loadAndRotateImageWithConfig() = %v", err)
 	}
 	if got.Bounds().Dx() != 2 || got.Bounds().Dy() != 4 {
 		t.Fatalf("expected rotated portrait bounds 2x4, got %dx%d", got.Bounds().Dx(), got.Bounds().Dy())
@@ -490,7 +495,8 @@ func TestProcessCollages_WithCollageModeIncludesNonUploadEntries(t *testing.T) {
 	writePNGForCollageTests(t, filepath.Join(dir, "junk.txt"), 4, 8)
 
 	cfg := DefaultConfig()
-	cfg.PortraitMode = "collage"
+	cfg.PortraitMode = portraitModeCollage
+	cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
 
 	localFiles := map[string]struct{}{
 		"remote_1.jpg":       {},
@@ -611,3 +617,48 @@ func imageFromPattern(width, height int) *image.RGBA {
 	}
 	return img
 }
+
+func TestProcessCollagesCollectsObserverErrorsAfterCommit(t *testing.T) {
+	dir := t.TempDir()
+	writeTestImage(t, filepath.Join(dir, "upload_a.jpg"), 8, 12)
+	writeTestImage(t, filepath.Join(dir, "upload_b.jpg"), 8, 12)
+	localFiles := map[string]struct{}{
+		"upload_a.jpg": {},
+		"upload_b.jpg": {},
+	}
+
+	observerErr := errors.New("observer failed")
+	var count int64
+	cfg := DefaultConfig()
+	cfg.PortraitMode = portraitModeCollage
+	cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
+	err := processCollages(collageBatch{
+		artworkDir:     dir,
+		localFiles:     localFiles,
+		cfg:            cfg,
+		catalog:        &recordingCatalog{},
+		onRename:       func(_, _ string) error { return observerErr },
+		logger:         discardLogger(),
+		optimizedCount: &count,
+	})
+	if err == nil || !strings.Contains(err.Error(), observerErr.Error()) {
+		t.Fatalf("processCollages() = %v", err)
+	}
+
+	if count != 1 {
+		t.Fatalf("expected exactly one optimized file, got %d", count)
+	}
+	if _, ok := localFiles["upload_a.jpg"]; ok {
+		t.Fatalf("source upload_a.jpg should have been removed from localFiles")
+	}
+	if _, ok := localFiles["upload_b.jpg"]; ok {
+		t.Fatalf("source upload_b.jpg should have been removed from localFiles")
+	}
+}
+
+// smallCollageWidth and smallCollageHeight keep collage pipeline tests fast;
+// the 3840x2160 output contract is covered by the collage geometry tests.
+const (
+	smallCollageWidth  = 96
+	smallCollageHeight = 54
+)

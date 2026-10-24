@@ -27,12 +27,6 @@ func toRGBA(img image.Image) *image.RGBA {
 	return rgba
 }
 
-// centerCrop performs a content-aware crop and high-fidelity scale to target dimensions.
-// It uses the Director's Cut Saliency Engine to identify subjects and optimize composition.
-func centerCrop(src *image.RGBA, targetW, targetH int, smart bool) *image.RGBA {
-	return centerCropWithOptions(src, targetW, targetH, smart, 0.03, true)
-}
-
 //nolint:revive // crop policy is kept explicit at this internal pixel-processing seam
 func centerCropWithOptions(
 	src *image.RGBA,
@@ -78,104 +72,6 @@ func cropRectForAspectWithProtection(
 		bestY = findBestDirectorCropWithProtection(src, srcW, cropH, false, minGain, protect, protectionStrength)
 	}
 	return image.Rect(0, bestY, srcW, bestY+cropH)
-}
-
-// sharpen applies a high-performance 3x3 sharpening kernel to the image.
-func sharpen(src *image.RGBA) *image.RGBA {
-	return sharpenWithWorkers(src, defaultPixelWorkers())
-}
-
-//nolint:gocognit,funlen // performance-critical kernel is manually unrolled across bounded row partitions
-func sharpenWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
-	bounds := src.Bounds()
-	dst := image.NewRGBA(bounds)
-	width, height := bounds.Dx(), bounds.Dy()
-
-	if width < 3 || height < 3 {
-		std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
-		return dst
-	}
-
-	chunk := (height - 2) / pixelPartitions
-	if chunk == 0 {
-		chunk = 1
-	}
-
-	srcStride := src.Stride
-	srcPix := src.Pix
-	dstStride := dst.Stride
-	dstPix := dst.Pix
-
-	runPixelTasks(workerLimit, func(i int) {
-		startY := 1 + i*chunk
-		endY := startY + chunk
-		if i == pixelPartitions-1 {
-			endY = height - 1
-		}
-		if startY >= height-1 {
-			return
-		}
-
-		func(sy, ey int) {
-			for y := sy; y < ey; y++ {
-				srcOffset := y * srcStride
-				dstOffset := y * dstStride
-				srcTopOffset := (y - 1) * srcStride
-				srcBottomOffset := (y + 1) * srcStride
-
-				for x := 1; x < width-1; x++ {
-					iDst := dstOffset + x*4
-					iSrc := srcOffset + x*4
-					iTop := srcTopOffset + x*4
-					iBottom := srcBottomOffset + x*4
-					iLeft := iSrc - 4
-					iRight := iSrc + 4
-
-					// R
-					valR := (int(srcPix[iSrc]) * 5) - int(srcPix[iTop]) - int(srcPix[iBottom]) - int(srcPix[iLeft]) - int(srcPix[iRight])
-					if valR < 0 {
-						valR = 0
-					} else if valR > 255 {
-						valR = 255
-					}
-					dstPix[iDst] = uint8(valR)
-
-					// G
-					valG := (int(srcPix[iSrc+1]) * 5) - int(srcPix[iTop+1]) - int(srcPix[iBottom+1]) - int(srcPix[iLeft+1]) - int(srcPix[iRight+1])
-					if valG < 0 {
-						valG = 0
-					} else if valG > 255 {
-						valG = 255
-					}
-					dstPix[iDst+1] = uint8(valG)
-
-					// B
-					valB := (int(srcPix[iSrc+2]) * 5) - int(srcPix[iTop+2]) - int(srcPix[iBottom+2]) - int(srcPix[iLeft+2]) - int(srcPix[iRight+2])
-					if valB < 0 {
-						valB = 0
-					} else if valB > 255 {
-						valB = 255
-					}
-					dstPix[iDst+2] = uint8(valB)
-
-					// A
-					dstPix[iDst+3] = srcPix[iSrc+3]
-				}
-			}
-		}(startY, endY)
-	})
-
-	// Copy borders
-	for x := 0; x < width; x++ {
-		copy(dst.Pix[0*dst.Stride+x*4:0*dst.Stride+x*4+4], src.Pix[0*src.Stride+x*4:0*src.Stride+x*4+4])
-		copy(dst.Pix[(height-1)*dst.Stride+x*4:(height-1)*dst.Stride+x*4+4], src.Pix[(height-1)*src.Stride+x*4:(height-1)*src.Stride+x*4+4])
-	}
-	for y := 0; y < height; y++ {
-		copy(dst.Pix[y*dst.Stride+0*4:y*dst.Stride+0*4+4], src.Pix[y*src.Stride+0*4:y*src.Stride+0*4+4])
-		copy(dst.Pix[y*dst.Stride+(width-1)*4:y*dst.Stride+(width-1)*4+4], src.Pix[y*src.Stride+(width-1)*4:y*src.Stride+(width-1)*4+4])
-	}
-
-	return dst
 }
 
 // sharpenWithOptions applies a bounded luminance unsharp mask. The threshold

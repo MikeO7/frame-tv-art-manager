@@ -518,7 +518,7 @@ func observeForCommand(t *testing.T, adapter *adapter, required CapabilitySet) O
 	if err != nil {
 		t.Fatalf("Observe() error = %v", err)
 	}
-	if observation.Authorization.isZero() {
+	if unauthorized(observation.Authorization) {
 		t.Fatalf("Observe() withheld authorization: %+v", observation)
 	}
 	return observation

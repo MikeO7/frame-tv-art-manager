@@ -36,6 +36,17 @@ func TestValidateOutputDimensionsEnforcesWorkingSetAdmission(t *testing.T) {
 	if err := validateOutputDimensions(16384, 16384, 12_000_000); err == nil {
 		t.Fatal("unsafe target dimensions were accepted")
 	}
+	if err := validateOutputDimensions(0, 1, 1); err == nil {
+		t.Fatal("zero-width target was accepted")
+	}
+	if err := validateOutputDimensions(1, 1, 0); err != nil {
+		t.Fatalf("unset pixel limit did not fall back to the default: %v", err)
+	}
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight, cfg.MaxWorkingBytes = 1, 1, 0
+	if err := validateWorkingSet(workingInput{pixels: 1, sourceBytes: 8}, cfg); err != nil {
+		t.Fatalf("unset working-set budget did not fall back to the default: %v", err)
+	}
 }
 
 func TestValidateWorkingSetAdmission(t *testing.T) {

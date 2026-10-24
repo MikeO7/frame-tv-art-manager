@@ -94,20 +94,6 @@ type Controller struct {
 	snapshot Snapshot
 }
 
-// NewController validates cfg and constructs an empty controller.
-func NewController(cfg Config) (*Controller, error) {
-	if cfg.TransformConcurrency <= 0 {
-		return nil, fmt.Errorf("transform concurrency must be positive: %d", cfg.TransformConcurrency)
-	}
-	if cfg.TransformQueue < 0 {
-		return nil, fmt.Errorf("transform queue must not be negative: %d", cfg.TransformQueue)
-	}
-	if cfg.PixelWorkers <= 0 {
-		return nil, fmt.Errorf("pixel workers must be positive: %d", cfg.PixelWorkers)
-	}
-	return newController(cfg), nil
-}
-
 // NewDefaultController constructs the validated production resource envelope.
 func NewDefaultController() *Controller {
 	return newController(DefaultConfig())

@@ -62,10 +62,6 @@ func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 	return outR, outG, outB
 }
 
-func galleryMasterPolish(src *image.RGBA) *image.RGBA {
-	return galleryMasterPolishWithWorkers(src, defaultPixelWorkers())
-}
-
 func galleryMasterPolishWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()

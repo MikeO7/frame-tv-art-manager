@@ -107,21 +107,6 @@ func (s *bmsState) floodFill() {
 	}
 }
 
-func processBMSThreshold(lumMap []uint8, t uint8, w, h int) []float64 {
-	return processBMSThresholdDirection(lumMap, t, w, h, false)
-}
-
-func processBMSThresholdDirection(values []uint8, threshold uint8, w, h int, inverse bool) []float64 {
-	if w <= 0 || h <= 0 {
-		return nil
-	}
-	if len(values) < w*h {
-		return nil
-	}
-	boolMap := thresholdBooleanMap(values, threshold, w*h, inverse)
-	return surroundednessMap(boolMap, w, h)
-}
-
 func processBMSAttention(values []uint8, threshold uint8, w, h int, inverse bool) []float64 {
 	if w <= 0 || h <= 0 || len(values) < w*h {
 		return nil

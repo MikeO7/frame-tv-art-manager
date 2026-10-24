@@ -1,9 +1,11 @@
 package brightness
 
 import (
+	"bytes"
 	"errors"
 	"log/slog"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,27 +30,6 @@ func TestSunElevationMatchesNOAAGoldenVector(t *testing.T) {
 	got := sunElevation(39.7392, -104.9903, time.Date(2026, time.July, 14, 0, 0, 0, 0, time.UTC))
 	if math.Abs(got-26.03) > 0.1 {
 		t.Fatalf("sunElevation() = %.4f degrees, want 26.03 (+/- 0.1)", got)
-	}
-}
-
-func TestGetTargetValueLoggingPaths(t *testing.T) {
-	logger := slog.New(slog.DiscardHandler)
-	manual := 4
-	now := time.Date(2025, time.June, 21, 19, 0, 0, 0, time.UTC)
-	if got := GetTargetValueAt(TargetOptions{Min: 2, Max: 10, Manual: &manual, Now: now}, logger); got == nil || *got != manual {
-		t.Fatalf("manual brightness = %v", got)
-	}
-	lat, lon := 40.0, -105.0
-	valid := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
-	if got := GetTargetValueAt(TargetOptions{Location: valid, Min: 2, Max: 10, Now: now}, logger); got == nil {
-		t.Fatal("expected logged solar brightness")
-	}
-	invalid := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "invalid"}
-	if got := GetTargetValueAt(TargetOptions{Location: invalid, Min: 2, Max: 10, Now: now}, logger); got != nil {
-		t.Fatalf("invalid timezone returned %v", *got)
-	}
-	if got := trySolarBrightnessAt(&SolarLocation{Latitude: &lat}, 2, 10, logger, now); got != nil {
-		t.Fatalf("incomplete location returned %v", *got)
 	}
 }
 
@@ -142,67 +123,77 @@ func TestSunElevation_KnownValues(t *testing.T) {
 	}
 }
 
-func TestCalculate_NilCoords(t *testing.T) {
+func TestCalculateAtRequiresCompleteLocation(t *testing.T) {
 	t.Parallel()
-
-	result, err := CalculateAt(&SolarLocation{Timezone: "UTC"}, 2, 10, time.Time{})
-	if err == nil {
-		t.Fatal("expected error ErrSolarDisabled, got nil")
+	lat, lon := 40.0, -70.0
+	tests := []struct {
+		name     string
+		location *SolarLocation
+		disabled bool
+	}{
+		{name: "nil location", disabled: true},
+		{name: "missing coordinates", location: &SolarLocation{Timezone: "UTC"}, disabled: true},
+		{name: "missing longitude", location: &SolarLocation{Latitude: &lat, Timezone: "UTC"}, disabled: true},
+		{name: "invalid timezone", location: &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"}},
 	}
-	if !errors.Is(err, ErrSolarDisabled) {
-		t.Fatalf("expected ErrSolarDisabled, got: %v", err)
-	}
-	if result != nil {
-		t.Errorf("expected nil result for nil coordinates, got %d", *result)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := CalculateAt(test.location, 2, 10, time.Time{})
+			if err == nil || result != nil || errors.Is(err, ErrSolarDisabled) != test.disabled {
+				t.Fatalf("CalculateAt() = %v, %v; want nil result, disabled=%t", result, err, test.disabled)
+			}
+		})
 	}
 }
 
-func TestCalculate_InvalidTimezone(t *testing.T) {
-	lat := 40.0
-	lon := -70.0
-	_, err := CalculateAt(&SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"}, 2, 10, time.Time{})
-	if err == nil {
-		t.Error("expected error for invalid timezone")
-	}
-}
-
-func TestGetTargetValue(t *testing.T) {
+func TestGetTargetValueAtPrefersSolarThenManual(t *testing.T) {
 	t.Parallel()
-
-	lat := 40.7128
-	lon := -74.0060
+	lat, lon := 40.7128, -74.0060
 	manual := 5
-	now := time.Date(2025, time.June, 21, 12, 0, 0, 0, time.UTC)
-
-	t.Run("solar enabled", func(t *testing.T) {
-		loc := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
-		val := GetTargetValueAt(TargetOptions{Location: loc, Min: 2, Max: 10, Now: now}, nil)
-		if val == nil {
-			t.Fatal("expected solar brightness value")
-		}
-		if *val < 2 || *val > 10 {
-			t.Errorf("brightness %d out of range", *val)
-		}
-	})
-
-	t.Run("manual fallback", func(t *testing.T) {
-		val := GetTargetValueAt(TargetOptions{Manual: &manual, Now: now}, nil)
-		if val == nil || *val != 5 {
-			t.Errorf("expected manual brightness 5, got %v", val)
-		}
-	})
-
-	t.Run("solar invalid timezone falls back to manual", func(t *testing.T) {
-		loc := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"}
-		val := GetTargetValueAt(TargetOptions{Location: loc, Min: 2, Max: 10, Manual: &manual, Now: now}, nil)
-		if val == nil || *val != 5 {
-			t.Errorf("expected manual fallback, got %v", val)
-		}
-	})
-
-	t.Run("nil when unset", func(t *testing.T) {
-		if val := GetTargetValueAt(TargetOptions{Now: now}, nil); val != nil {
-			t.Errorf("expected nil, got %d", *val)
-		}
-	})
+	now := time.Date(2025, time.June, 21, 17, 0, 0, 0, time.UTC)
+	solar := &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
+	solarWant, err := CalculateAt(solar, 2, 10, now)
+	if err != nil {
+		t.Fatalf("CalculateAt() error = %v", err)
+	}
+	tests := []struct {
+		name     string
+		options  TargetOptions
+		want     *int
+		wantLog  string
+		wantWarn bool
+	}{
+		{name: "solar wins over manual", options: TargetOptions{Location: solar, Min: 2, Max: 10, Manual: &manual, Now: now}, want: solarWant, wantLog: "solar brightness"},
+		{name: "manual without location", options: TargetOptions{Manual: &manual, Now: now}, want: &manual, wantLog: "manual brightness"},
+		{
+			name: "invalid timezone falls back to manual",
+			options: TargetOptions{
+				Location: &SolarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"},
+				Min:      2, Max: 10, Manual: &manual, Now: now,
+			},
+			want: &manual, wantLog: "manual brightness", wantWarn: true,
+		},
+		{name: "incomplete location is silently disabled", options: TargetOptions{Location: &SolarLocation{Latitude: &lat}, Now: now}},
+		{name: "unset", options: TargetOptions{Now: now}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var logs bytes.Buffer
+			got := GetTargetValueAt(test.options, slog.New(slog.NewTextHandler(&logs, nil)))
+			if (got == nil) != (test.want == nil) || (got != nil && *got != *test.want) {
+				t.Fatalf("GetTargetValueAt() = %v, want %v", got, test.want)
+			}
+			if !strings.Contains(logs.String(), test.wantLog) {
+				t.Fatalf("logs = %q, want %q", logs.String(), test.wantLog)
+			}
+			if warned := strings.Contains(logs.String(), "level=WARN"); warned != test.wantWarn {
+				t.Fatalf("warning logged = %t, want %t: %s", warned, test.wantWarn, logs.String())
+			}
+			if nilLogger := GetTargetValueAt(test.options, nil); (nilLogger == nil) != (got == nil) {
+				t.Fatalf("nil logger changed the result: %v vs %v", nilLogger, got)
+			}
+		})
+	}
 }

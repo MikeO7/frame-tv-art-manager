@@ -16,7 +16,7 @@ func TestApplyCanvasTexture(t *testing.T) {
 		}
 	}
 
-	processed := applyCanvasTexture(img, 5)
+	processed := applyCanvasTextureWithWorkers(img, 5, defaultPixelWorkers())
 	if processed == nil || processed.Bounds() != img.Bounds() {
 		t.Fatalf("unexpected canvas output bounds: %#v", processed.Bounds())
 	}
@@ -82,8 +82,8 @@ func TestApplyCanvasTexture_IntensityClamps(t *testing.T) {
 		}
 	}
 
-	low := applyCanvasTexture(imgLow, 1)
-	high := applyCanvasTexture(imgHigh, 500)
+	low := applyCanvasTextureWithWorkers(imgLow, 1, defaultPixelWorkers())
+	high := applyCanvasTextureWithWorkers(imgHigh, 500, defaultPixelWorkers())
 	if low == nil || high == nil {
 		t.Fatal("applyCanvasTexture returned nil output")
 	}

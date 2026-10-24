@@ -6,10 +6,6 @@ import (
 	"math"
 )
 
-func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	return applyCanvasTextureWithWorkers(src, intensity, defaultPixelWorkers())
-}
-
 func applyCanvasTextureWithWorkers(src *image.RGBA, intensity, workerLimit int) *image.RGBA {
 	lutCraquelureOnce.Do(initializeCraquelure)
 

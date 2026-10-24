@@ -38,8 +38,8 @@ func TestSmartCropGoldenCorpusV1(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			input := syntheticCropScene(test.width, test.height, test.subject)
-			got := findBestDirectorCropWithGain(
-				input, test.cropWidth, test.cropHeight, test.horizontal, DefaultConfig().SmartCropMinGain,
+			got := findBestDirectorCropWithProtection(
+				input, test.cropWidth, test.cropHeight, test.horizontal, DefaultConfig().SmartCropMinGain, false, 0,
 			)
 			if got < test.wantMinOffset || got > test.wantMaxOffset {
 				t.Fatalf(
@@ -55,7 +55,7 @@ func TestSmartCropGoldenCorpusV1CentersLowInformationImage(t *testing.T) {
 	t.Parallel()
 	input := image.NewRGBA(image.Rect(0, 0, 600, 300))
 	fillRGBA(input, input.Bounds(), color.RGBA{R: 96, G: 96, B: 96, A: 255})
-	if got := findBestDirectorCropWithGain(input, 400, 300, true, DefaultConfig().SmartCropMinGain); got != 100 {
+	if got := findBestDirectorCropWithProtection(input, 400, 300, true, DefaultConfig().SmartCropMinGain, false, 0); got != 100 {
 		t.Fatalf("smart crop golden corpus %s low-information offset = %d, want 100", smartCropGoldenCorpusVersion, got)
 	}
 }
@@ -81,8 +81,8 @@ func TestSmartCropRepresentativeSyntheticCorpusV1(t *testing.T) {
 			t.Parallel()
 			input, subject := test.build()
 			const cropWidth = 400
-			got := findBestDirectorCropWithGain(
-				input, cropWidth, input.Bounds().Dy(), true, DefaultConfig().SmartCropMinGain,
+			got := findBestDirectorCropWithProtection(
+				input, cropWidth, input.Bounds().Dy(), true, DefaultConfig().SmartCropMinGain, false, 0,
 			)
 			if got < test.wantMin || got > test.wantMax {
 				t.Fatalf(

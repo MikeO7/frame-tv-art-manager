@@ -13,7 +13,7 @@ func TestObservedProtocolFixtureContract(t *testing.T) {
 	t.Run("device info", func(t *testing.T) {
 		var response deviceInfoResponse
 		readProtocolFixture(t, "device-info-on.json", &response)
-		if !response.Device.IsFrameTV() || !response.Device.IsOn() ||
+		if validateFrameTVDevice(response.Device) != nil || response.Device.PowerState != stringOn ||
 			response.Device.ModelName != "QN55LS03D" {
 			t.Fatalf("device fixture = %+v", response.Device)
 		}
@@ -23,9 +23,9 @@ func TestObservedProtocolFixtureContract(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var response artResponse
 			readProtocolFixture(t, name, &response)
-			var content []ArtContent
-			if err := json.Unmarshal([]byte(response.ContentList()), &content); err != nil {
-				t.Fatalf("decode fixture content list: %v", err)
+			content, err := parseUploadedContent(response.ContentListRaw)
+			if err != nil {
+				t.Fatalf("parse fixture content list: %v", err)
 			}
 			want := []ArtContent{{ContentID: "MY_F0001", CategoryID: contractCategoryID}}
 			if len(content) != len(want) || content[0] != want[0] {

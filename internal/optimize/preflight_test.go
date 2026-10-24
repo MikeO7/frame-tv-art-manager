@@ -316,4 +316,11 @@ func TestPreflightOrientationReadsStableFileAndCancellation(t *testing.T) {
 	if _, err := preflightOrientation(ctx, StageInput{Name: "exact.jpg", Path: path}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("preflightOrientation(canceled) error = %v", err)
 	}
+	malformed := filepath.Join(t.TempDir(), "malformed.jpg")
+	if err := os.WriteFile(malformed, []byte{0xff, 0xd8}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := preflightOrientation(context.Background(), StageInput{Name: "malformed.jpg", Path: malformed}); err == nil {
+		t.Fatal("preflightOrientation(malformed) error = nil")
+	}
 }

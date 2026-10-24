@@ -2,10 +2,14 @@ package samsung
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
 func secureTokenDirectory(t *testing.T) string {
@@ -198,4 +202,48 @@ func writeTokenFixture(t *testing.T, directoryMode, fileMode os.FileMode, token 
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestAuthenticationTokenIsPersistedDurablyWithSensitivePermissions(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "tokens")
+	path := filepath.Join(directory, "tv.txt")
+	if err := persistAuthenticationToken(context.Background(), path, "new-token"); err != nil {
+		t.Fatalf("persistAuthenticationToken() error = %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read token: %v", err)
+	}
+	if string(data) != "new-token" {
+		t.Fatalf("token = %q", data)
+	}
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat token: %v", err)
+	}
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("token mode = %o, want 0600", fileInfo.Mode().Perm())
+	}
+	directoryInfo, err := os.Stat(directory)
+	if err != nil {
+		t.Fatalf("stat token directory: %v", err)
+	}
+	if directoryInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("token directory mode = %o, want 0700", directoryInfo.Mode().Perm())
+	}
+}
+
+func TestAuthenticationTokenPersistencePreservesUnknownOutcome(t *testing.T) {
+	cause := fmt.Errorf("directory sync failed: %w", durablefs.ErrOutcomeUnknown)
+	err := tokenPersistenceError(cause)
+	var samsungErr *Error
+	if !errors.As(err, &samsungErr) {
+		t.Fatalf("tokenPersistenceError() = %T, want *Error", err)
+	}
+	if samsungErr.Kind != ErrorKindOutcomeUnknown || samsungErr.Outcome != OutcomeUnknown {
+		t.Fatalf("tokenPersistenceError() = %+v, want unknown outcome", samsungErr)
+	}
+	if !errors.Is(err, durablefs.ErrOutcomeUnknown) {
+		t.Fatalf("tokenPersistenceError() does not preserve durablefs.ErrOutcomeUnknown")
+	}
 }

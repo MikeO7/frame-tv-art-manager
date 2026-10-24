@@ -83,7 +83,8 @@ func TestReadOrientationEXIFVariants(t *testing.T) {
 	}
 }
 
-func TestReadOrientationMalformedInputs(t *testing.T) {
+func TestReadOrientationRejectsMalformedJPEG(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		data []byte
@@ -91,23 +92,87 @@ func TestReadOrientationMalformedInputs(t *testing.T) {
 	}{
 		{name: "short input", data: []byte{0xff}, want: "EOF"},
 		{name: "missing SOI", data: []byte("no"), want: "SOI missing"},
+		{name: "SOI without markers", data: []byte{0xff, 0xd8}, want: "EOF"},
+		{name: "truncated fill bytes", data: []byte{0xff, 0xd8, 0xff, 0xff}, want: "EOF"},
 		{name: "invalid marker prefix", data: []byte{0xff, 0xd8, 0x01, 0x02}, want: "invalid marker prefix"},
 		{name: "short marker", data: []byte{0xff, 0xd8, 0xff, 0xe0, 0x00}, want: "EOF"},
 		{name: "invalid marker length", data: []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x01}, want: "invalid marker length"},
 		{name: "truncated payload", data: []byte{0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, 'E'}, want: "EOF"},
 		{name: "truncated skipped marker", data: []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x05, 0x01}, want: "EOF"},
+		{name: "orientation tag type", data: exifJPEG(binary.LittleEndian, 9, 1), want: "unexpected orientation tag type"},
+		{name: "orientation tag LONG type", data: exifJPEG(binary.LittleEndian, 4, 1), want: "unexpected orientation tag type"},
+		{name: "orientation tag count", data: func() []byte {
+			data := exifJPEG(binary.LittleEndian, 3, 1)
+			binary.LittleEndian.PutUint32(data[26:], 2)
+			return data
+		}(), want: "unexpected orientation tag count"},
+		{name: "orientation value", data: exifJPEG(binary.LittleEndian, 3, 9), want: "invalid orientation value"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ReadOrientation(bytes.NewReader(tt.data))
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("ReadOrientation() error = %v, want containing %q", err, tt.want)
+			t.Parallel()
+			got, err := ReadOrientation(bytes.NewReader(tt.data))
+			if err == nil || !strings.Contains(err.Error(), tt.want) || got != 1 {
+				t.Fatalf("ReadOrientation() = (%d, %v), want (1, error containing %q)", got, err, tt.want)
 			}
 		})
 	}
 }
 
-func TestParseExifValidationAndMissingTag(t *testing.T) {
+func TestReadOrientationDefaultsToUprightWithoutEXIF(t *testing.T) {
+	t.Parallel()
+	tests := map[string][]byte{
+		"SOI then EOI": {0xff, 0xd8, 0xff, 0xd9},
+		"fill bytes and non-EXIF APP1": {
+			0xff, 0xd8,
+			0xff, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
+			0xff, 0xe1, 0x00, 0x08, 'N', 'O', 'T', 'E', 'X', 'I',
+			0xff, 0xd9,
+		},
+		"encoded JPEG": func() []byte {
+			var encoded bytes.Buffer
+			if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil); err != nil {
+				t.Fatal(err)
+			}
+			return encoded.Bytes()
+		}(),
+	}
+	for name, data := range tests {
+		if got, err := ReadOrientation(bytes.NewReader(data)); err != nil || got != 1 {
+			t.Errorf("%s: ReadOrientation() = (%d, %v), want (1, nil)", name, got, err)
+		}
+	}
+}
+
+func TestReadPNGOrientationRejectsMalformedChunks(t *testing.T) {
+	t.Parallel()
+	tooLarge := append([]byte(nil), pngSignature[:]...)
+	header := make([]byte, 8)
+	binary.BigEndian.PutUint32(header[:4], (64<<20)+1)
+	copy(header[4:], "text")
+	tooLarge = append(tooLarge, header...)
+	cases := map[string][]byte{
+		"empty":               nil,
+		"wrong signature":     make([]byte, 8),
+		"signature only":      pngSignature[:],
+		"oversized chunk":     tooLarge,
+		"truncated eXIf":      appendPNGChunkBytes(pngSignature[:], "eXIf", []byte{1, 2}, false),
+		"empty eXIf":          appendPNGChunkBytes(pngSignature[:], "eXIf", nil, false),
+		"truncated chunk CRC": appendPNGChunkBytes(pngSignature[:], "text", []byte{1}, false),
+	}
+	for name, payload := range cases {
+		if orientation, err := ReadPNGOrientation(bytes.NewReader(payload)); err == nil || orientation != 1 {
+			t.Errorf("ReadPNGOrientation(%s) = (%d, %v), want (1, error)", name, orientation, err)
+		}
+	}
+	iend := appendPNGChunkBytes(pngSignature[:], pngChunkEnd, nil, true)
+	if orientation, err := ReadPNGOrientation(bytes.NewReader(iend)); err != nil || orientation != 1 {
+		t.Fatalf("ReadPNGOrientation(IEND) = %d, %v", orientation, err)
+	}
+}
+
+func TestParseExifRejectsInvalidTIFFHeaders(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		data []byte
@@ -118,134 +183,50 @@ func TestParseExifValidationAndMissingTag(t *testing.T) {
 		{name: "bad magic", data: []byte{'I', 'I', 0, 0, 8, 0, 0, 0}, want: "magic"},
 		{name: "offset below header", data: []byte{'I', 'I', 42, 0, 1, 0, 0, 0}, want: "ifd offset"},
 		{name: "offset past data", data: []byte{'I', 'I', 42, 0, 20, 0, 0, 0}, want: "ifd offset"},
+		{name: "no room for IFD count", data: []byte{'I', 'I', 42, 0, 8, 0, 0, 0, 0}, want: "too short for IFD count"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseExif(tt.data)
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("parseExif() error = %v, want containing %q", err, tt.want)
+			t.Parallel()
+			got, err := parseExif(tt.data)
+			if err == nil || !strings.Contains(err.Error(), tt.want) || got != 1 {
+				t.Fatalf("parseExif() = (%d, %v), want (1, error containing %q)", got, err, tt.want)
 			}
 		})
 	}
+}
 
-	missing := make([]byte, 10+12)
-	copy(missing, "II")
-	binary.LittleEndian.PutUint16(missing[2:], 42)
-	binary.LittleEndian.PutUint32(missing[4:], 8)
-	binary.LittleEndian.PutUint16(missing[8:], 1)
-	if got, err := parseExif(missing); err != nil || got != 1 {
-		t.Fatalf("parseExif missing orientation = (%d, %v)", got, err)
+func TestParseExifDefaultsToUprightWithoutOrientationTag(t *testing.T) {
+	t.Parallel()
+	header := []byte{'I', 'I', 0x2a, 0x00, 8, 0, 0, 0}
+	withIFD := func(entries ...byte) []byte { return append(append([]byte(nil), header...), entries...) }
+	otherTag := make([]byte, 2+12)
+	otherTag[0] = 1
+	binary.LittleEndian.PutUint16(otherTag[2:], 0x0100)
+	tests := map[string][]byte{
+		"no entries":               withIFD(0, 0, 0, 0, 0, 0),
+		"other tag only":           withIFD(otherTag...),
+		"entry claimed, truncated": withIFD(1, 0, 0, 0, 0, 0),
+		"zeroed entry":             withIFD(append([]byte{1, 0}, make([]byte, 13)...)...),
 	}
-
-	noEntries := []byte{
-		'I', 'I', 0x2a, 0x00, 8, 0, 0, 0,
-		0, 0, // no IFD entries
-		0, 0, 0, 0, // no next IFD
-	}
-	if got, err := parseExif(noEntries); err != nil || got != 1 {
-		t.Fatalf("parseExif no entries = (%d, %v)", got, err)
-	}
-
-	badTypeJPEG := exifJPEG(binary.LittleEndian, 9, 1)
-	if _, err := ReadOrientation(bytes.NewReader(badTypeJPEG)); err == nil || !strings.Contains(err.Error(), "unexpected") {
-		t.Fatalf("unexpected orientation type error = %v", err)
-	}
-	longJPEG := exifJPEG(binary.LittleEndian, 4, 1)
-	if _, err := ReadOrientation(bytes.NewReader(longJPEG)); err == nil || !strings.Contains(err.Error(), "type") {
-		t.Fatalf("LONG orientation type error = %v", err)
-	}
-	badCountJPEG := exifJPEG(binary.LittleEndian, 3, 1)
-	binary.LittleEndian.PutUint32(badCountJPEG[26:], 2)
-	if _, err := ReadOrientation(bytes.NewReader(badCountJPEG)); err == nil || !strings.Contains(err.Error(), "count") {
-		t.Fatalf("orientation count error = %v", err)
-	}
-	badValueJPEG := exifJPEG(binary.LittleEndian, 3, 9)
-	if _, err := ReadOrientation(bytes.NewReader(badValueJPEG)); err == nil || !strings.Contains(err.Error(), "value") {
-		t.Fatalf("orientation value error = %v", err)
+	for name, data := range tests {
+		if got, err := parseExif(data); err != nil || got != 1 {
+			t.Errorf("%s: parseExif() = (%d, %v), want (1, nil)", name, got, err)
+		}
 	}
 }
 
-func TestProcessMarker_App1PayloadWithoutExif(t *testing.T) {
-	buf := bytes.NewBuffer(nil)
-	_, _ = buf.Write([]byte{0x00, 0x08})
-	_, _ = buf.WriteString("NOTEXI")
-
-	gotOrientation, stop, err := processMarker(buf, 0xe1)
-	if err != nil {
-		t.Fatalf("processMarker() = %v", err)
+func appendPNGChunkBytes(prefix []byte, chunkType string, payload []byte, includeCRC bool) []byte {
+	result := append([]byte(nil), prefix...)
+	header := make([]byte, 8)
+	binary.BigEndian.PutUint32(header[:4], uint32(len(payload)))
+	copy(header[4:], chunkType)
+	result = append(result, header...)
+	result = append(result, payload...)
+	if includeCRC {
+		result = append(result, 0, 0, 0, 0)
 	}
-	if gotOrientation != 0 {
-		t.Fatalf("expected orientation 0 from App1 payload without EXIF, got %d", gotOrientation)
-	}
-	if !stop {
-		t.Fatal("expected stop=true after App1 payload")
-	}
-}
-
-func TestProcessMarker_DiscardPayloadPath(t *testing.T) {
-	// App0 marker, 2-byte payload: [0x01 0x02]
-	buf := bytes.NewBuffer(nil)
-	_, _ = buf.Write([]byte{0x00, 0x04})
-	_, _ = buf.Write([]byte{0x01, 0x02})
-
-	gotOrientation, stop, err := processMarker(buf, 0xe0)
-	if err != nil {
-		t.Fatalf("processMarker() = %v", err)
-	}
-	if gotOrientation != 0 {
-		t.Fatalf("expected zero orientation, got %d", gotOrientation)
-	}
-	if stop {
-		t.Fatal("expected stop=false for non-App1 marker")
-	}
-}
-
-func TestReadOrientation_ShortMarkerAfterSOI(t *testing.T) {
-	orientation, err := ReadOrientation(bytes.NewReader([]byte{0xff, 0xd8}))
-	if err == nil || orientation != 1 {
-		t.Fatalf("ReadOrientation() = (%d, %v)", orientation, err)
-	}
-}
-
-func TestReadOrientation_TruncatedFillBytes(t *testing.T) {
-	orientation, err := ReadOrientation(bytes.NewReader([]byte{0xff, 0xd8, 0xff, 0xff}))
-	if err == nil || orientation != 1 {
-		t.Fatalf("ReadOrientation() = (%d, %v)", orientation, err)
-	}
-}
-
-func TestReadOrientation_SkipsFFFillersAndNonExifApp1(t *testing.T) {
-	// SOI, 0xFF fill byte, fake APP0, App1 without EXIF marker, then EOI.
-	raw := []byte{
-		0xff, 0xd8,
-		0xff, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
-		0xff, 0xe1, 0x00, 0x08, 'N', 'O', 'T', 'E', 'X', 'I',
-		0xff, 0xd9,
-	}
-	got, err := ReadOrientation(bytes.NewReader(raw))
-	if err != nil {
-		t.Fatalf("ReadOrientation() = %v", err)
-	}
-	if got != 1 {
-		t.Fatalf("expected default orientation 1, got %d", got)
-	}
-}
-
-func TestParseExif_DefaultOnOffsetOutOfRange(t *testing.T) {
-	// TIFF header with a valid IFD offset but missing a valid IFD entry.
-	tiff := []byte{
-		'I', 'I', 0x2a, 0x00, 8, 0, 0, 0,
-		1, 0, // one entry
-		0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0,
-	}
-	got, err := parseExif(tiff)
-	if err != nil {
-		t.Fatalf("parseExif() = %v", err)
-	}
-	if got != 1 {
-		t.Fatalf("expected default orientation, got %d", got)
-	}
+	return result
 }
 
 func writeJPEGWithExifOrientation(t *testing.T, path string, width, height int, orientation uint32) {

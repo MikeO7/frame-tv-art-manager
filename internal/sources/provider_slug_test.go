@@ -16,58 +16,6 @@ func TestCapSlugBoundsLongInput(t *testing.T) {
 	}
 }
 
-func TestSlugFromArticURL(t *testing.T) {
-	slug := slugFromArticURL("https://www.artic.edu/iiif/2/12345/full/843,/0/default.jpg")
-	if slug == "" || slug == "direct-source" {
-		t.Errorf("expected artic slug, got %q", slug)
-	}
-
-	nonArtic := slugFromArticURL("https://example.com/photo.jpg")
-	if nonArtic == "" {
-		t.Error("expected URLToSlug fallback")
-	}
-
-	short := slugFromArticURL("https://artic.edu/short")
-	if short == "" {
-		t.Error("expected fallback for short artic URL")
-	}
-}
-
-func TestSlugFromNASAURL(t *testing.T) {
-	slug := slugFromNASAURL("https://images-assets.nasa.gov/image/PIA12345/PIA12345~orig.jpg")
-	if slug == "" {
-		t.Error("expected NASA slug")
-	}
-
-	nonNASA := slugFromNASAURL("https://example.com/image.png")
-	if nonNASA == "" {
-		t.Error("expected URLToSlug fallback for non-NASA URL")
-	}
-}
-
-func TestURLToSlug(t *testing.T) {
-	tests := []struct {
-		url  string
-		want string
-	}{
-		{"https://example.com/path/to/image.jpg", "example.com_path"},
-		{"not-a-url", "direct-source"},
-		{"https://www.host.com/a/b/c", "host.com_a"},
-	}
-	for _, tc := range tests {
-		got := URLToSlug(tc.url)
-		if got == "" {
-			t.Errorf("URLToSlug(%q) returned empty", tc.url)
-		}
-		if tc.want != "" && got != tc.want && tc.url != "not-a-url" {
-			// slug formatting is deterministic; allow mismatch only when not checking exact
-			if got != tc.want {
-				t.Errorf("URLToSlug(%q) = %q, want %q", tc.url, got, tc.want)
-			}
-		}
-	}
-}
-
 func TestDirectProvider(t *testing.T) {
 	p := newDirectProvider()
 	if p.Name() != "direct" {

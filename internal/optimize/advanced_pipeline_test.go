@@ -133,7 +133,7 @@ func TestColorNormalizationFallbackAndTransparentPixel(t *testing.T) {
 	}
 	pngMetadata := appendPNGColorChunk(pngSignature[:], pngChunkGamma, []byte{0, 0, 0xb1, 0x8f})
 	pngMetadata = appendPNGColorChunk(pngMetadata, pngChunkEnd, nil)
-	metadata, err := extractPNGColorData(pngMetadata)
+	metadata, err := readPNGColorData(bytes.NewReader(pngMetadata))
 	if err != nil || metadata.description != "PNG gAMA" {
 		t.Fatalf("PNG gAMA metadata = %+v, %v", metadata, err)
 	}
@@ -268,9 +268,9 @@ func TestPNGICCExtractionAndConversion(t *testing.T) {
 	profiled := append([]byte{}, raw.Bytes()[:afterIHDR]...)
 	profiled = appendPNGColorChunk(profiled, pngChunkICC, payload)
 	profiled = append(profiled, raw.Bytes()[afterIHDR:]...)
-	metadata, err := extractPNGColorData(profiled)
+	metadata, err := readPNGColorData(bytes.NewReader(profiled))
 	if err != nil {
-		t.Fatalf("extractPNGColorData() error = %v", err)
+		t.Fatalf("readPNGColorData()) error = %v", err)
 	}
 	if metadata.description != "PNG iCCP" || len(metadata.icc) == 0 {
 		t.Fatalf("metadata = %+v", metadata)
@@ -293,12 +293,12 @@ func TestEmbeddedColorMetadataRejectsMalformedChunks(t *testing.T) {
 		appendPNGColorChunk(pngSignature[:], "cICP", []byte{9, 16}),
 	}
 	for index, data := range tests {
-		if _, err := extractPNGColorData(data); err == nil {
+		if _, err := readPNGColorData(bytes.NewReader(data)); err == nil {
 			t.Errorf("case %d error = nil", index)
 		}
 	}
-	if _, err := extractJPEGColorData([]byte("bad")); err == nil {
-		t.Fatal("extractJPEGColorData() malformed error = nil")
+	if _, err := readJPEGColorData(bytes.NewReader([]byte("bad"))); err == nil {
+		t.Fatal("readJPEGColorData() malformed error = nil")
 	}
 }
 
@@ -339,7 +339,7 @@ func TestPNGColorDataDoesNotToneMapUnsupportedHDRPrimaries(t *testing.T) {
 	t.Parallel()
 	data := appendPNGColorChunk(pngSignature[:], "cICP", []byte{12, 16, 0, 1})
 	data = appendPNGColorChunk(data, pngChunkEnd, nil)
-	metadata, err := extractPNGColorData(data)
+	metadata, err := readPNGColorData(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}

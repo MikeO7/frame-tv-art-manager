@@ -2,7 +2,6 @@ package samsung
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -54,55 +53,6 @@ func TestAdapterConfigValidationRejectsEveryUnsafeBoundary(t *testing.T) {
 				t.Fatal("NewAdapter() accepted unsafe configuration")
 			}
 		})
-	}
-}
-
-func TestCommandNamesAndValidationCoverSealedCommandSet(t *testing.T) {
-	tests := []struct {
-		command Command
-		name    string
-	}{
-		{command: Delete{ContentID: "id"}, name: "delete"},
-		{command: Select{ContentID: "id"}, name: "select"},
-		{command: ConfigureSlideshow{
-			Previous: SlideshowSetting{Interval: 1, Kind: SlideshowShuffle},
-			Desired:  SlideshowSetting{Interval: 2, Kind: SlideshowSequential},
-		}, name: "configure slideshow"},
-		{command: ConfigureBrightness{PreviousValue: 1, Value: 2}, name: "configure brightness"},
-		{command: Wake{}, name: "wake"},
-		{command: PowerOff{}, name: "power off"},
-	}
-	for _, test := range tests {
-		if got := commandName(test.command); got != test.name {
-			t.Errorf("commandName(%T) = %q, want %q", test.command, got, test.name)
-		}
-		prepared, cleanup, err := prepareCommand(test.command)
-		if cleanup != nil {
-			cleanup()
-		}
-		if err != nil || prepared.command != test.command {
-			t.Errorf("prepareCommand(%T) = %+v, %v", test.command, prepared, err)
-		}
-	}
-
-	invalid := []Command{
-		Delete{},
-		Select{ContentID: string(make([]byte, 257))},
-		ConfigureSlideshow{Previous: SlideshowSetting{Interval: -1, Kind: SlideshowSequential}},
-		ConfigureBrightness{PreviousValue: 101},
-	}
-	for _, command := range invalid {
-		if _, cleanup, err := prepareCommand(command); err == nil {
-			if cleanup != nil {
-				cleanup()
-			}
-			t.Errorf("prepareCommand(%T) accepted invalid input", command)
-		}
-	}
-
-	canceled := commandError("wake", OutcomeNotAttempted, context.Canceled)
-	if !errors.Is(canceled, context.Canceled) || canceled.Kind != ErrorKindCanceled || canceled.Retryable {
-		t.Fatalf("canceled command classification = %+v", canceled)
 	}
 }
 

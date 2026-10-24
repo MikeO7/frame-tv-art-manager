@@ -260,14 +260,6 @@ func decodePNGICC(payload []byte) (embeddedColorData, error) {
 	return embeddedColorData{description: pngICCMetadata, icc: profile}, nil
 }
 
-func extractJPEGColorData(data []byte) (embeddedColorData, error) {
-	return readJPEGColorData(bytes.NewReader(data))
-}
-
-func extractPNGColorData(data []byte) (embeddedColorData, error) {
-	return readPNGColorData(bytes.NewReader(data))
-}
-
 type iccCurve struct {
 	kind   string
 	values []float64

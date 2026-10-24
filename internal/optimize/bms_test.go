@@ -3,72 +3,8 @@ package optimize
 import (
 	"image"
 	"image/color"
-	"reflect"
 	"testing"
 )
-
-func TestProcessBMSThresholdInvalidDims(t *testing.T) {
-	if got := processBMSThreshold([]uint8{}, 50, 0, 10); got != nil {
-		t.Fatalf("expected nil for zero width, got %v", got)
-	}
-	if got := processBMSThreshold([]uint8{}, 50, 10, 0); got != nil {
-		t.Fatalf("expected nil for zero height, got %v", got)
-	}
-
-	got := processBMSThreshold([]uint8{0, 0, 0, 0, 255, 0, 0, 0, 0}, 128, 3, 3)
-	if len(got) != 9 {
-		t.Fatalf("expected 9 results, got %d", len(got))
-	}
-	if got[4] != 1.0 {
-		t.Fatalf("expected center pixel to remain enclosed foreground, got %f", got[4])
-	}
-	if got := processBMSThreshold([]uint8{0}, 128, 3, 3); got != nil {
-		t.Fatalf("expected nil for a short luminance map, got %v", got)
-	}
-}
-
-func TestProcessBMSThreshold_IgnoresExtraLuminance(t *testing.T) {
-	const width, height = 4, 4
-	baseMap := []uint8{0, 255, 0, 255, 255, 0, 255, 0, 0, 255, 0, 255, 255, 0, 255, 0}
-	baseResult := processBMSThreshold(baseMap, 128, width, height)
-
-	oversizedMap := make([]uint8, len(baseMap)+6)
-	copy(oversizedMap, baseMap)
-	for i := len(baseMap); i < len(oversizedMap); i++ {
-		oversizedMap[i] = 255
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("processBMSThreshold panicked: %v", r)
-		}
-	}()
-
-	gotResult := processBMSThreshold(oversizedMap, 128, width, height)
-	if len(gotResult) != len(baseMap) {
-		t.Fatalf("expected %d results, got %d", len(baseMap), len(gotResult))
-	}
-	if !reflect.DeepEqual(baseResult, gotResult) {
-		t.Fatalf("expected oversized input to be ignored beyond w*h elements")
-	}
-}
-
-func TestProcessBMSThresholdRemovesBorderConnectedForeground(t *testing.T) {
-	t.Parallel()
-	const width, height = 5, 5
-	values := make([]uint8, width*height)
-	values[2] = 255
-	values[7] = 255 // connected to the top border
-	values[3*width+3] = 255
-
-	got := processBMSThreshold(values, 128, width, height)
-	if got[2] != 0 || got[7] != 0 {
-		t.Fatalf("border-connected foreground survived: top=%v inner=%v", got[2], got[7])
-	}
-	if got[3*width+3] != 1 {
-		t.Fatalf("enclosed foreground = %v, want 1", got[3*width+3])
-	}
-}
 
 func TestGenerateBMSMap(t *testing.T) {
 	src := imageForBMSTest(4, 3)

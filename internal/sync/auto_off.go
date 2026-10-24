@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -32,11 +31,4 @@ func isWithinAutoOffWindowAt(autoOffTime string, graceHours float64, timezone st
 	}
 	yesterday := off.AddDate(0, 0, -1)
 	return !now.Before(yesterday) && now.Before(yesterday.Add(grace))
-}
-
-func formatGraceDisplay(hours float64) string {
-	if hours == float64(int(hours)) {
-		return fmt.Sprintf("%d", int(hours))
-	}
-	return fmt.Sprintf("%.1f", hours)
 }

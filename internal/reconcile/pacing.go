@@ -13,7 +13,6 @@ const (
 	maximumMutationPacing   = 5 * time.Minute
 	maximumMutationAttempts = 10
 	defaultCapacityTTL      = 24 * time.Hour
-	maximumCapacityTTL      = 365 * 24 * time.Hour
 )
 
 // Option configures stateful reconciliation execution without expanding the
@@ -48,18 +47,6 @@ func WithMutationAttempts(attempts int) Option {
 			return fmt.Errorf("mutation attempts must be between 1 and %d", maximumMutationAttempts)
 		}
 		configuration.mutations.attempts = attempts
-		return nil
-	})
-}
-
-// WithCapacityEvidenceTTL configures how long a storage-full observation
-// suppresses cautious upload probes.
-func WithCapacityEvidenceTTL(ttl time.Duration) Option {
-	return optionFunc(func(configuration *runtimeConfiguration) error {
-		if ttl <= 0 || ttl > maximumCapacityTTL {
-			return fmt.Errorf("capacity evidence TTL must be between 1ns and %s", maximumCapacityTTL)
-		}
-		configuration.capacityTTL = ttl
 		return nil
 	})
 }

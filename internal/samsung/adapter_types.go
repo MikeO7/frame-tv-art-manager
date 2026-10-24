@@ -155,8 +155,6 @@ type Authorization struct {
 	dryRun               bool
 }
 
-func (a Authorization) isZero() bool { return a.adapter == nil }
-
 // Observation is an immutable, normalized view of the facts successfully
 // received during one read-only observation.
 type Observation struct {

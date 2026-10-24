@@ -7,13 +7,6 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// padPortrait takes an upright portrait image and fits it centered inside a 16:9 canvas (e.g. 3840x2160)
-// by scaling the photo to fill the background, heavily blurring it, and drawing the scaled upright
-// photo on top in the center.
-func padPortrait(src *image.RGBA, targetW, targetH int) *image.RGBA {
-	return padPortraitWithOptions(src, targetW, targetH, true)
-}
-
 func padPortraitWithOptions(src *image.RGBA, targetW, targetH int, linearLight bool) *image.RGBA {
 	// 1. Create blurred background filling the target size
 	bg := centerCropWithOptions(src, targetW, targetH, false, 0, linearLight)

@@ -60,10 +60,6 @@ func unifyCollectionWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 	return src
 }
 
-func calculateRMSContrast(src *image.RGBA) float64 {
-	return calculateRMSContrastWithWorkers(src, defaultPixelWorkers())
-}
-
 func calculateRMSContrastWithWorkers(src *image.RGBA, workerLimit int) float64 {
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -176,10 +172,6 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	}
 
 	return lutSrgb[idxR], lutSrgb[idxG], lutSrgb[idxB]
-}
-
-func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
-	applyContrastAndGamutWithWorkers(src, contrastGamma, defaultPixelWorkers())
 }
 
 //nolint:gocognit // per-pixel mapping remains inline across bounded row partitions for throughput

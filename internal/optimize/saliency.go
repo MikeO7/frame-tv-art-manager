@@ -9,18 +9,6 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// findBestDirectorCrop implements the 'Director's Cut' Smart Crop v4.0.
-// It uses a two-pass system:
-// 1. Global BMS analysis at 256px to find the primary Region of Interest.
-// 2. High-res Micro-Refinement at the focal point to optimize for edge alignment.
-func findBestDirectorCrop(src *image.RGBA, windowW, windowH int, horizontal bool) int {
-	return findBestDirectorCropWithGain(src, windowW, windowH, horizontal, 0.03)
-}
-
-func findBestDirectorCropWithGain(src *image.RGBA, windowW, windowH int, horizontal bool, minGain float64) int {
-	return findBestDirectorCropWithProtection(src, windowW, windowH, horizontal, minGain, false, 0)
-}
-
 func findBestDirectorCropWithProtection(
 	src *image.RGBA,
 	windowW, windowH int,

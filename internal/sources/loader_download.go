@@ -14,8 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
 const (
@@ -33,25 +31,6 @@ type preparedDownload struct {
 func (l *Loader) checkExisting(identity string) bool {
 	_, exists := l.sourceOrigins["source:"+identity]
 	return exists
-}
-
-func (l *Loader) executeDownload(ctx context.Context, url, filename, identity string, originKeys ...string) (bool, error) {
-	prepared, err := l.prepareDownload(ctx, url, filename, identity, originKeys...)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = os.Remove(prepared.path) }()
-
-	item, isNew, err := l.importDownload(ctx, prepared.path, prepared.filename, prepared.originKey)
-	if err != nil {
-		return false, err
-	}
-	l.sourceOrigins[prepared.originKey] = struct{}{}
-	if isNew {
-		l.collectionSize++
-		l.logger.Info("downloaded source image", "file", item.Name, "size_bytes", prepared.written)
-	}
-	return isNew, nil
 }
 
 func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity string, originKeys ...string) (preparedDownload, error) {
@@ -86,40 +65,6 @@ func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity st
 		originKey = originKeys[0]
 	}
 	return preparedDownload{path: tmpPath, filename: filename, originKey: originKey, written: written}, nil
-}
-
-func (l *Loader) importDownload(
-	ctx context.Context,
-	path string,
-	hint string,
-	originKey string,
-) (collection.Item, bool, error) {
-	if l.importer == nil {
-		return collection.Item{}, false, errors.New("source collection importer is required")
-	}
-	file, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return collection.Item{}, false, fmt.Errorf("open validated source download: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-	maxBytes := int64(l.maxSizeMB) * bytesPerMB
-	snapshot, err := l.importer.Import(ctx, collection.ImportRequest{
-		Reader: file, Hint: hint, MaxBytes: maxBytes,
-		Origin: collection.Origin{Key: originKey, Class: collection.OriginSource},
-	})
-	if err != nil {
-		return collection.Item{}, false, fmt.Errorf("transactionally import source artwork: %w", err)
-	}
-	if len(snapshot.Changes) != 1 || snapshot.Changes[0].Name == "" {
-		return collection.Item{}, false, errors.New("source import returned no committed item")
-	}
-	name := snapshot.Changes[0].Name
-	for _, item := range snapshot.Items {
-		if item.Name == name {
-			return item, snapshot.Changes[0].Kind == collection.ChangeAdded, nil
-		}
-	}
-	return collection.Item{}, false, errors.New("source import change is absent from committed snapshot")
 }
 
 func validateSourceContentType(value string) error {
@@ -246,20 +191,6 @@ func (l *Loader) downloadToTemp(resp *http.Response) (string, int64, error) {
 		return "", 0, fmt.Errorf("download body: %w", err)
 	}
 	return tmpPath, written, nil
-}
-
-func (l *Loader) downloadWithIdentity(ctx context.Context, url, identity string, originKeys ...string) (bool, error) {
-	if l.maxImages > 0 && l.collectionSize >= l.maxImages {
-		l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
-		return false, nil
-	}
-
-	if l.checkExisting(identity) {
-		return false, nil
-	}
-
-	filename := identity + ".jpg"
-	return l.executeDownload(ctx, url, filename, identity, originKeys...)
 }
 
 func extensionFromResponse(resp *http.Response, url string) string {

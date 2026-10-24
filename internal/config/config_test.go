@@ -1,146 +1,45 @@
 package config
 
 import (
-	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
-func TestLoad_Success(t *testing.T) {
-	os.Clearenv()
-	t.Setenv("TV_IPS", "192.168.1.10, 192.168.1.11")
-	t.Setenv("ARTWORK_DIR", "/tmp/art")
-	t.Setenv("LOG_LEVEL", "debug")
-	t.Setenv("LOCATION_LATITUDE", "40.7128")
-	t.Setenv("LOCATION_LONGITUDE", "-74.0060")
-	t.Setenv("SOLAR_BRIGHTNESS_ENABLED", "true")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-
-	if len(cfg.TVIPs) != 2 {
-		t.Errorf("expected 2 IPs, got %d", len(cfg.TVIPs))
-	}
-	if cfg.TVIPs[0] != "192.168.1.10" {
-		t.Errorf("expected 192.168.1.10, got %s", cfg.TVIPs[0])
-	}
-	if cfg.ArtworkDir != "/tmp/art" {
-		t.Errorf("expected /tmp/art, got %s", cfg.ArtworkDir)
-	}
-	if cfg.LogLevel != "debug" {
-		t.Errorf("expected debug, got %s", cfg.LogLevel)
-	}
-	if cfg.Latitude == nil || *cfg.Latitude != 40.7128 {
-		t.Errorf("expected 40.7128 latitude")
-	}
-}
-
-func TestLoad_MissingTVIPS(t *testing.T) {
-	os.Clearenv()
-	_, err := Load()
-	if err == nil {
-		t.Error("expected error due to missing TV_IPS")
-	}
-}
-
-func TestLoad_InvalidSolar(t *testing.T) {
-	os.Clearenv()
-	t.Setenv("TV_IPS", "127.0.0.1")
-	t.Setenv("SOLAR_BRIGHTNESS_ENABLED", "true")
-	// Missing lat/lon
-	_, err := Load()
-	if err == nil {
-		t.Error("expected error due to missing solar lat/lon")
-	}
-}
-
-func TestLoad_InvalidLogLevel(t *testing.T) {
-	os.Clearenv()
-	t.Setenv("TV_IPS", "127.0.0.1")
-	t.Setenv("LOG_LEVEL", "invalid")
-	_, err := Load()
-	if err == nil {
-		t.Error("expected error due to invalid log level")
-	}
-}
-
-func TestLoad_ValidationErrors(t *testing.T) {
-	os.Clearenv()
-	t.Setenv("TV_IPS", "127.0.0.1")
-	t.Setenv("BRIGHTNESS_MIN", "10")
-	t.Setenv("BRIGHTNESS_MAX", "5")
-	if _, err := Load(); err == nil {
-		t.Error("expected brightness min/max validation error")
-	}
-
-	os.Clearenv()
-	t.Setenv("TV_IPS", "127.0.0.1")
-	t.Setenv("SLIDESHOW_TYPE", "random")
-	if _, err := Load(); err == nil {
-		t.Error("expected invalid slideshow type error")
-	}
-
-	os.Clearenv()
-	t.Setenv("TV_IPS", "127.0.0.1")
-	t.Setenv("BRIGHTNESS", "not-a-number")
-	if _, err := Load(); err == nil {
-		t.Error("expected invalid manual brightness error")
-	}
-
-	os.Clearenv()
-	t.Setenv("TV_IPS", " , , ")
-	if _, err := Load(); err == nil {
-		t.Error("expected error when TV_IPS has no valid entries")
-	}
-
-	for _, tc := range []struct {
-		name  string
-		key   string
-		value string
+func TestLoadEnvironRejectsInvalidSettings(t *testing.T) {
+	t.Parallel()
+	const tv = "TV_IPS=127.0.0.1"
+	tests := []struct {
+		name    string
+		environ []string
+		want    string
 	}{
-		{name: "invalid latitude", key: "LOCATION_LATITUDE", value: "north"},
-		{name: "invalid longitude", key: "LOCATION_LONGITUDE", value: "west"},
-		{name: "invalid portrait mode", key: "PORTRAIT_MODE", value: "stretch"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			os.Clearenv()
-			t.Setenv("TV_IPS", "127.0.0.1")
-			t.Setenv(tc.key, tc.value)
-			if _, err := Load(); err == nil {
-				t.Fatalf("Load accepted %s=%q", tc.key, tc.value)
+		{name: "missing TV addresses", want: "TV_IPS environment variable is required"},
+		{name: "blank TV addresses", environ: []string{"TV_IPS= , , "}, want: "at least one non-empty IP address"},
+		{name: "solar without coordinates", environ: []string{tv, "SOLAR_BRIGHTNESS_ENABLED=true"}, want: "LOCATION_LATITUDE and LOCATION_LONGITUDE are required"},
+		{name: "log level", environ: []string{tv, "LOG_LEVEL=invalid"}, want: "LOG_LEVEL"},
+		{name: "inverted brightness range", environ: []string{tv, "BRIGHTNESS_MIN=10", "BRIGHTNESS_MAX=5"}, want: "BRIGHTNESS_MIN (10) must be less than BRIGHTNESS_MAX (5)"},
+		{name: "slideshow type", environ: []string{tv, "SLIDESHOW_TYPE=random"}, want: "SLIDESHOW_TYPE"},
+		{name: "manual brightness", environ: []string{tv, "BRIGHTNESS=not-a-number"}, want: "BRIGHTNESS"},
+		{name: "latitude syntax", environ: []string{tv, "LOCATION_LATITUDE=north"}, want: "LOCATION_LATITUDE"},
+		{name: "longitude syntax", environ: []string{tv, "LOCATION_LONGITUDE=west"}, want: "LOCATION_LONGITUDE"},
+		{name: "portrait mode", environ: []string{tv, "PORTRAIT_MODE=stretch"}, want: "PORTRAIT_MODE"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, _, err := LoadEnviron(test.environ)
+			if err == nil || !strings.Contains(err.Error(), test.want) || cfg != nil {
+				t.Fatalf("LoadEnviron() = %v, %v; want error containing %q", cfg, err, test.want)
 			}
 		})
 	}
 }
 
-func TestLoad_OptionalFields(t *testing.T) {
-	os.Clearenv()
-	t.Setenv("TV_IPS", "127.0.0.1")
-	t.Setenv("BRIGHTNESS", "7")
-	t.Setenv("SLIDESHOW_ENABLED", "true")
-	t.Setenv("LOCATION_LATITUDE", "51.5")
-	t.Setenv("LOCATION_LONGITUDE", "-0.1")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	if cfg.ManualBrightness == nil || *cfg.ManualBrightness != 7 {
-		t.Error("expected manual brightness 7")
-	}
-	if !cfg.SlideshowOverride {
-		t.Error("expected slideshow override when SLIDESHOW_ENABLED is set")
-	}
-	if cfg.Latitude == nil || cfg.Longitude == nil {
-		t.Error("expected parsed coordinates")
-	}
-}
-
-func TestConfig_OptimizeOptions(t *testing.T) {
+func TestOptimizeOptionsMapsEveryImageSetting(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		OptimizeEnabled:                true,
 		SmartCropEnabled:               true,

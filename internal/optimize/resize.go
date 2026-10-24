@@ -71,40 +71,6 @@ type Config struct {
 	PortraitMode                   string
 }
 
-// DefaultConfig returns sensible defaults for Frame TV display.
-func DefaultConfig() Config {
-	return Config{
-		Enabled:                        true,
-		SmartCropEnabled:               false,
-		SmartCropMinGain:               0.03,
-		SmartCropProtection:            true,
-		SmartCropProtectionStrength:    0.35,
-		SmartCropProvider:              "local",
-		SmartCropProviderMinConfidence: 0.7,
-		SmartCropProviderTimeout:       8 * time.Second,
-		MaxWidth:                       3840,
-		MaxHeight:                      2160,
-		MaxOutputPixels:                defaultMaxOutputPixels,
-		MaxWorkingBytes:                512 * 1024 * 1024,
-		OptimizeJPEGQuality:            95,
-		OptimizePNG:                    true,
-		LinearLightResize:              true,
-		SharpenAmount:                  0.25,
-		SharpenThreshold:               4,
-		ColorProfilePolicy:             profileConvertSRGB,
-		HDRToneMap:                     true,
-		HDRSourcePeakNits:              1000,
-		HDRTargetPeakNits:              100,
-		MuseumModeEnabled:              false,
-		MuseumModeIntensity:            5,
-		PortraitMode:                   "crop",
-	}
-}
-
-func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Logger, pixelWorkerLimit int) (string, bool, error) {
-	return optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, cfg, logger, pixelWorkerLimit)
-}
-
 //nolint:funlen,gocognit,revive // explicit transaction inputs avoid hidden optimizer state
 func optimizeFileWithPolicy(
 	ctx context.Context,
