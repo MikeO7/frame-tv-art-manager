@@ -98,7 +98,6 @@ func TestICCToneResponseCurveVariants(t *testing.T) {
 		{"parametric-3-high", iccCurve{kind: iccCurveParametric, params: []float64{3, 2, 1, 0, 0.5, 0.4}}, 0.5, 0.25},
 		{"parametric-4-high", iccCurve{kind: iccCurveParametric, params: []float64{4, 2, 1, 0, 0.5, 0.4, 0.1, 0.05}}, 0.5, 0.35},
 		{"parametric-4-low", iccCurve{kind: iccCurveParametric, params: []float64{4, 2, 1, 0, 0.5, 0.4, 0.1, 0.05}}, 0.2, 0.15},
-		{"unknown", iccCurve{kind: "unknown"}, 0.4, 0.4},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -559,8 +558,11 @@ func TestProtectedCropPenalizesDetailedBoundary(t *testing.T) {
 	}
 	saliencyIntegral := calculateIntegralImage(saliency, width, height)
 	protectionIntegral := calculateIntegralImage(protection, width, height)
-	safe := protectedCropWindowScore(saliencyIntegral, protectionIntegral, width, height, window, height, true, 0, 0.35)
-	unsafe := protectedCropWindowScore(saliencyIntegral, protectionIntegral, width, height, window, height, true, 64, 0.35)
+	windows := cropWindows{
+		saliency: saliencyIntegral, protection: protectionIntegral, workW: width, workH: height,
+		windowW: window, windowH: height, horizontal: true, strength: 0.35,
+	}
+	safe, unsafe := windows.score(0), windows.score(64)
 	if unsafe >= safe {
 		t.Fatalf("unsafe boundary score %.3f >= safe score %.3f", unsafe, safe)
 	}

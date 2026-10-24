@@ -8,7 +8,7 @@ COVERAGE_THRESHOLD ?= 90
 GO_TEST_FLAGS ?= -shuffle=on
 
 GOLANGCI_LINT := $(or $(wildcard $(shell go env GOPATH)/bin/golangci-lint),$(shell command -v golangci-lint 2>/dev/null),golangci-lint)
-PRE_COMMIT := $(or $(shell command -v pre-commit 2>/dev/null),python3 -m pre_commit)
+PRE_COMMIT := $(or $(shell command -v pre-commit 2>/dev/null),$(wildcard .venv/bin/pre-commit),pre-commit)
 
 all: check build
 
@@ -38,10 +38,10 @@ precommit:
 	$(PRE_COMMIT) run --all-files
 
 vuln:
-	go run golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION) ./...
+	GOTOOLCHAIN=$$(go env GOVERSION) go run golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION) ./...
 
 actionlint:
-	go run github.com/rhysd/actionlint/cmd/actionlint@v$(ACTIONLINT_VERSION)
+	GOTOOLCHAIN=$$(go env GOVERSION) go run github.com/rhysd/actionlint/cmd/actionlint@v$(ACTIONLINT_VERSION)
 
 fmt:
 	go fmt ./...
@@ -72,7 +72,7 @@ check: tidy fmt actionlint lint precommit coverage-check vuln
 # module's Go version; govulncheck and actionlint run pinned via `go run`.
 tools:
 	GOTOOLCHAIN=$$(go env GOVERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
-	command -v pre-commit >/dev/null 2>&1 || pip install pre-commit==$(PRE_COMMIT_VERSION)
+	command -v pre-commit >/dev/null 2>&1 || { python3 -m venv .venv && .venv/bin/pip install -q pre-commit==$(PRE_COMMIT_VERSION); }
 
 clean:
 	rm -f frame-tv-art-manager coverage.out coverage.html

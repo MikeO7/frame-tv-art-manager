@@ -241,49 +241,29 @@ func TestOptimizeFile_DisabledAndUnsupported(t *testing.T) {
 	}
 }
 
-func TestHandleRename_NoChange(t *testing.T) {
-	filename := "upload.jpg"
-	path := filepath.Join(t.TempDir(), filename)
-	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+func TestMoveToContentNameKeepsMatchingName(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "seed.jpg")
+	if err := os.WriteFile(source, []byte("x"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
-
-	// ensure handleRename reports no rename when filename already matches target
-	_, changed, err := handleRename(renameRequest{
-		path:     path,
-		filename: filename,
-		dir:      filepath.Dir(path),
-		modified: false,
-		finalW:   4,
-		finalH:   4,
-		logger:   slog.Default(),
-	})
-	if err != nil || changed {
-		t.Fatalf("handleRename() = (%v, %v, %v)", changed, err, path)
-	}
-}
-
-func TestHandleRename_NoChangeWhenAlreadyOptimizedButModified(t *testing.T) {
-	filename := "upload.jpg"
-	path := filepath.Join(t.TempDir(), filename)
-	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
-		t.Fatalf("seed file: %v", err)
-	}
-
-	_, changed, err := handleRename(renameRequest{
-		path:     path,
-		filename: filename,
-		dir:      filepath.Dir(path),
-		modified: true,
-		finalW:   4,
-		finalH:   4,
-		logger:   slog.Default(),
-	})
+	digest, err := fileDigest(context.Background(), source)
 	if err != nil {
-		t.Fatalf("handleRename() = %v", err)
+		t.Fatal(err)
 	}
-	if !changed {
-		t.Fatalf("expected changed=true to preserve modified state")
+	current := artwork.BuildContentName("upload.jpg", digest, extJPG, 8)
+	if err := os.Rename(source, filepath.Join(dir, current)); err != nil {
+		t.Fatal(err)
+	}
+
+	name, err := moveToContentName(context.Background(), filepath.Join(dir, current), contentNameRequest{
+		directory: dir, currentName: current, label: "upload.jpg", extension: extJPG,
+	})
+	if err != nil || name != current {
+		t.Fatalf("moveToContentName() = (%q, %v), want unchanged %q", name, err, current)
+	}
+	if _, err := os.Stat(filepath.Join(dir, current)); err != nil {
+		t.Fatalf("matching source moved: %v", err)
 	}
 }
 
@@ -359,28 +339,18 @@ func TestOptimizeFileAppliesOrientationBeforeExactSizeDecision(t *testing.T) {
 	}
 }
 
-func TestHandleRename_RenamesWhenNeeded(t *testing.T) {
+func TestMoveToContentNameRenamesWhenNeeded(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "source.jpg")
 	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	newName, changed, err := handleRename(renameRequest{
-		path:     path,
-		filename: "source.jpg",
-		dir:      dir,
-		modified: true,
-		finalW:   1280,
-		finalH:   720,
-		logger:   slog.Default(),
-		cfg:      DefaultConfig(),
+	newName, err := moveToContentName(context.Background(), path, contentNameRequest{
+		directory: dir, currentName: "source.jpg", label: "source.jpg", extension: extJPG,
 	})
-	if err != nil || !changed {
-		t.Fatalf("handleRename() = (%s, %v, %v), want rename success", newName, changed, err)
-	}
-	if newName == "source.jpg" {
-		t.Fatal("expected filename to change after rename")
+	if err != nil || newName == "source.jpg" {
+		t.Fatalf("moveToContentName() = (%s, %v), want rename success", newName, err)
 	}
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("expected source file to be renamed")
@@ -390,7 +360,7 @@ func TestHandleRename_RenamesWhenNeeded(t *testing.T) {
 	}
 }
 
-func TestHandleRenamePreservesExistingOperatorDestination(t *testing.T) {
+func TestMoveToContentNamePreservesExistingOperatorDestination(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
@@ -408,15 +378,14 @@ func TestHandleRenamePreservesExistingOperatorDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newName, changed, err := handleRename(renameRequest{
-		path: source, filename: "source.jpg", dir: directory, modified: true,
-		finalW: 1280, finalH: 720, logger: slog.Default(), ctx: context.Background(),
+	newName, err := moveToContentName(context.Background(), source, contentNameRequest{
+		directory: directory, currentName: "source.jpg", label: "source.jpg", extension: extJPG,
 	})
-	if err != nil || !changed {
-		t.Fatalf("handleRename() = (%q, %v, %v), want collision-safe rename", newName, changed, err)
+	if err != nil {
+		t.Fatalf("moveToContentName() = (%q, %v), want collision-safe rename", newName, err)
 	}
 	if newName == destinationName {
-		t.Fatalf("handleRename() reused occupied destination %q", newName)
+		t.Fatalf("moveToContentName() reused occupied destination %q", newName)
 	}
 	if got, err := os.ReadFile(filepath.Join(directory, newName)); err != nil || string(got) != "optimized bytes" {
 		t.Fatalf("renamed source = %q, %v", got, err)
@@ -426,19 +395,12 @@ func TestHandleRenamePreservesExistingOperatorDestination(t *testing.T) {
 	}
 }
 
-func TestHandleRename_RenameErrorPropagated(t *testing.T) {
+func TestMoveToContentNameReportsMissingSource(t *testing.T) {
 	dir := t.TempDir()
-	_, _, err := handleRename(renameRequest{
-		path:     filepath.Join(dir, "missing.jpg"),
-		filename: "missing.jpg",
-		dir:      dir,
-		modified: true,
-		finalW:   4,
-		finalH:   4,
-		logger:   slog.Default(),
-	})
-	if err == nil {
-		t.Fatalf("expected rename failure error")
+	if _, err := moveToContentName(context.Background(), filepath.Join(dir, "missing.jpg"), contentNameRequest{
+		directory: dir, currentName: "missing.jpg", label: "missing.jpg", extension: extJPG,
+	}); err == nil {
+		t.Fatalf("expected missing source error")
 	}
 }
 
@@ -490,22 +452,10 @@ func TestRewriteImage_PortraitModePadsInsteadOfCrop(t *testing.T) {
 	cfg.MaxHeight = 10
 	cfg.PortraitMode = "pad"
 
-	newW, newH, err := rewriteImage(rewriteParams{
-		f:        f,
-		path:     src,
-		filename: "portrait.jpg",
-		width:    3,
-		height:   5,
-		cfg:      cfg,
-		logger:   slog.Default(),
-	})
-	if err != nil {
+	if err := rewriteImage(context.Background(), f, src, 1, embeddedColorData{}, cfg, slog.Default()); err != nil {
 		t.Fatalf("rewriteImage() = %v", err)
 	}
-	if newW != cfg.MaxWidth || newH != cfg.MaxHeight {
-		t.Fatalf("expected rewritten dimensions %dx%d, got %dx%d", cfg.MaxWidth, cfg.MaxHeight, newW, newH)
-	}
-	if err := ValidateImage(context.Background(), src); err != nil {
+	if err := validateImageOutput(context.Background(), src, formatJPEG, cfg.MaxWidth, cfg.MaxHeight); err != nil {
 		t.Fatalf("rewritten image invalid: %v", err)
 	}
 }
@@ -556,10 +506,7 @@ func TestRewriteImageReportsEachIOFailure(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			source, path := test.prepare(t)
-			_, _, err := rewriteImage(rewriteParams{
-				f: source, path: path, filename: filepath.Base(path), width: 8, height: 8,
-				cfg: DefaultConfig(), logger: discardLogger(),
-			})
+			err := rewriteImage(context.Background(), source, path, 1, embeddedColorData{}, DefaultConfig(), discardLogger())
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("rewriteImage() error = %v, want %q", err, test.want)
 			}
@@ -628,7 +575,7 @@ func TestOptimizeFileContextHonorsCancellationBeforeIO(t *testing.T) {
 	cancel()
 	path := filepath.Join(t.TempDir(), "missing.jpg")
 
-	name, modified, err := optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, DefaultConfig(), discardLogger(), defaultPixelWorkers())
+	name, modified, err := optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, DefaultConfig(), discardLogger())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("OptimizeFileContext() error = %v, want context.Canceled", err)
 	}

@@ -29,7 +29,7 @@ func isPortraitFile(ctx context.Context, path string) (bool, error) {
 	if _, err := f.Seek(0, 0); err != nil {
 		return false, err
 	}
-	orientation, err := readOrientationForExtension(ctx, f, format)
+	orientation, err := readOrientationForExtension(ctx, f, "."+format)
 	if err != nil {
 		return false, fmt.Errorf("read orientation: %w", err)
 	}
@@ -57,10 +57,7 @@ func loadAndRotateImageWithConfig(ctx context.Context, path string, cfg Config, 
 	if err := validateInputDimensions(imgCfg.Width, imgCfg.Height); err != nil {
 		return nil, err
 	}
-	extension := extJPG
-	if format == formatPNG {
-		extension = extPNG
-	}
+	extension := "." + format
 	colorMetadata, err := readColorDataWithPolicy(ctx, f, extension, cfg, logger, filepath.Base(path))
 	if err != nil {
 		return nil, err
@@ -68,7 +65,7 @@ func loadAndRotateImageWithConfig(ctx context.Context, path string, cfg Config, 
 	if _, err := f.Seek(0, 0); err != nil {
 		return nil, err
 	}
-	orientation, err := readOrientationForExtension(ctx, f, format)
+	orientation, err := readOrientationForExtension(ctx, f, extension)
 	if err != nil {
 		return nil, fmt.Errorf("read orientation: %w", err)
 	}

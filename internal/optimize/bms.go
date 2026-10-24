@@ -108,26 +108,12 @@ func (s *bmsState) floodFill() {
 }
 
 func processBMSAttention(values []uint8, threshold uint8, w, h int, inverse bool) []float64 {
-	if w <= 0 || h <= 0 || len(values) < w*h {
-		return nil
+	boolMap := make([]bool, len(values))
+	for i, value := range values {
+		boolMap[i] = (value > threshold) != inverse
 	}
-	boolMap := thresholdBooleanMap(values, threshold, w*h, inverse)
 	opened := dilateBinary(erodeBinary(boolMap, w, h), w, h)
 	return dilateAttention(surroundednessMap(opened, w, h), w, h)
-}
-
-func thresholdBooleanMap(values []uint8, threshold uint8, size int, inverse bool) []bool {
-	boolMap := make([]bool, size)
-	for i, value := range values {
-		if i >= len(boolMap) {
-			break
-		}
-		boolMap[i] = value > threshold
-		if inverse {
-			boolMap[i] = !boolMap[i]
-		}
-	}
-	return boolMap
 }
 
 func surroundednessMap(boolMap []bool, w, h int) []float64 {
@@ -214,9 +200,7 @@ func normalizeAndBlurBMS(values []float64, w, h int) []float64 {
 				}
 			}
 			blurred[y*w+x] = sum / count
-			if blurred[y*w+x] > maxValue {
-				maxValue = blurred[y*w+x]
-			}
+			maxValue = max(maxValue, blurred[y*w+x])
 		}
 	}
 	if maxValue > 0 {

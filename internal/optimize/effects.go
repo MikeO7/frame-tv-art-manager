@@ -27,22 +27,6 @@ func toRGBA(img image.Image) *image.RGBA {
 	return rgba
 }
 
-//nolint:revive // crop policy is kept explicit at this internal pixel-processing seam
-func centerCropWithOptions(
-	src *image.RGBA,
-	targetW, targetH int,
-	smart bool,
-	minGain float64,
-	linearLight bool,
-) *image.RGBA {
-	cropRect := cropRectForAspectWithGain(src, float64(targetW)/float64(targetH), smart, minGain)
-	return resizeCrop(src, cropRect, targetW, targetH, linearLight)
-}
-
-func cropRectForAspectWithGain(src *image.RGBA, targetAspect float64, smart bool, minGain float64) image.Rectangle {
-	return cropRectForAspectWithProtection(src, targetAspect, smart, minGain, false, 0)
-}
-
 //nolint:revive // explicit crop policy values keep this allocation-free scoring seam small
 func cropRectForAspectWithProtection(
 	src *image.RGBA,
@@ -74,10 +58,10 @@ func cropRectForAspectWithProtection(
 	return image.Rect(0, bestY, srcW, bestY+cropH)
 }
 
-// sharpenWithOptions applies a bounded luminance unsharp mask. The threshold
-// suppresses amplification of low-level JPEG noise and the shared luminance
-// delta avoids creating colored edge halos.
-func sharpenWithOptions(src *image.RGBA, amount float64, threshold, workerLimit int) *image.RGBA {
+// sharpen applies a bounded luminance unsharp mask. The threshold suppresses
+// amplification of low-level JPEG noise and the shared luminance delta avoids
+// creating colored edge halos.
+func sharpen(src *image.RGBA, amount float64, threshold int) *image.RGBA {
 	if amount <= 0 {
 		return src
 	}
@@ -88,30 +72,21 @@ func sharpenWithOptions(src *image.RGBA, amount float64, threshold, workerLimit 
 	}
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
-	chunk := (height - 2 + pixelPartitions - 1) / pixelPartitions
-	rgbLuma := func(pix []uint8, offset int) int {
-		return int(pix[offset])*299 + int(pix[offset+1])*587 + int(pix[offset+2])*114
+	rgbLuma := func(offset int) int {
+		return int(src.Pix[offset])*299 + int(src.Pix[offset+1])*587 + int(src.Pix[offset+2])*114
 	}
-	runPixelTasks(workerLimit, func(partition int) {
-		startY := 1 + partition*chunk
-		endY := min(startY+chunk, height-1)
-		if startY >= endY {
-			return
-		}
+	runPixelRows(1, height-1, func(_, startY, endY int) {
 		for y := startY; y < endY; y++ {
 			for x := 1; x < width-1; x++ {
 				center := y*src.Stride + x*4
-				neighborLuma := (rgbLuma(src.Pix, center-src.Stride) +
-					rgbLuma(src.Pix, center+src.Stride) +
-					rgbLuma(src.Pix, center-4) +
-					rgbLuma(src.Pix, center+4)) / 4
-				delta := float64(rgbLuma(src.Pix, center)-neighborLuma) / 1000
+				neighborLuma := (rgbLuma(center-src.Stride) + rgbLuma(center+src.Stride) +
+					rgbLuma(center-4) + rgbLuma(center+4)) / 4
+				delta := float64(rgbLuma(center)-neighborLuma) / 1000
 				if math.Abs(delta) < float64(threshold) {
 					continue
 				}
-				for channel := 0; channel < 3; channel++ {
-					value := float64(src.Pix[center+channel]) + amount*delta
-					dst.Pix[center+channel] = clampByte(value)
+				for channel := range 3 {
+					dst.Pix[center+channel] = clampByte(float64(src.Pix[center+channel]) + amount*delta)
 				}
 			}
 		}

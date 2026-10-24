@@ -14,21 +14,27 @@ func defaultPixelWorkers() int {
 	return min(max(runtime.GOMAXPROCS(0), 1), 4)
 }
 
-func runPixelTasks(workerLimit int, task func(int)) {
-	workers := min(max(workerLimit, 1), pixelPartitions)
+// runPixelRows splits rows [first, end) into pixelPartitions contiguous bands
+// and calls rows for every non-empty band on defaultPixelWorkers goroutines.
+func runPixelRows(first, end int, rows func(partition, startY, endY int)) {
+	chunk := (end - first + pixelPartitions - 1) / pixelPartitions
+	workers := defaultPixelWorkers()
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for range workers {
 		go func() {
 			defer wg.Done()
-			for index := range jobs {
-				task(index)
+			for partition := range jobs {
+				startY := first + partition*chunk
+				if endY := min(startY+chunk, end); startY < endY {
+					rows(partition, startY, endY)
+				}
 			}
 		}()
 	}
-	for index := range pixelPartitions {
-		jobs <- index
+	for partition := range pixelPartitions {
+		jobs <- partition
 	}
 	close(jobs)
 	wg.Wait()

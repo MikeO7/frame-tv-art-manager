@@ -82,9 +82,8 @@ func convertICCToSRGB(src image.Image, profileData []byte) (*image.RGBA, error) 
 	bounds := src.Bounds()
 	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	read := premultipliedReader(src)
-	chunk := (bounds.Dy() + pixelPartitions - 1) / pixelPartitions
-	runPixelTasks(defaultPixelWorkers(), func(partition int) {
-		for y := partition * chunk; y < min((partition+1)*chunk, bounds.Dy()); y++ {
+	runPixelRows(0, bounds.Dy(), func(_, startY, endY int) {
+		for y := startY; y < endY; y++ {
 			row := dst.Pix[y*dst.Stride:]
 			for x := range bounds.Dx() {
 				red, green, blue, alpha := read(bounds.Min.X+x, bounds.Min.Y+y)

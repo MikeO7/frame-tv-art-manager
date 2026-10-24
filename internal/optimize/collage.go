@@ -13,7 +13,6 @@ type collageRenderRequest struct {
 	cfg                       Config
 	logger                    *slog.Logger
 	leftSharpen, rightSharpen float64
-	sharpenThreshold, workers int
 }
 
 func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.RGBA {
@@ -24,8 +23,8 @@ func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.
 
 	left := centerCropConfigured(request.ctx, img1, leftWidth, targetHeight, request.cfg, request.logger)
 	right := centerCropConfigured(request.ctx, img2, rightWidth, targetHeight, request.cfg, request.logger)
-	left = sharpenWithOptions(left, request.leftSharpen, request.sharpenThreshold, request.workers)
-	right = sharpenWithOptions(right, request.rightSharpen, request.sharpenThreshold, request.workers)
+	left = sharpen(left, request.leftSharpen, request.cfg.SharpenThreshold)
+	right = sharpen(right, request.rightSharpen, request.cfg.SharpenThreshold)
 
 	std_draw.Draw(canvas, image.Rect(0, 0, leftWidth, targetHeight), left, left.Bounds().Min, std_draw.Src)
 	std_draw.Draw(canvas, image.Rect(leftWidth, 0, targetWidth, targetHeight), right, right.Bounds().Min, std_draw.Src)
@@ -33,11 +32,8 @@ func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.
 	// Dark charcoal / off-black seam centered on the panel boundary.
 	dividerColor := color.RGBA{R: 18, G: 18, B: 18, A: 255}
 	dividerHalfWidth := max(1, targetWidth/1920)
-	for y := 0; y < targetHeight; y++ {
-		for x := max(0, leftWidth-dividerHalfWidth); x < min(targetWidth, leftWidth+dividerHalfWidth); x++ {
-			canvas.Set(x, y, dividerColor)
-		}
-	}
+	divider := image.Rect(leftWidth-dividerHalfWidth, 0, leftWidth+dividerHalfWidth, targetHeight)
+	std_draw.Draw(canvas, divider, image.NewUniform(dividerColor), image.Point{}, std_draw.Src)
 
 	return canvas
 }

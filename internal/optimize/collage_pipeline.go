@@ -4,46 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image/jpeg"
-	"image/png"
-	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
-	"sync/atomic"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
-// collageJob bundles the inputs needed to fuse a single pair of portrait
-// images into one landscape collage.
-type collageJob struct {
-	ctx        context.Context
-	artworkDir string
-	f1, f2     string
-	cfg        Config
-	catalog    Catalog
-	onRename   RenameObserver
-	logger     *slog.Logger
-}
-
-//nolint:funlen,gocognit // the ordered transactional image pipeline keeps cleanup local
-func processCollagePair(job collageJob) (string, error) {
-	artworkDir := job.artworkDir
-	f1, f2 := job.f1, job.f2
-	cfg := job.cfg
-	catalog := job.catalog
-	onRename := job.onRename
-	logger := job.logger
-	ctx := job.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	logger.Debug("starting processCollagePair", "f1", f1, "f2", f2)
-	p1 := filepath.Join(artworkDir, f1)
-	p2 := filepath.Join(artworkDir, f2)
+// processCollagePair fuses two portrait files into one landscape collage,
+// publishes it, and removes both sources.
+func (p *catalogPass) processCollagePair(ctx context.Context, f1, f2 string) (string, error) {
+	cfg := p.cfg
+	p1 := filepath.Join(p.artworkDir, f1)
+	p2 := filepath.Join(p.artworkDir, f2)
 
 	if err := validateOutputDimensions(cfg.MaxWidth, cfg.MaxHeight, cfg.MaxOutputPixels); err != nil {
 		return "", err
@@ -56,83 +30,42 @@ func processCollagePair(job collageJob) (string, error) {
 		return "", err
 	}
 
-	img1, err := loadAndRotateImageWithConfig(ctx, p1, cfg, logger)
+	img1, err := loadAndRotateImageWithConfig(ctx, p1, cfg, p.logger)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", f1, err)
 	}
-	img2, err := loadAndRotateImageWithConfig(ctx, p2, cfg, logger)
+	img2, err := loadAndRotateImageWithConfig(ctx, p2, cfg, p.logger)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", f2, err)
 	}
 
 	leftWidth := cfg.MaxWidth / 2
-	rightWidth := cfg.MaxWidth - leftWidth
-	leftSharpen := scaleAwareSharpenAmount(
-		cfg.SharpenAmount, img1.Bounds().Dx(), img1.Bounds().Dy(), leftWidth, cfg.MaxHeight,
-	)
-	rightSharpen := scaleAwareSharpenAmount(
-		cfg.SharpenAmount, img2.Bounds().Dx(), img2.Bounds().Dy(), rightWidth, cfg.MaxHeight,
-	)
 	collage := renderCollage(img1, img2, collageRenderRequest{
-		ctx: ctx, cfg: cfg, logger: logger,
-		leftSharpen: leftSharpen, rightSharpen: rightSharpen,
-		sharpenThreshold: cfg.SharpenThreshold, workers: defaultPixelWorkers(),
+		ctx: ctx, cfg: cfg, logger: p.logger,
+		leftSharpen: scaleAwareSharpenAmount(
+			cfg.SharpenAmount, img1.Bounds().Dx(), img1.Bounds().Dy(), leftWidth, cfg.MaxHeight,
+		),
+		rightSharpen: scaleAwareSharpenAmount(
+			cfg.SharpenAmount, img2.Bounds().Dx(), img2.Bounds().Dy(), cfg.MaxWidth-leftWidth, cfg.MaxHeight,
+		),
 	})
 	if cfg.MuseumModeEnabled {
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
 	}
 
 	ext := collageOutputExtension(f1, f2)
-
-	// 0o644 is intentional — artwork files must be world-readable so they
-	// can be accessed over SMB/NFS network shares. Do NOT tighten to 0o600.
-	out, err := os.CreateTemp(artworkDir, ".collage-*.tmp")
+	out, err := os.CreateTemp(p.artworkDir, ".collage-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("create collage output: %w", err)
 	}
-	tmpPath := out.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-	writer := &contextWriter{ctx: ctx, writer: out}
-
-	if ext == extPNG {
-		err = png.Encode(writer, collage)
-	} else {
-		err = jpeg.Encode(writer, collage, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+	defer func() { _ = os.Remove(out.Name()) }()
+	if err := writeValidatedOutput(ctx, out, ext, collage, cfg); err != nil {
+		return "", fmt.Errorf("write collage: %w", err)
 	}
-	if err != nil {
-		_ = out.Close()
-		return "", fmt.Errorf("encode collage: %w", err)
-	}
-	if err := out.Chmod(0o644); err != nil {
-		_ = out.Close()
-		return "", fmt.Errorf("chmod collage: %w", err)
-	}
-	if err := out.Sync(); err != nil {
-		_ = out.Close()
-		return "", fmt.Errorf("sync collage: %w", err)
-	}
-	if err := out.Close(); err != nil {
-		return "", fmt.Errorf("close collage: %w", err)
-	}
-	expectedFormat := formatJPEG
-	if ext == extPNG {
-		expectedFormat = formatPNG
-	}
-	if err := validateImageOutput(ctx, tmpPath, expectedFormat, cfg.MaxWidth, cfg.MaxHeight); err != nil {
-		return "", fmt.Errorf("validate collage: %w", err)
-	}
-	digest, err := fileDigest(ctx, tmpPath)
-	if err != nil {
-		return "", fmt.Errorf("hash collage: %w", err)
-	}
-	collageName, err := availableContentName(ctx, contentNameRequest{
-		directory: artworkDir, label: "collage-" + f1 + "-" + f2, digest: digest, extension: ext,
+	collageName, err := moveToContentName(ctx, out.Name(), contentNameRequest{
+		directory: p.artworkDir, label: "collage-" + f1 + "-" + f2, extension: ext,
 	})
 	if err != nil {
-		return "", fmt.Errorf("choose collage output name: %w", err)
-	}
-	collagePath := filepath.Join(artworkDir, collageName)
-	if err := durablefs.MoveExclusive(ctx, tmpPath, collagePath); err != nil {
 		return "", fmt.Errorf("commit collage: %w", err)
 	}
 
@@ -145,18 +78,7 @@ func processCollagePair(job collageJob) (string, error) {
 		return collageName, fmt.Errorf("remove second collage source: %w", err)
 	}
 
-	// Update the local catalog after the on-disk commit. Observer failures are
-	// reported without pretending the already-committed collection change did
-	// not happen.
-	catalog.NoteFileRename(f1, collageName)
-	catalog.NoteFileRename(f2, "")
-
-	if onRename != nil {
-		if err := errors.Join(onRename(f1, collageName), onRename(f2, collageName)); err != nil {
-			return collageName, fmt.Errorf("observe collage source renames: %w", err)
-		}
-	}
-
+	p.renames = append(p.renames, Rename{OldName: f1, NewName: collageName}, Rename{OldName: f2, NewName: collageName})
 	return collageName, nil
 }
 
@@ -187,100 +109,44 @@ func collageOutputExtension(first, second string) string {
 	return extJPG
 }
 
-// collectRawPortraits returns the un-optimized portrait files eligible for
-// collage pairing, pruning AppleDouble ("._") entries from localFiles as it goes.
-func collectRawPortraits(
-	ctx context.Context,
-	artworkDir string,
-	localFiles map[string]struct{},
-	wantsCollageAll bool,
-	inputMaps ...map[string]StageInput,
-) []string {
-	var inputs map[string]StageInput
-	if len(inputMaps) > 0 {
-		inputs = inputMaps[0]
+// collectRawPortraits returns, sorted, the un-derived portrait files eligible
+// for collage pairing. Only PORTRAIT_MODE=collage pairs portraits.
+func (p *catalogPass) collectRawPortraits(ctx context.Context, localFiles map[string]struct{}) []string {
+	if p.cfg.PortraitMode != portraitModeCollage {
+		return nil
 	}
 	var rawPortraits []string
 	for filename := range localFiles {
-		if strings.HasPrefix(filename, "._") {
-			delete(localFiles, filename)
+		if p.inputs[filename].Derivative != "" {
 			continue
 		}
-		input := inputs[filename]
-		if !wantsCollageAll {
-			continue
-		}
-		if input.Derivative != "" {
-			continue
-		}
-		path := filepath.Join(artworkDir, filename)
-		if isPortrait, err := isPortraitFile(ctx, path); err == nil && isPortrait {
+		if isPortrait, err := isPortraitFile(ctx, filepath.Join(p.artworkDir, filename)); err == nil && isPortrait {
 			rawPortraits = append(rawPortraits, filename)
 		}
 	}
+	// Sorting makes pairing deterministic despite random map iteration order.
+	slices.Sort(rawPortraits)
 	return rawPortraits
 }
 
-// collageBatch bundles the inputs needed to pair every eligible raw portrait
-// in a catalog into collages during a single optimization pass.
-type collageBatch struct {
-	ctx            context.Context
-	artworkDir     string
-	localFiles     map[string]struct{}
-	cfg            Config
-	catalog        Catalog
-	onRename       RenameObserver
-	logger         *slog.Logger
-	optimizedCount *int64
-	inputs         map[string]StageInput
-}
-
-func processCollages(batch collageBatch) error {
-	ctx := batch.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	artworkDir := batch.artworkDir
-	localFiles := batch.localFiles
-	cfg := batch.cfg
-	catalog := batch.catalog
-	onRename := batch.onRename
-	logger := batch.logger
-	optimizedCount := batch.optimizedCount
-	var observerErrors []error
-
-	wantsCollageAll := cfg.PortraitMode == portraitModeCollage
-	rawPortraits := collectRawPortraits(ctx, artworkDir, localFiles, wantsCollageAll, batch.inputs)
-
-	// Sort for deterministic pairing: map iteration order is random, so without
-	// this the same set of uploads could pair differently across runs.
-	sort.Strings(rawPortraits)
-
-	for i := 0; i < len(rawPortraits)-1; i += 2 {
-		f1 := rawPortraits[i]
-		f2 := rawPortraits[i+1]
-
-		logger.Info("pairing portrait images into collage", "file1", f1, "file2", f2)
-		collageFilename, err := processCollagePair(collageJob{
-			ctx:        ctx,
-			artworkDir: artworkDir,
-			f1:         f1,
-			f2:         f2,
-			cfg:        cfg,
-			catalog:    catalog,
-			onRename:   onRename,
-			logger:     logger,
-		})
+// processCollages pairs every eligible raw portrait into collages, replacing
+// the pairs with their collage in localFiles.
+func (p *catalogPass) processCollages(ctx context.Context, localFiles map[string]struct{}) error {
+	rawPortraits := p.collectRawPortraits(ctx, localFiles)
+	var collageErrors []error
+	for i := 0; i+1 < len(rawPortraits); i += 2 {
+		f1, f2 := rawPortraits[i], rawPortraits[i+1]
+		p.logger.Info("pairing portrait images into collage", "file1", f1, "file2", f2)
+		collageFilename, err := p.processCollagePair(ctx, f1, f2)
 		if collageFilename != "" {
 			delete(localFiles, f1)
 			delete(localFiles, f2)
 			localFiles[collageFilename] = struct{}{}
-			atomic.AddInt64(optimizedCount, 1)
+			p.optimized++
 		}
 		if err != nil {
-			logger.Error("failed to create collage pair", "file1", f1, "file2", f2, "error", err)
-			observerErrors = append(observerErrors, err)
-			continue
+			p.logger.Error("failed to create collage pair", "file1", f1, "file2", f2, "error", err)
+			collageErrors = append(collageErrors, err)
 		}
 	}
 
@@ -290,5 +156,5 @@ func processCollages(batch collageBatch) error {
 	if len(rawPortraits)%2 == 1 {
 		delete(localFiles, rawPortraits[len(rawPortraits)-1])
 	}
-	return errors.Join(observerErrors...)
+	return errors.Join(collageErrors...)
 }

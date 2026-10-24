@@ -56,11 +56,8 @@ func TestScanBestWindowCentersEqualScores(t *testing.T) {
 	t.Parallel()
 	const width, height = 10, 4
 	integral := calculateIntegralImage(make([]float64, width*height), width, height)
-	got := scanBestWindow(windowScan{
-		integral: integral, workW: width, workH: height,
-		mapWinW: 4, mapWinH: height, horizontal: true,
-	})
+	got := cropWindows{saliency: integral, workW: width, workH: height, windowW: 4, windowH: height, horizontal: true}.best()
 	if got != 3 {
-		t.Fatalf("scanBestWindow(uniform) = %d, want centered offset 3", got)
+		t.Fatalf("cropWindows.best(uniform) = %d, want centered offset 3", got)
 	}
 }

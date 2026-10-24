@@ -268,8 +268,9 @@ func TestPreflightPortraitSafetyBranches(t *testing.T) {
 	if err := os.Symlink(target, symlink); err != nil {
 		t.Fatalf("create symlink: %v", err)
 	}
-	if _, _, err := openPreflightInput(StageInput{Name: filepath.Base(symlink), Path: symlink}); err == nil || !strings.Contains(err.Error(), "regular non-symlink") {
-		t.Fatalf("openPreflightInput(symlink) error = %v", err)
+	if _, err := preflightOrientation(context.Background(), StageInput{Name: filepath.Base(symlink), Path: symlink}); err == nil ||
+		!strings.Contains(err.Error(), "regular non-symlink") {
+		t.Fatalf("preflightOrientation(symlink) error = %v", err)
 	}
 
 	rotated := filepath.Join(directory, "upload-rotated.jpg")
@@ -295,8 +296,8 @@ func TestPreflightPortraitSafetyBranches(t *testing.T) {
 		{Name: "upload-missing.jpg", Path: filepath.Join(directory, "missing.jpg")},
 		{Name: "upload-directory.jpg", Path: directory},
 	} {
-		if _, _, err := openPreflightInput(input); err == nil {
-			t.Fatalf("openPreflightInput(%s) error = nil", input.Name)
+		if _, err := preflightOrientation(context.Background(), input); err == nil {
+			t.Fatalf("preflightOrientation(%s) error = nil", input.Name)
 		}
 	}
 }

@@ -11,7 +11,7 @@ func TestMuseumContrastIdentityPreservesNeutralLevels(t *testing.T) {
 	for value := range 256 {
 		copy(src.Pix[value*4:], []uint8{uint8(value), uint8(value), uint8(value), 255})
 	}
-	applyContrastAndGamutWithWorkers(src, 1, 1)
+	applyContrastAndGamut(src, 1)
 	for value := range 256 {
 		if got := src.Pix[value*4]; int(got) != value {
 			t.Fatalf("neutral level %d mapped to %d, want unchanged", value, got)

@@ -11,37 +11,26 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 )
 
-type recordingCatalog struct {
-	mu      sync.Mutex
-	files   map[string]struct{}
-	err     error
-	renames [][2]string
-}
-
 // OptimizeFile runs the production single-file transform with concise test setup.
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
-	return optimizeFileWithPolicy(context.Background(), path, filepath.Base(path), false, cfg, logger, defaultPixelWorkers())
+	return optimizeFileWithPolicy(context.Background(), path, filepath.Base(path), false, cfg, logger)
 }
 
-func (c *recordingCatalog) SupportedFiles() (map[string]struct{}, error) {
-	if c.err != nil {
-		return nil, c.err
-	}
-	out := make(map[string]struct{}, len(c.files))
-	for name := range c.files {
-		out[name] = struct{}{}
-	}
-	return out, nil
+func testPass(dir string, cfg Config) *catalogPass {
+	return &catalogPass{artworkDir: dir, cfg: cfg, logger: discardLogger()}
 }
 
-func (c *recordingCatalog) NoteFileRename(oldName, newName string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.renames = append(c.renames, [2]string{oldName, newName})
+// runTestPass runs a complete pass over the named files in dir.
+func runTestPass(ctx context.Context, dir string, cfg Config, names ...string) (*catalogPass, error) {
+	pass := testPass(dir, cfg)
+	pass.inputs = make(map[string]StageInput, len(names))
+	for _, name := range names {
+		pass.inputs[name] = StageInput{}
+	}
+	return pass, pass.run(ctx)
 }
 
 func discardLogger() *slog.Logger {
@@ -75,85 +64,53 @@ func writeTestImage(t *testing.T, path string, width, height int) {
 	}
 }
 
-func TestOptimizeCatalogValidationAndErrors(t *testing.T) {
-	t.Run("catalog error", func(t *testing.T) {
-		wantErr := errors.New("catalog unavailable")
-		count, err := optimizeCatalog(context.Background(), t.TempDir(), &recordingCatalog{err: wantErr}, DefaultConfig(), nil, discardLogger(), nil)
-		if count != 0 || !errors.Is(err, wantErr) {
-			t.Fatalf("optimizeCatalog() = (%d, %v), want (0, %v)", count, err, wantErr)
-		}
-	})
-
+func TestCatalogPassValidationAndErrors(t *testing.T) {
 	t.Run("disabled validates and filters corrupt files", func(t *testing.T) {
 		dir := t.TempDir()
 		writeTestImage(t, filepath.Join(dir, "valid.jpg"), 8, 8)
 		if err := os.WriteFile(filepath.Join(dir, "corrupt.jpg"), []byte("broken"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		catalog := &recordingCatalog{files: map[string]struct{}{"valid.jpg": {}, "corrupt.jpg": {}, "._sidecar.jpg": {}}}
 		cfg := DefaultConfig()
 		cfg.Enabled = false
-		count, err := optimizeCatalog(context.Background(), dir, catalog, cfg, nil, discardLogger(), nil)
-		if err != nil || count != 0 {
-			t.Fatalf("optimizeCatalog() = (%d, %v), want (0, nil)", count, err)
+		pass, err := runTestPass(context.Background(), dir, cfg, "valid.jpg", "corrupt.jpg", "._sidecar.jpg")
+		if err != nil || pass.optimized != 0 || len(pass.renames) != 0 {
+			t.Fatalf("run() = (%d, %v), renames %v; want no work", pass.optimized, err, pass.renames)
 		}
 	})
 
-	t.Run("canceled context is returned", func(t *testing.T) {
+	t.Run("canceled context is returned before work", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestImage(t, filepath.Join(dir, "alpha.jpg"), 12, 8)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		count, err := optimizeCatalog(ctx, t.TempDir(), &recordingCatalog{files: map[string]struct{}{}}, DefaultConfig(), nil, discardLogger(), nil)
-		if count != 0 || !errors.Is(err, context.Canceled) {
-			t.Fatalf("optimizeCatalog() = (%d, %v), want canceled", count, err)
+		pass, err := runTestPass(ctx, dir, DefaultConfig(), "alpha.jpg")
+		if pass.optimized != 0 || !errors.Is(err, context.Canceled) || len(pass.renames) != 0 {
+			t.Fatalf("run() = (%d, %v), renames %v; want canceled before work", pass.optimized, err, pass.renames)
 		}
 	})
 }
 
-func TestOptimizeCatalogRenamesImage(t *testing.T) {
+func TestCatalogPassRenamesImage(t *testing.T) {
 	dir := t.TempDir()
 	const oldName = "landscape.h_abcdef123456.jpg"
 	writeTestImage(t, filepath.Join(dir, oldName), 12, 8)
-	catalog := &recordingCatalog{files: map[string]struct{}{oldName: {}}}
 	cfg := DefaultConfig()
 	cfg.MaxWidth = 10
 	cfg.MaxHeight = 6
-	var callback [][2]string
 
-	count, err := optimizeCatalog(context.Background(), dir, catalog, cfg, func(oldName, newName string) error {
-		callback = append(callback, [2]string{oldName, newName})
-		return nil
-	}, discardLogger(), nil)
+	pass, err := runTestPass(context.Background(), dir, cfg, oldName)
 	if err != nil {
-		t.Fatalf("optimizeCatalog: %v", err)
+		t.Fatalf("run: %v", err)
 	}
-	if count != 1 || len(callback) != 1 || len(catalog.renames) != 1 {
-		t.Fatalf("count=%d callback=%v catalog=%v", count, callback, catalog.renames)
+	if pass.optimized != 1 || len(pass.renames) != 1 {
+		t.Fatalf("count=%d renames=%v", pass.optimized, pass.renames)
 	}
-	if callback[0][0] != oldName || callback[0][1] == oldName {
-		t.Fatalf("unexpected callback: %v", callback)
+	if rename := pass.renames[0]; rename.OldName != oldName || rename.NewName == oldName {
+		t.Fatalf("unexpected rename: %v", rename)
 	}
-	if err := ValidateImage(context.Background(), filepath.Join(dir, callback[0][1])); err != nil {
+	if err := ValidateImage(context.Background(), filepath.Join(dir, pass.renames[0].NewName)); err != nil {
 		t.Fatalf("renamed output invalid: %v", err)
-	}
-}
-
-func TestOptimizeCatalogReturnsRenameObserverFailure(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	const oldName = "landscape.h_abcdef123456.jpg"
-	writeTestImage(t, filepath.Join(dir, oldName), 12, 8)
-	catalog := &recordingCatalog{files: map[string]struct{}{oldName: {}}}
-	cfg := DefaultConfig()
-	cfg.MaxWidth = 10
-	cfg.MaxHeight = 6
-	wantErr := errors.New("persist TV mapping")
-
-	count, err := optimizeCatalog(context.Background(), dir, catalog, cfg, func(_, _ string) error {
-		return wantErr
-	}, discardLogger(), nil)
-	if count != 1 || !errors.Is(err, wantErr) {
-		t.Fatalf("optimizeCatalog() = (%d, %v), want (1, %v)", count, err, wantErr)
 	}
 }
 
@@ -165,17 +122,9 @@ func TestCollagePipelineJPEGAndPNG(t *testing.T) {
 			f2 := "upload_b.h_bbbbbbbbbbbb" + ext
 			writeTestImage(t, filepath.Join(dir, f1), 8, 12)
 			writeTestImage(t, filepath.Join(dir, f2), 8, 12)
-			catalog := &recordingCatalog{}
 			cfg := DefaultConfig()
 			cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
-			name, err := processCollagePair(collageJob{
-				artworkDir: dir,
-				f1:         f1,
-				f2:         f2,
-				cfg:        cfg,
-				catalog:    catalog,
-				logger:     discardLogger(),
-			})
+			name, err := testPass(dir, cfg).processCollagePair(context.Background(), f1, f2)
 			if err != nil {
 				t.Fatalf("processCollagePair: %v", err)
 			}
@@ -194,32 +143,6 @@ func TestCollagePipelineJPEGAndPNG(t *testing.T) {
 	}
 }
 
-func TestCollectRawPortraitsAndWorkerBounds(t *testing.T) {
-	dir := t.TempDir()
-	writeTestImage(t, filepath.Join(dir, "upload_portrait.jpg"), 4, 8)
-	writeTestImage(t, filepath.Join(dir, "remote_portrait.jpg"), 4, 8)
-	writeTestImage(t, filepath.Join(dir, "upload_landscape.jpg"), 8, 4)
-	files := map[string]struct{}{
-		"upload_portrait.jpg": {}, "remote_portrait.jpg": {}, "upload_landscape.jpg": {},
-		"upload_1x1_opt.h_hash.jpg": {}, "._sidecar.jpg": {}, "missing.jpg": {},
-	}
-	got := collectRawPortraits(context.Background(), dir, files, false)
-	if len(got) != 0 {
-		t.Fatalf("collectRawPortraits(crop mode) = %v, want none", got)
-	}
-	if _, exists := files["._sidecar.jpg"]; exists {
-		t.Fatal("AppleDouble sidecar was not pruned")
-	}
-	got = collectRawPortraits(context.Background(), dir, files, true)
-	if len(got) != 2 {
-		t.Fatalf("collectRawPortraits(all) = %v, want two portraits", got)
-	}
-	if clampWorkers(0) != minOptimizeWorkers || clampWorkers(8) != maxOptimizeWorkers ||
-		clampWorkers(100) != maxOptimizeWorkers {
-		t.Fatal("clampWorkers did not enforce worker bounds")
-	}
-}
-
 func TestProcessCollagesUpdatesBatchState(t *testing.T) {
 	dir := t.TempDir()
 	f1 := "upload_first.h_aaaaaaaaaaaa.jpg"
@@ -227,28 +150,15 @@ func TestProcessCollagesUpdatesBatchState(t *testing.T) {
 	writeTestImage(t, filepath.Join(dir, f1), 4, 8)
 	writeTestImage(t, filepath.Join(dir, f2), 4, 8)
 	localFiles := map[string]struct{}{f1: {}, f2: {}}
-	catalog := &recordingCatalog{}
-	var count int64
-	var callbacks [][2]string
 	cfg := DefaultConfig()
 	cfg.PortraitMode = portraitModeCollage
 	cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
-	if err := processCollages(collageBatch{
-		artworkDir: dir,
-		localFiles: localFiles,
-		cfg:        cfg,
-		catalog:    catalog,
-		onRename: func(oldName, newName string) error {
-			callbacks = append(callbacks, [2]string{oldName, newName})
-			return nil
-		},
-		logger:         discardLogger(),
-		optimizedCount: &count,
-	}); err != nil {
+	pass := testPass(dir, cfg)
+	if err := pass.processCollages(context.Background(), localFiles); err != nil {
 		t.Fatalf("processCollages: %v", err)
 	}
-	if count != 1 || len(localFiles) != 1 || len(callbacks) != 2 || len(catalog.renames) != 2 {
-		t.Fatalf("count=%d files=%v callbacks=%v renames=%v", count, localFiles, callbacks, catalog.renames)
+	if pass.optimized != 1 || len(localFiles) != 1 || len(pass.renames) != 2 {
+		t.Fatalf("count=%d files=%v renames=%v", pass.optimized, localFiles, pass.renames)
 	}
 	for name := range localFiles {
 		if !strings.HasPrefix(name, "collage-") {
@@ -290,122 +200,26 @@ func TestOptimizeFileFastAndUnsupportedPaths(t *testing.T) {
 	}
 }
 
-func TestOptContextHelpers(t *testing.T) {
-	o := &optContext{
-		artworkDir: t.TempDir(),
-		localFiles: map[string]struct{}{"alpha.jpg": {}, "beta.jpg": {}},
-		cfg:        DefaultConfig(),
-		logger:     discardLogger(),
-	}
-	o.recordDelete("beta.jpg")
-	o.recordRename("alpha.jpg", "alpha.h_renamed.jpg")
-	if _, ok := o.localFiles["alpha.jpg"]; ok {
-		t.Fatalf("recordRename failed to remove old name")
-	}
-	if _, ok := o.localFiles["alpha.h_renamed.jpg"]; !ok {
-		t.Fatalf("recordRename failed to add new name")
-	}
-
-	if got := o.errors(); got != nil {
-		t.Fatalf("errors() should be nil before recordError, got %v", got)
-	}
-	o.recordError(nil)
-	if got := o.errors(); got != nil {
-		t.Fatalf("recordError(nil) should not record error: %v", got)
-	}
-
-	sentinel := errors.New("observer failed")
-	o.recordError(sentinel)
-	if got := o.errors(); got == nil || !strings.Contains(got.Error(), "observer failed") {
-		t.Fatalf("recorded error = %v", got)
-	}
-}
-
-func TestOptContextObserveRename(t *testing.T) {
-	o := &optContext{logger: discardLogger()}
-	o.observeRename("old.jpg", "new.jpg")
-	if got := o.errors(); got != nil {
-		t.Fatalf("observeRename should be no-op when callback is nil: %v", got)
-	}
-
-	var calls int
-	o.onRename = func(oldName, newName string) error {
-		calls++
-		return errors.New("notify failed")
-	}
-	o.observeRename("old.jpg", "new.jpg")
-	if calls != 1 {
-		t.Fatalf("expected observeRename callback call, got %d", calls)
-	}
-	if got := o.errors(); got == nil || !strings.Contains(got.Error(), "observe artwork rename") {
-		t.Fatalf("expected callback failure to be recorded, got %v", got)
-	}
-}
-
-func TestRunOptimizeWorkersRespectsCancelledContext(t *testing.T) {
+func TestOptimizeFileSkipsUnusableFiles(t *testing.T) {
 	dir := t.TempDir()
-	o := &optContext{
-		artworkDir: dir,
-		localFiles: map[string]struct{}{"alpha.jpg": {}},
-		cfg:        DefaultConfig(),
-		logger:     discardLogger(),
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	runOptimizeWorkers(ctx, enqueueOptimizeJobs(o.localFiles), o, new(int64))
-	if len(o.localFiles) != 1 {
-		t.Fatalf("canceled run should not mutate local file map, got %d entries", len(o.localFiles))
-	}
-}
-
-func TestEnqueueOptimizeJobsDropsAppleDouble(t *testing.T) {
-	files := map[string]struct{}{
-		"upload.jpg": {}, "._drop.txt": {}, "remote.jpg": {},
-	}
-	jobs := enqueueOptimizeJobs(files)
-	var got []string
-	for name := range jobs {
-		got = append(got, name)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 jobs, got %d", len(got))
-	}
-	if _, ok := files["._drop.txt"]; ok {
-		t.Fatal("enqueueOptimizeJobs should remove AppleDouble files")
-	}
-}
-
-func TestHandleSingleOptimizationBranches(t *testing.T) {
-	dir := t.TempDir()
-
-	invalid := filepath.Join(dir, "invalid.jpg")
-	if err := os.WriteFile(invalid, []byte("not-an-image"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "invalid.jpg"), []byte("not-an-image"), 0o600); err != nil {
 		t.Fatalf("write invalid image: %v", err)
 	}
-
-	o := &optContext{
-		artworkDir: dir,
-		localFiles: map[string]struct{}{"invalid.jpg": {}, "missing.jpg": {}},
-		cfg:        func() Config { c := DefaultConfig(); c.Enabled = false; return c }(),
-		logger:     discardLogger(),
-	}
-
-	modified, ok := handleSingleOptimizationContext(context.Background(), "invalid.jpg", o)
-	if ok || modified {
-		t.Fatalf("handleSingleOptimization(invalid, disabled) = (%v, %v), want false,false", modified, ok)
-	}
-	if _, exists := o.localFiles["invalid.jpg"]; exists {
-		t.Fatalf("invalid file should be removed on validation failure")
-	}
-
-	missingCfg := DefaultConfig()
-	o.cfg = missingCfg
-	modified, ok = handleSingleOptimizationContext(context.Background(), "missing.jpg", o)
-	if ok || modified {
-		t.Fatalf("handleSingleOptimization(missing, enabled) = (%v, %v), want false,false", modified, ok)
-	}
-	if _, exists := o.localFiles["missing.jpg"]; exists {
-		t.Fatalf("missing file should be removed after failed optimization")
+	disabled := DefaultConfig()
+	disabled.Enabled = false
+	for _, test := range []struct {
+		name, file string
+		cfg        Config
+	}{
+		{name: "invalid while disabled", file: "invalid.jpg", cfg: disabled},
+		{name: "missing while enabled", file: "missing.jpg", cfg: DefaultConfig()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pass := testPass(dir, test.cfg)
+			pass.optimizeFile(context.Background(), test.file)
+			if pass.optimized != 0 || len(pass.renames) != 0 {
+				t.Fatalf("optimizeFile(%s) counted=%d renames=%v", test.file, pass.optimized, pass.renames)
+			}
+		})
 	}
 }

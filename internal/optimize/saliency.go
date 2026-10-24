@@ -17,92 +17,112 @@ func findBestDirectorCropWithProtection(
 	protect bool,
 	protectionStrength float64,
 ) int {
-	srcBounds := src.Bounds()
-	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
+	srcW, srcH := src.Bounds().Dx(), src.Bounds().Dy()
+	srcSize, windowSize := srcH, windowH
+	if horizontal {
+		srcSize, windowSize = srcW, windowW
+	}
 
 	// PASS 1: Global Analysis (256px)
 	const workSize = 256
-	scale := float64(workSize) / float64(srcW)
-	if !horizontal {
-		scale = float64(workSize) / float64(srcH)
-	}
+	scale := float64(workSize) / float64(srcSize)
 	workW, workH := int(float64(srcW)*scale), int(float64(srcH)*scale)
 	workImg := image.NewRGBA(image.Rect(0, 0, workW, workH))
 	draw.CatmullRom.Scale(workImg, workImg.Bounds(), src, src.Bounds(), draw.Src, nil)
 
-	saliencyMap := generateSaliencyMap(workImg)
-	integral := calculateIntegralImage(saliencyMap, workW, workH)
-	var protectionIntegral []float64
-	if protect && protectionStrength > 0 {
-		protectionIntegral = calculateIntegralImage(generateProtectedRegionMap(workImg), workW, workH)
+	windows := cropWindows{
+		saliency:   calculateIntegralImage(generateSaliencyMap(workImg), workW, workH),
+		workW:      workW,
+		workH:      workH,
+		windowW:    max(int(float64(windowW)*scale), 1),
+		windowH:    max(int(float64(windowH)*scale), 1),
+		horizontal: horizontal,
+	}
+	protected := protect && protectionStrength > 0
+	if protected {
+		windows.protection = calculateIntegralImage(generateProtectedRegionMap(workImg), workW, workH)
+		windows.strength = protectionStrength
 	}
 
-	mapWinW := max(int(float64(windowW)*scale), 1)
-	mapWinH := max(int(float64(windowH)*scale), 1)
-
-	bestMapPos := scanBestWindow(windowScan{
-		integral:           integral,
-		workW:              workW,
-		workH:              workH,
-		mapWinW:            mapWinW,
-		mapWinH:            mapWinH,
-		horizontal:         horizontal,
-		protectionIntegral: protectionIntegral,
-		protectionStrength: protectionStrength,
-	})
-	centerMapPos := max((workW-mapWinW)/2, 0)
-	if !horizontal {
-		centerMapPos = max((workH-mapWinH)/2, 0)
-	}
-	bestScore := protectedCropWindowScore(integral, protectionIntegral, workW, workH, mapWinW, mapWinH, horizontal, bestMapPos, protectionStrength)
-	centerScore := protectedCropWindowScore(integral, protectionIntegral, workW, workH, mapWinW, mapWinH, horizontal, centerMapPos, protectionStrength)
-	denominator := math.Max(math.Abs(centerScore), 1e-9)
-	if (bestScore-centerScore)/denominator < max(minGain, 0) {
-		if horizontal {
-			return max((srcW-windowW)/2, 0)
-		}
-		return max((srcH-windowH)/2, 0)
+	bestMapPos := windows.best()
+	bestScore, centerScore := windows.score(bestMapPos), windows.score(windows.center())
+	if (bestScore-centerScore)/math.Max(math.Abs(centerScore), 1e-9) < max(minGain, 0) {
+		return max((srcSize-windowSize)/2, 0)
 	}
 	globalOffset := int(float64(bestMapPos) / scale)
-	if protect && protectionStrength > 0 {
-		if horizontal {
-			return clampOffset(globalOffset, windowW, srcW)
-		}
-		return clampOffset(globalOffset, windowH, srcH)
+	if protected {
+		return clampOffset(globalOffset, windowSize, srcSize)
 	}
 
 	// PASS 2: High-Res Micro-Refinement (Fine-tuning at the focal point)
-	// We search within a +/- 5% range at a higher resolution to snap to sharp edges.
+	// We search within a +/- 2% range at full resolution to snap to sharp edges.
 	return refineOffset(src, globalOffset, windowW, windowH, horizontal)
 }
 
-func protectedCropWindowScore(
-	saliency, protection []float64,
-	workW, workH, windowW, windowH int,
-	horizontal bool,
-	offset int,
-	strength float64,
-) float64 {
-	score := cropWindowScore(saliency, workW, workH, windowW, windowH, horizontal, offset)
-	if len(protection) == 0 || strength <= 0 {
+// cropWindows scores crop windows sliding along one axis of an analysis-scale
+// saliency integral image. With a protection integral, windows whose
+// boundaries cross protected detail are penalized.
+type cropWindows struct {
+	saliency, protection []float64
+	workW, workH         int
+	windowW, windowH     int
+	horizontal           bool
+	strength             float64
+}
+
+// span returns the active axis length and the window length along it.
+func (c cropWindows) span() (int, int) {
+	if c.horizontal {
+		return c.workW, c.windowW
+	}
+	return c.workH, c.windowH
+}
+
+// axisRect returns the inclusive integral-image rectangle covering [first, last]
+// on the active axis and the full extent of the other axis.
+func (c cropWindows) axisRect(first, last int) image.Rectangle {
+	if c.horizontal {
+		return image.Rect(first, 0, last, c.workH-1)
+	}
+	return image.Rect(0, first, c.workW-1, last)
+}
+
+func (c cropWindows) center() int {
+	axis, window := c.span()
+	return max((axis-window)/2, 0)
+}
+
+// best returns the offset with the greatest score; among equal scores it
+// prefers the offset nearest the center.
+func (c cropWindows) best() int {
+	const tieTolerance = 1e-12
+	axis, window := c.span()
+	center := c.center()
+	best, maxScore := center, math.Inf(-1)
+	for offset := 0; offset <= axis-window; offset++ {
+		score := c.score(offset)
+		if score > maxScore+tieTolerance ||
+			(math.Abs(score-maxScore) <= tieTolerance && math.Abs(float64(offset-center)) < math.Abs(float64(best-center))) {
+			maxScore, best = score, offset
+		}
+	}
+	return best
+}
+
+func (c cropWindows) score(offset int) float64 {
+	axis, window := c.span()
+	score := getRectSum(c.saliency, c.axisRect(offset, offset+window-1), c.workW)
+	if len(c.protection) == 0 || c.strength <= 0 {
 		return score
 	}
-	band := max(2, min(windowW, windowH)/32)
-	var boundary float64
-	if horizontal {
-		left := image.Rect(max(offset-band, 0), 0, min(offset+band, workW)-1, workH-1)
-		rightX := offset + windowW
-		right := image.Rect(max(rightX-band, 0), 0, min(rightX+band, workW)-1, workH-1)
-		boundary = getRectSum(protection, left, workW) + getRectSum(protection, right, workW)
-	} else {
-		top := image.Rect(0, max(offset-band, 0), workW-1, min(offset+band, workH)-1)
-		bottomY := offset + windowH
-		bottom := image.Rect(0, max(bottomY-band, 0), workW-1, min(bottomY+band, workH)-1)
-		boundary = getRectSum(protection, top, workW) + getRectSum(protection, bottom, workW)
+	band := max(2, min(c.windowW, c.windowH)/32)
+	edge := func(position int) float64 {
+		return getRectSum(c.protection, c.axisRect(max(position-band, 0), min(position+band, axis)-1), c.workW)
 	}
-	windowArea := float64(windowW * windowH)
-	boundaryArea := float64(max(1, 4*band*max(workW, workH)))
-	return score - 4*strength*boundary*windowArea/boundaryArea
+	boundary := edge(offset) + edge(offset+window)
+	windowArea := float64(c.windowW * c.windowH)
+	boundaryArea := float64(max(1, 4*band*max(c.workW, c.workH)))
+	return score - 4*c.strength*boundary*windowArea/boundaryArea
 }
 
 // generateProtectedRegionMap marks high-frequency text/line detail and
@@ -133,63 +153,6 @@ func pixelLuma(pixel color.RGBA) float64 {
 	return (0.2126*float64(pixel.R) + 0.7152*float64(pixel.G) + 0.0722*float64(pixel.B)) / 255
 }
 
-//nolint:revive // integral-image geometry is explicit to keep scoring allocation-free
-func cropWindowScore(integral []float64, workW, workH, windowW, windowH int, horizontal bool, offset int) float64 {
-	if horizontal {
-		return getRectSum(integral, image.Rect(offset, 0, offset+windowW-1, workH-1), workW)
-	}
-	return getRectSum(integral, image.Rect(0, offset, workW-1, offset+windowH-1), workW)
-}
-
-// windowScan bundles the inputs for sliding a crop window across a saliency
-// integral image.
-type windowScan struct {
-	integral           []float64
-	workW, workH       int
-	mapWinW, mapWinH   int
-	horizontal         bool
-	protectionIntegral []float64
-	protectionStrength float64
-}
-
-// scanBestWindow slides the crop window along the saliency integral image and
-// returns the start offset (on the active axis) whose enclosed saliency is
-// greatest.
-func scanBestWindow(scan windowScan) int {
-	integral := scan.integral
-	workW, workH := scan.workW, scan.workH
-	mapWinW, mapWinH := scan.mapWinW, scan.mapWinH
-	horizontal := scan.horizontal
-
-	axisSize, windowSize := workH, mapWinH
-	if horizontal {
-		axisSize, windowSize = workW, mapWinW
-	}
-	center := max((axisSize-windowSize)/2, 0)
-	best, maxScore := center, math.Inf(-1)
-	isBetter := func(score float64, position int) bool {
-		const tieTolerance = 1e-12
-		return score > maxScore+tieTolerance ||
-			(math.Abs(score-maxScore) <= tieTolerance && math.Abs(float64(position-center)) < math.Abs(float64(best-center)))
-	}
-	if horizontal {
-		for mx := 0; mx <= workW-mapWinW; mx++ {
-			score := protectedCropWindowScore(integral, scan.protectionIntegral, workW, workH, mapWinW, mapWinH, true, mx, scan.protectionStrength)
-			if isBetter(score, mx) {
-				maxScore, best = score, mx
-			}
-		}
-		return best
-	}
-	for my := 0; my <= workH-mapWinH; my++ {
-		score := protectedCropWindowScore(integral, scan.protectionIntegral, workW, workH, mapWinW, mapWinH, false, my, scan.protectionStrength)
-		if isBetter(score, my) {
-			maxScore, best = score, my
-		}
-	}
-	return best
-}
-
 // clampOffset ensures a crop offset is within valid image bounds.
 func clampOffset(offset, windowSize, srcSize int) int {
 	if offset < 0 {
@@ -201,35 +164,22 @@ func clampOffset(offset, windowSize, srcSize int) int {
 	return offset
 }
 
-// refineOffset performs a local search at high resolution to fine-tune the crop.
+// refineOffset performs a local search at full resolution to fine-tune the crop.
 func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizontal bool) int {
-	srcBounds := src.Bounds()
-	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
-
-	// Search range: +/- 2% of the total dimension
-	var searchRange int
+	srcW, srcH := src.Bounds().Dx(), src.Bounds().Dy()
+	srcSize, windowSize := srcH, windowH
 	if horizontal {
-		searchRange = int(float64(srcW) * 0.02)
-	} else {
-		searchRange = int(float64(srcH) * 0.02)
+		srcSize, windowSize = srcW, windowW
 	}
+	// Search range: +/- 2% of the active dimension.
+	searchRange := int(float64(srcSize) * 0.02)
 	if searchRange < 1 {
 		return globalOffset
 	}
 
-	bestOffset := globalOffset
-	minScore := math.Inf(1)
-
-	// Local search at high resolution
+	bestOffset, minScore := globalOffset, math.Inf(1)
 	for delta := -searchRange; delta <= searchRange; delta++ {
-		offset := globalOffset + delta
-
-		if horizontal {
-			offset = clampOffset(offset, windowW, srcW)
-		} else {
-			offset = clampOffset(offset, windowH, srcH)
-		}
-
+		offset := clampOffset(globalOffset+delta, windowSize, srcSize)
 		// Prefer crop boundaries that cross less edge energy while remaining near
 		// the globally selected saliency window.
 		var score float64
@@ -238,14 +188,11 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 		} else {
 			score = calculateEdgeScore(src, 0, offset, srcW, offset+windowH)
 		}
-
 		score += 0.02 * math.Abs(float64(delta)) / float64(searchRange)
 		if score < minScore {
-			minScore = score
-			bestOffset = offset
+			minScore, bestOffset = score, offset
 		}
 	}
-
 	return bestOffset
 }
 
@@ -254,24 +201,19 @@ func refineOffset(src *image.RGBA, globalOffset, windowW, windowH int, horizonta
 // salient subject.
 func calculateEdgeScore(src *image.RGBA, x1, y1, x2, y2 int) float64 {
 	const samples = 64
-	score, count := 0.0, 0
+	score := 0.0
 	if y1 == src.Bounds().Min.Y && y2 == src.Bounds().Max.Y {
-		for i := 0; i < samples; i++ {
-			y := y1 + i*max(y2-y1-1, 0)/max(samples-1, 1)
+		for i := range samples {
+			y := y1 + i*max(y2-y1-1, 0)/(samples-1)
 			score += calculateSobelEdge(src, x1, y) + calculateSobelEdge(src, x2-1, y)
-			count += 2
 		}
 	} else {
-		for i := 0; i < samples; i++ {
-			x := x1 + i*max(x2-x1-1, 0)/max(samples-1, 1)
+		for i := range samples {
+			x := x1 + i*max(x2-x1-1, 0)/(samples-1)
 			score += calculateSobelEdge(src, x, y1) + calculateSobelEdge(src, x, y2-1)
-			count += 2
 		}
 	}
-	if count == 0 {
-		return 0
-	}
-	return score / float64(count)
+	return score / (2 * samples)
 }
 
 // generateSaliencyMap creates a 2D map where each pixel represents a saliency score.

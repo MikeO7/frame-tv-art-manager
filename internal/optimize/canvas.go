@@ -6,13 +6,10 @@ import (
 	"math"
 )
 
-func applyCanvasTextureWithWorkers(src *image.RGBA, intensity, workerLimit int) *image.RGBA {
+func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	lutCraquelureOnce.Do(initializeCraquelure)
 
-	opacity := 0.04 * math.Pow(1.32, float64(intensity-1))
-	if opacity > 0.60 {
-		opacity = 0.60
-	}
+	opacity := min(0.04*math.Pow(1.32, float64(intensity-1)), 0.60)
 
 	bounds := src.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -20,30 +17,15 @@ func applyCanvasTextureWithWorkers(src *image.RGBA, intensity, workerLimit int) 
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
 
-	chunk := (height - 2 + pixelPartitions - 1) / pixelPartitions
-
-	srcStride := src.Stride
-	runPixelTasks(workerLimit, func(j int) {
-		startY := 1 + j*chunk
-		endY := startY + chunk
-		if endY > height-1 {
-			endY = height - 1
-		}
-		if startY >= height-1 {
-			return
-		}
-
-		func(sy, ey int) {
-			//nolint:gosec // sy is a positive chunk offset, conversion is mathematically safe
-			state := uint32(sy + 42) // Seed based on row
-
-			for y := sy; y < ey; y++ {
-				offset := y * srcStride
-				for x := 1; x < width-1; x++ {
-					processCanvasPixel(src, dst, offset+x*4, x, y, &state, opacity)
-				}
+	runPixelRows(1, height-1, func(_, startY, endY int) {
+		//nolint:gosec // startY is a positive row offset, conversion is mathematically safe
+		state := uint32(startY + 42) // Seed based on row
+		for y := startY; y < endY; y++ {
+			offset := y * src.Stride
+			for x := 1; x < width-1; x++ {
+				processCanvasPixel(src, dst, offset+x*4, x, y, &state, opacity)
 			}
-		}(startY, endY)
+		}
 	})
 	return dst
 }
@@ -156,12 +138,5 @@ func applySoftLight(a, b, opacity float64) uint8 {
 		res = a + (2.0*b-1.0)*(math.Sqrt(a)-a)
 	}
 	final := a*(1.0-opacity) + res*opacity
-	v := final * 255.0
-	if v < 0 {
-		return 0
-	}
-	if v > 255 {
-		return 255
-	}
-	return uint8(v + 0.5)
+	return roundToByte(final * 255.0)
 }

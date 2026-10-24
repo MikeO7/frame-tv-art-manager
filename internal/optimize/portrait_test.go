@@ -81,6 +81,6 @@ func renderTestCollage(left, right *image.RGBA, width, height int) *image.RGBA {
 	cfg := DefaultConfig()
 	cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled = width, height, false
 	return renderCollage(left, right, collageRenderRequest{
-		ctx: context.Background(), cfg: cfg, logger: discardLogger(), workers: defaultPixelWorkers(),
+		ctx: context.Background(), cfg: cfg, logger: discardLogger(),
 	})
 }

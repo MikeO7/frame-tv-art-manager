@@ -12,10 +12,10 @@ func TestStageCopyRejectsUnstableAndInvalidInputs(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	missing := StageInput{Name: "missing.jpg", Path: filepath.Join(directory, "missing.jpg")}
-	if _, err := openStageInput(missing); err == nil {
+	if _, _, err := openStageInput(missing); err == nil {
 		t.Fatal("openStageInput(missing) error = nil")
 	}
-	if _, err := openStageInput(StageInput{Name: "directory.jpg", Path: directory}); err == nil {
+	if _, _, err := openStageInput(StageInput{Name: "directory.jpg", Path: directory}); err == nil {
 		t.Fatal("openStageInput(directory) error = nil")
 	}
 
@@ -24,14 +24,14 @@ func TestStageCopyRejectsUnstableAndInvalidInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := StageInput{Name: "source.jpg", Path: sourcePath, Digest: sha256.Sum256([]byte("source bytes"))}
-	openSource := func(t *testing.T) stageSource {
+	writeFromSource := func(t *testing.T, ctx context.Context, stageDirectory string, staged StageInput) error {
 		t.Helper()
-		source, err := openStageInput(input)
+		source, opened, err := openStageInput(input)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = source.file.Close() })
-		return source
+		t.Cleanup(func() { _ = source.Close() })
+		return writeStageInput(ctx, stageDirectory, staged, source, opened)
 	}
 
 	t.Run("destination exists", func(t *testing.T) {
@@ -39,21 +39,21 @@ func TestStageCopyRejectsUnstableAndInvalidInputs(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(stageDirectory, input.Name), []byte("occupied"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := writeStageInput(context.Background(), stageDirectory, input, openSource(t)); err == nil {
+		if err := writeFromSource(t, context.Background(), stageDirectory, input); err == nil {
 			t.Fatal("writeStageInput(occupied) error = nil")
 		}
 	})
 	t.Run("canceled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := writeStageInput(ctx, t.TempDir(), input, openSource(t)); err == nil {
+		if err := writeFromSource(t, ctx, t.TempDir(), input); err == nil {
 			t.Fatal("writeStageInput(canceled) error = nil")
 		}
 	})
 	t.Run("digest changed", func(t *testing.T) {
 		wrong := input
 		wrong.Digest = sha256.Sum256([]byte("different"))
-		if err := writeStageInput(context.Background(), t.TempDir(), wrong, openSource(t)); err == nil {
+		if err := writeFromSource(t, context.Background(), t.TempDir(), wrong); err == nil {
 			t.Fatal("writeStageInput(wrong digest) error = nil")
 		}
 	})
@@ -63,15 +63,15 @@ func TestStageCopyRejectsUnstableAndInvalidInputs(t *testing.T) {
 			t.Fatal(err)
 		}
 		candidate := StageInput{Name: "source.jpg", Path: path}
-		source, err := openStageInput(candidate)
+		source, opened, err := openStageInput(candidate)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer source.file.Close()
+		defer source.Close()
 		if err := os.Remove(path); err != nil {
 			t.Fatal(err)
 		}
-		if err := verifyStageInputStable(candidate, source.file, source.before, source.opened); err == nil {
+		if err := verifyStageInputStable(candidate, source, opened); err == nil {
 			t.Fatal("verifyStageInputStable(removed) error = nil")
 		}
 	})
@@ -81,18 +81,18 @@ func TestStageCopyRejectsUnstableAndInvalidInputs(t *testing.T) {
 			t.Fatal(err)
 		}
 		candidate := StageInput{Name: "source.jpg", Path: path}
-		source, err := openStageInput(candidate)
+		source, opened, err := openStageInput(candidate)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer source.file.Close()
+		defer source.Close()
 		if err := os.Rename(path, path+".old"); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := verifyStageInputStable(candidate, source.file, source.before, source.opened); err == nil {
+		if err := verifyStageInputStable(candidate, source, opened); err == nil {
 			t.Fatal("verifyStageInputStable(replaced) error = nil")
 		}
 	})

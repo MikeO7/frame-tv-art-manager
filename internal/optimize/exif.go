@@ -40,15 +40,12 @@ func ReadOrientation(r io.Reader) (int, error) {
 			break
 		}
 
-		orientation, stop, err := processMarker(r, marker)
+		orientation, err := processMarker(r, marker)
 		if err != nil {
 			return 1, err
 		}
-		if stop {
-			if orientation > 0 {
-				return orientation, nil
-			}
-			continue
+		if orientation > 0 {
+			return orientation, nil
 		}
 	}
 	return 1, nil
@@ -97,33 +94,29 @@ func ReadPNGOrientation(r io.Reader) (int, error) {
 	}
 }
 
-func processMarker(r io.Reader, marker byte) (int, bool, error) {
+// processMarker consumes one JPEG marker segment. It returns the orientation
+// from an Exif APP1 segment, or zero when the segment carries none.
+func processMarker(r io.Reader, marker byte) (int, error) {
 	var buf [2]byte
 	if _, err := io.ReadFull(r, buf[:2]); err != nil {
-		return 0, true, err
+		return 0, err
 	}
 	length := int(buf[0])<<8 | int(buf[1])
 	if length < 2 {
-		return 0, true, fmt.Errorf("invalid marker length")
+		return 0, fmt.Errorf("invalid marker length")
 	}
-
-	if marker == 0xE1 {
-		payload := make([]byte, length-2)
-		if _, err := io.ReadFull(r, payload); err != nil {
-			return 0, true, err
-		}
-		if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
-			orientation, err := parseExif(payload[6:])
-			return orientation, true, err
-		}
-		return 0, true, nil
+	if marker != 0xE1 {
+		_, err := io.CopyN(io.Discard, r, int64(length-2))
+		return 0, err
 	}
-
-	discardBytes := int64(length - 2)
-	if _, err := io.CopyN(io.Discard, r, discardBytes); err != nil {
-		return 0, true, err
+	payload := make([]byte, length-2)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		return 0, err
 	}
-	return 0, false, nil
+	if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
+		return parseExif(payload[6:])
+	}
+	return 0, nil
 }
 
 func parseExif(tiff []byte) (int, error) {
