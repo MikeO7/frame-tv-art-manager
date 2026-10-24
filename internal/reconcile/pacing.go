@@ -137,6 +137,20 @@ func safeToRetryMutation(receipt samsung.Receipt, applyErr error) bool {
 		protocolErr.Outcome == samsung.OutcomeNotAttempted
 }
 
+// storageFullRejectionError can only be created after a definite storage-full
+// upload rejection and its capacity evidence have been durably persisted.
+type storageFullRejectionError struct {
+	cause error
+}
+
+func (err *storageFullRejectionError) Error() string { return err.cause.Error() }
+func (err *storageFullRejectionError) Unwrap() error { return err.cause }
+
+func isStorageFullRejection(err error) bool {
+	var rejection *storageFullRejectionError
+	return errors.As(err, &rejection)
+}
+
 func isMutationRetry(err error) bool {
 	var retryErr *mutationRetryError
 	return errors.As(err, &retryErr)

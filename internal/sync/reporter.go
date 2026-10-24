@@ -111,6 +111,9 @@ func writeTVSummary(sb *strings.Builder, tv TVSyncResult, padLine func(string) s
 		sb.WriteString(padLine("    Status:     ✔ Art Mode"))
 		sb.WriteString(padLine(fmt.Sprintf("    Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
 		sb.WriteString(padLine(fmt.Sprintf("    Total:      %d images on TV", tv.TotalImages)))
+		if tv.Rotating {
+			sb.WriteString(padLine(rotationSummary(tv)))
+		}
 		if tv.Brightness != "" {
 			sb.WriteString(padLine("    Brightness: " + tv.Brightness))
 		}
@@ -139,4 +142,12 @@ func writeWarningsSummary(sb *strings.Builder, warnings []string, padLine func(s
 		}
 		sb.WriteString(padLine("  - " + w))
 	}
+}
+
+func rotationSummary(tv TVSyncResult) string {
+	line := fmt.Sprintf("    Rotation:   %d waiting", tv.ArtworkWaiting)
+	if !tv.NextRotation.IsZero() {
+		line += " │ next " + tv.NextRotation.Local().Format("Jan 2 15:04")
+	}
+	return line
 }

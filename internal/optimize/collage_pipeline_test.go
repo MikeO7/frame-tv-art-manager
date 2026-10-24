@@ -90,6 +90,9 @@ func TestProcessCollagePairRejectsCombinedWorkingSetBeforePixelDecode(t *testing
 }
 
 func TestProcessCollagePair_CreateTempFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions, so the read-only directory cannot force the failure")
+	}
 	dir := t.TempDir()
 	writeTestImage(t, filepath.Join(dir, "upload_a.jpg"), 8, 12)
 	writeTestImage(t, filepath.Join(dir, "upload_b.jpg"), 8, 12)

@@ -94,7 +94,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	}
 	result := Result{
 		Plan: resultPlan, State: cloneState(state), Observation: observation, Applied: wake.applied,
-		AppliedCommands: slices.Clone(wake.appliedCommands),
+		AppliedCommands: slices.Clone(wake.appliedCommands), Rotation: plan.Rotation,
 	}
 	if request.DryRun {
 		result.Status = StatusIncompleteDryRun
@@ -106,6 +106,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	}
 	currentPlan := plan
 	selectedThisCycle := false
+	storageFullAbsorbed := false
 	paceMutation := false
 	var lastAttempt *CommandIntent
 	commandAttempts := 0
@@ -136,6 +137,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 			pruneBindings[digest] = struct{}{}
 		}
 		if len(refreshedPlan.Commands) == 0 {
+			currentPlan = refreshedPlan
 			break
 		}
 		command := refreshedPlan.Commands[0]
@@ -160,6 +162,17 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		paceMutation = true
 		result.State = cloneState(state)
 		result.Observation = observation
+		// A full TV is the expected entry into rotation. The rejection and its
+		// capacity evidence are already durable, so replan once against them.
+		if policy.Rotation > 0 && !storageFullAbsorbed && isStorageFullRejection(err) {
+			storageFullAbsorbed = true
+			lastAttempt, commandAttempts = nil, 0
+			currentPlan, state, err = s.replanForRotation(request, policy, state, observation, selectedThisCycle)
+			if err != nil {
+				return result, err
+			}
+			continue
+		}
 		if err != nil {
 			if isMutationRetry(err) && commandAttempts < s.mutations.attempts {
 				s.logMutationRetry(ctx, request.CycleID, command, commandAttempts, err)
@@ -188,14 +201,21 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		}
 	}
 	state.Pending = nil
+	result.Rotation = currentPlan.Rotation
 	if currentPlan.CapacityLimited {
 		result.Status = StatusStorageFull
 		result.State = cloneState(state)
 		return result, samsung.ErrStorageFull
 	}
+	desired := snapshotDigests(request.Snapshot)
+	now := s.clock.Now()
 	for digest := range pruneBindings {
 		delete(state.Bindings, digest)
+		if _, wanted := desired[digest]; wanted {
+			recordShown(&state, digest, now)
+		}
 	}
+	retainShownHistory(&state, desired)
 	state.LastCompleteCycle = request.CycleID
 	state.LastCollectionGen = request.Snapshot.Generation
 	state.Revision++

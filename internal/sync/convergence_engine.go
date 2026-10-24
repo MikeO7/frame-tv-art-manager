@@ -220,9 +220,14 @@ func (engine *convergenceEngine) publishTVHealth(summary TVSyncResult) {
 	if summary.Model != "" {
 		lastSeen = time.Now().Format(time.RFC3339)
 	}
+	nextRotation := ""
+	if !summary.NextRotation.IsZero() {
+		nextRotation = summary.NextRotation.UTC().Format(time.RFC3339)
+	}
 	engine.health.SetTVStatus(summary.IP, health.TVStatus{
 		IP: summary.IP, LastSeen: lastSeen, ImageCount: summary.TotalImages,
 		ArtMode: summary.ArtMode, Status: summary.Status, LastErrorMessage: summary.ErrorMessage,
+		Rotating: summary.Rotating, ArtworkWaiting: summary.ArtworkWaiting, NextRotation: nextRotation,
 	})
 }
 

@@ -78,6 +78,19 @@ type Result struct {
 	Observation     samsung.Observation
 	Applied         int
 	AppliedCommands []CommandKind
+	Rotation        RotationStatus
+}
+
+// RotationStatus summarizes artwork rotation on a TV whose known storage
+// capacity is smaller than the Artwork Collection.
+type RotationStatus struct {
+	// Active reports that rotation is handling the capacity shortfall.
+	Active bool
+	// Waiting counts desired artwork that is not on the TV after the plan.
+	Waiting int
+	// NextAt is the earliest time another swap can become due. It is zero when
+	// no further swap is pending.
+	NextAt time.Time
 }
 
 // Policy is immutable input to a plan. Zero values preserve operator state.
@@ -90,6 +103,9 @@ type Policy struct {
 	Power          PowerPolicy
 	Slideshow      SlideshowPolicy
 	Brightness     SettingPolicy
+	// Rotation is how long owned artwork stays on a full TV before it may be
+	// swapped for artwork that is waiting. Zero disables rotation.
+	Rotation time.Duration
 }
 
 type PolicyMode uint8
@@ -165,6 +181,7 @@ type Plan struct {
 	PolicyFingerprint    [sha256.Size]byte
 	InventoryFingerprint [sha256.Size]byte
 	CapacityLimited      bool
+	Rotation             RotationStatus
 	Commands             []CommandIntent
 	PruneBindings        []string
 }
@@ -194,6 +211,10 @@ type CapacityEvidence struct {
 	Maximum    int       `json:"maximum,omitempty"`
 	ObservedAt time.Time `json:"observed_at,omitempty"`
 	Probe      bool      `json:"probe,omitempty"`
+	// Shortfalls counts consecutive storage-full rejections that occurred while
+	// the TV held fewer items than Maximum. It bounds rotation deletions when a
+	// TV limits storage by bytes rather than by item count.
+	Shortfalls int `json:"shortfalls,omitempty"`
 }
 
 type InventoryFingerprint struct {
@@ -219,12 +240,15 @@ type Pending struct {
 }
 
 type State struct {
-	Version                int                  `json:"version"`
-	TV                     TVIdentity           `json:"tv"`
-	Revision               uint64               `json:"revision"`
-	Bindings               map[string]Binding   `json:"bindings"`
-	Tombstones             map[string]Tombstone `json:"tombstones"`
-	Capacity               CapacityEvidence     `json:"capacity"`
+	Version    int                  `json:"version"`
+	TV         TVIdentity           `json:"tv"`
+	Revision   uint64               `json:"revision"`
+	Bindings   map[string]Binding   `json:"bindings"`
+	Tombstones map[string]Tombstone `json:"tombstones"`
+	Capacity   CapacityEvidence     `json:"capacity"`
+	// LastShown records when desired artwork last left the TV, keyed by digest.
+	// Rotation uses it to bring back the artwork that has been away longest.
+	LastShown              map[string]time.Time `json:"last_shown,omitempty"`
 	LegacyMigrationPending bool                 `json:"legacy_migration_pending,omitempty"`
 	Pending                *Pending             `json:"pending,omitempty"`
 	LastCompleteCycle      string               `json:"last_complete_cycle_id,omitempty"`

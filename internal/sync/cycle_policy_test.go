@@ -138,3 +138,13 @@ func TestConvergencePolicyCopiesConfiguredMatteMapping(t *testing.T) {
 		t.Fatal("convergencePolicy() accepted an unnormalized default matte")
 	}
 }
+
+func TestConvergencePolicyCarriesRotationInterval(t *testing.T) {
+	t.Parallel()
+
+	policy, err := convergencePolicy(&config.Config{Timezone: "UTC", RotationIntervalDays: 14}, nil,
+		time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC), slog.New(slog.DiscardHandler))
+	if err != nil || policy.Rotation != 14*24*time.Hour {
+		t.Fatalf("convergencePolicy() rotation = %s, error = %v; want two weeks", policy.Rotation, err)
+	}
+}

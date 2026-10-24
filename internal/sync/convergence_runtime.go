@@ -132,6 +132,8 @@ func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
 		IP: address, Model: observation.TV.Model,
 		ArtMode:     observation.ArtMode == samsung.ArtModeOn,
 		TotalImages: len(observation.Inventory.ContentIDs),
+		Rotating:    result.Rotation.Active, ArtworkWaiting: result.Rotation.Waiting,
+		NextRotation: result.Rotation.NextAt,
 	}
 	for _, command := range result.AppliedCommands {
 		switch command {

@@ -41,7 +41,7 @@ func projectCapacityProbe(state State, observation samsung.Observation, observed
 	projected := cloneState(state)
 	projected.Capacity = CapacityEvidence{
 		Known: true, Maximum: len(observation.Inventory.ContentIDs) + 1,
-		ObservedAt: observedAt, Probe: true,
+		ObservedAt: observedAt, Probe: true, Shortfalls: state.Capacity.Shortfalls,
 	}
 	return projected
 }

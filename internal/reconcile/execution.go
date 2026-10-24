@@ -131,6 +131,7 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 		}
 		if pending.Command.Kind == CommandDeleteOwned {
 			delete(result.Bindings, pending.Command.Digest)
+			recordShown(&result, pending.Command.Digest, now)
 		}
 		delete(result.Tombstones, pending.Command.ContentID)
 	case CommandPowerOff:
@@ -173,6 +174,7 @@ func resolveAppliedReceipt(state State, observation samsung.Observation, now tim
 	case CommandDeleteOwned:
 		delete(state.Bindings, pending.Command.Digest)
 		delete(state.Tombstones, pending.Command.ContentID)
+		recordShown(&state, pending.Command.Digest, now)
 	case CommandDeleteUnknown:
 		delete(state.Tombstones, pending.Command.ContentID)
 	case CommandSelect, CommandSlideshow, CommandBrightness, CommandPowerOff, CommandWake:

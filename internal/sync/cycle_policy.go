@@ -31,6 +31,7 @@ func convergencePolicy(
 		Select:         false,
 		DefaultMatte:   defaultMatte,
 		MatteOverrides: matteOverrides,
+		Rotation:       cfg.RotationInterval(),
 	}
 	if strings.TrimSpace(cfg.TVMAC) != "" && len(cfg.TVIPs) == 1 {
 		policy.Power = reconcile.WakeWhenKnownOff

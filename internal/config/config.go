@@ -90,6 +90,12 @@ type Config struct {
 	// our filename→content_id mapping.
 	RemoveUnknownImages bool
 
+	// --- Rotation ---
+
+	// RotationIntervalDays is how long each artwork stays on a full TV before
+	// it is swapped for artwork that is waiting. Zero disables rotation.
+	RotationIntervalDays float64
+
 	// --- Auto-Off ---
 
 	// AutoOffTime is a 24-hour time string (e.g. "22:00") at which TVs in

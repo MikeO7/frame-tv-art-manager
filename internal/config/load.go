@@ -136,6 +136,7 @@ func validateRanges(cfg *Config) error {
 		{cfg.ShutdownTimeout > 0 && cfg.ShutdownTimeout <= 10*time.Minute, "SHUTDOWN_TIMEOUT_SECONDS must be between 1 and 600"},
 		{between(cfg.SlideshowInterval, 1, 1440), "SLIDESHOW_INTERVAL must be between 1 and 1440"},
 		{cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours <= 168, "AUTO_OFF_GRACE_HOURS must be between 0 and 168"},
+		{betweenFloat(cfg.RotationIntervalDays, 0, 365), "ROTATION_INTERVAL_DAYS must be between 0 and 365"},
 		{between(cfg.OptimizeMaxWidth, 1, 16384), "IMAGE_MAX_WIDTH must be between 1 and 16384"},
 		{between(cfg.OptimizeMaxHeight, 1, 16384), "IMAGE_MAX_HEIGHT must be between 1 and 16384"},
 		{between(cfg.OptimizeMaxPixels, 1, 100_000_000), "IMAGE_MAX_OUTPUT_PIXELS must be between 1 and 100000000"},

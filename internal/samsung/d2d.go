@@ -101,6 +101,10 @@ func uploadImageD2DFile(ctx context.Context, upload preparedD2DUpload) error {
 	if err := conn.SetWriteDeadline(time.Now().Add(upload.timeout + time.Duration(upload.fileSize/d2dChunkSize)*100*time.Millisecond)); err != nil {
 		return fmt.Errorf("set write deadline: %w", err)
 	}
+	// Cancellation interrupts a transfer in progress instead of waiting for the
+	// write deadline. The outcome stays unknown because bytes may have arrived.
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
+	defer stopCancel()
 
 	// Send: [4-byte header length][header JSON][file bytes]
 	headerLen := make([]byte, 4)

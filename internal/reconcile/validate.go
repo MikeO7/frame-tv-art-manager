@@ -90,15 +90,30 @@ func validateState(state State, expected TVIdentity) error {
 }
 
 func validateStateEvidence(state State) error {
-	if state.Capacity.Known && (state.Capacity.Maximum < 0 || state.Capacity.ObservedAt.IsZero()) {
-		return errors.New("known capacity evidence is invalid")
+	if err := validateCapacityEvidence(state.Capacity); err != nil {
+		return err
 	}
-	if state.Capacity.Probe && !state.Capacity.Known {
-		return errors.New("capacity probe requires known evidence")
+	for digest, at := range state.LastShown {
+		if !validDigest(digest) || at.IsZero() {
+			return fmt.Errorf("rotation history entry %q is invalid", digest)
+		}
 	}
 	if state.LegacyMigrationPending &&
 		(len(state.Bindings) != 0 || state.LastCompleteCycle != "" || state.LastCollectionGen != "") {
 		return errors.New("pending legacy migration cannot coexist with completed reconciliation state")
+	}
+	return nil
+}
+
+func validateCapacityEvidence(capacity CapacityEvidence) error {
+	if capacity.Known && (capacity.Maximum < 0 || capacity.ObservedAt.IsZero()) {
+		return errors.New("known capacity evidence is invalid")
+	}
+	if capacity.Probe && !capacity.Known {
+		return errors.New("capacity probe requires known evidence")
+	}
+	if capacity.Shortfalls < 0 || (capacity.Shortfalls > 0 && !capacity.Known) {
+		return errors.New("capacity shortfall count is invalid")
 	}
 	return nil
 }

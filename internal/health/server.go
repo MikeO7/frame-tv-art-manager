@@ -57,6 +57,9 @@ type TVStatus struct {
 	ArtMode          bool   `json:"art_mode"`
 	Status           string `json:"status"` // "ok", "unreachable", "backoff"
 	LastErrorMessage string `json:"last_error,omitempty"`
+	Rotating         bool   `json:"rotating,omitempty"`
+	ArtworkWaiting   int    `json:"artwork_waiting,omitempty"`
+	NextRotation     string `json:"next_rotation,omitempty"`
 }
 
 type statusSnapshot struct {

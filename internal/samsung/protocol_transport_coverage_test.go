@@ -250,7 +250,8 @@ func (f *protocolTVFixture) serveArtApp(ctx context.Context, conn *websocket.Con
 				}
 				f.stateMu.Unlock()
 				_ = writeProtocolD2DResponse(ctx, conn, imageAdded)
-			case <-f.d2dErr:
+			case err := <-f.d2dErr:
+				_ = err
 				return
 			case <-ctx.Done():
 				return

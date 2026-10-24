@@ -501,3 +501,26 @@ func TestExpiredCapacityDryRunPlansProbeWithoutPersistingLease(t *testing.T) {
 		t.Fatalf("persisted dry-run state = %+v, exists=%v, error=%v", persisted, exists, err)
 	}
 }
+
+func TestRunReportsCapacityFromFreshObservationWhenNothingRemains(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "state")
+	initial := knownObservation(samsung.PowerStateOn, "unknown-1")
+	fresh := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
+	identity, err := identityFromObservation(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := initialState(identity)
+	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	if err := newStateStore(directory).save(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &fakeAdapter{observations: []samsung.Observation{initial, fresh}}
+
+	result, err := newTestService(t, directory, Policy{}).Run(context.Background(), Request{
+		CycleID: "space-taken-before-upload", TV: adapter, Snapshot: snapshot(artworkItem("new.jpg", "new")),
+	})
+	if !errors.Is(err, samsung.ErrStorageFull) || result.Status != StatusStorageFull || adapter.applyCalls != 0 {
+		t.Fatalf("Run() = %+v, %v; want storage full from the fresh observation", result, err)
+	}
+}

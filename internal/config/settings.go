@@ -64,6 +64,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		BrightnessMin:                  env.integer("BRIGHTNESS_MIN", 2),
 		BrightnessMax:                  env.integer("BRIGHTNESS_MAX", 10),
 		RemoveUnknownImages:            env.boolean("REMOVE_UNKNOWN_IMAGES", false),
+		RotationIntervalDays:           env.decimal("ROTATION_INTERVAL_DAYS", 14),
 		AutoOffTime:                    env.str("AUTO_OFF_TIME", ""),
 		AutoOffGraceHours:              env.decimal("AUTO_OFF_GRACE_HOURS", 2),
 		TVMAC:                          env.str("TV_MAC", ""),

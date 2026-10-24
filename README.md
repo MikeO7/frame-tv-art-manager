@@ -332,6 +332,7 @@ the table below covers the settings most people change.
 | `HEALTH_BIND_ADDRESS` | `0.0.0.0` | Local IP address for the HTTP listener |
 | `DRY_RUN` | `false` | Read-only collection and TV planning with no durable mutations |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Delete TV art not known to this manager |
+| `ROTATION_INTERVAL_DAYS` | `14` | How long each artwork stays on a full TV before it rotates out; fractions allowed, `0` disables rotation |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 
 Malformed numeric and boolean values currently fall back to their defaults.
@@ -373,6 +374,44 @@ mode, and solar coordinates are validated at startup.
 does not create or modify local files, pair a TV, persist tokens or state, send
 Wake-on-LAN, expose the upload mutation, or change the TV.
 
+### Full TVs and artwork rotation
+
+The manager does not estimate free TV storage or upload test files to probe it.
+It learns the TV's capacity the first time the TV rejects a real artwork upload
+because storage is full. The same applies when the TV acknowledges an upload by
+reusing an existing content ID without increasing the TV Inventory: ownership
+moves to the acknowledged artwork, and the unchanged count becomes the known
+capacity.
+
+When the Artwork Collection is larger than that capacity, the manager rotates
+artwork instead of stopping. Each piece it uploaded stays on the TV for at
+least `ROTATION_INTERVAL_DAYS` (two weeks by default). After that, it is swapped
+for collection artwork that is waiting: artwork that has never been shown
+comes first, then artwork that has been off the TV the longest. Artwork that
+rotated out is not brought back until it has been away for the same interval,
+so a large collection cycles through completely. Each swap deletes one piece
+and immediately uploads its replacement, so the TV is never more than one piece
+below capacity. Rotation only removes artwork this manager uploaded; the local
+files stay in the collection, and artwork you added to the TV yourself is never
+rotated out.
+
+While rotation is working, a full TV is a normal state: the Sync Cycle succeeds,
+and `/status` reports `rotating`, `artwork_waiting`, and `next_rotation` for the
+TV. If the TV keeps rejecting uploads after space was freed (for example, when
+it limits storage by size rather than by count), rotation pauses after three
+such rejections until an upload succeeds again.
+
+Set `ROTATION_INTERVAL_DAYS=0` to disable rotation. A full TV then reports
+`storage full`, preserves existing artwork, and stops later artwork uploads.
+Rotation also cannot help when the TV is full of artwork the manager does not
+own; that case reports `storage full` too. While the TV Inventory remains at the
+recorded full count, later cycles continue reporting `storage full` without
+another artwork upload. Removing an artwork lets uploads resume immediately;
+otherwise, after 24 hours, one real pending artwork upload is retried. A
+successful retry clears the full condition and normal Reconciliation resumes;
+another rejection restarts the quiet period. With rotation enabled, the same
+daily retry checks whether the TV has gained space.
+
 ## Monitoring
 
 The HTTP server exposes:
@@ -388,18 +427,6 @@ The HTTP server exposes:
 The container healthcheck calls the application's `-livenesscheck` command,
 which reads `/live` on `HEALTH_PORT`. Set `HEALTH_PORT=0` only if you also
 override or disable the image healthcheck in your runtime configuration.
-
-The manager does not estimate free TV storage or upload test files to probe it.
-If the TV rejects a real desired artwork upload because storage is full, the
-Sync Cycle reports `storage full`, preserves existing artwork, and stops later
-mutations. The same fail-safe applies when the TV acknowledges an upload by
-reusing an existing content ID without increasing the TV Inventory: ownership
-moves to the acknowledged artwork, and the unchanged count becomes the known
-capacity. While the TV Inventory remains at the recorded full count, later
-cycles continue reporting `storage full` without another artwork upload. Removing an
-artwork lets uploads resume immediately; otherwise, after 24 hours, one real
-pending artwork upload is retried. A successful retry clears the full condition
-and normal Reconciliation resumes; another rejection restarts the quiet period.
 
 A failed healthcheck does not restart a container by itself. Use a Docker
 restart policy or an orchestrator policy if automatic recovery is required.

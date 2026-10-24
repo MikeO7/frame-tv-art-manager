@@ -1,5 +1,7 @@
 package sync
 
+import "time"
+
 const (
 	statusBackoff           = "backoff"
 	statusError             = "error"
@@ -20,4 +22,10 @@ type TVSyncResult struct {
 	Slideshow    string
 	ErrorMessage string
 	StorageFull  bool
+	// Rotating reports that rotation manages a collection larger than the TV.
+	Rotating bool
+	// ArtworkWaiting counts collection artwork not currently on the TV.
+	ArtworkWaiting int
+	// NextRotation is the earliest time another swap can become due.
+	NextRotation time.Time
 }

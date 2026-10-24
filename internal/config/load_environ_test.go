@@ -111,6 +111,9 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "artwork-shaped control file", value: "ARTWORK_SOURCES_FILE=/srv/sources.jpg", want: "ARTWORK_SOURCES_FILE"},
 		{name: "oversized timeout", value: "API_TIMEOUT_SECONDS=9223372036854775807", want: "API_TIMEOUT_SECONDS"},
 		{name: "oversized shutdown", value: "SHUTDOWN_TIMEOUT_SECONDS=601", want: "SHUTDOWN_TIMEOUT_SECONDS"},
+		{name: "negative rotation", value: "ROTATION_INTERVAL_DAYS=-1", want: "ROTATION_INTERVAL_DAYS"},
+		{name: "oversized rotation", value: "ROTATION_INTERVAL_DAYS=366", want: "ROTATION_INTERVAL_DAYS"},
+		{name: "NaN rotation", value: "ROTATION_INTERVAL_DAYS=NaN", want: "ROTATION_INTERVAL_DAYS"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -159,5 +162,33 @@ func assertWarningVariables(t *testing.T, warnings []Warning, variables ...strin
 		if strings.Contains(warnings[index].Message, "=") {
 			t.Fatalf("warning leaks a supplied value: %+v", warnings[index])
 		}
+	}
+}
+
+func TestLoadEnvironRotationInterval(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  time.Duration
+	}{
+		{name: "default is two weeks", want: 14 * 24 * time.Hour},
+		{name: "custom days", value: "ROTATION_INTERVAL_DAYS=7", want: 7 * 24 * time.Hour},
+		{name: "fractional days", value: "ROTATION_INTERVAL_DAYS=0.5", want: 12 * time.Hour},
+		{name: "zero disables", value: "ROTATION_INTERVAL_DAYS=0", want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			environ := []string{"TV_IPS=192.0.2.10"}
+			if test.value != "" {
+				environ = append(environ, test.value)
+			}
+			cfg, _, err := LoadEnviron(environ)
+			if err != nil {
+				t.Fatalf("LoadEnviron() error = %v", err)
+			}
+			if got := cfg.RotationInterval(); got != test.want {
+				t.Fatalf("RotationInterval() = %s, want %s", got, test.want)
+			}
+		})
 	}
 }
