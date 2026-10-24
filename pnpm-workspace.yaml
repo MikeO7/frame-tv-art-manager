@@ -1,3 +1,7 @@
 minimumReleaseAgeExclude:
   - '@e2e-dev/web@0.15.3'
   - e2e@0.21.3
+# e2e pins zod 4.6.1, which is affected by GHSA-mrhx-c7xc-m3w5; force the
+# patched release until the runner updates its own pin.
+overrides:
+  zod: 4.6.7
