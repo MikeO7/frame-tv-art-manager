@@ -138,13 +138,14 @@ func optimizeFileWithPolicy(
 	}
 	defer func() { _ = f.Close() }()
 
-	width, height, err := decodeInputConfig(ctx, f)
+	inputConfig, err := decodeInputConfig(ctx, f)
 	if err != nil {
 		return filename, false, err
 	}
-	if err := validateWorkingSet(width, height, cfg); err != nil {
+	if err := validateWorkingSet(workingInputFor(inputConfig), cfg); err != nil {
 		return filename, false, err
 	}
+	width, height := inputConfig.Width, inputConfig.Height
 	colorMetadata, err := readColorDataWithPolicy(ctx, f, ext, cfg, logger, filename)
 	if err != nil {
 		return filename, false, fmt.Errorf("read embedded color metadata: %w", err)

@@ -1,80 +1,68 @@
 package optimize
 
-import "image"
+import (
+	"encoding/binary"
+	"image"
+)
 
-// RotateImage rotates the image according to the EXIF orientation tag (values 1-8).
+// orientationTile is the square block copied at a time so transposing
+// orientations read and write within cache-resident rows.
+const orientationTile = 64
+
+// RotateImage returns img transformed for the EXIF orientation tag (values
+// 1-8). Orientation 1 and unknown values return img unchanged; every other
+// orientation returns a new zero-origin *image.RGBA.
 func RotateImage(img image.Image, orientation int) image.Image {
-	switch orientation {
-	case 2: // Mirror horizontal
-		return flipHorizontal(img)
-	case 3: // 180 degrees
-		return rotate180(img)
-	case 4: // Mirror vertical
-		return flipVertical(img)
-	case 5: // Mirror horizontal and rotate 270 CW
-		return rotate270(flipHorizontal(img))
-	case 6: // 90 degrees CW
-		return rotate90(img)
-	case 7: // Mirror horizontal and rotate 90 CW
-		return rotate90(flipHorizontal(img))
-	case 8: // 270 degrees CW (90 CCW)
-		return rotate270(img)
-	default:
+	if orientation < 2 || orientation > 8 {
 		return img
 	}
+	return orientRGBA(toRGBA(img), orientation)
 }
 
-func flipHorizontal(img image.Image) *image.RGBA {
-	bounds := img.Bounds()
-	dest := image.NewRGBA(bounds)
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			dest.Set(bounds.Max.X-1-x, y, img.At(x, y))
+// orientRGBA applies a 2-8 orientation with a single tiled pass. Source
+// pixel (x, y), relative to src.Rect.Min, lands at destination byte offset
+// base + x*stepX + y*stepY.
+func orientRGBA(src *image.RGBA, orientation int) *image.RGBA {
+	width, height := src.Rect.Dx(), src.Rect.Dy()
+	destinationWidth, destinationHeight := width, height
+	if orientation >= 5 {
+		destinationWidth, destinationHeight = height, width
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, destinationWidth, destinationHeight))
+	base, stepX, stepY := orientationSteps(orientation, width, height, dst.Stride)
+	for tileY := 0; tileY < height; tileY += orientationTile {
+		for tileX := 0; tileX < width; tileX += orientationTile {
+			endX := min(tileX+orientationTile, width)
+			for y := tileY; y < min(tileY+orientationTile, height); y++ {
+				source := src.Pix[src.PixOffset(src.Rect.Min.X+tileX, src.Rect.Min.Y+y):]
+				destination := base + tileX*stepX + y*stepY
+				for x := 0; x < endX-tileX; x++ {
+					binary.LittleEndian.PutUint32(dst.Pix[destination:], binary.LittleEndian.Uint32(source[x*4:]))
+					destination += stepX
+				}
+			}
 		}
 	}
-	return dest
+	return dst
 }
 
-func flipVertical(img image.Image) *image.RGBA {
-	bounds := img.Bounds()
-	dest := image.NewRGBA(bounds)
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			dest.Set(x, bounds.Max.Y-1-y, img.At(x, y))
-		}
+// orientationSteps returns the destination byte offset of source pixel
+// (0, 0) and the offset deltas for one source step along x and y.
+func orientationSteps(orientation, width, height, stride int) (int, int, int) {
+	switch orientation {
+	case 2: // mirror horizontal: (W-1-x, y)
+		return (width - 1) * 4, -4, stride
+	case 3: // rotate 180: (W-1-x, H-1-y)
+		return (height-1)*stride + (width-1)*4, -4, -stride
+	case 4: // mirror vertical: (x, H-1-y)
+		return (height - 1) * stride, 4, -stride
+	case 5: // transpose: (y, x)
+		return 0, stride, 4
+	case 6: // rotate 90 clockwise: (H-1-y, x)
+		return (height - 1) * 4, stride, -4
+	case 7: // transverse: (H-1-y, W-1-x)
+		return (width-1)*stride + (height-1)*4, -stride, -4
+	default: // 8, rotate 270 clockwise: (y, W-1-x)
+		return (width - 1) * stride, -stride, 4
 	}
-	return dest
-}
-
-func rotate90(img image.Image) *image.RGBA {
-	bounds := img.Bounds()
-	dest := image.NewRGBA(image.Rect(0, 0, bounds.Dy(), bounds.Dx()))
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			dest.Set(bounds.Max.Y-1-y, x, img.At(x, y))
-		}
-	}
-	return dest
-}
-
-func rotate180(img image.Image) *image.RGBA {
-	bounds := img.Bounds()
-	dest := image.NewRGBA(bounds)
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			dest.Set(bounds.Max.X-1-x, bounds.Max.Y-1-y, img.At(x, y))
-		}
-	}
-	return dest
-}
-
-func rotate270(img image.Image) *image.RGBA {
-	bounds := img.Bounds()
-	dest := image.NewRGBA(image.Rect(0, 0, bounds.Dy(), bounds.Dx()))
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			dest.Set(y, bounds.Max.X-1-x, img.At(x, y))
-		}
-	}
-	return dest
 }

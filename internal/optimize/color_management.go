@@ -457,43 +457,6 @@ func evaluateParametricCurve(x float64, function int, p []float64) float64 {
 	}
 }
 
-func convertICCToSRGB(src image.Image, profileData []byte) (*image.RGBA, error) {
-	profile, err := parseMatrixProfile(profileData)
-	if err != nil {
-		return nil, err
-	}
-	bounds := src.Bounds()
-	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
-	for y := 0; y < bounds.Dy(); y++ {
-		for x := 0; x < bounds.Dx(); x++ {
-			r16, g16, b16, a16 := src.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
-			if a16 == 0 {
-				dst.SetRGBA(x, y, color.RGBA{})
-				continue
-			}
-			device := [3]float64{
-				profile.curves[0].evaluate(float64(r16) / float64(a16)),
-				profile.curves[1].evaluate(float64(g16) / float64(a16)),
-				profile.curves[2].evaluate(float64(b16) / float64(a16)),
-			}
-			xyz50 := [3]float64{}
-			for channel := range 3 {
-				for row := range 3 {
-					xyz50[row] += profile.columns[channel][row] * device[channel]
-				}
-			}
-			xyz65 := d50ToD65(xyz50)
-			linear := [3]float64{
-				3.2404542*xyz65[0] - 1.5371385*xyz65[1] - 0.4985314*xyz65[2],
-				-0.969266*xyz65[0] + 1.8760108*xyz65[1] + 0.041556*xyz65[2],
-				0.0556434*xyz65[0] - 0.2040259*xyz65[1] + 1.0572252*xyz65[2],
-			}
-			dst.SetRGBA(x, y, rgbaFromFloat(linear, clampByte(float64(a16)/257)))
-		}
-	}
-	return dst, nil
-}
-
 func d50ToD65(v [3]float64) [3]float64 {
 	return [3]float64{
 		0.9555766*v[0] - 0.0230393*v[1] + 0.0631636*v[2],
@@ -608,12 +571,8 @@ func bt2020ToBT709(v [3]float64) [3]float64 {
 }
 
 func rgbaFromFloat(linear [3]float64, alpha uint8) color.RGBA {
-	return color.RGBA{
-		R: uint8(math.Round(clampUnit(srgbEncode(linear[0])) * 255)),
-		G: uint8(math.Round(clampUnit(srgbEncode(linear[1])) * 255)),
-		B: uint8(math.Round(clampUnit(srgbEncode(linear[2])) * 255)),
-		A: alpha,
-	}
+	tables := srgbLookup()
+	return color.RGBA{R: tables.encode(linear[0]), G: tables.encode(linear[1]), B: tables.encode(linear[2]), A: alpha}
 }
 
 func clampUnit(value float64) float64 { return math.Min(math.Max(value, 0), 1) }

@@ -168,5 +168,5 @@ func applySoftLight(a, b, opacity float64) uint8 {
 	if v > 255 {
 		return 255
 	}
-	return uint8(v)
+	return uint8(v + 0.5)
 }

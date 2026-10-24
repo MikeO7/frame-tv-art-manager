@@ -71,11 +71,11 @@ func blurImage(src *image.RGBA, radius int) *image.RGBA {
 	return blurred
 }
 
-// avgChannel returns the box-blur window mean as a byte. Each summed sample is
-// a 0-255 channel value, so sum/windowSize is inherently within byte range and
-// the conversion cannot overflow.
+// avgChannel returns the box-blur window mean rounded to the nearest byte.
+// Each summed sample is a 0-255 channel value, so the rounded mean is
+// inherently within byte range and the conversion cannot overflow.
 func avgChannel(sum, windowSize int) uint8 {
-	return uint8(sum / windowSize) //nolint:gosec // mean of 0-255 samples stays in byte range
+	return uint8((sum + windowSize/2) / windowSize) //nolint:gosec // rounded mean of 0-255 samples stays in byte range
 }
 
 //nolint:dupl // horizontal and vertical passes are structurally similar but iterate differently

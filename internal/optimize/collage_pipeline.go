@@ -48,11 +48,11 @@ func processCollagePair(job collageJob) (string, error) {
 	if err := validateOutputDimensions(cfg.MaxWidth, cfg.MaxHeight, cfg.MaxOutputPixels); err != nil {
 		return "", err
 	}
-	inputPixels, err := inspectCollageInputPixels(ctx, p1, p2)
+	inputs, err := inspectCollageInputs(ctx, p1, p2)
 	if err != nil {
 		return "", err
 	}
-	if err := validateWorkingPixels(inputPixels, cfg); err != nil {
+	if err := validateWorkingSet(inputs, cfg); err != nil {
 		return "", err
 	}
 
@@ -160,24 +160,24 @@ func processCollagePair(job collageJob) (string, error) {
 	return collageName, nil
 }
 
-func inspectCollageInputPixels(ctx context.Context, paths ...string) (int64, error) {
-	var pixels int64
+func inspectCollageInputs(ctx context.Context, paths ...string) (workingInput, error) {
+	var inputs workingInput
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
-			return 0, err
+			return workingInput{}, err
 		}
 		file, err := os.Open(path)
 		if err != nil {
-			return 0, fmt.Errorf("open collage input %s: %w", filepath.Base(path), err)
+			return workingInput{}, fmt.Errorf("open collage input %s: %w", filepath.Base(path), err)
 		}
-		width, height, decodeErr := decodeInputConfig(ctx, file)
+		config, decodeErr := decodeInputConfig(ctx, file)
 		closeErr := file.Close()
 		if err := errors.Join(decodeErr, closeErr); err != nil {
-			return 0, fmt.Errorf("inspect collage input %s: %w", filepath.Base(path), err)
+			return workingInput{}, fmt.Errorf("inspect collage input %s: %w", filepath.Base(path), err)
 		}
-		pixels += int64(width) * int64(height)
+		inputs = inputs.plus(workingInputFor(config))
 	}
-	return pixels, nil
+	return inputs, nil
 }
 
 func collageOutputExtension(first, second string) string {

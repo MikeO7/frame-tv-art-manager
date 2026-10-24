@@ -40,7 +40,7 @@ func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 	case r > 255:
 		outR = 255
 	default:
-		outR = uint8(r)
+		outR = uint8(r + 0.5)
 	}
 
 	switch {
@@ -49,7 +49,7 @@ func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 	case g > 255:
 		outG = 255
 	default:
-		outG = uint8(g)
+		outG = uint8(g + 0.5)
 	}
 
 	switch {
@@ -58,7 +58,7 @@ func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 	case b > 255:
 		outB = 255
 	default:
-		outB = uint8(b)
+		outB = uint8(b + 0.5)
 	}
 
 	return outR, outG, outB

@@ -237,6 +237,13 @@ defaults are 3840×2160 and JPEG quality 95. JPEG and PNG inputs are fully
 decoded before use; PNG optimization is enabled by default and preserves PNG
 output, including alpha.
 
+Each transform is checked against `IMAGE_MAX_WORKING_MEMORY_MB` before it
+starts. Linear-light resizing (the default) works in bounded bands, so a
+24-megapixel camera photo needs roughly 250 MiB and 8K inputs fit the default
+512 MiB budget. Gamma-space resizing (`IMAGE_LINEAR_LIGHT_RESIZE=false`) needs
+more memory and rejects 24-megapixel inputs at the default budget; raise the
+budget if you use it with large photos.
+
 Portrait images can be handled in three ways:
 
 - `crop` fills the screen by cropping to the target aspect ratio;

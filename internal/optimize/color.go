@@ -1,15 +1,6 @@
 package optimize
 
-import (
-	"math"
-	"sync"
-)
-
-//nolint:gochecknoglobals // global read-only lookup table for performance-critical RGB-to-Lab calculations
-var (
-	lutRgbToLab     [256]float64
-	lutRgbToLabOnce sync.Once
-)
+import "math"
 
 type labColor struct {
 	l float64
@@ -133,21 +124,11 @@ func ciede2000(color1, color2 labColor) float64 {
 // rgbToLab converts encoded sRGB to CIE Lab using the standard piecewise sRGB
 // transfer, a D65 XYZ intermediate, Bradford adaptation, and the D50 Lab white.
 func rgbToLab(r, g, b uint8) (float64, float64, float64) {
-	lutRgbToLabOnce.Do(func() {
-		for i := 0; i < 256; i++ {
-			encoded := float64(i) / 255.0
-			if encoded <= 0.04045 {
-				lutRgbToLab[i] = encoded / 12.92
-			} else {
-				lutRgbToLab[i] = math.Pow((encoded+0.055)/1.055, 2.4)
-			}
-		}
-	})
-
 	// 1. Linearize RGB
-	rf := lutRgbToLab[r]
-	gf := lutRgbToLab[g]
-	bf := lutRgbToLab[b]
+	decode := &srgbLookup().decode
+	rf := decode[r]
+	gf := decode[g]
+	bf := decode[b]
 
 	// Linear sRGB to CIE XYZ D65.
 	x65 := rf*0.4123907992659595 + gf*0.3575843393838780 + bf*0.1804807884018343

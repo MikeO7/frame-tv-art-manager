@@ -107,8 +107,8 @@ func TestAuditSafetyHelperBranches(t *testing.T) {
 	}
 	cfg := DefaultConfig()
 	cfg.MaxWidth, cfg.MaxHeight, cfg.MaxWorkingBytes = 1, 1, 0
-	if err := validateWorkingPixels(1, cfg); err != nil {
-		t.Fatalf("validateWorkingPixels(default memory) = %v", err)
+	if err := validateWorkingSet(workingInput{pixels: 1, sourceBytes: 8}, cfg); err != nil {
+		t.Fatalf("validateWorkingSet(default memory) = %v", err)
 	}
 
 	directory := t.TempDir()

@@ -156,7 +156,7 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	if fR >= srgbLUTMaxIdx {
 		idxR = srgbLUTMaxIdx
 	} else if fR > 0 {
-		idxR = int(fR)
+		idxR = int(fR + 0.5)
 	}
 
 	fG := gLin * srgbLUTMaxIdx
@@ -164,7 +164,7 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	if fG >= srgbLUTMaxIdx {
 		idxG = srgbLUTMaxIdx
 	} else if fG > 0 {
-		idxG = int(fG)
+		idxG = int(fG + 0.5)
 	}
 
 	fB := bLin * srgbLUTMaxIdx
@@ -172,7 +172,7 @@ func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8
 	if fB >= srgbLUTMaxIdx {
 		idxB = srgbLUTMaxIdx
 	} else if fB > 0 {
-		idxB = int(fB)
+		idxB = int(fB + 0.5)
 	}
 
 	return lutSrgb[idxR], lutSrgb[idxG], lutSrgb[idxB]
@@ -211,7 +211,7 @@ func applyContrastAndGamutWithWorkers(src *image.RGBA, contrastGamma float64, wo
 			case val > 255:
 				lutSrgb[i] = 255
 			default:
-				lutSrgb[i] = uint8(val)
+				lutSrgb[i] = uint8(val + 0.5)
 			}
 		}
 	})
