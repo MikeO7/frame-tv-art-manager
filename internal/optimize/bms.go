@@ -166,7 +166,6 @@ func surroundednessMap(boolMap []bool, w, h int) []float64 {
 	return res
 }
 
-//nolint:gocognit // fixed 3x3 binary erosion is clearest as direct bounded loops
 func erodeBinary(values []bool, w, h int) []bool {
 	result := make([]bool, len(values))
 	for y := 1; y < h-1; y++ {
@@ -216,7 +215,6 @@ func dilateAttention(values []float64, w, h int) []float64 {
 	return result
 }
 
-//nolint:gocognit // the fixed 3x3 spatial reduction is clearer kept as direct bounded loops
 func normalizeAndBlurBMS(values []float64, w, h int) []float64 {
 	blurred := make([]float64, len(values))
 	maxValue := 0.0

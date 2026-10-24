@@ -105,7 +105,7 @@ func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Log
 	return optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, cfg, logger, pixelWorkerLimit)
 }
 
-//nolint:funlen,gocognit,gocyclo,revive // explicit transaction inputs avoid hidden optimizer state
+//nolint:funlen,gocognit,revive // explicit transaction inputs avoid hidden optimizer state
 func optimizeFileWithPolicy(
 	ctx context.Context,
 	path string,

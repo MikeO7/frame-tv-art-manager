@@ -216,7 +216,6 @@ func inventoryChanges(current manifest, items []Item) []Change {
 	return changes
 }
 
-//nolint:gocyclo // explicit field comparison prevents persistence schema fields from being skipped
 func manifestsEqual(left, right manifest) bool {
 	if left.Version != right.Version || left.Generation != right.Generation || len(left.Items) != len(right.Items) {
 		return false

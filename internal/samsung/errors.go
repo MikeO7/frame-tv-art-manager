@@ -62,8 +62,6 @@ const (
 )
 
 // String returns the stable operator-facing name used in structured logs.
-//
-//nolint:gocyclo // An exhaustive enum mapping is clearer and safer than a positional name table.
 func (kind ErrorKind) String() string {
 	switch kind {
 	case ErrorKindNone:

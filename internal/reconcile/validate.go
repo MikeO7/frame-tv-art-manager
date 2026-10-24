@@ -37,7 +37,7 @@ func identityFromObservation(observation samsung.Observation) (TVIdentity, error
 	return identity, validateIdentity(identity)
 }
 
-//nolint:gocognit,gocyclo // State validation intentionally checks the complete durable schema.
+//nolint:gocognit // State validation intentionally checks the complete durable schema.
 func validateState(state State, expected TVIdentity) error {
 	if state.Version != stateVersion {
 		return fmt.Errorf("unsupported reconciliation state version %d", state.Version)
@@ -138,7 +138,6 @@ func validateBinding(key string, binding Binding) error {
 	return nil
 }
 
-//nolint:gocyclo,nestif // Phase compatibility is an explicit state-machine matrix.
 func validatePending(pending Pending) error {
 	if strings.TrimSpace(pending.OperationID) == "" || strings.TrimSpace(pending.CycleID) == "" {
 		return errors.New("pending operation and cycle IDs are required")
@@ -172,7 +171,6 @@ func validPendingFingerprints(pending Pending) bool {
 	return pending.Command.Kind == CommandWake || pending.InventoryBefore.Digest != ([sha256.Size]byte{})
 }
 
-//nolint:gocognit,gocyclo // Each sealed intent has distinct fail-closed validation.
 func validateIntent(intent CommandIntent) error {
 	switch intent.Kind {
 	case CommandUpload:
@@ -211,7 +209,6 @@ func validateIntent(intent CommandIntent) error {
 	return nil
 }
 
-//nolint:gocyclo // Snapshot validation keeps all mutation-authority checks together.
 func validateSnapshot(snapshot collection.Snapshot) error {
 	if !validDigest(snapshot.Generation) {
 		return errors.New("collection snapshot generation is invalid")

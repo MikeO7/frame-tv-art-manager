@@ -85,7 +85,7 @@ func sharpen(src *image.RGBA) *image.RGBA {
 	return sharpenWithWorkers(src, defaultPixelWorkers())
 }
 
-//nolint:gocyclo,gocognit,funlen // performance-critical kernel is manually unrolled across bounded row partitions
+//nolint:gocognit,funlen // performance-critical kernel is manually unrolled across bounded row partitions
 func sharpenWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 	bounds := src.Bounds()
 	dst := image.NewRGBA(bounds)
@@ -181,8 +181,6 @@ func sharpenWithWorkers(src *image.RGBA, workerLimit int) *image.RGBA {
 // sharpenWithOptions applies a bounded luminance unsharp mask. The threshold
 // suppresses amplification of low-level JPEG noise and the shared luminance
 // delta avoids creating colored edge halos.
-//
-//nolint:gocognit // bounded row/channel loops keep the hot pixel path allocation-free
 func sharpenWithOptions(src *image.RGBA, amount float64, threshold, workerLimit int) *image.RGBA {
 	if amount <= 0 {
 		return src

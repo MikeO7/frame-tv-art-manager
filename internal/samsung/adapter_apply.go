@@ -53,7 +53,6 @@ func (a *adapter) Apply(ctx context.Context, authorization Authorization, comman
 	return a.finishCommand(receipt, nil)
 }
 
-//nolint:gocyclo // the explicit authorization fact matrix is the security boundary
 func (a *adapter) authorizeCommand(
 	ctx context.Context,
 	authorization Authorization,

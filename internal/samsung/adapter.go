@@ -128,7 +128,7 @@ func validateAdapterConfig(config Config) error {
 // Observe returns only facts obtained successfully during this call. It never
 // wakes the TV or sends any TV mutation.
 //
-//nolint:gocyclo,gocognit,funlen // The linear fail-closed state sequence mirrors the protocol safety matrix.
+//nolint:funlen // The linear fail-closed state sequence mirrors the protocol safety matrix.
 func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observation, error) {
 	a.operationMu.Lock()
 	defer a.operationMu.Unlock()

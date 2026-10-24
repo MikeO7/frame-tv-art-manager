@@ -28,7 +28,7 @@ type collageJob struct {
 	logger     *slog.Logger
 }
 
-//nolint:funlen,gocognit,gocyclo // the ordered transactional image pipeline keeps cleanup local
+//nolint:funlen,gocognit // the ordered transactional image pipeline keeps cleanup local
 func processCollagePair(job collageJob) (string, error) {
 	artworkDir := job.artworkDir
 	f1, f2 := job.f1, job.f2

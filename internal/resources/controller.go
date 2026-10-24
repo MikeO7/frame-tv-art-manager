@@ -128,8 +128,6 @@ func (c *Controller) PixelWorkers() int {
 
 // Run admits and executes transform. The callback is invoked synchronously at
 // most once and must honor ctx at safe transformation boundaries.
-//
-//nolint:gocognit,gocyclo // Admission, cancellation, and accounting form one auditable lifecycle.
 func (c *Controller) Run(ctx context.Context, request Request, transform func(context.Context) error) error {
 	if ctx == nil {
 		return errors.New("resource request context is nil")

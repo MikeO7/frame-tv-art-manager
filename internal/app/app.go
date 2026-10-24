@@ -39,8 +39,6 @@ func New(options Options) (*Application, error) {
 
 // Run starts and supervises the application until cancellation or a terminal
 // child error.
-//
-//nolint:funlen // Early HTTP liveness, preparation, child startup, and shared shutdown form one lifecycle.
 func (a *Application) Run(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("run context is required")

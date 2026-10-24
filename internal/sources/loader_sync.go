@@ -105,7 +105,7 @@ func (l *Loader) disabled() bool {
 
 // syncLine resolves and downloads all images for one sources-file line.
 //
-//nolint:funlen,gocognit,gocyclo // Bounded batching keeps download cleanup, cancellation, and committed counts in one ordered pass.
+//nolint:funlen,gocognit // Bounded batching keeps download cleanup, cancellation, and committed counts in one ordered pass.
 func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 	provider := l.resolveProvider(line)
 	if provider == nil {
@@ -182,7 +182,7 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 	return count, errors.Join(downloadErrors...)
 }
 
-//nolint:funlen,gocognit,gocyclo // File ownership and ordered import results are handled together to keep cleanup auditable.
+//nolint:gocognit // File ownership and ordered import results are handled together to keep cleanup auditable.
 func (l *Loader) importSourceBatch(ctx context.Context, pending []pendingSourceDownload) (int, error) {
 	if l.importer == nil {
 		return 0, errors.New("source collection importer is required")

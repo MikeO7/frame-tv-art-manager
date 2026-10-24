@@ -83,7 +83,6 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 	dstPix[i+2] = b
 }
 
-//nolint:funlen // unrolled Scharr operator sampling the full 3x3 neighborhood inline for speed
 func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	stride := src.Stride
 	pix := src.Pix

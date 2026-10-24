@@ -33,7 +33,6 @@ func recoverManifestTransaction(ctx context.Context, root string, next manifest)
 	return nil
 }
 
-//nolint:gocyclo // each branch validates a distinct durable journal version/kind invariant
 func validTransaction(root string, tx transaction) bool {
 	if tx.Next.Version != 1 && tx.Next.Version != 2 && tx.Next.Version != 3 {
 		return false

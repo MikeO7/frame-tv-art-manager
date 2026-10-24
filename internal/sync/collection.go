@@ -163,7 +163,6 @@ func (c *localCollection) release() {
 	<-c.mutation
 }
 
-//nolint:funlen,gocyclo // ordered collection/source/transform transaction keeps failure ownership local
 func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection, error) {
 	var result preparedCollection
 	if c.cfg.DryRun {

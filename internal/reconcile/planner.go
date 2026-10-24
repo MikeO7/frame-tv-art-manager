@@ -14,7 +14,7 @@ import (
 // BuildPlan is a pure deterministic planner. It never reads files, observes a
 // TV, or mutates its inputs.
 //
-//nolint:funlen,gocognit,gocyclo,nestif // The linear phases deliberately mirror reconciliation ordering.
+//nolint:funlen,gocognit,nestif // The linear phases deliberately mirror reconciliation ordering.
 func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
 	policy = normalizePolicy(policy)
 	if err := validateSnapshot(snapshot); err != nil {

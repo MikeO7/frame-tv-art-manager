@@ -125,7 +125,6 @@ func (runtime *convergenceRuntime) close(ctx context.Context) error {
 	return nil
 }
 
-//nolint:gocyclo // explicit result-state projection keeps operator status exhaustive and local
 func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
 	observation := result.Observation
 	summary := TVSyncResult{

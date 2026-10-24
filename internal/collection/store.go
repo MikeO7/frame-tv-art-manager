@@ -83,7 +83,7 @@ type batchImportAddition struct {
 // collection mutation. It inventories and verifies the collection once for
 // the whole batch while preserving the ordered change result of each request.
 //
-//nolint:funlen,gocognit,gocyclo // Validation, projection, atomic commit, and verification are one collection transaction.
+//nolint:funlen,gocognit // Validation, projection, atomic commit, and verification are one collection transaction.
 func (s *store) ImportBatch(ctx context.Context, requests []ImportRequest) (Snapshot, error) {
 	if len(requests) == 0 {
 		return Snapshot{}, errors.New("import batch is empty")

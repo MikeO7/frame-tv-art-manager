@@ -5,8 +5,6 @@ import (
 )
 
 // polishPixel limits the maximum brightness and adds paper grain noise to a pixel.
-//
-//nolint:funlen // brightness clamp + paper-grain noise applied inline to each R/G/B channel
 func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
 	const maxBright = 235.0
 	if r > maxBright {

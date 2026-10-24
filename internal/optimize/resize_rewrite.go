@@ -26,7 +26,7 @@ type rewriteParams struct {
 	colorData      embeddedColorData
 }
 
-//nolint:funlen,gocognit,gocyclo // ordered decode, transform, validation, and durable publication pipeline
+//nolint:funlen,gocognit // ordered decode, transform, validation, and durable publication pipeline
 func rewriteImage(params rewriteParams) (int, int, error) {
 	f := params.f
 	cfg := params.cfg

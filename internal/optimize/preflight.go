@@ -59,7 +59,7 @@ func preflightRawPortraits(ctx context.Context, inputs []StageInput, cfg Config)
 	return rawPortraits, false, nil
 }
 
-//nolint:gocognit,gocyclo // conservative preflight keeps every fail-closed decision visible in one pass
+//nolint:gocognit // conservative preflight keeps every fail-closed decision visible in one pass
 func requiresIndividualStage(
 	ctx context.Context,
 	inputs []StageInput,
@@ -179,7 +179,6 @@ func preflightOrientation(ctx context.Context, input StageInput) (int, error) {
 	return orientation, nil
 }
 
-//nolint:gocyclo // file identity, metadata, and orientation checks form one atomic observation
 func preflightPortrait(ctx context.Context, input StageInput) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err

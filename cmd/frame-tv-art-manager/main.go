@@ -182,7 +182,6 @@ func prepareDirectories(cfg *config.Config) error {
 	return nil
 }
 
-//nolint:gocyclo // ordered permission, ownership, and durability probes must fail at their exact boundary
 func prepareDirectory(path string, mode os.FileMode, uid, gid int) error {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {

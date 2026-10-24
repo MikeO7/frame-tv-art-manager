@@ -13,8 +13,6 @@ import (
 // CreateExclusive atomically publishes a complete file only when path does
 // not already exist. It uses a same-directory hard link as the no-clobber
 // publication primitive and synchronizes the resulting namespace.
-//
-//nolint:gocyclo // linear crash-consistency boundaries intentionally retain precise error classification
 func CreateExclusive(ctx context.Context, path string, mode fs.FileMode, write func(io.Writer) error) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("create %s before work: %w", path, err)

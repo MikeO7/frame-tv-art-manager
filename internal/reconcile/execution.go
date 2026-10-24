@@ -93,7 +93,7 @@ func receiptObservation(
 	return observation
 }
 
-//nolint:funlen,gocognit,gocyclo // Recovery intentionally mirrors the command recovery matrix.
+//nolint:gocognit // Recovery intentionally mirrors the command recovery matrix.
 func resolvePending(state State, observation samsung.Observation, now time.Time) (State, bool, error) {
 	result := cloneState(state)
 	pending := result.Pending

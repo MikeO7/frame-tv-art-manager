@@ -136,7 +136,6 @@ func validateSourceContentType(value string) error {
 	return nil
 }
 
-//nolint:gocyclo // complete image validation keeps format and pixel facts in one trust boundary
 func validateDownloadedImage(path, extension string) error {
 	file, err := os.Open(filepath.Clean(path))
 	if err != nil {

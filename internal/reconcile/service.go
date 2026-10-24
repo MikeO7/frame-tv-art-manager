@@ -10,7 +10,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-//nolint:funlen,gocognit,gocyclo // The linear sequence is the durable reconciliation protocol.
+//nolint:funlen,gocognit // The linear sequence is the durable reconciliation protocol.
 func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	policy := s.effectivePolicy(request.Policy)
 	if err := validateRequest(request.CycleID, request.TV, request.Snapshot, policy, request.DryRun); err != nil {

@@ -21,7 +21,6 @@ func findBestDirectorCropWithGain(src *image.RGBA, windowW, windowH int, horizon
 	return findBestDirectorCropWithProtection(src, windowW, windowH, horizontal, minGain, false, 0)
 }
 
-//nolint:funlen // global analysis, confidence gate, and protected fallback are one crop decision
 func findBestDirectorCropWithProtection(
 	src *image.RGBA,
 	windowW, windowH int,

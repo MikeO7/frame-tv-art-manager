@@ -76,7 +76,7 @@ func readEmbeddedColorData(ctx context.Context, file *os.File, extension string)
 	return readJPEGColorData(reader)
 }
 
-//nolint:funlen,gocognit,gocyclo // bounded marker parsing and ICC segment assembly form one streaming transaction
+//nolint:gocognit // bounded marker parsing and ICC segment assembly form one streaming transaction
 func readJPEGColorData(reader io.Reader) (embeddedColorData, error) {
 	var signature [2]byte
 	if _, err := io.ReadFull(reader, signature[:]); err != nil {
@@ -177,7 +177,7 @@ func assembleJPEGColorData(parts map[int][]byte, total int) (embeddedColorData, 
 	return embeddedColorData{description: jpegICCMetadata, icc: profile}, nil
 }
 
-//nolint:funlen,gocognit,gocyclo // chunk framing, bounded ICC decompression, and metadata precedence stay local
+//nolint:gocognit // chunk framing, bounded ICC decompression, and metadata precedence stay local
 func readPNGColorData(reader io.Reader) (embeddedColorData, error) {
 	var signature [8]byte
 	if _, err := io.ReadFull(reader, signature[:]); err != nil {
@@ -279,7 +279,6 @@ type matrixProfile struct {
 	curves  [3]iccCurve
 }
 
-//nolint:gocognit,gocyclo // tag-table bounds and required matrix/TRC tags are validated in one pass
 func parseMatrixProfile(data []byte) (matrixProfile, error) {
 	if len(data) < 132 {
 		return matrixProfile{}, errors.New("ICC profile header is truncated")
@@ -352,7 +351,6 @@ func parseICCXYZ(data []byte) ([3]float64, error) {
 	return [3]float64{iccFixed(data[8:12]), iccFixed(data[12:16]), iccFixed(data[16:20])}, nil
 }
 
-//nolint:gocognit // ICC curve types deliberately mirror the standard's cases
 func parseICCCurve(data []byte) (iccCurve, error) {
 	if len(data) < 12 {
 		return iccCurve{}, errors.New("curve tag is truncated")

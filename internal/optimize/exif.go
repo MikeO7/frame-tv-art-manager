@@ -12,7 +12,7 @@ const pngChunkEnd = "IEND"
 
 // ReadOrientation reads the EXIF orientation tag from an image file if available.
 //
-//nolint:gocognit,gocyclo // custom EXIF marker scan with raw JPEG bounds checks
+//nolint:gocognit // custom EXIF marker scan with raw JPEG bounds checks
 func ReadOrientation(r io.Reader) (int, error) {
 	var buf [4]byte
 	if _, err := io.ReadFull(r, buf[:2]); err != nil {
@@ -56,7 +56,7 @@ func ReadOrientation(r io.Reader) (int, error) {
 
 // ReadPNGOrientation reads the standardized PNG eXIf chunk when present.
 //
-//nolint:gocognit,gocyclo,nestif // streaming chunk framing and optional Exif prefix are one bounds-checked parser
+//nolint:gocognit // streaming chunk framing and optional Exif prefix are one bounds-checked parser
 func ReadPNGOrientation(r io.Reader) (int, error) {
 	var signature [8]byte
 	if _, err := io.ReadFull(r, signature[:]); err != nil {
@@ -159,7 +159,6 @@ func parseExif(tiff []byte) (int, error) {
 	return findOrientationTag(tiff, bo, numEntries, entryOffset)
 }
 
-//nolint:nestif // TIFF entry bounds, type, count, and value checks must stay adjacent
 func findOrientationTag(tiff []byte, bo binary.ByteOrder, numEntries, entryOffset int) (int, error) {
 	for i := 0; i < numEntries; i++ {
 		if len(tiff) < entryOffset+12 {

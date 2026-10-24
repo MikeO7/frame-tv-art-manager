@@ -31,7 +31,6 @@ type preparedCommand struct {
 	upload  preparedUpload
 }
 
-//nolint:gocyclo // The switch exhaustively validates the sealed command sum type.
 func prepareCommand(command Command) (preparedCommand, func(), error) {
 	prepared := preparedCommand{command: command}
 	switch value := command.(type) {
