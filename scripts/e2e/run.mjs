@@ -11,7 +11,7 @@ await writeFile('.e2e/environment.json', JSON.stringify({
   revision, command: ['pnpm', 'test:e2e', ...process.argv.slice(2)],
   node: process.version, platform: process.platform, arch: process.arch,
   data: 'Fresh temporary directories; generated 2x2 PNG fixtures; loopback unreachable TV only',
-  e2e: '0.17.0', web: '0.12.0',
+  e2e: '0.21.3', web: '0.15.3',
 }, null, 2) + '\n');
 const run = spawnSync('pnpm', ['exec', 'e2e', 'run', ...process.argv.slice(2)], {
   stdio: 'inherit', env: { ...process.env, E2E_TELEMETRY_DISABLED: '1' },

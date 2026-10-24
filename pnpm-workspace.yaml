@@ -1,5 +1,3 @@
-allowBuilds:
-  esbuild: true
 minimumReleaseAgeExclude:
-  - '@e2e-dev/web@0.12.0'
-  - e2e@0.17.0
+  - '@e2e-dev/web@0.15.3'
+  - e2e@0.21.3
