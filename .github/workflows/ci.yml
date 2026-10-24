@@ -57,7 +57,7 @@ jobs:
             .e2e/environment.json
             .e2e/summary.md
             .e2e/junit.xml
-            .e2e/artifacts/
+            .e2e/results/
             .e2e/logs/
           retention-days: 7
 
