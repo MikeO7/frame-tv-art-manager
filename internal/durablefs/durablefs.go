@@ -65,25 +65,12 @@ func replace(
 		return fmt.Errorf("replace %s: writer is nil", path)
 	}
 
-	dir := filepath.Dir(path)
-	temporary, err := ops.createTemp(dir, ".durable-*.tmp")
+	temporaryPath, err := writeTemporary(path, ".durable-*.tmp", mode, write, ops)
+	if temporaryPath != "" {
+		defer func() { _ = ops.remove(temporaryPath) }()
+	}
 	if err != nil {
-		return fmt.Errorf("create temporary file for %s: %w", path, err)
-	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = ops.remove(temporaryPath) }()
-
-	if err := ops.chmod(temporary, mode.Perm()); err != nil {
-		return closeAfterFailure(temporary, fmt.Errorf("set temporary mode for %s: %w", path, err), ops.close)
-	}
-	if err := write(temporary); err != nil {
-		return closeAfterFailure(temporary, fmt.Errorf("write temporary file for %s: %w", path, err), ops.close)
-	}
-	if err := ops.sync(temporary); err != nil {
-		return closeAfterFailure(temporary, fmt.Errorf("sync temporary file for %s: %w", path, err), ops.close)
-	}
-	if err := ops.close(temporary); err != nil {
-		return fmt.Errorf("close temporary file for %s: %w", path, err)
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("replace %s before publish: %w", path, err)
@@ -91,10 +78,38 @@ func replace(
 	if err := ops.rename(temporaryPath, path); err != nil {
 		return unknownOutcome(fmt.Sprintf("publish %s", path), err)
 	}
-	if err := syncDirectory(dir, ops); err != nil {
+	if err := syncDirectory(filepath.Dir(path), ops); err != nil {
 		return unknownOutcome(fmt.Sprintf("confirm published file %s", path), err)
 	}
 	return nil
+}
+
+// writeTemporary writes a complete, synced, closed temporary file beside path.
+// It returns the temporary name whenever one was created so the caller can
+// remove it, including on failure.
+func writeTemporary(
+	path, pattern string,
+	mode fs.FileMode,
+	write func(io.Writer) error,
+	ops operations,
+) (string, error) {
+	temporary, err := ops.createTemp(filepath.Dir(path), pattern)
+	if err != nil {
+		return "", fmt.Errorf("create temporary file for %s: %w", path, err)
+	}
+	if err := ops.chmod(temporary, mode.Perm()); err != nil {
+		return temporary.Name(), closeAfterFailure(temporary, fmt.Errorf("set temporary mode for %s: %w", path, err), ops.close)
+	}
+	if err := write(temporary); err != nil {
+		return temporary.Name(), closeAfterFailure(temporary, fmt.Errorf("write temporary file for %s: %w", path, err), ops.close)
+	}
+	if err := ops.sync(temporary); err != nil {
+		return temporary.Name(), closeAfterFailure(temporary, fmt.Errorf("sync temporary file for %s: %w", path, err), ops.close)
+	}
+	if err := ops.close(temporary); err != nil {
+		return temporary.Name(), fmt.Errorf("close temporary file for %s: %w", path, err)
+	}
+	return temporary.Name(), nil
 }
 
 // Rename moves oldPath to newPath and synchronizes every changed parent

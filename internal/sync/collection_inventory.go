@@ -9,14 +9,8 @@ import (
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
-func (c *localCollection) prepareAuthoritativeSnapshot(
-	ctx context.Context,
-	origins map[string]collectionpkg.Origin,
-) (collectionpkg.Snapshot, error) {
-	snapshot, err := c.prepareInventory(ctx, collectionpkg.PrepareRequest{
-		Origins: origins,
-		DryRun:  c.cfg.DryRun,
-	})
+func (c *localCollection) prepareAuthoritativeSnapshot(ctx context.Context) (collectionpkg.Snapshot, error) {
+	snapshot, err := c.prepareInventory(ctx, collectionpkg.PrepareRequest{DryRun: c.cfg.DryRun})
 	if err != nil {
 		return collectionpkg.Snapshot{}, fmt.Errorf("prepare authoritative collection snapshot: %w", err)
 	}

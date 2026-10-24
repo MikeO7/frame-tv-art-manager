@@ -42,8 +42,8 @@ func TestRotationStatusReachesSummaryLogsAndHealth(t *testing.T) {
 	if !strings.Contains(rendered.String(), "Rotation:   40 waiting") {
 		t.Fatalf("cycle summary = %q, want rotation line", rendered.String())
 	}
-	if line := rotationSummary(TVSyncResult{Rotating: true, ArtworkWaiting: 3}); line != "    Rotation:   3 waiting" {
-		t.Fatalf("rotationSummary() = %q, want no next time", line)
+	if lines := tvSummaryLines(TVSyncResult{Status: "ok", Rotating: true, ArtworkWaiting: 3}); lines[4] != "    Rotation:   3 waiting" {
+		t.Fatalf("tvSummaryLines() = %q, want rotation line without next time", lines)
 	}
 
 	status := health.NewStatus()

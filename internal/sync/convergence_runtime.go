@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,13 +36,6 @@ func newConvergenceRuntime(
 	address string,
 	logger *slog.Logger,
 ) (*convergenceRuntime, error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	adapterConfig, err := samsungConfigForTV(cfg, address)
-	if err != nil {
-		return nil, err
-	}
 	service, err := reconcile.New(reconcile.Config{
 		StateDirectory: cfg.TokenDir, LegacyMappingDirectory: cfg.TokenDir,
 	}, reconcile.Dependencies{Logger: logger.With("tv", address)},
@@ -53,7 +45,7 @@ func newConvergenceRuntime(
 	if err != nil {
 		return nil, fmt.Errorf("construct reconciler for TV %s: %w", address, err)
 	}
-	adapter, err := samsung.NewAdapter(adapterConfig, samsung.Dependencies{Logger: logger.With("tv", address)})
+	adapter, err := samsung.NewAdapter(samsungConfigForTV(cfg, address), samsung.Dependencies{Logger: logger.With("tv", address)})
 	if err != nil {
 		return nil, fmt.Errorf("construct Samsung adapter for TV %s: %w", address, err)
 	}
@@ -192,45 +184,16 @@ func convergenceSkipStatus(disposition samsung.Disposition) string {
 	}
 }
 
-func samsungConfigForTV(cfg *config.Config, address string) (samsung.Config, error) {
-	if cfg == nil {
-		return samsung.Config{}, errors.New("samsung runtime configuration is required")
-	}
-	address = strings.TrimSpace(address)
-	parsedAddress := net.ParseIP(address)
-	if parsedAddress == nil {
-		return samsung.Config{}, fmt.Errorf("samsung TV address %q is invalid", address)
-	}
-	address = parsedAddress.String()
-	mac, err := configuredMAC(cfg)
-	if err != nil {
-		return samsung.Config{}, err
-	}
-	backoffBase := time.Duration(cfg.SyncIntervalMin) * time.Minute
-	if backoffBase <= 0 {
-		return samsung.Config{}, errors.New("sync interval must be positive")
-	}
-	backoffBase = min(backoffBase, time.Hour)
+// samsungConfigForTV relies on config.LoadEnviron for canonical addresses, a
+// positive sync interval, and a TVMAC that is set only for a single TV.
+func samsungConfigForTV(cfg *config.Config, address string) samsung.Config {
 	safeAddress := strings.NewReplacer(".", "_", ":", "_").Replace(address)
 	return samsung.Config{
-		Address: address, MAC: mac, ClientName: cfg.ClientName,
+		Address: address, MAC: cfg.TVMAC, ClientName: cfg.ClientName,
 		TokenPath: filepath.Join(cfg.TokenDir, "tv_"+safeAddress+".txt"),
 		VerifyTLS: cfg.VerifyTLS, QuietGate: cfg.EnableRESTGate,
 		ConnectTimeout: cfg.ConnectionTimeout, RequestTimeout: cfg.APITimeout,
-		GateTimeout: cfg.GateTimeout, BackoffBase: backoffBase, BackoffMaximum: time.Hour,
-	}, nil
-}
-
-func configuredMAC(cfg *config.Config) (net.HardwareAddr, error) {
-	if strings.TrimSpace(cfg.TVMAC) == "" || len(cfg.TVIPs) != 1 {
-		return nil, nil
+		GateTimeout: cfg.GateTimeout, BackoffBase: min(time.Duration(cfg.SyncIntervalMin)*time.Minute, time.Hour),
+		BackoffMaximum: time.Hour,
 	}
-	mac, err := net.ParseMAC(cfg.TVMAC)
-	if err != nil {
-		return nil, fmt.Errorf("parse TV MAC: %w", err)
-	}
-	if len(mac) != 6 {
-		return nil, errors.New("TV MAC must contain six bytes")
-	}
-	return mac, nil
 }

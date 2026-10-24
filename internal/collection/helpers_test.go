@@ -43,7 +43,7 @@ func TestCollisionNamingFallsBackAfterEveryDigestPrefixIsOccupied(t *testing.T) 
 	for digestBytes := 6; digestBytes <= len(digest); digestBytes += 2 {
 		items = append(items, Item{Name: artwork.BuildContentName("photo", digest, ".png", digestBytes)})
 	}
-	name := collisionSafeName(items, input)
+	name := collisionSafeName(items, input, Origin{})
 	if name != artwork.BuildContentName("artwork", digest, ".png", len(digest)) {
 		t.Fatalf("fallback name = %q", name)
 	}

@@ -38,45 +38,6 @@ type journalEnvelope struct {
 	Checksum string          `json:"checksum"`
 }
 
-func (s *store) commit(ctx context.Context, input validatedImage, items []Item, duplicate bool) error {
-	if duplicate {
-		return commitManifest(ctx, s.root, newManifest(items))
-	}
-	digest := hex.EncodeToString(input.digest[:])
-	stage := filepath.Join(s.root, controlDirectory, stagingName, digest+"."+string(input.typeID))
-	final := filepath.Join(s.root, findDigestName(items, input.digest))
-	if err := durablefs.Replace(ctx, stage, 0o644, func(writer io.Writer) error {
-		return copyBytes(writer, input.data)
-	}); err != nil {
-		return fmt.Errorf("stage artwork: %w", err)
-	}
-	tx := transaction{
-		Version: 1, Stage: stage, Final: final, Digest: digest, Next: newManifest(items),
-	}
-	if err := writeJournal(ctx, s.root, tx); err != nil {
-		return fmt.Errorf("publish transaction intent: %w", err)
-	}
-	if err := publishNoReplace(ctx, stage, final); err != nil {
-		return fmt.Errorf("publish artwork: %w", err)
-	}
-	if err := writeManifest(ctx, s.root, tx.Next); err != nil {
-		return fmt.Errorf("publish manifest: %w", err)
-	}
-	if err := durablefs.Remove(ctx, journalPath(s.root)); err != nil {
-		return fmt.Errorf("complete transaction: %w", err)
-	}
-	return nil
-}
-
-func findDigestName(items []Item, digest [sha256.Size]byte) string {
-	for _, item := range items {
-		if item.Digest == digest {
-			return item.Name
-		}
-	}
-	return ""
-}
-
 func recoverTransaction(ctx context.Context, root string) error {
 	tx, exists, err := readJournal(ctx, root)
 	if err != nil || !exists {

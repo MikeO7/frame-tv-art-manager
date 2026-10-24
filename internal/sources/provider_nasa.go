@@ -27,11 +27,9 @@ type nasaProvider struct {
 	SearchURL string
 }
 
-// newNasaProvider creates a new NASA provider.
+// newNasaProvider creates a new NASA provider. config.LoadEnviron defaults an
+// unset NASA_API_KEY to DEMO_KEY.
 func newNasaProvider(apiKey string, logger *slog.Logger) *nasaProvider {
-	if apiKey == "" {
-		apiKey = "DEMO_KEY"
-	}
 	return &nasaProvider{
 		apiKey: apiKey,
 		client: &http.Client{
@@ -178,16 +176,5 @@ func (p *nasaProvider) Resolve(ctx context.Context, line string) ([]SourceImage,
 	if err != nil {
 		return nil, err
 	}
-
-	images := make([]SourceImage, 0, len(urls))
-	for _, u := range urls {
-		identity := sourceURLIdentity(p.Name(), u)
-
-		images = append(images, SourceImage{
-			URL:      u,
-			Identity: identity,
-		})
-	}
-
-	return images, nil
+	return urlSourceImages(p.Name(), urls), nil
 }

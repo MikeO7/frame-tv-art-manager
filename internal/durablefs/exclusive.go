@@ -20,27 +20,12 @@ func CreateExclusive(ctx context.Context, path string, mode fs.FileMode, write f
 	if write == nil {
 		return fmt.Errorf("create %s: writer is nil", path)
 	}
-	directory := filepath.Dir(path)
-	temporary, err := os.CreateTemp(directory, ".durable-exclusive-*.tmp")
+	temporaryPath, err := writeTemporary(path, ".durable-exclusive-*.tmp", mode, write, defaultOperations())
+	if temporaryPath != "" {
+		defer func() { _ = os.Remove(temporaryPath) }()
+	}
 	if err != nil {
-		return fmt.Errorf("create temporary file for %s: %w", path, err)
-	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = os.Remove(temporaryPath) }()
-	if err := temporary.Chmod(mode.Perm()); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("set temporary mode for %s: %w", path, err)
-	}
-	if err := write(temporary); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("write temporary file for %s: %w", path, err)
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("sync temporary file for %s: %w", path, err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close temporary file for %s: %w", path, err)
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("create %s before publish: %w", path, err)
@@ -54,7 +39,7 @@ func CreateExclusive(ctx context.Context, path string, mode fs.FileMode, write f
 	if err := os.Remove(temporaryPath); err != nil {
 		return unknownOutcome(fmt.Sprintf("remove publication link for %s", path), err)
 	}
-	if err := syncDirectory(directory, defaultOperations()); err != nil {
+	if err := syncDirectory(filepath.Dir(path), defaultOperations()); err != nil {
 		return unknownOutcome(fmt.Sprintf("confirm exclusive file %s", path), err)
 	}
 	return nil

@@ -21,18 +21,18 @@ func inspectItem(
 	root string,
 	entry os.DirEntry,
 	limits inventoryLimits,
-	record manifestRecord,
-) (_ Item, _ bool, resultErr error) {
+	record Item,
+) (_ Item, resultErr error) {
 	path, before, err := inspectArtworkEntry(ctx, root, entry, limits.maxBytes)
 	if err != nil {
-		return Item{}, false, err
+		return Item{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return Item{}, false, err
+		return Item{}, err
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return Item{}, false, fmt.Errorf("open artwork %s: %w", entry.Name(), err)
+		return Item{}, fmt.Errorf("open artwork %s: %w", entry.Name(), err)
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
@@ -40,28 +40,28 @@ func inspectItem(
 		}
 	}()
 	if err := ctx.Err(); err != nil {
-		return Item{}, false, err
+		return Item{}, err
 	}
 	opened, err := file.Stat()
 	if err != nil {
-		return Item{}, false, fmt.Errorf("inspect opened artwork %s: %w", entry.Name(), err)
+		return Item{}, fmt.Errorf("inspect opened artwork %s: %w", entry.Name(), err)
 	}
 	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
-		return Item{}, false, fmt.Errorf("artwork %s changed while opening", entry.Name())
+		return Item{}, fmt.Errorf("artwork %s changed while opening", entry.Name())
 	}
 	inspection := artworkInspection{file: file, path: path, before: opened}
 	item, bytesRead, readErr := inspection.read(ctx, entry.Name(), limits, record)
 	after, reinspectErr := inspection.validateStable(ctx, bytesRead)
 	if readErr != nil {
-		return Item{}, false, fmt.Errorf("validate artwork %s: %w", entry.Name(), errors.Join(readErr, reinspectErr))
+		return Item{}, fmt.Errorf("validate artwork %s: %w", entry.Name(), errors.Join(readErr, reinspectErr))
 	}
 	if reinspectErr != nil {
-		return Item{}, false, fmt.Errorf("reinspect artwork %s: %w", entry.Name(), reinspectErr)
+		return Item{}, fmt.Errorf("reinspect artwork %s: %w", entry.Name(), reinspectErr)
 	}
 	item.Name = entry.Name()
 	item.Path = inspection.path
 	item.Size = after.Size()
-	return item, true, nil
+	return item, nil
 }
 
 func inspectArtworkEntry(
@@ -93,17 +93,18 @@ func (inspection artworkInspection) read(
 	ctx context.Context,
 	name string,
 	limits inventoryLimits,
-	record manifestRecord,
+	record Item,
 ) (Item, int64, error) {
-	if record.item.Digest == ([sha256.Size]byte{}) {
+	if record.Digest == ([sha256.Size]byte{}) {
 		return inspection.decode(ctx, name, limits)
 	}
 	digest, bytesRead, err := hashBounded(ctx, inspection.file, limits.maxBytes)
 	if err != nil {
 		return Item{}, bytesRead, err
 	}
-	if item, reusable := reusableManifestItem(record, digest); reusable {
-		return item, bytesRead, nil
+	if record.Digest == digest {
+		record.SourceKeys = append([]string(nil), record.SourceKeys...)
+		return record, bytesRead, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return Item{}, bytesRead, err
@@ -119,7 +120,7 @@ func (inspection artworkInspection) decode(
 	name string,
 	limits inventoryLimits,
 ) (Item, int64, error) {
-	validated, err := readAndValidateWithOptions(ctx, inspection.file, name, validationOptions(limits))
+	validated, err := readAndValidate(ctx, inspection.file, name, limits.maxBytes, limits.maxPixels)
 	if err != nil {
 		return Item{}, int64(len(validated.data)), err
 	}
@@ -150,24 +151,4 @@ func (inspection artworkInspection) validateStable(ctx context.Context, bytesRea
 		return nil, errors.New("artwork changed while reading")
 	}
 	return after, nil
-}
-
-func inspectPrepareItem(ctx context.Context, root string, entry os.DirEntry, limits inventoryLimits) (Item, error) {
-	item, include, err := inspectItem(ctx, root, entry, limits, manifestRecord{})
-	if err != nil {
-		return Item{}, err
-	}
-	if !include {
-		return Item{}, fmt.Errorf("artwork %s was not included", entry.Name())
-	}
-	return item, nil
-}
-
-func reusableManifestItem(record manifestRecord, digest [sha256.Size]byte) (Item, bool) {
-	if record.item.Digest != digest {
-		return Item{}, false
-	}
-	item := record.item
-	item.SourceKeys = append([]string(nil), record.item.SourceKeys...)
-	return item, true
 }

@@ -109,7 +109,7 @@ func TestPrepareDownloadStagesPrivateTemporaryFileWithDetectedExtension(t *testi
 		t.Fatal(err)
 	}
 
-	prepared, err := loader.prepareDownload(context.Background(), "https://example.test/art", "art.jpg", "direct--art", "source:custom")
+	prepared, err := loader.prepareDownload(context.Background(), "https://example.test/art", "art.jpg", "custom")
 	if err != nil {
 		t.Fatalf("prepareDownload() error = %v", err)
 	}

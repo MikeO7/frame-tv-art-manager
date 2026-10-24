@@ -68,7 +68,8 @@ func (a *Application) Run(ctx context.Context) error {
 			results <- childResult{kind: childHTTP, err: server.Serve()}
 		}()
 	}
-	if err := a.prepareStart(ctx); err != nil {
+	if err := a.prepare(ctx); err != nil {
+		err = fmt.Errorf("prepare application: %w", err)
 		a.setState(StateFailed)
 		cancelChildren()
 		if server == nil {
@@ -93,13 +94,6 @@ func (a *Application) Run(ctx context.Context) error {
 		a.setState(StateFailed)
 	}
 	return result
-}
-
-func (a *Application) prepareStart(ctx context.Context) error {
-	if err := a.prepare(ctx); err != nil {
-		return fmt.Errorf("prepare application: %w", err)
-	}
-	return nil
 }
 
 func (a *Application) bindServer(ctx context.Context) (HTTPServer, error) {

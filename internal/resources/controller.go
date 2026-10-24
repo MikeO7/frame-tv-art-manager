@@ -1,12 +1,11 @@
 // Package resources bounds expensive process-wide work and exposes immutable
-// admission and Go runtime metrics.
+// admission metrics.
 package resources
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -15,20 +14,15 @@ import (
 // queue. Callers may safely report it as retryable.
 var ErrOverloaded = errors.New("resource controller overloaded")
 
-// Config defines process-wide transform and per-transform CPU bounds.
+// Config defines process-wide transform admission bounds.
 type Config struct {
 	TransformConcurrency int
 	TransformQueue       int
-	PixelWorkers         int
 }
 
 // DefaultConfig returns the production resource envelope.
 func DefaultConfig() Config {
-	return Config{
-		TransformConcurrency: 1,
-		TransformQueue:       2,
-		PixelWorkers:         min(max(runtime.GOMAXPROCS(0), 1), 4),
-	}
+	return Config{TransformConcurrency: 1, TransformQueue: 2}
 }
 
 // Class controls admission behavior when all bounded queue positions are in
@@ -86,7 +80,6 @@ type Snapshot struct {
 
 // Controller owns process-wide transform admission and metrics.
 type Controller struct {
-	cfg      Config
 	capacity chan struct{}
 	active   chan struct{}
 
@@ -101,15 +94,9 @@ func NewDefaultController() *Controller {
 
 func newController(cfg Config) *Controller {
 	return &Controller{
-		cfg:      cfg,
 		capacity: make(chan struct{}, cfg.TransformConcurrency+cfg.TransformQueue),
 		active:   make(chan struct{}, cfg.TransformConcurrency),
 	}
-}
-
-// PixelWorkers returns the per-transform CPU fan-out bound.
-func (c *Controller) PixelWorkers() int {
-	return c.cfg.PixelWorkers
 }
 
 // Run admits and executes transform. The callback is invoked synchronously at

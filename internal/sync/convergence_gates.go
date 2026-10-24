@@ -1,20 +1,19 @@
 package sync
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
-func acquireCycle(ctx context.Context, gate chan struct{}) error {
+// acquireGate takes the single slot in gate unless ctx ends first. A slot won
+// in a race with cancellation is released so callers never proceed canceled.
+func acquireGate(ctx context.Context, gate chan struct{}) error {
 	select {
 	case gate <- struct{}{}:
 		if err := ctx.Err(); err != nil {
 			<-gate
-			return fmt.Errorf("wait for sync cycle: %w", err)
+			return err
 		}
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("wait for sync cycle: %w", ctx.Err())
+		return ctx.Err()
 	}
 }
 

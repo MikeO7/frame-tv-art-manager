@@ -27,12 +27,9 @@ type preparedCollection struct {
 // orchestration inside this package while the embedded Store remains the
 // narrow interface used by the HTTP upload module.
 type ArtworkCollection interface {
-	CollectionStore
+	collectionpkg.Store
 	prepareCycle(context.Context) (preparedCollection, error)
 }
-
-// CollectionStore is the shared authoritative artwork collection boundary.
-type CollectionStore = collectionpkg.Store
 
 type localCollection struct {
 	mutation chan struct{}
@@ -42,21 +39,7 @@ type localCollection struct {
 	health   *health.Status
 	loader   sources.SourceLoader
 	limits   *resources.Controller
-	store    CollectionStore
-}
-
-func newLocalCollection(
-	cfg *config.Config,
-	logger *slog.Logger,
-	healthStatus *health.Status,
-	store CollectionStore,
-) *localCollection {
-	return &localCollection{
-		mutation: make(chan struct{}, 1),
-		cfg:      cfg, logger: logger, health: healthStatus,
-		loader: sources.NewLoader(cfg, logger, store),
-		limits: resources.NewDefaultController(), store: store,
-	}
+	store    collectionpkg.Store
 }
 
 // newArtworkCollection constructs the single collection mutation authority.
@@ -64,7 +47,7 @@ func newArtworkCollection(
 	cfg *config.Config,
 	logger *slog.Logger,
 	healthStatus *health.Status,
-	store CollectionStore,
+	store collectionpkg.Store,
 ) (ArtworkCollection, error) {
 	if cfg == nil {
 		return nil, errors.New("artwork collection configuration is required")
@@ -75,7 +58,12 @@ func newArtworkCollection(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return newLocalCollection(cfg, logger, healthStatus, store), nil
+	return &localCollection{
+		mutation: make(chan struct{}, 1),
+		cfg:      cfg, logger: logger, health: healthStatus,
+		loader: sources.NewLoader(cfg, logger, store),
+		limits: resources.NewDefaultController(), store: store,
+	}, nil
 }
 
 func (c *localCollection) Prepare(
@@ -142,21 +130,10 @@ func (c *localCollection) acquire(ctx context.Context) error {
 			c.mutation = make(chan struct{}, 1)
 		}
 	})
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("wait for artwork collection mutation: %w", ctx.Err())
-	default:
+	if err := acquireGate(ctx, c.mutation); err != nil {
+		return fmt.Errorf("wait for artwork collection mutation: %w", err)
 	}
-	select {
-	case c.mutation <- struct{}{}:
-		if err := ctx.Err(); err != nil {
-			c.release()
-			return fmt.Errorf("wait for artwork collection mutation: %w", err)
-		}
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("wait for artwork collection mutation: %w", ctx.Err())
-	}
+	return nil
 }
 
 func (c *localCollection) release() {
@@ -167,20 +144,23 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 	var result preparedCollection
 	if c.cfg.DryRun {
 		result.warnings = append(result.warnings, "Dry-run skipped source downloads and local artwork mutations")
-		return c.authoritativeSnapshot(ctx, result)
+		snapshot, err := c.prepareAuthoritativeSnapshot(ctx)
+		result.snapshot = snapshot
+		return result, err
 	}
-	baseline, err := c.prepareAuthoritativeSnapshot(ctx, nil)
+	baseline, err := c.prepareAuthoritativeSnapshot(ctx)
 	if err != nil {
 		return result, err
 	}
 	if c.health != nil {
 		c.health.SetStage("downloading sources")
 	}
-	if err := c.syncSources(ctx, &result, baseline); err != nil {
-		return result, err
+	result.downloaded, err = c.loader.Sync(ctx, baseline)
+	if err != nil {
+		return result, fmt.Errorf("synchronize artwork sources: %w", err)
 	}
 	if result.downloaded > 0 {
-		baseline, err = c.prepareAuthoritativeSnapshot(ctx, nil)
+		baseline, err = c.prepareAuthoritativeSnapshot(ctx)
 		if err != nil {
 			return result, err
 		}
@@ -217,19 +197,6 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 	return result, nil
 }
 
-func (c *localCollection) syncSources(
-	ctx context.Context,
-	result *preparedCollection,
-	snapshot collectionpkg.Snapshot,
-) error {
-	downloaded, err := c.loader.Sync(ctx, snapshot)
-	result.downloaded = downloaded
-	if err != nil {
-		return fmt.Errorf("synchronize artwork sources: %w", err)
-	}
-	return nil
-}
-
 func (c *localCollection) publishStage(
 	ctx context.Context,
 	stage *optimize.Stage,
@@ -242,27 +209,10 @@ func (c *localCollection) publishStage(
 	}
 	snapshot, applyErr := c.store.Apply(ctx, collectionpkg.ApplyRequest{
 		Directory: stage.Directory,
-		Metadata:  metadata.snapshot(),
+		Metadata:  metadata.items,
 	})
 	if err := errors.Join(applyErr, stage.Close()); err != nil {
 		return collectionpkg.Snapshot{}, fmt.Errorf("publish optimized artwork collection: %w", err)
 	}
 	return snapshot, nil
-}
-
-func (c *localCollection) authoritativeSnapshot(
-	ctx context.Context,
-	result preparedCollection,
-	originOverrides ...map[string]collectionpkg.Origin,
-) (preparedCollection, error) {
-	var origins map[string]collectionpkg.Origin
-	if len(originOverrides) > 0 {
-		origins = originOverrides[0]
-	}
-	snapshot, err := c.prepareAuthoritativeSnapshot(ctx, origins)
-	if err != nil {
-		return result, err
-	}
-	result.snapshot = snapshot
-	return result, nil
 }

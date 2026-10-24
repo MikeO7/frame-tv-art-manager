@@ -67,7 +67,6 @@ func (env *environment) loadConfig() (*Config, error) {
 		RotationIntervalDays:           env.decimal("ROTATION_INTERVAL_DAYS", 14),
 		AutoOffTime:                    env.str("AUTO_OFF_TIME", ""),
 		AutoOffGraceHours:              env.decimal("AUTO_OFF_GRACE_HOURS", 2),
-		TVMAC:                          env.str("TV_MAC", ""),
 		EnableRESTGate:                 env.boolean("ENABLE_REST_GATE", false),
 		VerifyTLS:                      env.boolean("VERIFY_TLS", false) && !env.boolean("SKIP_TLS_VERIFY", false),
 		SourcesFile:                    env.str("ARTWORK_SOURCES_FILE", ""),
@@ -118,14 +117,15 @@ func (env *environment) loadConfig() (*Config, error) {
 	if err := env.parseRequiredValues(cfg); err != nil {
 		return nil, err
 	}
-	if len(cfg.TVIPs) > 1 && cfg.TVMAC != "" {
+	mac := env.str("TV_MAC", "")
+	if len(cfg.TVIPs) > 1 && mac != "" {
 		env.warn("TV_MAC", "disabled", "TV_MAC is ambiguous for multiple TVs; automatic Wake is disabled")
-		cfg.TVMAC = ""
+		mac = ""
 	}
 	if err := normalizePaths(cfg); err != nil {
 		return nil, err
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(cfg, mac); err != nil {
 		return nil, err
 	}
 	return cfg, nil

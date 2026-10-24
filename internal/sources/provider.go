@@ -57,6 +57,32 @@ func sourceIdentity(provider, stableKey, label string) string {
 	return fmt.Sprintf("%s--%s--%x", provider, capSlug(label), digest[:8])
 }
 
+// urlSourceImages maps resolved image URLs to provider-scoped source images.
+func urlSourceImages(provider string, urls []string) []SourceImage {
+	images := make([]SourceImage, 0, len(urls))
+	for _, u := range urls {
+		images = append(images, SourceImage{URL: u, Identity: sourceURLIdentity(provider, u)})
+	}
+	return images
+}
+
+// collectPages fetches pages 1..maxPages, stopping after the first page that
+// is not full.
+func collectPages[T any](maxPages int, fetch func(page int) (items []T, full bool, err error)) ([]T, error) {
+	var all []T
+	for page := 1; page <= maxPages; page++ {
+		items, full, err := fetch(page)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if !full {
+			break
+		}
+	}
+	return all, nil
+}
+
 func sourceURLIdentity(provider, rawURL string) string {
 	parsed, err := neturl.Parse(rawURL)
 	if err != nil || parsed.Host == "" {

@@ -14,9 +14,9 @@ func TestSourceProviderResolutionContract(t *testing.T) {
 	t.Parallel()
 
 	providers := []SourceProvider{
-		newUnsplashProvider("", "", "", slog.Default()),
+		newUnsplashProvider("", slog.Default()),
 		newNasaProvider("", slog.Default()),
-		newArticProvider(slog.Default()),
+		newArticProvider(),
 		newPexelsProvider("", slog.Default()),
 		newPixabayProvider("", slog.Default()),
 	}
@@ -67,11 +67,11 @@ func TestSourceProvidersResolveSuccessfulResponses(t *testing.T) {
 	}))
 	defer server.Close()
 
-	unsplash := newUnsplashProvider("", "u-key", "", slog.Default())
+	unsplash := newUnsplashProvider("u-key", slog.Default())
 	unsplash.client, unsplash.BaseURL = server.Client(), server.URL
 	nasa := newNasaProvider("n-key", slog.Default())
 	nasa.client, nasa.BaseURL = server.Client(), server.URL
-	artic := newArticProvider(slog.Default())
+	artic := newArticProvider()
 	artic.client, artic.BaseURL, artic.IIIFBaseURL = server.Client(), server.URL, server.URL+"/iiif"
 	pexels := newPexelsProvider("p-key", slog.Default())
 	pexels.client, pexels.BaseURL = server.Client(), server.URL

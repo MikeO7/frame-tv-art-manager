@@ -117,9 +117,7 @@ func brightnessFromElevation(elevation float64, minVal, maxVal int) int {
 	irradiance := math.Pow(0.7, math.Pow(airMass, 0.678))
 
 	// Map to brightness range.
-	brightness := minVal + int(float64(maxVal-minVal)*irradiance)
-
-	return brightness
+	return minVal + int(float64(maxVal-minVal)*irradiance)
 }
 
 // CalculateAt returns the solar brightness for an explicit instant.
@@ -177,10 +175,6 @@ func trySolarBrightnessAt(
 	logger *slog.Logger,
 	now time.Time,
 ) *int {
-	if loc == nil || loc.Latitude == nil || loc.Longitude == nil {
-		return nil
-	}
-
 	b, err := CalculateAt(loc, minVal, maxVal, now)
 	if err != nil {
 		if !errors.Is(err, ErrSolarDisabled) && logger != nil {

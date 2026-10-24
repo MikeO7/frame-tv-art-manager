@@ -115,7 +115,7 @@ func TestArticClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newArticProvider(slog.Default())
+	c := newArticProvider()
 	c.BaseURL = server.URL
 	urls, err := c.Search(context.Background(), "monet")
 	if err != nil {
@@ -139,7 +139,7 @@ func TestArticClient_FetchPhoto(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newArticProvider(slog.Default())
+	c := newArticProvider()
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "1")

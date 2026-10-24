@@ -24,15 +24,7 @@ type validatedImage struct {
 	stem   string
 }
 
-type validationOptions struct {
-	maxBytes, maxPixels int64
-}
-
 func readAndValidate(ctx context.Context, reader io.Reader, hint string, maxBytes, maxPixels int64) (validatedImage, error) {
-	return readAndValidateWithOptions(ctx, reader, hint, validationOptions{maxBytes: maxBytes, maxPixels: maxPixels})
-}
-
-func readAndValidateWithOptions(ctx context.Context, reader io.Reader, hint string, options validationOptions) (validatedImage, error) {
 	if err := ctx.Err(); err != nil {
 		return validatedImage{}, fmt.Errorf("read import before work: %w", err)
 	}
@@ -40,28 +32,27 @@ func readAndValidateWithOptions(ctx context.Context, reader io.Reader, hint stri
 	if err != nil {
 		return validatedImage{}, err
 	}
-	data, err := readBounded(reader, options.maxBytes)
+	data, err := readBounded(reader, maxBytes)
 	if err != nil {
 		return validatedImage{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return validatedImage{}, fmt.Errorf("decode import: %w", err)
 	}
-	decoded, err := decodeConfiguration(data, hintedType, options.maxPixels)
+	decoded, err := decodeConfiguration(data, hintedType, maxPixels)
 	if err != nil {
 		return validatedImage{}, err
 	}
-	if _, err := fullyDecode(data, decoded.config, decoded.format); err != nil {
+	if err := fullyDecode(data, decoded.config, decoded.format); err != nil {
 		return validatedImage{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return validatedImage{}, fmt.Errorf("finish import validation: %w", err)
 	}
-	result := validatedImage{
+	return validatedImage{
 		data: data, digest: sha256.Sum256(data), typeID: decoded.typeID,
 		width: decoded.config.Width, height: decoded.config.Height, stem: stem,
-	}
-	return result, nil
+	}, nil
 }
 
 func readBounded(reader io.Reader, maxBytes int64) ([]byte, error) {
@@ -130,16 +121,16 @@ func decodeConfiguration(data []byte, hintedType FileType, maxPixels int64) (dec
 	return decodedConfiguration{config: config, format: format, typeID: typeID}, nil
 }
 
-func fullyDecode(data []byte, config image.Config, format string) (image.Image, error) {
+func fullyDecode(data []byte, config image.Config, format string) error {
 	decoded, decodedFormat, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("fully decode image: %w", err)
+		return fmt.Errorf("fully decode image: %w", err)
 	}
 	bounds := decoded.Bounds()
 	if decodedFormat != format || bounds.Dx() != config.Width || bounds.Dy() != config.Height {
-		return nil, errors.New("decoded image facts are inconsistent")
+		return errors.New("decoded image facts are inconsistent")
 	}
-	return decoded, nil
+	return nil
 }
 
 func validateDimensions(width, height int, maxPixels int64) error {

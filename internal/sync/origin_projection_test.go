@@ -25,7 +25,7 @@ func TestMetadataProjectionPreservesIdentityAndCombinesSourceLineage(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	items := projection.snapshot()
+	items := projection.items
 	optimized := items["optimized.jpg"]
 	if optimized.Key != "original.jpg" || optimized.Origin.Class != collectionpkg.OriginOperator || optimized.Derivative != collectionpkg.DerivativeOptimized {
 		t.Fatalf("optimized metadata = %+v", optimized)

@@ -33,7 +33,7 @@ func convergencePolicy(
 		MatteOverrides: matteOverrides,
 		Rotation:       cfg.RotationInterval(),
 	}
-	if strings.TrimSpace(cfg.TVMAC) != "" && len(cfg.TVIPs) == 1 {
+	if cfg.TVMAC != nil {
 		policy.Power = reconcile.WakeWhenKnownOff
 	}
 	if isWithinAutoOffWindowAt(cfg.AutoOffTime, cfg.AutoOffGraceHours, cfg.Timezone, now) {

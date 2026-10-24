@@ -33,7 +33,7 @@ func (l *Loader) checkExisting(identity string) bool {
 	return exists
 }
 
-func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity string, originKeys ...string) (preparedDownload, error) {
+func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity string) (preparedDownload, error) {
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
 	resp, err := l.fetch(ctx, url)
@@ -60,11 +60,7 @@ func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity st
 		_ = os.Remove(tmpPath)
 		return preparedDownload{}, fmt.Errorf("validate downloaded image: %w", err)
 	}
-	originKey := "source:" + identity
-	if len(originKeys) > 0 {
-		originKey = originKeys[0]
-	}
-	return preparedDownload{path: tmpPath, filename: filename, originKey: originKey, written: written}, nil
+	return preparedDownload{path: tmpPath, filename: filename, originKey: "source:" + identity, written: written}, nil
 }
 
 func validateSourceContentType(value string) error {

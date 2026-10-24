@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -25,7 +26,7 @@ func (s *store) apply(ctx context.Context, request ApplyRequest) (Snapshot, erro
 	if err != nil {
 		return Snapshot{}, err
 	}
-	projected := buildSnapshot(s.root, plan.items, plan.changes, request.DryRun)
+	projected := buildSnapshot(s.root, plan.items, plan.changes, nil, request.DryRun)
 	if err := s.validatePreparedSnapshot(projected); err != nil {
 		return Snapshot{}, err
 	}
@@ -38,17 +39,10 @@ func (s *store) apply(ctx context.Context, request ApplyRequest) (Snapshot, erro
 	if err := ensureLayout(s.root); err != nil {
 		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
 	}
-	if err := s.commitBatch(ctx, request.Directory, plan); err != nil {
+	if err := s.commitBatch(ctx, plan, stagedDirectory(request.Directory)); err != nil {
 		return Snapshot{}, fmt.Errorf("commit staged collection: %w", err)
 	}
-	committed, err := scan(ctx, s.root, s.maxImportBytes, s.maxPixels)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
-	}
-	if err := verifyExpected(plan.items, committed); err != nil {
-		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
-	}
-	return buildSnapshot(s.root, committed, plan.changes, false), nil
+	return s.verifyCommitted(ctx, plan.items, plan.changes)
 }
 
 func (s *store) planApply(ctx context.Context, request ApplyRequest) ([]Item, batchPlan, error) {
@@ -68,7 +62,7 @@ func (s *store) planApply(ctx context.Context, request ApplyRequest) ([]Item, ba
 }
 
 func (s *store) applyOriginsOnly(ctx context.Context, current, next []Item, projected Snapshot) (Snapshot, error) {
-	if itemsEqual(current, next) {
+	if slices.EqualFunc(current, next, itemEqual) {
 		return projected, nil
 	}
 	if err := ensureLayout(s.root); err != nil {
@@ -78,18 +72,6 @@ func (s *store) applyOriginsOnly(ctx context.Context, current, next []Item, proj
 		return Snapshot{}, fmt.Errorf("commit staged collection origins: %w", err)
 	}
 	return projected, nil
-}
-
-func itemsEqual(left, right []Item) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if !itemEqual(left[index], right[index]) {
-			return false
-		}
-	}
-	return true
 }
 
 func validateStageDirectory(root, directory string) error {
@@ -176,23 +158,15 @@ func (s *store) scanApplyEntry(
 	if err := ctx.Err(); err != nil {
 		return Item{}, fmt.Errorf("scan staged collection: %w", err)
 	}
-	if isReserved(strings.ToLower(entry.Name())) || !isSupportedName(entry.Name()) {
+	if !isArtworkName(entry.Name()) {
 		return Item{}, fmt.Errorf("staged entry %q is not artwork", entry.Name())
 	}
-	item, err := inspectPrepareItem(ctx, directory, entry, inventoryLimits{
-		maxBytes: s.maxImportBytes, maxPixels: s.maxPixels,
-	})
+	item, err := inspectItem(ctx, directory, entry, s.limits(), Item{})
 	if err != nil {
 		return Item{}, fmt.Errorf("inspect staged artwork %s: %w", entry.Name(), err)
 	}
 	item.Path = filepath.Join(s.root, item.Name)
-	if old, ok := current[item.Name]; ok && old.Digest == item.Digest {
-		item.Key = old.Key
-		item.Origin = old.Origin
-		item.SourceKeys = append([]string(nil), old.SourceKeys...)
-		item.TransformKey = old.TransformKey
-		item.Derivative = old.Derivative
-	}
+	item = withRecordedMetadata(item, current)
 	if origin, ok := overrides[item.Name]; ok {
 		item.Origin = origin
 		if origin.Class == OriginSource {
@@ -200,11 +174,7 @@ func (s *store) scanApplyEntry(
 		}
 	}
 	if projected, ok := metadata[item.Name]; ok {
-		item.Key = projected.Key
-		item.Origin = projected.Origin
-		item.SourceKeys = append([]string(nil), projected.SourceKeys...)
-		item.TransformKey = projected.TransformKey
-		item.Derivative = projected.Derivative
+		item = withMetadata(item, projected)
 	}
 	if err := validateSnapshotOrigin(item); err != nil {
 		return Item{}, fmt.Errorf("staged artwork %s origin: %w", item.Name, err)

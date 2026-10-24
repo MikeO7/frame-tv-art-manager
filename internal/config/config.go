@@ -4,6 +4,7 @@
 package config
 
 import (
+	"net"
 	"time"
 )
 
@@ -107,9 +108,9 @@ type Config struct {
 
 	// --- Wake-on-LAN ---
 
-	// TVMAC is a MAC address (e.g. "AA:BB:CC:DD:EE:FF") for Wake-on-LAN.
-	// Empty string disables WoL.
-	TVMAC string
+	// TVMAC is the six-byte Wake-on-LAN address parsed from TV_MAC. It is nil
+	// when TV_MAC is unset or ambiguous because several TVs are configured.
+	TVMAC net.HardwareAddr
 
 	// --- REST Gate ---
 

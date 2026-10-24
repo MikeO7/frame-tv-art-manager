@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -59,16 +58,6 @@ func TestConvergenceEngineRunsCommittedSnapshotThroughCachedRuntime(t *testing.T
 	}
 	if service.result.AppliedCommands[0] != reconcile.CommandUpload {
 		t.Fatal("runtime mutated reconciler result command history")
-	}
-}
-
-func TestNewConvergenceEngineRejectsDuplicateCanonicalTVsBeforeConstruction(t *testing.T) {
-	root := t.TempDir()
-	_, err := newConvergenceEngine(context.Background(), &config.Config{
-		TVIPs: []string{"2001:db8::1", "2001:0db8:0:0:0:0:0:1"}, ArtworkDir: root,
-	}, slog.New(slog.DiscardHandler), nil, &staticArtworkCollection{})
-	if err == nil || !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("newConvergenceEngine() error = %v, want duplicate rejection", err)
 	}
 }
 

@@ -25,18 +25,10 @@ func BuildContentName(label string, digest [sha256.Size]byte, extension string, 
 	if !IsSupportedExtension(extension) {
 		extension = extJPEG
 	}
-	if digestBytes < 6 {
-		digestBytes = 6
-	}
-	if digestBytes > sha256.Size {
-		digestBytes = sha256.Size
-	}
+	digestBytes = min(max(digestBytes, 6), sha256.Size)
 	stem := safeStem(strings.TrimSuffix(filepath.Base(label), filepath.Ext(label)))
 	suffix := "--" + hex.EncodeToString(digest[:digestBytes])
-	budget := MaxNameBytes - len(extension) - len(suffix)
-	if budget < 1 {
-		budget = 1
-	}
+	budget := max(MaxNameBytes-len(extension)-len(suffix), 1)
 	if len(stem) > budget {
 		stem = strings.Trim(stem[:budget], ".-_")
 	}

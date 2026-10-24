@@ -48,9 +48,8 @@ const (
 // Loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
 type Loader struct {
-	cfg               *config.Config
+	dryRun            bool
 	sourcesFile       string
-	artworkDir        string
 	logger            *slog.Logger
 	client            *http.Client
 	providers         []SourceProvider
@@ -65,10 +64,9 @@ type Loader struct {
 }
 
 // CollectionImporter is the narrow collection seam used to transactionally
-// publish a validated source download. The source module never writes a final
+// publish validated source downloads. The source module never writes a final
 // artwork path directly.
 type CollectionImporter interface {
-	Import(context.Context, collection.ImportRequest) (collection.Snapshot, error)
 	ImportBatch(context.Context, []collection.ImportRequest) (collection.Snapshot, error)
 }
 
@@ -79,18 +77,17 @@ func NewLoader(
 	importer CollectionImporter,
 ) *Loader {
 	providers := []SourceProvider{
-		newUnsplashProvider(cfg.UnsplashAppID, cfg.UnsplashAccessKey, cfg.UnsplashSecretKey, logger),
+		newUnsplashProvider(cfg.UnsplashAccessKey, logger),
 		newNasaProvider(cfg.NasaAPIKey, logger),
-		newArticProvider(logger),
+		newArticProvider(),
 		newPexelsProvider(cfg.PexelsAPIKey, logger),
 		newPixabayProvider(cfg.PixabayAPIKey, logger),
 		newDirectProvider(),
 	}
 
 	return &Loader{
-		cfg:         cfg,
+		dryRun:      cfg.DryRun,
 		sourcesFile: cfg.SourcesFile,
-		artworkDir:  cfg.ArtworkDir,
 		maxImages:   cfg.MaxArtworkImages,
 		maxSizeMB:   cfg.MaxDownloadSizeMB,
 		logger:      logger,

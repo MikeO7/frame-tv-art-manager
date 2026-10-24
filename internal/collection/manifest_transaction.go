@@ -34,9 +34,6 @@ func recoverManifestTransaction(ctx context.Context, root string, next manifest)
 }
 
 func validTransaction(root string, tx transaction) bool {
-	if tx.Next.Version != 1 && tx.Next.Version != 2 && tx.Next.Version != 3 {
-		return false
-	}
 	if _, err := validateManifestItems(tx.Next); err != nil {
 		return false
 	}

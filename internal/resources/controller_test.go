@@ -10,17 +10,11 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/resources"
 )
 
-func TestDefaultConfigBoundsTransformsAndPixelWorkers(t *testing.T) {
+func TestDefaultConfigBoundsTransforms(t *testing.T) {
 	t.Parallel()
 	cfg := resources.DefaultConfig()
 	if cfg.TransformConcurrency != 1 || cfg.TransformQueue != 2 {
 		t.Fatalf("transform bounds = %d active/%d queued, want 1/2", cfg.TransformConcurrency, cfg.TransformQueue)
-	}
-	if cfg.PixelWorkers < 1 || cfg.PixelWorkers > 4 {
-		t.Fatalf("PixelWorkers = %d, want within [1, 4]", cfg.PixelWorkers)
-	}
-	if got := resources.NewDefaultController().PixelWorkers(); got != cfg.PixelWorkers {
-		t.Fatalf("default controller PixelWorkers() = %d, want %d", got, cfg.PixelWorkers)
 	}
 }
 

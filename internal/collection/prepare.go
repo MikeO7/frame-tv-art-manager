@@ -7,26 +7,36 @@ import (
 	"os"
 	"slices"
 	"sort"
-	"strings"
 )
 
 func (s *store) prepare(ctx context.Context, request PrepareRequest) (Snapshot, error) {
-	if err := s.beginPrepare(ctx, request.DryRun); err != nil {
+	if err := s.recover(ctx, request.DryRun); err != nil {
 		return Snapshot{}, err
 	}
-	inventory, err := s.prepareInventory(ctx, request.Origins)
+	current, manifestExists, err := readManifest(ctx, s.root)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, fmt.Errorf("read committed manifest: %w", err)
 	}
-	changes := inventoryChanges(inventory.current, inventory.items)
-	projected := buildSnapshotWithWarnings(s.root, inventory.items, changes, inventory.warnings, request.DryRun)
+	items, warnings, err := scanPrepare(ctx, s.root, s.limits(), request.Origins)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("inventory collection: %w", err)
+	}
+	changes := inventoryChanges(current, items)
+	projected := buildSnapshot(s.root, items, changes, warnings, request.DryRun)
 	if err := s.validatePreparedSnapshot(projected); err != nil {
 		return Snapshot{}, err
 	}
 	if request.DryRun {
 		return projected, nil
 	}
-	return s.commitPrepared(ctx, inventory, changes)
+	if err := ensureLayout(s.root); err != nil {
+		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
+	}
+	next := newManifest(items)
+	if manifestExists && manifestsEqual(current, next) {
+		return projected, nil
+	}
+	return s.commitPrepared(ctx, items, next, changes)
 }
 
 func (s *store) validatePreparedSnapshot(snapshot Snapshot) error {
@@ -39,62 +49,32 @@ func (s *store) validatePreparedSnapshot(snapshot Snapshot) error {
 	return nil
 }
 
-func (s *store) beginPrepare(ctx context.Context, dryRun bool) error {
-	if err := validateExistingLayout(s.root); err != nil {
-		return fmt.Errorf("validate collection layout: %w", err)
-	}
-	if dryRun {
-		return rejectActiveTransaction(ctx, s.root)
-	}
-	if err := recoverTransaction(ctx, s.root); err != nil {
-		return fmt.Errorf("recover collection: %w", err)
-	}
-	return nil
-}
-
-func (s *store) commitPrepared(ctx context.Context, inventory preparedInventory, changes []Change) (Snapshot, error) {
-	projected := buildSnapshotWithWarnings(s.root, inventory.items, changes, inventory.warnings, false)
-	if err := s.validatePreparedSnapshot(projected); err != nil {
-		return Snapshot{}, err
-	}
-	if err := ensureLayout(s.root); err != nil {
-		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
-	}
-	next := newManifest(inventory.items)
-	manifestChanged := !inventory.manifestExists || !manifestsEqual(inventory.current, next)
-	if !manifestChanged {
-		return projected, nil
-	}
+func (s *store) commitPrepared(ctx context.Context, items []Item, next manifest, changes []Change) (Snapshot, error) {
 	if err := commitManifest(ctx, s.root, next); err != nil {
 		return Snapshot{}, fmt.Errorf("commit collection inventory: %w", err)
 	}
-	limits := inventoryLimits{
-		maxBytes: s.maxImportBytes, maxPixels: s.maxPixels,
-	}
-	committed, committedWarnings, err := scanPrepare(ctx, s.root, limits)
+	committed, committedWarnings, err := scanPrepare(ctx, s.root, s.limits(), nil)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
 	}
-	if err := verifyExpected(inventory.items, committed); err != nil {
+	if err := verifyExpected(items, committed); err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed manifest: %w", err)
 	}
-	verified := buildSnapshotWithWarnings(s.root, committed, changes, committedWarnings, false)
+	verified := buildSnapshot(s.root, committed, changes, committedWarnings, false)
 	if err := s.validatePreparedSnapshot(verified); err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed collection snapshot: %w", err)
 	}
 	return verified, nil
 }
 
+// scanPrepare inventories the collection like scan, but excludes unreadable
+// artwork with a warning instead of failing, and applies origin overrides.
 func scanPrepare(
 	ctx context.Context,
 	root string,
 	limits inventoryLimits,
-	originOverrides ...map[string]Origin,
+	overrides map[string]Origin,
 ) ([]Item, []string, error) {
-	var overrides map[string]Origin
-	if len(originOverrides) > 0 {
-		overrides = originOverrides[0]
-	}
 	records, err := readManifestRecords(ctx, root)
 	if err != nil {
 		return nil, nil, err
@@ -109,15 +89,15 @@ func scanPrepare(
 	items := make([]Item, 0, len(entries))
 	warnings := make([]string, 0)
 	for _, entry := range entries {
-		result, err := scanPrepareEntry(ctx, root, entry, limits, records[entry.Name()])
+		item, warning, err := scanPrepareEntry(ctx, root, entry, limits, records[entry.Name()])
 		if err != nil {
 			return nil, nil, err
 		}
-		if result.warning != "" {
-			warnings = append(warnings, result.warning)
+		if warning != "" {
+			warnings = append(warnings, warning)
 		}
-		if result.include {
-			item, err := prepareItemOrigin(result.item, records, overrides)
+		if item.Name != "" {
+			item, err := prepareItemOrigin(withRecordedMetadata(item, records), overrides)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -129,18 +109,7 @@ func scanPrepare(
 	return items, warnings, nil
 }
 
-func prepareItemOrigin(
-	item Item,
-	committed map[string]manifestRecord,
-	overrides map[string]Origin,
-) (Item, error) {
-	if metadata, ok := committed[item.Name]; ok && metadata.item.Digest == item.Digest {
-		item.Key = metadata.item.Key
-		item.Origin = metadata.item.Origin
-		item.SourceKeys = append([]string(nil), metadata.item.SourceKeys...)
-		item.TransformKey = metadata.item.TransformKey
-		item.Derivative = metadata.item.Derivative
-	}
+func prepareItemOrigin(item Item, overrides map[string]Origin) (Item, error) {
 	origin, overridden := overrides[item.Name]
 	if !overridden {
 		return item, nil
@@ -155,36 +124,32 @@ func prepareItemOrigin(
 	return item, nil
 }
 
-type scannedPrepareEntry struct {
-	item    Item
-	include bool
-	warning string
-}
-
+// scanPrepareEntry returns an included item, an exclusion warning, or a hard
+// error. Skipped control files and unsupported names return neither.
 func scanPrepareEntry(
 	ctx context.Context,
 	root string,
 	entry os.DirEntry,
 	limits inventoryLimits,
-	record manifestRecord,
-) (scannedPrepareEntry, error) {
+	record Item,
+) (Item, string, error) {
 	if err := ctx.Err(); err != nil {
-		return scannedPrepareEntry{}, fmt.Errorf("scan collection: %w", err)
+		return Item{}, "", fmt.Errorf("scan collection: %w", err)
 	}
-	if isReserved(strings.ToLower(entry.Name())) || !isSupportedName(entry.Name()) {
-		return scannedPrepareEntry{}, nil
+	if !isArtworkName(entry.Name()) {
+		return Item{}, "", nil
 	}
 	if entry.Type()&os.ModeSymlink != 0 {
-		return scannedPrepareEntry{}, fmt.Errorf("artwork %s is a symlink", entry.Name())
+		return Item{}, "", fmt.Errorf("artwork %s is a symlink", entry.Name())
 	}
-	item, _, err := inspectItem(ctx, root, entry, limits, record)
+	item, err := inspectItem(ctx, root, entry, limits, record)
 	if err == nil {
-		return scannedPrepareEntry{item: item, include: true}, nil
+		return item, "", nil
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return scannedPrepareEntry{}, err
+		return Item{}, "", err
 	}
-	return scannedPrepareEntry{warning: fmt.Sprintf("excluded artwork %s: %v", entry.Name(), err)}, nil
+	return Item{}, fmt.Sprintf("excluded artwork %s: %v", entry.Name(), err), nil
 }
 
 func inventoryChanges(current manifest, items []Item) []Change {
@@ -217,19 +182,13 @@ func inventoryChanges(current manifest, items []Item) []Change {
 }
 
 func manifestsEqual(left, right manifest) bool {
-	if left.Version != right.Version || left.Generation != right.Generation || len(left.Items) != len(right.Items) {
-		return false
-	}
-	for index := range left.Items {
-		leftItem, rightItem := left.Items[index], right.Items[index]
-		if leftItem.Name != rightItem.Name || leftItem.Digest != rightItem.Digest || leftItem.Type != rightItem.Type ||
-			leftItem.Width != rightItem.Width || leftItem.Height != rightItem.Height ||
-			leftItem.VisualHash != rightItem.VisualHash ||
-			leftItem.OriginKey != rightItem.OriginKey || leftItem.Class != rightItem.Class ||
-			leftItem.Key != rightItem.Key || leftItem.TransformKey != rightItem.TransformKey ||
-			leftItem.Derivative != rightItem.Derivative || !slices.Equal(leftItem.SourceKeys, rightItem.SourceKeys) {
-			return false
-		}
-	}
-	return true
+	return left.Version == right.Version && left.Generation == right.Generation &&
+		slices.EqualFunc(left.Items, right.Items, func(leftItem, rightItem manifestItem) bool {
+			return leftItem.Name == rightItem.Name && leftItem.Digest == rightItem.Digest && leftItem.Type == rightItem.Type &&
+				leftItem.Width == rightItem.Width && leftItem.Height == rightItem.Height &&
+				leftItem.VisualHash == rightItem.VisualHash &&
+				leftItem.OriginKey == rightItem.OriginKey && leftItem.Class == rightItem.Class &&
+				leftItem.Key == rightItem.Key && leftItem.TransformKey == rightItem.TransformKey &&
+				leftItem.Derivative == rightItem.Derivative && slices.Equal(leftItem.SourceKeys, rightItem.SourceKeys)
+		})
 }

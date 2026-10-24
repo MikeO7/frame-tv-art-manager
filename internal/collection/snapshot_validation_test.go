@@ -21,7 +21,7 @@ func TestValidateSnapshot(t *testing.T) {
 			Name: "second.jpg", Key: "second.jpg", Digest: secondDigest, Type: FileTypeJPEG, Size: 6, Width: 2, Height: 3,
 			Origin: Origin{Key: "upload:" + hex.EncodeToString(secondDigest[:]), Class: OriginOperatorUpload},
 		},
-	}, nil, false)
+	}, nil, nil, false)
 
 	tests := []struct {
 		name      string
@@ -119,7 +119,7 @@ func TestValidateSnapshotAllowsDerivativeToRetainOriginalUploadKey(t *testing.T)
 		Size: 1, Width: 3840, Height: 2160,
 		Origin:     Origin{Key: "upload:" + strings.Repeat("1", sha256.Size*2), Class: OriginOperatorUpload},
 		Derivative: DerivativeOptimized, TransformKey: strings.Repeat("2", sha256.Size*2),
-	}}, nil, false)
+	}}, nil, nil, false)
 	if err := ValidateSnapshot(root, snapshot); err != nil {
 		t.Fatalf("ValidateSnapshot() error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestValidateSnapshotDerivativeMetadataBranches(t *testing.T) {
 				Origin: Origin{Key: "operator:item.jpg", Class: OriginOperator},
 			}
 			test.mutate(&item)
-			err := ValidateSnapshot(root, buildSnapshot(root, []Item{item}, nil, false))
+			err := ValidateSnapshot(root, buildSnapshot(root, []Item{item}, nil, nil, false))
 			if test.want == "" && err != nil {
 				t.Fatalf("ValidateSnapshot() error = %v", err)
 			}
@@ -188,7 +188,7 @@ func TestValidateSnapshotDerivativeMetadataBranches(t *testing.T) {
 
 func TestValidateSnapshotAcceptsEmptyCommittedCollection(t *testing.T) {
 	root := t.TempDir()
-	if err := ValidateSnapshot(root, buildSnapshot(root, nil, nil, false)); err != nil {
+	if err := ValidateSnapshot(root, buildSnapshot(root, nil, nil, nil, false)); err != nil {
 		t.Fatalf("ValidateSnapshot() error = %v", err)
 	}
 }

@@ -36,11 +36,7 @@ type manifestItem struct {
 	Derivative   DerivativeKind `json:"derivative,omitempty"`
 }
 
-func buildSnapshot(root string, items []Item, changes []Change, dryRun bool) Snapshot {
-	return buildSnapshotWithWarnings(root, items, changes, nil, dryRun)
-}
-
-func buildSnapshotWithWarnings(root string, items []Item, changes []Change, warnings []string, dryRun bool) Snapshot {
+func buildSnapshot(root string, items []Item, changes []Change, warnings []string, dryRun bool) Snapshot {
 	cloned := cloneItems(items)
 	sortItems(cloned)
 	for index := range cloned {
@@ -56,6 +52,10 @@ func buildSnapshotWithWarnings(root string, items []Item, changes []Change, warn
 }
 
 func newManifest(items []Item) manifest {
+	return manifest{Version: 3, Generation: generation(items), Items: manifestItems(items)}
+}
+
+func manifestItems(items []Item) []manifestItem {
 	entries := make([]manifestItem, 0, len(items))
 	for _, item := range items {
 		entries = append(entries, manifestItem{
@@ -66,21 +66,26 @@ func newManifest(items []Item) manifest {
 			TransformKey: item.TransformKey, Derivative: item.Derivative,
 		})
 	}
-	return manifest{Version: 3, Generation: generation(items), Items: entries}
+	return entries
 }
 
 func generation(items []Item) string {
-	entries := make([]manifestItem, 0, len(items))
-	for _, item := range items {
-		entries = append(entries, manifestItem{
-			Name: item.Name, Digest: hex.EncodeToString(item.Digest[:]), Type: item.Type,
-			Width: item.Width, Height: item.Height,
-			OriginKey: item.Origin.Key, Class: item.Origin.Class, Key: item.Key,
-			SourceKeys:   append([]string(nil), item.SourceKeys...),
-			TransformKey: item.TransformKey, Derivative: item.Derivative,
-		})
-	}
-	data, err := json.Marshal(entries)
+	return hashJSON(manifestItems(items))
+}
+
+// SnapshotGeneration returns the canonical generation for a set of collection
+// items. Callers outside collection must use this function instead of
+// reimplementing the manifest schema used to derive a snapshot generation.
+func SnapshotGeneration(items []Item) string {
+	canonical := cloneItems(items)
+	sortItems(canonical)
+	return generation(canonical)
+}
+
+// hashJSON returns the hex SHA-256 of value's JSON encoding, or "" when value
+// cannot be encoded.
+func hashJSON(value any) string {
+	data, err := json.Marshal(value)
 	if err != nil {
 		return ""
 	}
@@ -133,8 +138,7 @@ func validateSnapshotItem(
 	if _, exists := names[lowerName]; exists {
 		return fmt.Errorf("collection snapshot repeats name %q", item.Name)
 	}
-	if item.Key == "" || filepath.Base(item.Key) != item.Key || strings.ContainsAny(item.Key, `/\\`) ||
-		isReserved(strings.ToLower(item.Key)) || !isSupportedName(item.Key) {
+	if !validArtworkName(item.Key) {
 		return fmt.Errorf("collection snapshot item %q artwork key %q is invalid", item.Name, item.Key)
 	}
 	if _, exists := keys[strings.ToLower(item.Key)]; exists {
@@ -153,8 +157,7 @@ func validateSnapshotItem(
 }
 
 func validateSnapshotItemFacts(expectedRoot string, item Item, lowerName string) error {
-	if item.Name == "" || filepath.Base(item.Name) != item.Name || strings.ContainsAny(item.Name, `/\`) ||
-		isReserved(lowerName) || !isSupportedName(item.Name) {
+	if !validArtworkName(item.Name) {
 		return fmt.Errorf("collection snapshot item name %q is invalid", item.Name)
 	}
 	if item.Path != filepath.Join(expectedRoot, item.Name) {

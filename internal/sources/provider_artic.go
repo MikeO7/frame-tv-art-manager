@@ -3,7 +3,6 @@ package sources
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,18 +15,16 @@ const articMaxResponseBytes = 10 << 20 // 10 MiB
 // articProvider handles communication with the Art Institute of Chicago API and resolves artwork sources.
 type articProvider struct {
 	client      *http.Client
-	logger      *slog.Logger
 	BaseURL     string
 	IIIFBaseURL string
 }
 
 // newArticProvider creates a new Art Institute of Chicago provider.
-func newArticProvider(logger *slog.Logger) *articProvider {
+func newArticProvider() *articProvider {
 	return &articProvider{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger:      logger,
 		BaseURL:     "https://api.artic.edu",
 		IIIFBaseURL: "https://www.artic.edu/iiif/2",
 	}
@@ -126,16 +123,5 @@ func (p *articProvider) Resolve(ctx context.Context, line string) ([]SourceImage
 	if err != nil {
 		return nil, err
 	}
-
-	images := make([]SourceImage, 0, len(urls))
-	for _, u := range urls {
-		identity := sourceURLIdentity(p.Name(), u)
-
-		images = append(images, SourceImage{
-			URL:      u,
-			Identity: identity,
-		})
-	}
-
-	return images, nil
+	return urlSourceImages(p.Name(), urls), nil
 }

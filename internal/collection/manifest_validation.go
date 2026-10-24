@@ -3,15 +3,16 @@ package collection
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
-func validateManifestItems(value manifest) (map[string]manifestRecord, error) {
-	records := make(map[string]manifestRecord, len(value.Items))
+func validateManifestItems(value manifest) (map[string]Item, error) {
+	if value.Version != 1 && value.Version != 2 && value.Version != 3 {
+		return nil, fmt.Errorf("unsupported collection manifest version %d", value.Version)
+	}
+	records := make(map[string]Item, len(value.Items))
 	names := make(map[string]struct{}, len(value.Items))
 	keys := make(map[string]struct{}, len(value.Items))
 	digests := make(map[[sha256.Size]byte]struct{}, len(value.Items))
@@ -21,13 +22,16 @@ func validateManifestItems(value manifest) (map[string]manifestRecord, error) {
 		if err != nil {
 			return nil, err
 		}
-		records[entry.Name] = manifestRecord{item: item}
+		records[entry.Name] = item
 		names[strings.ToLower(entry.Name)] = struct{}{}
 		keys[strings.ToLower(item.Key)] = struct{}{}
 		digests[item.Digest] = struct{}{}
 		items = append(items, item)
 	}
-	return validateManifestGeneration(value.Version, value.Generation, items, records)
+	if err := validateManifestGeneration(value.Version, value.Generation, items); err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 func validateManifestItem(
@@ -64,10 +68,7 @@ func validateManifestItem(
 
 func validateManifestName(name string, names map[string]struct{}) (string, error) {
 	lowerName := strings.ToLower(name)
-	if name == "" || filepath.Base(name) != name || strings.ContainsAny(name, `/\`) {
-		return "", fmt.Errorf("manifest item name %q is invalid", name)
-	}
-	if isReserved(lowerName) || !isSupportedName(name) {
+	if !validArtworkName(name) {
 		return "", fmt.Errorf("manifest item name %q is invalid", name)
 	}
 	if _, exists := names[lowerName]; exists {
@@ -104,8 +105,7 @@ func validateManifestItemFacts(item Item, lowerName string, keys map[string]stru
 		return fmt.Errorf("manifest item %q type %q is invalid for its name", item.Name, item.Type)
 	}
 	key := strings.ToLower(item.Key)
-	if item.Key == "" || filepath.Base(item.Key) != item.Key || strings.ContainsAny(item.Key, `/\\`) ||
-		isReserved(key) || !isSupportedName(item.Key) {
+	if !validArtworkName(item.Key) {
 		return fmt.Errorf("manifest item %q artwork key %q is invalid", item.Name, item.Key)
 	}
 	if _, duplicate := keys[key]; duplicate {
@@ -120,14 +120,9 @@ func validateManifestItemFacts(item Item, lowerName string, keys map[string]stru
 	return nil
 }
 
-func validateManifestGeneration(
-	version int,
-	generationValue string,
-	items []Item,
-	records map[string]manifestRecord,
-) (map[string]manifestRecord, error) {
+func validateManifestGeneration(version int, generationValue string, items []Item) error {
 	if !validGeneration(generationValue) {
-		return nil, errors.New("collection manifest generation is invalid")
+		return errors.New("collection manifest generation is invalid")
 	}
 	sortItems(items)
 	want := generation(items)
@@ -135,9 +130,9 @@ func validateManifestGeneration(
 		want = legacyGeneration(items)
 	}
 	if generationValue != want {
-		return nil, errors.New("collection manifest generation does not match its items")
+		return errors.New("collection manifest generation does not match its items")
 	}
-	return records, nil
+	return nil
 }
 
 func legacyGeneration(items []Item) string {
@@ -157,10 +152,5 @@ func legacyGeneration(items []Item) string {
 			Width: item.Width, Height: item.Height, OriginKey: item.Origin.Key, Class: item.Origin.Class,
 		})
 	}
-	data, err := json.Marshal(entries)
-	if err != nil {
-		return ""
-	}
-	digest := sha256.Sum256(data)
-	return hex.EncodeToString(digest[:])
+	return hashJSON(entries)
 }

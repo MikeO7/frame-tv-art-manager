@@ -177,7 +177,7 @@ func TestPrepareRecoversBatchTransaction(t *testing.T) {
 	if err := ensureLayout(root); err != nil {
 		t.Fatalf("ensure layout: %v", err)
 	}
-	effect, err := s.stageBatchAddition(context.Background(), stageDirectory, plan.additions[0], 0)
+	effect, err := s.stageBatchAddition(context.Background(), plan.additions[0], 0, stagedDirectory(stageDirectory))
 	if err != nil {
 		t.Fatalf("stage batch addition: %v", err)
 	}
@@ -435,7 +435,7 @@ func TestPrepareCompletesIdempotentBatchRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan staged collection: %v", err)
 	}
-	effect, err := s.stageBatchAddition(context.Background(), stageDirectory, items[0], 0)
+	effect, err := s.stageBatchAddition(context.Background(), items[0], 0, stagedDirectory(stageDirectory))
 	if err != nil {
 		t.Fatalf("stage batch addition: %v", err)
 	}
@@ -489,7 +489,7 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("scan staged collection: %v", err)
 		}
-		effect, err := s.stageBatchAddition(context.Background(), stageDirectory, items[0], 0)
+		effect, err := s.stageBatchAddition(context.Background(), items[0], 0, stagedDirectory(stageDirectory))
 		if err != nil {
 			t.Fatalf("stage batch addition: %v", err)
 		}
@@ -752,7 +752,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 			Origin: Origin{Key: "operator:missing.png", Class: OriginOperator},
 		}
 		plan := batchPlan{items: []Item{item}, additions: []Item{item}}
-		if err := valueStore.(*store).commitBatch(context.Background(), t.TempDir(), plan); err == nil {
+		if err := valueStore.(*store).commitBatch(context.Background(), plan, stagedDirectory(t.TempDir())); err == nil {
 			t.Fatal("commitBatch accepted a vanished staged source")
 		}
 		if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
@@ -773,7 +773,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 		old := Item{Name: "old.png", Path: filepath.Join(root, "old.png"), Digest: digest}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := valueStore.(*store).commitBatch(ctx, t.TempDir(), batchPlan{deletions: []Item{old}}); !errors.Is(err, context.Canceled) {
+		if err := valueStore.(*store).commitBatch(ctx, batchPlan{deletions: []Item{old}}, stagedDirectory(t.TempDir())); !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled commitBatch error = %v", err)
 		}
 		if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
@@ -908,7 +908,7 @@ func TestBatchApplyHonorsCancellationAndRejectsUnsafeRecovery(t *testing.T) {
 		next[0].Origin = Origin{Key: "source:item", Class: OriginSource}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := valueStore.(*store).applyOriginsOnly(ctx, current, next, buildSnapshot(root, next, nil, false)); !errors.Is(err, context.Canceled) {
+		if _, err := valueStore.(*store).applyOriginsOnly(ctx, current, next, buildSnapshot(root, next, nil, nil, false)); !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled origin commit error = %v", err)
 		}
 		if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
