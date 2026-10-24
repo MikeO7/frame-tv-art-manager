@@ -3,20 +3,19 @@ package reconcile
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"slices"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-//nolint:funlen,gocognit,gocyclo // The linear sequence is the durable reconciliation protocol.
+//nolint:funlen,gocognit // The linear sequence is the durable reconciliation protocol.
 func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	policy := s.effectivePolicy(request.Policy)
 	if err := validateRequest(request.CycleID, request.TV, request.Snapshot, policy, request.DryRun); err != nil {
 		return Result{}, err
 	}
-	observation, err := observe(ctx, request.TV, samsung.ObserveRequest{
+	observation, err := request.TV.Observe(ctx, samsung.ObserveRequest{
 		CycleID: request.CycleID, CollectionGeneration: request.Snapshot.Generation,
 		DryRun: request.DryRun, Required: initialObservationCapabilities(policy),
 	})
@@ -39,14 +38,10 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		return Result{Observation: observation}, err
 	}
 	if state.Pending != nil {
-		recovery, recoveryErr := s.resolveRecovery(ctx, recoveryInput{
-			cycleID: request.CycleID, dryRun: request.DryRun, observation: observation, state: state,
-		})
-		if recoveryErr != nil || !recovery.Resolved {
-			return Result{Status: recovery.Status, State: recovery.State, Observation: recovery.Observation}, recoveryErr
+		state, err = s.resolveRecovery(ctx, request.CycleID, request.DryRun, observation, state)
+		if err != nil {
+			return Result{Status: statusForError(err), State: state, Observation: observation}, err
 		}
-		state = recovery.State
-		observation = recovery.Observation
 	}
 	wake := wakePreparation{state: state, observation: observation}
 	if policy.Power == PowerOn {
@@ -55,11 +50,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 			return *wake.terminal, err
 		}
 		if err != nil {
-			return Result{
-				Status: statusForError(err), Plan: wake.plan, State: cloneState(wake.state),
-				Observation: wake.observation, Applied: wake.applied,
-				AppliedCommands: slices.Clone(wake.appliedCommands),
-			}, err
+			return wake.result(statusForError(err), wake.state, wake.observation), err
 		}
 		state = wake.state
 		observation = wake.observation
@@ -67,21 +58,22 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	if state.LegacyMigrationPending {
 		state, err = s.completeDeferredLegacyMigration(ctx, state, request.Snapshot, observation, request.DryRun)
 		if err != nil {
-			return Result{
-				Status: statusForError(err), Plan: wake.plan, State: cloneState(state),
-				Observation: observation, Applied: wake.applied,
-				AppliedCommands: slices.Clone(wake.appliedCommands),
-			}, err
+			return wake.result(statusForError(err), state, observation), err
 		}
 	}
 	if observation.Disposition != samsung.DispositionEligible {
-		return Result{
-			Status: StatusKnownSkip, Plan: wake.plan, State: cloneState(state),
-			Observation: observation, Applied: wake.applied,
-			AppliedCommands: slices.Clone(wake.appliedCommands),
-		}, nil
+		return wake.result(StatusKnownSkip, state, observation), nil
 	}
-	plan, plannedState, err := s.buildPlan(request.Snapshot, observation, state, policy)
+	selectedThisCycle := false
+	// replan plans the next step, never selecting artwork twice in one cycle.
+	replan := func(observation samsung.Observation, state State) (Plan, State, error) {
+		plan, planned, err := s.buildPlan(request.Snapshot, observation, state, policy)
+		if err == nil && selectedThisCycle {
+			plan.Commands = withoutCommand(plan.Commands, CommandSelect)
+		}
+		return plan, planned, err
+	}
+	plan, plannedState, err := replan(observation, state)
 	if err != nil {
 		return Result{State: cloneState(state), Observation: observation}, err
 	}
@@ -92,20 +84,14 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	if len(wake.plan.Commands) > 0 {
 		resultPlan.Commands = append(slices.Clone(wake.plan.Commands), resultPlan.Commands...)
 	}
-	result := Result{
-		Plan: resultPlan, State: cloneState(state), Observation: observation, Applied: wake.applied,
-		AppliedCommands: slices.Clone(wake.appliedCommands),
-	}
+	result := wake.result(StatusComplete, state, observation)
+	result.Plan, result.Rotation = resultPlan, plan.Rotation
 	if request.DryRun {
 		result.Status = StatusIncompleteDryRun
 		return result, nil
 	}
-	if unsupported := firstUnsupported(plan.Commands); unsupported != nil {
-		result.Status = StatusUnsupported
-		return result, fmt.Errorf("%w: %s", ErrUnsupportedIntent, unsupported.Kind)
-	}
 	currentPlan := plan
-	selectedThisCycle := false
+	storageFullAbsorbed := false
 	paceMutation := false
 	var lastAttempt *CommandIntent
 	commandAttempts := 0
@@ -115,9 +101,9 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	}
 	for len(currentPlan.Commands) > 0 {
 		candidate := currentPlan.Commands[0]
-		fresh, observeErr := observe(ctx, request.TV, samsung.ObserveRequest{
+		fresh, observeErr := request.TV.Observe(ctx, samsung.ObserveRequest{
 			CycleID: request.CycleID, CollectionGeneration: request.Snapshot.Generation,
-			Required: requiredCapabilities([]CommandIntent{candidate}),
+			Required: requiredCapabilities(candidate),
 		})
 		if observeErr != nil {
 			return result, observeErr
@@ -125,17 +111,15 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		if fresh.Disposition != samsung.DispositionEligible {
 			return result, errors.New("TV is no longer eligible for the planned command")
 		}
-		refreshedPlan, refreshedState, planErr := s.buildPlan(request.Snapshot, fresh, state, policy)
+		refreshedPlan, refreshedState, planErr := replan(fresh, state)
 		if planErr != nil {
 			return result, planErr
-		}
-		if selectedThisCycle {
-			refreshedPlan.Commands = withoutCommand(refreshedPlan.Commands, CommandSelect)
 		}
 		for _, digest := range refreshedPlan.PruneBindings {
 			pruneBindings[digest] = struct{}{}
 		}
 		if len(refreshedPlan.Commands) == 0 {
+			currentPlan = refreshedPlan
 			break
 		}
 		command := refreshedPlan.Commands[0]
@@ -160,6 +144,19 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		paceMutation = true
 		result.State = cloneState(state)
 		result.Observation = observation
+		// A full TV is the expected entry into rotation. The rejection and its
+		// capacity evidence are already durable, so replan once against them.
+		if policy.Rotation > 0 && !storageFullAbsorbed && isStorageFullRejection(err) {
+			storageFullAbsorbed = true
+			lastAttempt, commandAttempts = nil, 0
+			s.logger.Info("TV storage is full; rotating artwork", "cycle_id", request.CycleID,
+				"capacity", state.Capacity.Maximum, "rotation_interval", policy.Rotation.String())
+			currentPlan, state, err = replan(observation, state)
+			if err != nil {
+				return result, err
+			}
+			continue
+		}
 		if err != nil {
 			if isMutationRetry(err) && commandAttempts < s.mutations.attempts {
 				s.logMutationRetry(ctx, request.CycleID, command, commandAttempts, err)
@@ -179,23 +176,27 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		if command.Kind == CommandSelect {
 			selectedThisCycle = true
 		}
-		currentPlan, state, err = s.buildPlan(request.Snapshot, observation, state, policy)
+		currentPlan, state, err = replan(observation, state)
 		if err != nil {
 			return result, err
 		}
-		if selectedThisCycle {
-			currentPlan.Commands = withoutCommand(currentPlan.Commands, CommandSelect)
-		}
 	}
 	state.Pending = nil
+	result.Rotation = currentPlan.Rotation
 	if currentPlan.CapacityLimited {
 		result.Status = StatusStorageFull
 		result.State = cloneState(state)
 		return result, samsung.ErrStorageFull
 	}
+	desired := snapshotDigests(request.Snapshot)
+	now := s.clock.Now()
 	for digest := range pruneBindings {
 		delete(state.Bindings, digest)
+		if _, wanted := desired[digest]; wanted {
+			recordShown(&state, digest, now)
+		}
 	}
+	retainShownHistory(&state, desired)
 	state.LastCompleteCycle = request.CycleID
 	state.LastCollectionGen = request.Snapshot.Generation
 	state.Revision++
@@ -236,40 +237,27 @@ func (s *service) logMutationRetry(
 	s.logger.LogAttrs(ctx, slog.LevelWarn, "Samsung mutation failed; retrying", attrs...)
 }
 
-type recoveryInput struct {
-	cycleID     string
-	dryRun      bool
-	observation samsung.Observation
-	state       State
-}
-
-type recoveryResult struct {
-	Status      Status
-	State       State
-	Observation samsung.Observation
-	Resolved    bool
-}
-
-func (s *service) resolveRecovery(ctx context.Context, input recoveryInput) (recoveryResult, error) {
-	dryRun, observation, state := input.dryRun, input.observation, input.state
-	if state.Pending == nil {
-		return recoveryResult{Status: dryRunStatus(dryRun), State: cloneState(state), Observation: observation, Resolved: true}, nil
-	}
-	resolved, changed, err := resolvePending(state, observation, s.clock.Now())
+// resolveRecovery settles outstanding pending work before any new planning.
+// On failure it returns the state to report with the error.
+func (s *service) resolveRecovery(
+	ctx context.Context,
+	cycleID string,
+	dryRun bool,
+	observation samsung.Observation,
+	state State,
+) (State, error) {
+	resolved, err := resolvePending(state, observation, s.clock.Now())
 	if err != nil {
-		return recoveryResult{Status: StatusRecoveryRequired, State: cloneState(state), Observation: observation}, err
-	}
-	if !changed {
-		return recoveryResult{Status: StatusRecoveryRequired, State: cloneState(state), Observation: observation}, ErrRecoveryRequired
+		return cloneState(state), err
 	}
 	if dryRun {
-		return recoveryResult{Status: StatusIncompleteDryRun, State: resolved, Observation: observation, Resolved: true}, nil
+		return resolved, nil
 	}
 	resolved.Revision++
 	if err := s.store.save(ctx, resolved); err != nil {
-		return recoveryResult{Status: statusForError(err), State: resolved, Observation: observation}, err
+		return resolved, err
 	}
-	s.logger.Info("reconciliation pending operation resolved", "cycle_id", input.cycleID,
+	s.logger.Info("reconciliation pending operation resolved", "cycle_id", cycleID,
 		"operation_id", state.Pending.OperationID, "phase", state.Pending.Phase)
-	return recoveryResult{Status: StatusComplete, State: resolved, Observation: observation, Resolved: true}, nil
+	return resolved, nil
 }

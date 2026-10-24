@@ -16,9 +16,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	if !healthy {
 		statusStr, code = statusError, http.StatusServiceUnavailable
 	}
+	writeJSON(w, code, s.syncFields(snapshot, statusStr))
+}
 
-	writeJSON(w, code, map[string]any{
-		fieldStatus:       statusStr,
+// syncFields returns the sync-state fields shared by /health and /status.
+func (s *Server) syncFields(snapshot statusSnapshot, status string) map[string]any {
+	return map[string]any{
+		fieldStatus:       status,
 		fieldUptime:       s.now().Sub(snapshot.StartedAt).Round(time.Second).String(),
 		fieldLastSync:     snapshot.LastSyncAt.Format(time.RFC3339),
 		fieldLastSyncOK:   snapshot.LastSyncOK,
@@ -26,7 +30,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		fieldCurrentStage: snapshot.CurrentStage,
 		fieldSyncCount:    snapshot.SyncCount,
 		fieldLifecycle:    snapshot.Lifecycle,
-	})
+	}
 }
 
 // handleLive reports only process liveness. It deliberately does not claim the
@@ -45,19 +49,10 @@ func (s *Server) handleLive(w http.ResponseWriter, _ *http.Request) {
 // handleStatus returns detailed per-TV status information.
 func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	snapshot := s.status.snapshot()
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		fieldStatus:       statusOK,
-		fieldUptime:       s.now().Sub(snapshot.StartedAt).Round(time.Second).String(),
-		"started_at":      snapshot.StartedAt.Format(time.RFC3339),
-		fieldLastSync:     snapshot.LastSyncAt.Format(time.RFC3339),
-		fieldLastSyncOK:   snapshot.LastSyncOK,
-		fieldLastError:    snapshot.LastErrorMessage,
-		fieldCurrentStage: snapshot.CurrentStage,
-		fieldSyncCount:    snapshot.SyncCount,
-		fieldLifecycle:    snapshot.Lifecycle,
-		"tvs":             snapshot.TVStatuses,
-	})
+	fields := s.syncFields(snapshot, statusOK)
+	fields["started_at"] = snapshot.StartedAt.Format(time.RFC3339)
+	fields["tvs"] = snapshot.TVStatuses
+	writeJSON(w, http.StatusOK, fields)
 }
 
 // writeJSON encodes payload as a JSON response, emitting code only for

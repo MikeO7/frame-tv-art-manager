@@ -93,96 +93,89 @@ func receiptObservation(
 	return observation
 }
 
-//nolint:funlen,gocognit,gocyclo // Recovery intentionally mirrors the command recovery matrix.
-func resolvePending(state State, observation samsung.Observation, now time.Time) (State, bool, error) {
+// resolvePending settles the pending operation from fresh observation. It
+// returns ErrRecoveryRequired when the observation cannot prove the outcome.
+//
+//nolint:gocognit // Recovery intentionally mirrors the command recovery matrix.
+func resolvePending(state State, observation samsung.Observation, now time.Time) (State, error) {
 	result := cloneState(state)
 	pending := result.Pending
 	if pending == nil {
-		return result, true, nil
+		return result, nil
 	}
 	if pending.Phase == PhaseApplied && pending.Receipt != nil && pending.Receipt.Outcome == samsung.OutcomeApplied {
 		return resolveAppliedReceipt(result, observation, now)
 	}
-	contains := func(contentID string) bool {
-		for _, observed := range observation.Inventory.ContentIDs {
-			if observed == contentID {
-				return true
-			}
-		}
-		return false
-	}
 	switch pending.Command.Kind {
 	case CommandUpload:
 		if !observation.Inventory.Known || pending.Receipt == nil || pending.Receipt.Outcome != samsung.OutcomeApplied ||
-			strings.TrimSpace(pending.Receipt.ContentID) == "" || !contains(pending.Receipt.ContentID) {
-			return state, false, ErrRecoveryRequired
+			strings.TrimSpace(pending.Receipt.ContentID) == "" ||
+			!slices.Contains(observation.Inventory.ContentIDs, pending.Receipt.ContentID) {
+			return state, ErrRecoveryRequired
 		}
 		result.Bindings[pending.Command.Digest] = uploadBinding(pending, now)
 	case CommandDeleteOwned, CommandDeleteUnknown:
 		if !observation.Inventory.Known {
-			return state, false, ErrRecoveryRequired
+			return state, ErrRecoveryRequired
 		}
-		if contains(pending.Command.ContentID) {
+		if slices.Contains(observation.Inventory.ContentIDs, pending.Command.ContentID) {
 			if pending.Phase == PhaseApplied {
-				return state, false, ErrRecoveryRequired
+				return state, ErrRecoveryRequired
 			}
 			result.Pending = nil
-			return result, true, nil
+			return result, nil
 		}
 		if pending.Command.Kind == CommandDeleteOwned {
 			delete(result.Bindings, pending.Command.Digest)
+			recordShown(&result, pending.Command.Digest, now)
 		}
 		delete(result.Tombstones, pending.Command.ContentID)
-	case CommandPowerOff:
-		if observation.Power == samsung.PowerStateOn && pending.Phase != PhaseApplied {
-			result.Pending = nil
-			return result, true, nil
-		}
-		if observation.Power != samsung.PowerStateOff && pending.Phase != PhaseApplied {
-			return state, false, ErrRecoveryRequired
-		}
-	case CommandWake:
-		if observation.Power == samsung.PowerStateOff && pending.Phase != PhaseApplied {
-			result.Pending = nil
-			return result, true, nil
-		}
-		if observation.Power != samsung.PowerStateOn && pending.Phase != PhaseApplied {
-			return state, false, ErrRecoveryRequired
+	case CommandPowerOff, CommandWake:
+		// Either known power state settles the command: the target state proves
+		// it applied and the opposite state proves it did not.
+		if pending.Phase != PhaseApplied &&
+			observation.Power != samsung.PowerStateOn && observation.Power != samsung.PowerStateOff {
+			return state, ErrRecoveryRequired
 		}
 	case CommandSlideshow:
-		return resolveSlideshowPending(state, result, observation.Slideshow)
+		if !settingSettled(observation.Slideshow.Known, observation.Slideshow.Setting,
+			pending.Command.PreviousSlideshow, pending.Command.DesiredSlideshow) {
+			return state, ErrRecoveryRequired
+		}
 	case CommandBrightness:
-		return resolveSettingPending(state, result, observation.Brightness)
-	case CommandSelect:
-		return state, false, ErrRecoveryRequired
+		if !settingSettled(observation.Brightness.Known, observation.Brightness.Value,
+			pending.Command.PreviousValue, pending.Command.DesiredValue) {
+			return state, ErrRecoveryRequired
+		}
 	default:
-		return state, false, ErrRecoveryRequired
+		return state, ErrRecoveryRequired
 	}
 	result.Pending = nil
-	return result, true, nil
+	return result, nil
 }
 
-func resolveAppliedReceipt(state State, observation samsung.Observation, now time.Time) (State, bool, error) {
+func resolveAppliedReceipt(state State, observation samsung.Observation, now time.Time) (State, error) {
 	pending := state.Pending
 	switch pending.Command.Kind {
 	case CommandUpload:
 		if strings.TrimSpace(pending.Receipt.ContentID) == "" {
-			return state, false, ErrRecoveryRequired
+			return state, ErrRecoveryRequired
 		}
 		foldUploadBinding(&state, pending, observation, now)
 	case CommandDeleteOwned:
 		delete(state.Bindings, pending.Command.Digest)
 		delete(state.Tombstones, pending.Command.ContentID)
+		recordShown(&state, pending.Command.Digest, now)
 	case CommandDeleteUnknown:
 		delete(state.Tombstones, pending.Command.ContentID)
 	case CommandSelect, CommandSlideshow, CommandBrightness, CommandPowerOff, CommandWake:
 		// The Samsung applied receipt is issued only after command-specific
 		// postcondition verification.
 	default:
-		return state, false, ErrRecoveryRequired
+		return state, ErrRecoveryRequired
 	}
 	state.Pending = nil
-	return state, true, nil
+	return state, nil
 }
 
 func foldUploadBinding(state *State, pending *Pending, observation samsung.Observation, confirmedAt time.Time) {
@@ -210,38 +203,11 @@ func uploadBinding(pending *Pending, confirmedAt time.Time) Binding {
 	}
 }
 
-func resolveSettingPending(
-	original State,
-	result State,
-	observation samsung.SettingObservation,
-) (State, bool, error) {
-	if !observation.Known || result.Pending.Command.PreviousValue == nil || result.Pending.Command.DesiredValue == nil {
-		return original, false, ErrRecoveryRequired
-	}
-	switch observation.Value {
-	case *result.Pending.Command.DesiredValue, *result.Pending.Command.PreviousValue:
-		result.Pending = nil
-		return result, true, nil
-	default:
-		return original, false, ErrRecoveryRequired
-	}
-}
-
-func resolveSlideshowPending(
-	original State,
-	result State,
-	observation samsung.SlideshowObservation,
-) (State, bool, error) {
-	previous := result.Pending.Command.PreviousSlideshow
-	desired := result.Pending.Command.DesiredSlideshow
-	if !observation.Known || previous == nil || desired == nil {
-		return original, false, ErrRecoveryRequired
-	}
-	if observation.Setting == *desired || observation.Setting == *previous {
-		result.Pending = nil
-		return result, true, nil
-	}
-	return original, false, ErrRecoveryRequired
+// settingSettled reports whether a known observed setting proves the outcome
+// of a setting command: its desired value or its retained previous value. Any
+// other value is ambiguous.
+func settingSettled[T comparable](known bool, observed T, previous, desired *T) bool {
+	return known && previous != nil && desired != nil && (observed == *desired || observed == *previous)
 }
 
 func receiptSummary(receipt samsung.Receipt) *ReceiptSummary {

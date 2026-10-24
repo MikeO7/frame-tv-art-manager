@@ -15,126 +15,96 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
-type rewriteParams struct {
-	f              *os.File
-	path, filename string
-	width, height  int
-	cfg            Config
-	logger         *slog.Logger
-	ctx            context.Context
-	pixelWorkers   int
-	colorData      embeddedColorData
-}
-
-//nolint:funlen,gocognit,gocyclo // ordered decode, transform, validation, and durable publication pipeline
-func rewriteImage(params rewriteParams) (int, int, error) {
-	f := params.f
-	cfg := params.cfg
-	if params.ctx == nil {
-		params.ctx = context.Background()
+// rewriteImage decodes f, applies the configured transforms for its EXIF
+// orientation and color metadata, and durably replaces path with the result.
+//
+//nolint:revive // ordered decode, transform, validation, and durable publication inputs stay explicit
+func rewriteImage(
+	ctx context.Context,
+	f *os.File,
+	path string,
+	orientation int,
+	colorData embeddedColorData,
+	cfg Config,
+	logger *slog.Logger,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if params.pixelWorkers <= 0 {
-		params.pixelWorkers = defaultPixelWorkers()
-	}
-	if err := params.ctx.Err(); err != nil {
-		return 0, 0, err
-	}
-
 	if _, err := f.Seek(0, 0); err != nil {
-		return 0, 0, fmt.Errorf("seek to start: %w", err)
+		return fmt.Errorf("seek to start: %w", err)
 	}
-	extension := strings.ToLower(filepath.Ext(params.path))
-	orientation, orientationErr := readOrientationForExtension(params.ctx, f, extension)
-	if _, err := f.Seek(0, 0); err != nil {
-		return 0, 0, fmt.Errorf("seek to start: %w", err)
-	}
-	img, _, err := image.Decode(&contextReader{ctx: params.ctx, reader: f})
+	img, _, err := image.Decode(&contextReader{ctx: ctx, reader: f})
 	if err != nil {
-		return 0, 0, fmt.Errorf("decode image: %w", err)
+		return fmt.Errorf("decode image: %w", err)
 	}
-	if orientationErr != nil {
-		return 0, 0, fmt.Errorf("read image orientation: %w", orientationErr)
-	}
-	if err := params.ctx.Err(); err != nil {
-		return 0, 0, err
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	params.logger.Info("optimizing image", "file", params.filename, "original_dims", fmt.Sprintf("%dx%d", params.width, params.height))
-	normalized := normalizeColor(img, params.colorData, cfg, params.logger, params.filename)
-	rgba := toRGBA(RotateImage(normalized, orientation))
-	newW, newH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
-	sourceW, sourceH := newW, newH
-	resampled := newW != cfg.MaxWidth || newH != cfg.MaxHeight
-	if resampled {
-		if newH > newW && cfg.PortraitMode != "crop" {
+	filename := filepath.Base(path)
+	logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", img.Bounds().Dx(), img.Bounds().Dy()))
+	rgba := toRGBA(RotateImage(normalizeColor(img, colorData, cfg, logger, filename), orientation))
+	sourceW, sourceH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
+	if sourceW != cfg.MaxWidth || sourceH != cfg.MaxHeight {
+		if sourceH > sourceW && cfg.PortraitMode != "crop" {
 			rgba = padPortraitWithOptions(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.LinearLightResize)
 		} else {
-			rgba = centerCropConfigured(params.ctx, rgba, cfg.MaxWidth, cfg.MaxHeight, cfg, params.logger)
+			rgba = centerCropConfigured(ctx, rgba, cfg.MaxWidth, cfg.MaxHeight, cfg, logger)
 		}
-	}
-	if err := params.ctx.Err(); err != nil {
-		return 0, 0, err
-	}
-
-	if resampled {
-		amount := scaleAwareSharpenAmount(
-			cfg.SharpenAmount, sourceW, sourceH, cfg.MaxWidth, cfg.MaxHeight,
-		)
-		rgba = sharpenWithOptions(rgba, amount, cfg.SharpenThreshold, params.pixelWorkers)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		amount := scaleAwareSharpenAmount(cfg.SharpenAmount, sourceW, sourceH, cfg.MaxWidth, cfg.MaxHeight)
+		rgba = sharpen(rgba, amount, cfg.SharpenThreshold)
 	}
 	if cfg.MuseumModeEnabled {
-		rgba = applyMuseumModeWithWorkers(rgba, cfg.MuseumModeIntensity, params.pixelWorkers)
+		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
 	}
-	if err := params.ctx.Err(); err != nil {
-		return 0, 0, err
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := f.Close(); err != nil {
-		return 0, 0, fmt.Errorf("close source image: %w", err)
+		return fmt.Errorf("close source image: %w", err)
 	}
 
-	tmpPath, err := encodeOptimizedTemporary(params.ctx, params.path, rgba, cfg.OptimizeJPEGQuality)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer func() { _ = os.Remove(tmpPath) }()
-	expectedFormat := formatJPEG
-	if strings.EqualFold(filepath.Ext(params.path), extPNG) {
-		expectedFormat = formatPNG
-	}
-	if err := validateImageOutput(params.ctx, tmpPath, expectedFormat, cfg.MaxWidth, cfg.MaxHeight); err != nil {
-		return 0, 0, fmt.Errorf("validate optimized image: %w", err)
-	}
-	if err := durablefs.Rename(params.ctx, tmpPath, params.path); err != nil {
-		return 0, 0, fmt.Errorf("replace optimized image: %w", err)
-	}
-	return rgba.Bounds().Dx(), rgba.Bounds().Dy(), nil
-}
-
-func encodeOptimizedTemporary(ctx context.Context, path string, imageData image.Image, quality int) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
 	out, err := os.CreateTemp(filepath.Dir(path), ".optimize-*.tmp")
 	if err != nil {
-		return "", fmt.Errorf("create optimized temporary file: %w", err)
+		return fmt.Errorf("create optimized temporary file: %w", err)
 	}
-	tmpPath := out.Name()
+	defer func() { _ = os.Remove(out.Name()) }()
+	if err := writeValidatedOutput(ctx, out, filepath.Ext(path), rgba, cfg); err != nil {
+		return fmt.Errorf("write optimized image: %w", err)
+	}
+	if err := durablefs.Rename(ctx, out.Name(), path); err != nil {
+		return fmt.Errorf("replace optimized image: %w", err)
+	}
+	return nil
+}
+
+// writeValidatedOutput encodes img into out as PNG for a .png extension and
+// JPEG otherwise, closes it, and verifies that it decodes to the configured
+// output format and dimensions. The 0o644 mode is intentional: artwork must
+// stay readable over SMB/NFS shares.
+func writeValidatedOutput(ctx context.Context, out *os.File, extension string, img image.Image, cfg Config) error {
 	writer := &contextWriter{ctx: ctx, writer: out}
-	var encodeErr error
-	if strings.EqualFold(filepath.Ext(path), extPNG) {
-		encoder := png.Encoder{CompressionLevel: png.DefaultCompression}
-		encodeErr = encoder.Encode(writer, imageData)
+	format := formatJPEG
+	var err error
+	if strings.EqualFold(extension, extPNG) {
+		format = formatPNG
+		err = png.Encode(writer, img)
 	} else {
-		encodeErr = jpeg.Encode(writer, imageData, &jpeg.Options{Quality: quality})
+		err = jpeg.Encode(writer, img, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
 	}
-	if encodeErr != nil {
+	if err != nil {
 		_ = out.Close()
-		_ = os.Remove(tmpPath)
-		return "", fmt.Errorf("encode optimized image: %w", encodeErr)
+		return fmt.Errorf("encode: %w", err)
 	}
 	if err := errors.Join(out.Chmod(0o644), out.Sync(), out.Close()); err != nil {
-		_ = os.Remove(tmpPath)
-		return "", fmt.Errorf("finalize optimized image: %w", err)
+		return fmt.Errorf("finalize: %w", err)
 	}
-	return tmpPath, nil
+	if err := validateImageOutput(ctx, out.Name(), format, cfg.MaxWidth, cfg.MaxHeight); err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
+	return nil
 }

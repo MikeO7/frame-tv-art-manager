@@ -61,17 +61,7 @@ func calculateSobelEdgeSlow(src *image.RGBA, x, y int, bounds image.Rectangle) f
 	pix := src.Pix
 
 	lum := func(xx, yy int) int {
-		if xx < minX {
-			xx = minX
-		} else if xx > maxX {
-			xx = maxX
-		}
-		if yy < minY {
-			yy = minY
-		} else if yy > maxY {
-			yy = maxY
-		}
-		i := (yy-minY)*stride + (xx-minX)*4
+		i := (min(max(yy, minY), maxY)-minY)*stride + (min(max(xx, minX), maxX)-minX)*4
 		// OPTIMIZATION: Replacing floating point multiplication with integer math for much faster luminance calculation
 		return int(pix[i])*299 + int(pix[i+1])*587 + int(pix[i+2])*114
 	}
@@ -88,10 +78,7 @@ func calculateSobelEdgeSlow(src *image.RGBA, x, y int, bounds image.Rectangle) f
 	gx := -lum00 - (lum01 << 1) - lum02 + lum20 + (lum21 << 1) + lum22
 	gy := -lum00 - (lum10 << 1) - lum20 + lum02 + (lum12 << 1) + lum22
 
-	gxFloat := float64(gx)
-	gyFloat := float64(gy)
-
-	return math.Min(math.Sqrt(gxFloat*gxFloat+gyFloat*gyFloat)/maxSobelResponse, 1)
+	return math.Min(math.Sqrt(float64(gx)*float64(gx)+float64(gy)*float64(gy))/maxSobelResponse, 1)
 }
 
 func calculateSkinProbability(r, g, b uint8) float64 {

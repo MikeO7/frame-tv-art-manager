@@ -1,4 +1,3 @@
-// Package samsung provides types shared across the Samsung Frame TV client.
 package samsung
 
 import (
@@ -33,17 +32,6 @@ type DeviceInfo struct {
 	FirmwareVersion string `json:"firmwareVersion"`
 	FrameTVSupport  string `json:"FrameTVSupport"` // "true" or "false"
 	PowerState      string `json:"PowerState"`     // "on", "off", or "standby"
-}
-
-// IsFrameTV returns true if the device reports Frame TV support.
-func (d *DeviceInfo) IsFrameTV() bool {
-	return d.FrameTVSupport == stringTrue
-}
-
-// IsOn returns true if the device is powered on.
-func (d *DeviceInfo) IsOn() bool {
-	power, known := parseDevicePowerState(d.PowerState)
-	return known && power == PowerStateOn
 }
 
 func validateFrameTVDevice(info DeviceInfo) error {
@@ -125,11 +113,6 @@ func (s *protocolString) UnmarshalJSON(raw []byte) error {
 	}
 	*s = protocolString(raw)
 	return nil
-}
-
-// ContentList safely unwraps the content_list field whether it is a string or an array.
-func (a *artResponse) ContentList() string {
-	return parsePolyString(a.ContentListRaw)
 }
 
 // ConnInfo safely unwraps the conn_info field whether it is a string or an object.

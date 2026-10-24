@@ -85,35 +85,11 @@ func (p *pixabayProvider) User(ctx context.Context, userID string) ([]string, er
 }
 
 func (p *pixabayProvider) fetchAllPages(ctx context.Context, baseURL string) ([]string, error) {
-	var allUrls []string
-	page := 1
-
-	for {
-		u := fmt.Sprintf("%s&per_page=%d&page=%d", baseURL, pixabayPageSize, page)
+	return collectPages(pixabayMaxPages, func(page int) ([]string, bool, error) {
 		p.logger.Debug("fetching pixabay page", "page", page)
-
-		urls, err := p.fetchPhotoList(ctx, u)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(urls) == 0 {
-			break
-		}
-
-		allUrls = append(allUrls, urls...)
-
-		if len(urls) < pixabayPageSize {
-			break
-		}
-		page++
-
-		if page > pixabayMaxPages {
-			break
-		}
-	}
-
-	return allUrls, nil
+		urls, err := p.fetchPhotoList(ctx, fmt.Sprintf("%s&per_page=%d&page=%d", baseURL, pixabayPageSize, page))
+		return urls, len(urls) >= pixabayPageSize, err
+	})
 }
 
 func (p *pixabayProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
@@ -181,14 +157,5 @@ func (p *pixabayProvider) Resolve(ctx context.Context, line string) ([]SourceIma
 	if err != nil {
 		return nil, err
 	}
-
-	images := make([]SourceImage, 0, len(urls))
-	for _, u := range urls {
-		images = append(images, SourceImage{
-			URL:      u,
-			Identity: sourceURLIdentity(p.Name(), u),
-		})
-	}
-
-	return images, nil
+	return urlSourceImages(p.Name(), urls), nil
 }

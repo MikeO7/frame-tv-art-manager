@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"slices"
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
@@ -13,13 +14,13 @@ func (s *service) buildPlan(
 	state State,
 	policy Policy,
 ) (Plan, State, error) {
-	plan, err := BuildPlan(snapshot, observation, state, policy)
+	plan, err := planSnapshot(snapshot, observation, state, policy)
 	if err != nil {
 		return Plan{}, state, err
 	}
 	if state.Capacity.Probe {
 		projected := projectCapacityProbe(state, observation, state.Capacity.ObservedAt)
-		probePlan, probeErr := BuildPlan(snapshot, observation, projected, policy)
+		probePlan, probeErr := planSnapshot(snapshot, observation, projected, policy)
 		return probePlan, projected, probeErr
 	}
 	now := s.clock.Now()
@@ -27,7 +28,7 @@ func (s *service) buildPlan(
 		return plan, state, nil
 	}
 	projected := projectCapacityProbe(state, observation, now)
-	probePlan, err := BuildPlan(snapshot, observation, projected, policy)
+	probePlan, err := planSnapshot(snapshot, observation, projected, policy)
 	if err != nil {
 		return Plan{}, state, err
 	}
@@ -41,7 +42,7 @@ func projectCapacityProbe(state State, observation samsung.Observation, observed
 	projected := cloneState(state)
 	projected.Capacity = CapacityEvidence{
 		Known: true, Maximum: len(observation.Inventory.ContentIDs) + 1,
-		ObservedAt: observedAt, Probe: true,
+		ObservedAt: observedAt, Probe: true, Shortfalls: state.Capacity.Shortfalls,
 	}
 	return projected
 }
@@ -52,15 +53,11 @@ func capacityProbeEligible(evidence CapacityEvidence, now time.Time, ttl time.Du
 }
 
 func hasCapacityMutation(commands []CommandIntent) bool {
-	return hasCommand(commands, CommandUpload) || hasCommand(commands, CommandDeleteOwned) ||
-		hasCommand(commands, CommandDeleteUnknown)
+	return slices.ContainsFunc(commands, func(command CommandIntent) bool {
+		return command.Kind == CommandUpload || command.Kind == CommandDeleteOwned || command.Kind == CommandDeleteUnknown
+	})
 }
 
 func hasCommand(commands []CommandIntent, kind CommandKind) bool {
-	for _, command := range commands {
-		if command.Kind == kind {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(commands, func(command CommandIntent) bool { return command.Kind == kind })
 }

@@ -100,12 +100,12 @@ func (l *Loader) resetSourceState(snapshot collection.Snapshot) {
 }
 
 func (l *Loader) disabled() bool {
-	return l.sourcesFile == "" || (l.cfg != nil && l.cfg.DryRun)
+	return l.sourcesFile == "" || l.dryRun
 }
 
 // syncLine resolves and downloads all images for one sources-file line.
 //
-//nolint:funlen,gocognit,gocyclo // Bounded batching keeps download cleanup, cancellation, and committed counts in one ordered pass.
+//nolint:funlen,gocognit // Bounded batching keeps download cleanup, cancellation, and committed counts in one ordered pass.
 func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 	provider := l.resolveProvider(line)
 	if provider == nil {
@@ -121,27 +121,29 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 	var downloadErrors []error
 	pending := make([]pendingSourceDownload, 0, sourceImportBatchSize)
 	var pendingBytes int64
-	flush := func() error {
-		if len(pending) == 0 {
-			return nil
-		}
-		added, err := l.importSourceBatch(ctx, pending)
+	// Pending downloads are private temporary files; they are removed whether
+	// or not the collection imported them.
+	discard := func() {
 		for _, download := range pending {
 			_ = os.Remove(download.prepared.path)
 		}
 		pending = pending[:0]
 		pendingBytes = 0
+	}
+	flush := func() error {
+		if len(pending) == 0 {
+			return nil
+		}
+		added, err := l.importSourceBatch(ctx, pending)
+		discard()
 		count += added
 		return err
 	}
 	for _, img := range images {
 		if err := ctx.Err(); err != nil {
-			for _, download := range pending {
-				_ = os.Remove(download.prepared.path)
-			}
+			discard()
 			return count, err
 		}
-		originKey := "source:" + img.Identity
 		if l.checkExisting(img.Identity) {
 			continue
 		}
@@ -150,12 +152,10 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 			break
 		}
 		filename := img.Identity + ".jpg"
-		prepared, dErr := l.prepareDownload(ctx, img.URL, filename, img.Identity, originKey)
+		prepared, dErr := l.prepareDownload(ctx, img.URL, filename, img.Identity)
 		if dErr != nil {
 			if ctx.Err() != nil {
-				for _, download := range pending {
-					_ = os.Remove(download.prepared.path)
-				}
+				discard()
 				return count, ctx.Err()
 			}
 			l.logger.Warn("source download failed", "url", truncateURL(img.URL), "error", dErr)
@@ -182,7 +182,7 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 	return count, errors.Join(downloadErrors...)
 }
 
-//nolint:funlen,gocognit,gocyclo // File ownership and ordered import results are handled together to keep cleanup auditable.
+//nolint:gocognit // File ownership and ordered import results are handled together to keep cleanup auditable.
 func (l *Loader) importSourceBatch(ctx context.Context, pending []pendingSourceDownload) (int, error) {
 	if l.importer == nil {
 		return 0, errors.New("source collection importer is required")

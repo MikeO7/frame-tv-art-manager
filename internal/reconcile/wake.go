@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
@@ -15,6 +16,15 @@ type wakePreparation struct {
 	applied         int
 	appliedCommands []CommandKind
 	terminal        *Result
+}
+
+// result reports a run that stops after wake preparation, carrying any wake
+// command already planned or applied.
+func (w wakePreparation) result(status Status, state State, observation samsung.Observation) Result {
+	return Result{
+		Status: status, Plan: w.plan, State: cloneState(state), Observation: observation,
+		Applied: w.applied, AppliedCommands: slices.Clone(w.appliedCommands),
+	}
 }
 
 func (s *service) preparePowerOn(
@@ -80,7 +90,7 @@ func (s *service) observeForConvergence(
 	policy Policy,
 	prepared wakePreparation,
 ) (wakePreparation, error) {
-	observation, err := observe(ctx, request.TV, samsung.ObserveRequest{
+	observation, err := request.TV.Observe(ctx, samsung.ObserveRequest{
 		CycleID: request.CycleID, CollectionGeneration: request.Snapshot.Generation,
 		DryRun: request.DryRun, Required: convergenceObservationCapabilities(policy),
 	})

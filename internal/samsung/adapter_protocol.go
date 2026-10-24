@@ -2,26 +2,31 @@ package samsung
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type protocolTransport struct {
-	config              Config
-	logger              *slog.Logger
-	mu                  sync.Mutex
-	conn                *connection
+	config Config
+	logger *slog.Logger
+	// The HTTP clients are created once by newProtocolTransport and reused.
 	deviceHTTPClient    *http.Client
 	gateHTTPClient      *http.Client
 	websocketHTTPClient *http.Client
+
+	mu   sync.Mutex
+	conn *connection
 }
 
 func newProtocolTransport(config Config, dependencies Dependencies) observationTransport {
@@ -29,20 +34,29 @@ func newProtocolTransport(config Config, dependencies Dependencies) observationT
 	if logger == nil {
 		logger = slog.Default()
 	}
-	transport := &protocolTransport{config: config, logger: logger.With("component", "samsung-tv")}
-	transport.ensureHTTPClientsLocked()
-	return transport
+	return &protocolTransport{
+		config: config,
+		logger: logger.With("component", "samsung-tv"),
+		deviceHTTPClient: &http.Client{
+			Timeout:   config.RequestTimeout,
+			Transport: protocolHTTPTransport(config, true),
+		},
+		gateHTTPClient: &http.Client{
+			Timeout:   config.GateTimeout,
+			Transport: protocolHTTPTransport(config, false),
+		},
+		websocketHTTPClient: &http.Client{Transport: protocolHTTPTransport(config, true)},
+	}
 }
 
 func (t *protocolTransport) Connect(ctx context.Context, dryRun bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.ensureHTTPClientsLocked()
 	host, port, err := observationAddress(t.config.Address)
 	if err != nil {
 		return err
 	}
-	if err := t.admitConnection(ctx, host, dryRun, t.gateHTTPClient); err != nil {
+	if err := t.admitConnection(ctx, host, dryRun); err != nil {
 		return err
 	}
 	if t.conn != nil && t.conn.IsAlive() {
@@ -71,14 +85,9 @@ func (t *protocolTransport) Connect(ctx context.Context, dryRun bool) error {
 	return nil
 }
 
-func (t *protocolTransport) admitConnection(
-	ctx context.Context,
-	host string,
-	dryRun bool,
-	gateClient *http.Client,
-) error {
+func (t *protocolTransport) admitConnection(ctx context.Context, host string, dryRun bool) error {
 	if t.config.QuietGate {
-		blocked, err := queryQuietGate(ctx, host, gateClient)
+		blocked, err := queryQuietGate(ctx, host, t.gateHTTPClient)
 		if err != nil {
 			return err
 		}
@@ -102,12 +111,11 @@ func (t *protocolTransport) DeviceInfo(ctx context.Context) (DeviceInfo, error) 
 		return DeviceInfo{}, err
 	}
 	url := "https://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/api/v2/"
-	client := t.cachedDeviceHTTPClient()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return DeviceInfo{}, fmt.Errorf("build device-info request: %w", err)
 	}
-	response, err := client.Do(request)
+	response, err := t.deviceHTTPClient.Do(request)
 	if err != nil {
 		return DeviceInfo{}, fmt.Errorf("fetch device info: %w", err)
 	}
@@ -149,9 +157,8 @@ func (t *protocolTransport) Close(ctx context.Context) error {
 	t.mu.Lock()
 	conn := t.conn
 	t.conn = nil
-	deviceClient, gateClient, websocketClient := t.deviceHTTPClient, t.gateHTTPClient, t.websocketHTTPClient
 	t.mu.Unlock()
-	for _, client := range []*http.Client{deviceClient, gateClient, websocketClient} {
+	for _, client := range []*http.Client{t.deviceHTTPClient, t.gateHTTPClient, t.websocketHTTPClient} {
 		if client != nil {
 			client.CloseIdleConnections()
 		}
@@ -163,11 +170,9 @@ func (t *protocolTransport) Close(ctx context.Context) error {
 }
 
 func (t *protocolTransport) send(ctx context.Context, requestName string, fields map[string]any) (*artResponse, error) {
-	t.mu.Lock()
-	conn := t.conn
-	t.mu.Unlock()
-	if conn == nil || !conn.IsAlive() {
-		return nil, ErrNotConnected
+	conn, err := t.activeConnection()
+	if err != nil {
+		return nil, err
 	}
 	return t.sendOnConnection(ctx, conn, requestName, newRequestID(), fields)
 }
@@ -184,9 +189,7 @@ func (t *protocolTransport) sendOnConnection(
 		"id":         requestID,
 		keyRequestID: requestID,
 	}
-	for key, value := range fields {
-		request[key] = value
-	}
+	maps.Copy(request, fields)
 	payload, err := artAppRequest(request)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", requestName, err)
@@ -235,4 +238,20 @@ func observationAddress(address string) (string, int, error) {
 		return "", 0, errors.New("samsung address is empty")
 	}
 	return host, portArtWSS, nil
+}
+
+func protocolHTTPTransport(config Config, secure bool) *http.Transport {
+	transport := &http.Transport{
+		DialContext:         (&net.Dialer{Timeout: config.ConnectTimeout, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        16,
+		MaxIdleConnsPerHost: 4,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: config.ConnectTimeout,
+	}
+	if secure {
+		//nolint:gosec // Operators explicitly control verification for TV self-signed certificates.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: !config.VerifyTLS}
+	}
+	return transport
 }

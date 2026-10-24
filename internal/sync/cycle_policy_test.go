@@ -2,6 +2,7 @@ package sync
 
 import (
 	"log/slog"
+	"net"
 	"testing"
 	"time"
 
@@ -49,22 +50,22 @@ func TestConvergencePolicyPreservesCurrentSelection(t *testing.T) {
 	}
 }
 
-func TestConvergencePolicyWakesOnlyOneKnownConfiguredTV(t *testing.T) {
+func TestConvergencePolicyWakesOnlyWithConfiguredMAC(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
 	logger := slog.New(slog.DiscardHandler)
 
-	one, err := convergencePolicy(&config.Config{
-		TVIPs: []string{"192.0.2.10"}, TVMAC: "aa:bb:cc:dd:ee:ff", Timezone: "UTC",
+	wake, err := convergencePolicy(&config.Config{
+		TVIPs: []string{"192.0.2.10"}, TVMAC: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, Timezone: "UTC",
 	}, nil, now, logger)
-	if err != nil || one.Power != reconcile.WakeWhenKnownOff {
-		t.Fatalf("single-TV policy = %+v, %v", one, err)
+	if err != nil || wake.Power != reconcile.WakeWhenKnownOff {
+		t.Fatalf("configured-MAC policy = %+v, %v", wake, err)
 	}
-	multiple, err := convergencePolicy(&config.Config{
-		TVIPs: []string{"192.0.2.10", "192.0.2.11"}, TVMAC: "aa:bb:cc:dd:ee:ff", Timezone: "UTC",
+	preserve, err := convergencePolicy(&config.Config{
+		TVIPs: []string{"192.0.2.10", "192.0.2.11"}, Timezone: "UTC",
 	}, nil, now, logger)
-	if err != nil || multiple.Power != reconcile.PowerPreserve {
-		t.Fatalf("multi-TV policy = %+v, %v", multiple, err)
+	if err != nil || preserve.Power != reconcile.PowerPreserve {
+		t.Fatalf("no-MAC policy = %+v, %v", preserve, err)
 	}
 }
 
@@ -136,5 +137,15 @@ func TestConvergencePolicyCopiesConfiguredMatteMapping(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("convergencePolicy() accepted an unnormalized default matte")
+	}
+}
+
+func TestConvergencePolicyCarriesRotationInterval(t *testing.T) {
+	t.Parallel()
+
+	policy, err := convergencePolicy(&config.Config{Timezone: "UTC", RotationIntervalDays: 14}, nil,
+		time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC), slog.New(slog.DiscardHandler))
+	if err != nil || policy.Rotation != 14*24*time.Hour {
+		t.Fatalf("convergencePolicy() rotation = %s, error = %v; want two weeks", policy.Rotation, err)
 	}
 }

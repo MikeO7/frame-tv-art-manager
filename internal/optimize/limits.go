@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"image/color"
 	"io"
+	"math"
 )
 
 const (
@@ -12,15 +14,15 @@ const (
 	defaultMaxOutputPixels = int64(12_000_000)
 )
 
-func decodeInputConfig(ctx context.Context, reader io.Reader) (int, int, error) {
+func decodeInputConfig(ctx context.Context, reader io.Reader) (image.Config, error) {
 	config, _, err := image.DecodeConfig(&contextReader{ctx: ctx, reader: reader})
 	if err != nil {
-		return 0, 0, fmt.Errorf("decode image config: %w", err)
+		return image.Config{}, fmt.Errorf("decode image config: %w", err)
 	}
 	if err := validateInputDimensions(config.Width, config.Height); err != nil {
-		return 0, 0, err
+		return image.Config{}, err
 	}
-	return config.Width, config.Height, nil
+	return config, nil
 }
 
 func validateOutputDimensions(width, height int, maxPixels int64) error {
@@ -36,24 +38,45 @@ func validateOutputDimensions(width, height int, maxPixels int64) error {
 	return nil
 }
 
-func validateWorkingSet(inputWidth, inputHeight int, cfg Config) error {
-	return validateWorkingPixels(int64(inputWidth)*int64(inputHeight), cfg)
+// workingInput describes the decoded sources one transform holds.
+type workingInput struct {
+	pixels      int64
+	sourceBytes int64
 }
 
-func validateWorkingPixels(inputPixels int64, cfg Config) error {
-	targetPixels := int64(cfg.MaxWidth) * int64(cfg.MaxHeight)
-	estimatedBytes := inputPixels * 4 // decoded RGBA
-	if cfg.LinearLightResize {
-		estimatedBytes += inputPixels*8 + targetPixels*8
+// workingInputFor accounts for the larger of two full-size phases: the
+// decoder's image alongside its RGBA working copy, or the working copy
+// alongside its oriented copy.
+func workingInputFor(config image.Config) workingInput {
+	pixels := int64(config.Width) * int64(config.Height)
+	return workingInput{pixels: pixels, sourceBytes: pixels * max(8, 4+decodedBytesPerPixel(config.ColorModel))}
+}
+
+func (input workingInput) plus(other workingInput) workingInput {
+	return workingInput{pixels: input.pixels + other.pixels, sourceBytes: input.sourceBytes + other.sourceBytes}
+}
+
+// decodedBytesPerPixel is the standard decoders' in-memory sample size for a
+// color model. Chroma-subsampled YCbCr is charged as unsubsampled with alpha,
+// and unrecognized models as 16-bit RGBA.
+func decodedBytesPerPixel(model color.Model) int64 {
+	if _, paletted := model.(color.Palette); paletted {
+		return 1
 	}
-	estimatedBytes += targetPixels * 4 // final RGBA
-	if cfg.SharpenAmount > 0 {
-		estimatedBytes += targetPixels * 4
+	switch model {
+	case color.GrayModel, color.AlphaModel:
+		return 1
+	case color.Gray16Model, color.Alpha16Model:
+		return 2
+	case color.RGBAModel, color.NRGBAModel, color.CMYKModel, color.YCbCrModel, color.NYCbCrAModel:
+		return 4
+	default:
+		return 8
 	}
-	if cfg.MuseumModeEnabled {
-		estimatedBytes += targetPixels * 4
-	}
-	estimatedBytes = estimatedBytes * 5 / 4 // decoder, allocator, and encoder overhead
+}
+
+func validateWorkingSet(input workingInput, cfg Config) error {
+	estimatedBytes := estimatedWorkingBytes(input, cfg)
 	maxBytes := cfg.MaxWorkingBytes
 	if maxBytes <= 0 {
 		maxBytes = 512 * 1024 * 1024
@@ -65,6 +88,57 @@ func validateWorkingPixels(inputPixels int64, cfg Config) error {
 		)
 	}
 	return nil
+}
+
+// estimatedWorkingBytes bounds the transform's peak heap: the source phase,
+// up to three target-sized RGBA buffers (crop or pad output, sharpen or
+// canvas copy, and the decoded output during validation), the resampler's
+// scratch, optional smart-crop analysis, and a quarter for codec and
+// allocator overhead.
+func estimatedWorkingBytes(input workingInput, cfg Config) int64 {
+	targetPixels := int64(cfg.MaxWidth) * int64(cfg.MaxHeight)
+	estimatedBytes := input.sourceBytes + targetPixels*12
+	if cfg.LinearLightResize {
+		estimatedBytes += int64(defaultPixelWorkers()) * linearResampleWorkerBytes(input.pixels, cfg)
+	} else {
+		// golang.org/x/image/draw holds a [4]float64 per destination column and
+		// source row; for a target-aspect crop that is sqrt(input*target) cells.
+		estimatedBytes += 32 * ceilSqrt(float64(input.pixels)*float64(targetPixels))
+	}
+	if cfg.SmartCropEnabled {
+		estimatedBytes += smartCropAnalysisBytes(input.pixels, cfg)
+	}
+	return estimatedBytes * 5 / 4
+}
+
+// linearResampleWorkerBytes bounds one resampler worker: a band of
+// intermediate rows within resampleBandBudget, or one output row's taps when
+// a single row is larger, plus its accumulator row. One output row reads at
+// most 4*shrink+3 rows, and width*shrink never exceeds the crop width, which
+// is at most sqrt(input pixels * aspect).
+func linearResampleWorkerBytes(inputPixels int64, cfg Config) int64 {
+	width := int64(cfg.MaxWidth)
+	rowBytes := width * resampleChannels * 4
+	cropWidth := ceilSqrt(float64(inputPixels) * max(targetAspect(cfg), 1))
+	singleRow := (4*cropWidth + 3*width) * resampleChannels * 4
+	return max(resampleBandBudget, singleRow) + rowBytes
+}
+
+// smartCropAnalysisBytes covers the 256-pixel analysis scale's kernel
+// temporary, which spans the full source extent of the cropped axis, plus the
+// fixed-size saliency maps.
+func smartCropAnalysisBytes(inputPixels int64, cfg Config) int64 {
+	aspect := targetAspect(cfg)
+	sourceExtent := ceilSqrt(float64(inputPixels) * max(aspect, 1/aspect))
+	return 32*256*sourceExtent + 16<<20
+}
+
+func targetAspect(cfg Config) float64 {
+	return float64(cfg.MaxWidth) / float64(cfg.MaxHeight)
+}
+
+func ceilSqrt(value float64) int64 {
+	return int64(math.Ceil(math.Sqrt(value)))
 }
 
 func validateInputDimensions(width, height int) error {

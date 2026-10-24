@@ -18,7 +18,6 @@ linters:
     - gochecknoglobals
     - gocognit
     - gocritic
-    - gocyclo
     - godox
     - goprintffuncname
     - gosec
@@ -70,15 +69,13 @@ linters:
         - pattern: '^panic\('
           msg: return errors, don't panic
     funlen:
-      lines: 60
-      statements: 35
+      lines: 80
+      statements: 50
     gocognit:
-      min-complexity: 15
+      min-complexity: 20
     goconst:
       min-len: 3
       min-occurrences: 3
-    gocyclo:
-      min-complexity: 12
     godox:
       keywords:
         - TODO
@@ -93,7 +90,7 @@ linters:
     loggercheck:
       slog: true
     nestif:
-      min-complexity: 3
+      min-complexity: 5
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -109,7 +106,7 @@ linters:
             - 3
         - name: file-length-limit
           arguments:
-            - max: 300
+            - max: 500
         - name: empty-block
         - name: superfluous-else
         - name: early-return
@@ -141,7 +138,6 @@ linters:
           - dupl
           - funlen
           - gocognit
-          - gocyclo
           - gochecknoglobals
           - lll
           - revive

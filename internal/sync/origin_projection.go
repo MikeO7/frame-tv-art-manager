@@ -2,7 +2,8 @@ package sync
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
@@ -69,19 +70,5 @@ func unionSourceKeys(items []collectionpkg.ItemMetadata) []string {
 			seen[key] = struct{}{}
 		}
 	}
-	keys := make([]string, 0, len(seen))
-	for key := range seen {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (projection *metadataProjection) snapshot() map[string]collectionpkg.ItemMetadata {
-	result := make(map[string]collectionpkg.ItemMetadata, len(projection.items))
-	for name, metadata := range projection.items {
-		metadata.SourceKeys = append([]string(nil), metadata.SourceKeys...)
-		result[name] = metadata
-	}
-	return result
+	return slices.Sorted(maps.Keys(seen))
 }

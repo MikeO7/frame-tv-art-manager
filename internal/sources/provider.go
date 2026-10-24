@@ -57,6 +57,32 @@ func sourceIdentity(provider, stableKey, label string) string {
 	return fmt.Sprintf("%s--%s--%x", provider, capSlug(label), digest[:8])
 }
 
+// urlSourceImages maps resolved image URLs to provider-scoped source images.
+func urlSourceImages(provider string, urls []string) []SourceImage {
+	images := make([]SourceImage, 0, len(urls))
+	for _, u := range urls {
+		images = append(images, SourceImage{URL: u, Identity: sourceURLIdentity(provider, u)})
+	}
+	return images
+}
+
+// collectPages fetches pages 1..maxPages, stopping after the first page that
+// is not full.
+func collectPages[T any](maxPages int, fetch func(page int) (items []T, full bool, err error)) ([]T, error) {
+	var all []T
+	for page := 1; page <= maxPages; page++ {
+		items, full, err := fetch(page)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if !full {
+			break
+		}
+	}
+	return all, nil
+}
+
 func sourceURLIdentity(provider, rawURL string) string {
 	parsed, err := neturl.Parse(rawURL)
 	if err != nil || parsed.Host == "" {
@@ -73,47 +99,6 @@ func sourceURLIdentity(provider, rawURL string) string {
 		label = parts[0]
 	}
 	return sourceIdentity(provider, parsed.String(), label)
-}
-
-// slugFromArticURL derives a stable slug from an Art Institute IIIF URL.
-func slugFromArticURL(u string) string {
-	if !strings.Contains(u, "artic.edu") {
-		return URLToSlug(u)
-	}
-	urlParts := strings.Split(u, "/")
-	if len(urlParts) <= 5 {
-		return URLToSlug(u)
-	}
-	return capSlug(Filename(urlParts[5]))
-}
-
-// slugFromNASAURL derives a stable slug from a NASA image URL.
-func slugFromNASAURL(u string) string {
-	if !strings.Contains(u, "nasa.gov") {
-		return URLToSlug(u)
-	}
-	urlParts := strings.Split(u, "/")
-	if len(urlParts) == 0 {
-		return URLToSlug(u)
-	}
-	last := urlParts[len(urlParts)-1]
-	id := strings.Split(last, "~")[0]
-	slug := strings.ReplaceAll(Filename(id), " ", "-")
-	return capSlug(slug)
-}
-
-// URLToSlug generates a deterministic slug from a URL.
-func URLToSlug(url string) string {
-	if u, err := neturl.Parse(url); err == nil && u.Host != "" {
-		host := strings.TrimPrefix(u.Host, "www.")
-		path := strings.Trim(u.Path, "/")
-		if parts := strings.Split(path, "/"); len(parts) > 0 {
-			path = parts[0]
-		}
-		slug := strings.ReplaceAll(Filename(host+"_"+path), " ", "-")
-		return capSlug(slug)
-	}
-	return slugDirectSource
 }
 
 var (

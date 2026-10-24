@@ -28,7 +28,7 @@ type cropProposal struct {
 	Confidence float64 `json:"confidence"`
 }
 
-//nolint:revive,nestif // crop inputs are orthogonal; provider decision deliberately falls back in one block
+//nolint:revive // crop inputs are orthogonal; provider decision deliberately falls back in one block
 func cropRectWithPolicy(ctx context.Context, src *image.RGBA, targetW, targetH int, cfg Config, logger *slog.Logger) image.Rectangle {
 	targetAspect := float64(targetW) / float64(targetH)
 	if cfg.SmartCropEnabled && cfg.SmartCropProvider == smartCropProviderHTTP {
@@ -48,7 +48,6 @@ func cropRectWithPolicy(ctx context.Context, src *image.RGBA, targetW, targetH i
 	)
 }
 
-//nolint:gocyclo,funlen // request construction, bounded transport, and response validation form one protocol transaction
 func requestAdvancedCrop(ctx context.Context, src *image.RGBA, targetW, targetH int, cfg Config) (cropProposal, error) {
 	endpoint, err := url.Parse(cfg.SmartCropProviderURL)
 	if err != nil || (endpoint.Scheme != smartCropProviderHTTP && endpoint.Scheme != "https") || endpoint.Host == "" {

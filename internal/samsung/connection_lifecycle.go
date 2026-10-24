@@ -23,7 +23,7 @@ type connConfig struct {
 	host          string
 	port          int
 	endpoint      string
-	name          string
+	name          string // client identity sent in WebSocket URL
 	tokenFile     string
 	timeout       time.Duration
 	skipTLSVerify bool
@@ -34,23 +34,10 @@ type connConfig struct {
 
 // newConnection creates a new WebSocket connection manager.
 func newConnection(cfg connConfig) *connection {
-	persistToken := cfg.persistToken
-	if persistToken == nil {
-		persistToken = persistAuthenticationToken
+	if cfg.persistToken == nil {
+		cfg.persistToken = persistAuthenticationToken
 	}
-	return &connection{
-		host:          cfg.host,
-		port:          cfg.port,
-		endpoint:      cfg.endpoint,
-		name:          cfg.name,
-		tokenFile:     cfg.tokenFile,
-		timeout:       cfg.timeout,
-		skipTLSVerify: cfg.skipTLSVerify,
-		logger:        cfg.logger,
-		persistToken:  persistToken,
-		httpClient:    cfg.httpClient,
-		pending:       make(map[string]chan json.RawMessage),
-	}
+	return &connection{connConfig: cfg, pending: make(map[string]chan json.RawMessage)}
 }
 
 // maxMessageSize is the maximum size in bytes of a message read from the TV WebSocket.
@@ -85,25 +72,29 @@ func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, e
 	return conn, nil
 }
 
-func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) error {
+// readEnvelope reads one handshake message within the connection timeout.
+func (c *connection) readEnvelope(ctx context.Context, conn *websocket.Conn, what string) (wsResponse, error) {
 	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-
 	_, msg, err := conn.Read(readCtx)
 	if err != nil {
-		return fmt.Errorf("read handshake: %w", err)
+		return wsResponse{}, fmt.Errorf("read %s: %w", what, err)
 	}
-
 	var resp wsResponse
 	if err := json.Unmarshal(msg, &resp); err != nil {
-		return fmt.Errorf("parse handshake: %w", err)
+		return wsResponse{}, fmt.Errorf("parse %s: %w", what, err)
 	}
+	return resp, nil
+}
 
+func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) error {
+	resp, err := c.readEnvelope(ctx, conn, "handshake")
+	if err != nil {
+		return err
+	}
 	switch resp.Event {
 	case EventChannelConnect:
-		if err := c.extractAndSaveToken(ctx, resp.Data); err != nil {
-			return err
-		}
+		return c.extractAndSaveToken(ctx, resp.Data)
 	case "ms.channel.unauthorized":
 		return ErrUnauthorized
 	case "ms.channel.timeOut":
@@ -111,25 +102,15 @@ func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) er
 	default:
 		return fmt.Errorf("unexpected event %q: %w", resp.Event, ErrConnectionFailure)
 	}
-	return nil
 }
 
 func (c *connection) waitForChannelReady(ctx context.Context, conn *websocket.Conn) error {
-	readCtx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	_, msg, err := conn.Read(readCtx)
+	resp, err := c.readEnvelope(ctx, conn, "channel ready")
 	if err != nil {
-		return fmt.Errorf("read channel ready: %w", err)
+		return err
 	}
-
-	var readyResp wsResponse
-	if err := json.Unmarshal(msg, &readyResp); err != nil {
-		return fmt.Errorf("parse channel ready: %w", err)
-	}
-
-	if readyResp.Event != EventChannelReady {
-		return fmt.Errorf("expected ms.channel.ready, got %q: %w", readyResp.Event, ErrConnectionFailure)
+	if resp.Event != EventChannelReady {
+		return fmt.Errorf("expected ms.channel.ready, got %q: %w", resp.Event, ErrConnectionFailure)
 	}
 	return nil
 }
@@ -142,7 +123,7 @@ func (c *connection) Open(ctx context.Context) error {
 		return nil // already connected
 	}
 
-	token, err := c.readToken()
+	token, err := loadAuthenticationToken(c.tokenFile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("load authentication token: %w", err)
 	}

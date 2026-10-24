@@ -73,27 +73,14 @@ func lookupCraquelure(x, y int) float64 {
 // calculateWarpCell calculates weave topography for a warp cell.
 func calculateWarpCell(cellX int, lightDirX float64) float64 {
 	nx := (float64(cellX) - 4.5) / 5.0
-	diffuse := nx * lightDirX
-	if diffuse < 0 {
-		diffuse = 0
-	}
-	return 0.4 + (diffuse * 0.3)
+	return 0.4 + (max(nx*lightDirX, 0) * 0.3)
 }
 
 // calculateWeftCell calculates weave topography for a weft cell.
 func calculateWeftCell(cellY int, lightDirY float64) float64 {
 	ny := (float64(cellY) - 4.5) / 5.0
-	diffuse := ny * lightDirY
-	if diffuse < 0 {
-		diffuse = 0
-	}
-	weave := 0.4 + (diffuse * 0.3)
-
-	absNy := ny
-	if absNy < 0 {
-		absNy = -absNy
-	}
-	if absNy < 0.2 {
+	weave := 0.4 + (max(ny*lightDirY, 0) * 0.3)
+	if math.Abs(ny) < 0.2 {
 		weave += 0.15
 	}
 	return weave

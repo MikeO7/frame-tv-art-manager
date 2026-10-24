@@ -3,6 +3,7 @@ package reconcile
 import (
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -12,17 +13,20 @@ import (
 
 // BuildPlan is a pure deterministic planner. It never reads files, observes a
 // TV, or mutates its inputs.
-//
-//nolint:funlen,gocognit,gocyclo,nestif // The linear phases deliberately mirror reconciliation ordering.
 func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
-	policy = normalizePolicy(policy)
 	if err := validateSnapshot(snapshot); err != nil {
 		return Plan{}, err
 	}
-	if err := validateObservation(observation); err != nil {
-		return Plan{}, err
-	}
-	identity, err := identityFromObservation(observation)
+	return planSnapshot(snapshot, observation, state, policy)
+}
+
+// planSnapshot is BuildPlan for a snapshot that Run has already validated. The
+// fresh observation and in-memory state are still validated on every call.
+//
+//nolint:funlen,gocognit,nestif // The linear phases deliberately mirror reconciliation ordering.
+func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
+	policy = normalizePolicy(policy)
+	identity, err := validateObservation(observation)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -56,13 +60,16 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 
 	boundContent := make(map[string]string, len(state.Bindings))
 	obsolete := make([]Binding, 0)
+	owned := make([]Binding, 0, len(state.Bindings))
 	for digest, binding := range state.Bindings {
 		if _, present := inventory[binding.ContentID]; !present {
 			plan.PruneBindings = append(plan.PruneBindings, digest)
 			continue
 		}
 		boundContent[binding.ContentID] = digest
-		if _, wanted := desired[digest]; !wanted {
+		if _, wanted := desired[digest]; wanted {
+			owned = append(owned, binding)
+		} else {
 			obsolete = append(obsolete, binding)
 		}
 	}
@@ -74,24 +81,19 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 		return strings.Compare(left.ContentID, right.ContentID)
 	})
 
-	missing := make([]collection.Item, 0)
+	waiting := make([]waitingArtwork, 0, len(desired)-len(owned))
 	for digest, item := range desired {
-		binding, exists := state.Bindings[digest]
-		if !exists {
-			missing = append(missing, item)
-			continue
+		if binding, exists := state.Bindings[digest]; exists {
+			if _, present := inventory[binding.ContentID]; present {
+				continue
+			}
 		}
-		if _, present := inventory[binding.ContentID]; !present {
-			missing = append(missing, item)
-		}
+		waiting = append(waiting, waitingArtwork{item: item, digest: digest, lastShown: state.LastShown[digest]})
 	}
-	slices.SortFunc(missing, func(left, right collection.Item) int {
-		return strings.Compare(hex.EncodeToString(left.Digest[:]), hex.EncodeToString(right.Digest[:]))
-	})
 
 	// Never remove the final known-good owned item unless a successor is already
 	// bound, or policy explicitly permits an empty managed collection.
-	boundDesired := len(desired) - len(missing)
+	boundDesired := len(owned)
 	ownedRemaining := len(state.Bindings) - len(plan.PruneBindings)
 	for _, binding := range obsolete {
 		if !policy.AllowEmpty && boundDesired == 0 && ownedRemaining <= 1 {
@@ -102,22 +104,30 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 		})
 		ownedRemaining--
 	}
-	if state.Capacity.Known {
-		available := max(state.Capacity.Maximum-len(observation.Inventory.ContentIDs), 0)
-		if len(missing) > available {
-			plan.CapacityLimited = true
-			missing = missing[:available]
-		}
-	}
-	for _, item := range missing {
+	admission := planCapacity(capacityInput{
+		waiting: waiting, owned: owned, state: state, inventory: len(observation.Inventory.ContentIDs),
+		policy: policy, now: observation.Inventory.ObservedAt,
+	})
+	plan.CapacityLimited = admission.limited
+	plan.Rotation = admission.rotation
+	upload := func(artwork waitingArtwork) CommandIntent {
 		matte := policy.DefaultMatte
-		if override, exists := matteOverrides[item.Name]; exists {
+		if override, exists := matteOverrides[artwork.item.Name]; exists {
 			matte = override
 		}
-		plan.Commands = append(plan.Commands, CommandIntent{
-			Kind: CommandUpload, Digest: hex.EncodeToString(item.Digest[:]), Name: item.Name,
-			Path: item.Path, FileType: item.Type, Size: item.Size, Matte: matte,
-		})
+		return CommandIntent{
+			Kind: CommandUpload, Digest: artwork.digest, Name: artwork.item.Name,
+			Path: artwork.item.Path, FileType: artwork.item.Type, Size: artwork.item.Size, Matte: matte,
+		}
+	}
+	for _, artwork := range admission.fills {
+		plan.Commands = append(plan.Commands, upload(artwork))
+	}
+	for _, swap := range admission.swaps {
+		plan.Commands = append(plan.Commands,
+			CommandIntent{Kind: CommandDeleteOwned, Digest: swap.evict.Digest, ContentID: swap.evict.ContentID},
+			upload(swap.upload),
+		)
 	}
 	if policy.RemoveUnknown {
 		for _, contentID := range observation.Inventory.ContentIDs {
@@ -137,7 +147,7 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 		slices.Sort(digests)
 		for _, digest := range digests {
 			binding, bound := state.Bindings[digest]
-			if bound && containsInventoryID(observation.Inventory.ContentIDs, binding.ContentID) {
+			if _, present := inventory[binding.ContentID]; bound && present {
 				plan.Commands = append(plan.Commands, CommandIntent{Kind: CommandSelect, ContentID: binding.ContentID})
 				break
 			}
@@ -178,11 +188,6 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 	return plan, nil
 }
 
-func containsInventoryID(ids []string, contentID string) bool {
-	_, present := slices.BinarySearch(ids, contentID)
-	return present
-}
-
 func initialState(identity TVIdentity) State {
 	return State{
 		Version:    stateVersion,
@@ -193,40 +198,29 @@ func initialState(identity TVIdentity) State {
 	}
 }
 
-//nolint:nestif // Pointer fields are copied together to keep state cloning local.
 func cloneState(state State) State {
 	clone := state
 	clone.Bindings = make(map[string]Binding, len(state.Bindings))
-	for key, value := range state.Bindings {
-		clone.Bindings[key] = value
-	}
+	maps.Copy(clone.Bindings, state.Bindings)
 	clone.Tombstones = make(map[string]Tombstone, len(state.Tombstones))
-	for key, value := range state.Tombstones {
-		clone.Tombstones[key] = value
-	}
+	maps.Copy(clone.Tombstones, state.Tombstones)
+	clone.LastShown = maps.Clone(state.LastShown)
 	if state.Pending != nil {
 		pending := *state.Pending
-		if pending.Command.PreviousSlideshow != nil {
-			value := *pending.Command.PreviousSlideshow
-			pending.Command.PreviousSlideshow = &value
-		}
-		if pending.Command.DesiredSlideshow != nil {
-			value := *pending.Command.DesiredSlideshow
-			pending.Command.DesiredSlideshow = &value
-		}
-		if pending.Command.PreviousValue != nil {
-			value := *pending.Command.PreviousValue
-			pending.Command.PreviousValue = &value
-		}
-		if pending.Command.DesiredValue != nil {
-			value := *pending.Command.DesiredValue
-			pending.Command.DesiredValue = &value
-		}
-		if pending.Receipt != nil {
-			receipt := *pending.Receipt
-			pending.Receipt = &receipt
-		}
+		pending.Command.PreviousSlideshow = clonePointer(pending.Command.PreviousSlideshow)
+		pending.Command.DesiredSlideshow = clonePointer(pending.Command.DesiredSlideshow)
+		pending.Command.PreviousValue = clonePointer(pending.Command.PreviousValue)
+		pending.Command.DesiredValue = clonePointer(pending.Command.DesiredValue)
+		pending.Receipt = clonePointer(pending.Receipt)
 		clone.Pending = &pending
 	}
 	return clone
+}
+
+func clonePointer[T any](value *T) *T {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }

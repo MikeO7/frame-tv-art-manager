@@ -216,7 +216,7 @@ func TestSuccessfulCapacityProbeClearsEvidenceAndResumesAllUploads(t *testing.T)
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
-	probeTime := testTime.Add(time.Hour)
+	probeTime := testTime.Add(defaultCapacityTTL)
 	afterProbe := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2", "probe-id")
 	adapter := &fakeAdapter{
 		observations: []samsung.Observation{full, full, afterProbe},
@@ -227,7 +227,7 @@ func TestSuccessfulCapacityProbeClearsEvidenceAndResumesAllUploads(t *testing.T)
 	}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{probeTime}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(time.Hour))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,8 +264,8 @@ func TestCapacityEvidenceDoesNotProbeBeforeExpiryAfterRestart(t *testing.T) {
 	}
 	adapter := &fakeAdapter{observations: []samsung.Observation{full}}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
-		Clock: fixedClock{testTime.Add(time.Hour - time.Nanosecond)}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(time.Hour))
+		Clock: fixedClock{testTime.Add(defaultCapacityTTL - time.Nanosecond)}, IDs: &sequenceIDs{},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestCapacityProbeRecalibratesAfterInventoryChangeAndResumesAllUploads(t *te
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
-	probeTime := testTime.Add(time.Hour)
+	probeTime := testTime.Add(defaultCapacityTTL)
 	afterFirst := knownObservation(samsung.PowerStateOn, "unknown-1", "probe-id")
 	afterSecond := knownObservation(samsung.PowerStateOn, "unknown-1", "probe-id", "second-id")
 	adapter := &fakeAdapter{
@@ -307,7 +307,7 @@ func TestCapacityProbeRecalibratesAfterInventoryChangeAndResumesAllUploads(t *te
 	}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{probeTime}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(time.Hour))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
-	ttl := time.Hour
+	ttl := defaultCapacityTTL
 	firstProbeAt := testTime.Add(ttl)
 	failing := &fakeAdapter{
 		observations: []samsung.Observation{full, full},
@@ -344,7 +344,7 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	}
 	first, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{firstProbeAt}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(ttl))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	earlyAdapter := &fakeAdapter{observations: []samsung.Observation{full}}
 	early, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{firstProbeAt.Add(ttl - time.Nanosecond)}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(ttl))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	}
 	second, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{secondProbeAt}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(ttl))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +407,7 @@ func TestNonStorageProbeRejectionDoesNotRefreshCapacityEvidence(t *testing.T) {
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
-	probeTime := testTime.Add(time.Hour)
+	probeTime := testTime.Add(defaultCapacityTTL)
 	adapter := &fakeAdapter{
 		observations: []samsung.Observation{full, full},
 		receipts:     []samsung.Receipt{{Outcome: samsung.OutcomeNotApplied}},
@@ -415,7 +415,7 @@ func TestNonStorageProbeRejectionDoesNotRefreshCapacityEvidence(t *testing.T) {
 	}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{probeTime}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(time.Hour))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +443,7 @@ func TestExpiredCapacityProbePreservesLastKnownGoodArtwork(t *testing.T) {
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
-	probeTime := testTime.Add(time.Hour)
+	probeTime := testTime.Add(defaultCapacityTTL)
 	adapter := &fakeAdapter{
 		observations: []samsung.Observation{observation, observation},
 		receipts:     []samsung.Receipt{{Outcome: samsung.OutcomeNotApplied}},
@@ -451,7 +451,7 @@ func TestExpiredCapacityProbePreservesLastKnownGoodArtwork(t *testing.T) {
 	}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{probeTime}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(time.Hour))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,8 +481,8 @@ func TestExpiredCapacityDryRunPlansProbeWithoutPersistingLease(t *testing.T) {
 	}
 	adapter := &fakeAdapter{observations: []samsung.Observation{full}}
 	service, err := New(Config{StateDirectory: directory}, Dependencies{
-		Clock: fixedClock{testTime.Add(time.Hour)}, IDs: &sequenceIDs{},
-	}, WithCapacityEvidenceTTL(time.Hour))
+		Clock: fixedClock{testTime.Add(defaultCapacityTTL)}, IDs: &sequenceIDs{},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,5 +499,28 @@ func TestExpiredCapacityDryRunPlansProbeWithoutPersistingLease(t *testing.T) {
 	persisted, exists, err := newStateStore(directory).load(context.Background(), identity)
 	if err != nil || !exists || persisted.Capacity != state.Capacity {
 		t.Fatalf("persisted dry-run state = %+v, exists=%v, error=%v", persisted, exists, err)
+	}
+}
+
+func TestRunReportsCapacityFromFreshObservationWhenNothingRemains(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "state")
+	initial := knownObservation(samsung.PowerStateOn, "unknown-1")
+	fresh := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
+	identity, err := identityFromObservation(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := initialState(identity)
+	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	if err := newStateStore(directory).save(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &fakeAdapter{observations: []samsung.Observation{initial, fresh}}
+
+	result, err := newTestService(t, directory, Policy{}).Run(context.Background(), Request{
+		CycleID: "space-taken-before-upload", TV: adapter, Snapshot: snapshot(artworkItem("new.jpg", "new")),
+	})
+	if !errors.Is(err, samsung.ErrStorageFull) || result.Status != StatusStorageFull || adapter.applyCalls != 0 {
+		t.Fatalf("Run() = %+v, %v; want storage full from the fresh observation", result, err)
 	}
 }

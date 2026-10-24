@@ -28,6 +28,13 @@ func TestTimerMutationWaiterHonorsCancellation(t *testing.T) {
 	}
 }
 
+func withMutationWaiter(waiter mutationWaiter) Option {
+	return func(configuration *runtimeConfiguration) error {
+		configuration.mutations.waiter = waiter
+		return nil
+	}
+}
+
 func newBlockingMutationWaiter() *blockingMutationWaiter {
 	return &blockingMutationWaiter{calls: make(chan time.Duration, 4), release: make(chan error, 4)}
 }
@@ -427,8 +434,6 @@ func TestMutationExecutionOptions(t *testing.T) {
 		{name: "excessive pacing", option: WithMutationPacing(maximumMutationPacing + time.Nanosecond)},
 		{name: "zero attempts", option: WithMutationAttempts(0)},
 		{name: "excessive attempts", option: WithMutationAttempts(maximumMutationAttempts + 1)},
-		{name: "zero capacity TTL", option: WithCapacityEvidenceTTL(0)},
-		{name: "excessive capacity TTL", option: WithCapacityEvidenceTTL(maximumCapacityTTL + time.Nanosecond)},
 		{name: "nil option", option: nil},
 	}
 	for _, test := range tests {

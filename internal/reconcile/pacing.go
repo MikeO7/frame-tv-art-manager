@@ -13,55 +13,34 @@ const (
 	maximumMutationPacing   = 5 * time.Minute
 	maximumMutationAttempts = 10
 	defaultCapacityTTL      = 24 * time.Hour
-	maximumCapacityTTL      = 365 * 24 * time.Hour
 )
 
 // Option configures stateful reconciliation execution without expanding the
 // pure planning policy.
-type Option interface {
-	configure(*runtimeConfiguration) error
-}
-
-type optionFunc func(*runtimeConfiguration) error
-
-func (option optionFunc) configure(configuration *runtimeConfiguration) error {
-	return option(configuration)
-}
+type Option func(*runtimeConfiguration) error
 
 // WithMutationPacing configures the context-cancellable delay between
 // consecutive mutation attempts. Zero disables pacing.
 func WithMutationPacing(delay time.Duration) Option {
-	return optionFunc(func(configuration *runtimeConfiguration) error {
+	return func(configuration *runtimeConfiguration) error {
 		if delay < 0 || delay > maximumMutationPacing {
 			return fmt.Errorf("mutation pacing must be between 0 and %s", maximumMutationPacing)
 		}
 		configuration.mutations.delay = delay
 		return nil
-	})
+	}
 }
 
 // WithMutationAttempts configures the maximum number of attempts for a
 // command that is unequivocally reported as not attempted. One disables retry.
 func WithMutationAttempts(attempts int) Option {
-	return optionFunc(func(configuration *runtimeConfiguration) error {
+	return func(configuration *runtimeConfiguration) error {
 		if attempts < 1 || attempts > maximumMutationAttempts {
 			return fmt.Errorf("mutation attempts must be between 1 and %d", maximumMutationAttempts)
 		}
 		configuration.mutations.attempts = attempts
 		return nil
-	})
-}
-
-// WithCapacityEvidenceTTL configures how long a storage-full observation
-// suppresses cautious upload probes.
-func WithCapacityEvidenceTTL(ttl time.Duration) Option {
-	return optionFunc(func(configuration *runtimeConfiguration) error {
-		if ttl <= 0 || ttl > maximumCapacityTTL {
-			return fmt.Errorf("capacity evidence TTL must be between 1ns and %s", maximumCapacityTTL)
-		}
-		configuration.capacityTTL = ttl
-		return nil
-	})
+	}
 }
 
 type mutationWaiter interface {
@@ -101,12 +80,9 @@ func newRuntimeConfiguration(options []Option) (runtimeConfiguration, error) {
 		if option == nil {
 			return runtimeConfiguration{}, fmt.Errorf("reconciliation option %d is nil", index)
 		}
-		if err := option.configure(&configuration); err != nil {
+		if err := option(&configuration); err != nil {
 			return runtimeConfiguration{}, fmt.Errorf("configure reconciliation option %d: %w", index, err)
 		}
-	}
-	if configuration.mutations.waiter == nil {
-		return runtimeConfiguration{}, errors.New("mutation waiter is required")
 	}
 	return configuration, nil
 }
@@ -137,17 +113,21 @@ func safeToRetryMutation(receipt samsung.Receipt, applyErr error) bool {
 		protocolErr.Outcome == samsung.OutcomeNotAttempted
 }
 
+// storageFullRejectionError can only be created after a definite storage-full
+// upload rejection and its capacity evidence have been durably persisted.
+type storageFullRejectionError struct {
+	cause error
+}
+
+func (err *storageFullRejectionError) Error() string { return err.cause.Error() }
+func (err *storageFullRejectionError) Unwrap() error { return err.cause }
+
+func isStorageFullRejection(err error) bool {
+	var rejection *storageFullRejectionError
+	return errors.As(err, &rejection)
+}
+
 func isMutationRetry(err error) bool {
 	var retryErr *mutationRetryError
 	return errors.As(err, &retryErr)
-}
-
-func withMutationWaiter(waiter mutationWaiter) Option {
-	return optionFunc(func(configuration *runtimeConfiguration) error {
-		if waiter == nil {
-			return errors.New("mutation waiter is required")
-		}
-		configuration.mutations.waiter = waiter
-		return nil
-	})
 }

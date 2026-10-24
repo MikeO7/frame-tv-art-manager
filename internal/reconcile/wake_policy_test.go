@@ -56,8 +56,8 @@ func TestPowerOnPolicyProbesPowerThenConverges(t *testing.T) {
 			if got := adapter.requests[0].Required; got != samsung.CapabilityRemotePower {
 				t.Fatalf("power probe capabilities = %09b, want exactly remote power", got)
 			}
-			if got := adapter.requests[1].Required; got != baseCapabilities() {
-				t.Fatalf("convergence capabilities = %09b, want %09b", got, baseCapabilities())
+			if got := adapter.requests[1].Required; got != baseCapabilities {
+				t.Fatalf("convergence capabilities = %09b, want %09b", got, baseCapabilities)
 			}
 		})
 	}
@@ -188,8 +188,8 @@ func TestPowerOnWakeThenContinuesCollectionConvergence(t *testing.T) {
 		t.Fatalf("final state = %#v", result.State)
 	}
 	if len(adapter.requests) != 3 || adapter.requests[0].Required != samsung.CapabilityRemotePower ||
-		adapter.requests[1].Required != baseCapabilities() ||
-		adapter.requests[2].Required&baseCapabilities() != baseCapabilities() {
+		adapter.requests[1].Required != baseCapabilities ||
+		adapter.requests[2].Required&baseCapabilities != baseCapabilities {
 		t.Fatalf("observation requests = %#v", adapter.requests)
 	}
 }

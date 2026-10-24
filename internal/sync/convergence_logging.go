@@ -59,7 +59,7 @@ func logTVOutcome(ctx context.Context, logger *slog.Logger, summary TVSyncResult
 }
 
 func tvOutcomeAttrs(summary TVSyncResult) []slog.Attr {
-	return []slog.Attr{
+	attrs := []slog.Attr{
 		slog.String("tv", summary.IP),
 		slog.String("model", summary.Model),
 		slog.String("status", summary.Status),
@@ -68,6 +68,13 @@ func tvOutcomeAttrs(summary TVSyncResult) []slog.Attr {
 		slog.Int("deleted", summary.Deleted),
 		slog.Int("total_images", summary.TotalImages),
 	}
+	if summary.Rotating {
+		attrs = append(attrs, slog.Bool("rotating", true), slog.Int("artwork_waiting", summary.ArtworkWaiting))
+		if !summary.NextRotation.IsZero() {
+			attrs = append(attrs, slog.Time("next_rotation", summary.NextRotation))
+		}
+	}
+	return attrs
 }
 
 func appendSamsungErrorAttrs(attrs []slog.Attr, err *samsung.Error) []slog.Attr {

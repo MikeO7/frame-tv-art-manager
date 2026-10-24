@@ -16,8 +16,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
 const (
@@ -71,41 +69,7 @@ type Config struct {
 	PortraitMode                   string
 }
 
-// DefaultConfig returns sensible defaults for Frame TV display.
-func DefaultConfig() Config {
-	return Config{
-		Enabled:                        true,
-		SmartCropEnabled:               false,
-		SmartCropMinGain:               0.03,
-		SmartCropProtection:            true,
-		SmartCropProtectionStrength:    0.35,
-		SmartCropProvider:              "local",
-		SmartCropProviderMinConfidence: 0.7,
-		SmartCropProviderTimeout:       8 * time.Second,
-		MaxWidth:                       3840,
-		MaxHeight:                      2160,
-		MaxOutputPixels:                defaultMaxOutputPixels,
-		MaxWorkingBytes:                512 * 1024 * 1024,
-		OptimizeJPEGQuality:            95,
-		OptimizePNG:                    true,
-		LinearLightResize:              true,
-		SharpenAmount:                  0.25,
-		SharpenThreshold:               4,
-		ColorProfilePolicy:             profileConvertSRGB,
-		HDRToneMap:                     true,
-		HDRSourcePeakNits:              1000,
-		HDRTargetPeakNits:              100,
-		MuseumModeEnabled:              false,
-		MuseumModeIntensity:            5,
-		PortraitMode:                   "crop",
-	}
-}
-
-func optimizeFile(ctx context.Context, path string, cfg Config, logger *slog.Logger, pixelWorkerLimit int) (string, bool, error) {
-	return optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, cfg, logger, pixelWorkerLimit)
-}
-
-//nolint:funlen,gocognit,gocyclo,revive // explicit transaction inputs avoid hidden optimizer state
+//nolint:revive // explicit transaction inputs avoid hidden optimizer state
 func optimizeFileWithPolicy(
 	ctx context.Context,
 	path string,
@@ -113,10 +77,8 @@ func optimizeFileWithPolicy(
 	force bool,
 	cfg Config,
 	logger *slog.Logger,
-	pixelWorkerLimit int,
 ) (string, bool, error) {
 	filename := filepath.Base(path)
-	dir := filepath.Dir(path)
 	if err := ctx.Err(); err != nil {
 		return filename, false, err
 	}
@@ -138,11 +100,11 @@ func optimizeFileWithPolicy(
 	}
 	defer func() { _ = f.Close() }()
 
-	width, height, err := decodeInputConfig(ctx, f)
+	inputConfig, err := decodeInputConfig(ctx, f)
 	if err != nil {
 		return filename, false, err
 	}
-	if err := validateWorkingSet(width, height, cfg); err != nil {
+	if err := validateWorkingSet(workingInputFor(inputConfig), cfg); err != nil {
 		return filename, false, err
 	}
 	colorMetadata, err := readColorDataWithPolicy(ctx, f, ext, cfg, logger, filename)
@@ -156,44 +118,31 @@ func optimizeFileWithPolicy(
 	if err != nil {
 		return filename, false, fmt.Errorf("read image orientation: %w", err)
 	}
-	displayWidth, displayHeight := width, height
+	displayWidth, displayHeight := inputConfig.Width, inputConfig.Height
 	if orientation >= 5 && orientation <= 8 {
-		displayWidth, displayHeight = height, width
+		displayWidth, displayHeight = displayHeight, displayWidth
 	}
 	needsColorNormalization := len(colorMetadata.icc) > 0 && cfg.ColorProfilePolicy == profileConvertSRGB
 	needsHDRToneMap := colorMetadata.hdr != nil && cfg.HDRToneMap
 	needsAdjustment := force || orientation != 1 || displayWidth != cfg.MaxWidth ||
 		displayHeight != cfg.MaxHeight || needsColorNormalization || needsHDRToneMap
 	if !needsAdjustment && !cfg.MuseumModeEnabled {
-		if err := validateOptimizedPixels(ctx, f, cfg.MaxWidth, cfg.MaxHeight); err != nil {
-			return filename, false, err
-		}
+		return filename, false, validateOptimizedPixels(ctx, f, cfg.MaxWidth, cfg.MaxHeight)
 	}
 
-	var finalW, finalH int
-	var modified bool
-
-	if !needsAdjustment && !cfg.MuseumModeEnabled {
-		finalW, finalH = width, height
-		modified = false
-	} else {
-		finalW, finalH, err = rewriteImage(rewriteParams{
-			f: f, path: path, filename: filename, width: width,
-			height: height, cfg: cfg, logger: logger,
-			ctx: ctx, pixelWorkers: pixelWorkerLimit,
-			colorData: colorMetadata,
-		})
-		if err != nil {
-			return filename, false, err
-		}
-		modified = true
+	if err := rewriteImage(ctx, f, path, orientation, colorMetadata, cfg, logger); err != nil {
+		return filename, false, err
 	}
-
-	//nolint:contextcheck // the request carries this exact context into the durable rename
-	return handleRename(renameRequest{
-		path: path, filename: filename, dir: dir, modified: modified,
-		finalW: finalW, finalH: finalH, logger: logger, ctx: ctx, cfg: cfg, label: label,
+	newFilename, err := moveToContentName(ctx, path, contentNameRequest{
+		directory: filepath.Dir(path), currentName: filename, label: label, extension: filepath.Ext(filename),
 	})
+	if err != nil {
+		return filename, true, fmt.Errorf("rename optimized output: %w", err)
+	}
+	if newFilename != filename {
+		logger.Info("updated optimized filename", "old", filename, "new", newFilename)
+	}
+	return newFilename, true, nil
 }
 
 func isOptimizableJPEG(extension string) bool {
@@ -206,7 +155,7 @@ func isOptimizableImage(extension string, cfg Config) bool {
 
 func readOrientationForExtension(ctx context.Context, reader io.Reader, extension string) (int, error) {
 	contextual := &contextReader{ctx: ctx, reader: reader}
-	if extension == extPNG || extension == formatPNG {
+	if extension == extPNG {
 		return ReadPNGOrientation(contextual)
 	}
 	return ReadOrientation(contextual)
@@ -245,58 +194,4 @@ func TransformKey(cfg Config) string {
 	)
 	digest := sha256.Sum256([]byte(description))
 	return hex.EncodeToString(digest[:])
-}
-
-// renameRequest bundles the inputs needed to decide whether an optimized file
-// should be renamed to reflect its final dimensions.
-type renameRequest struct {
-	path, filename, dir string
-	label               string
-	modified            bool
-	finalW, finalH      int
-	logger              *slog.Logger
-	ctx                 context.Context
-	cfg                 Config
-}
-
-// handleRename renames the file according to optimized names if needed.
-func handleRename(req renameRequest) (string, bool, error) {
-	path := req.path
-	filename := req.filename
-	dir := req.dir
-	modified := req.modified
-	logger := req.logger
-	ctx := req.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	if !modified {
-		return filename, false, nil
-	}
-	digest, err := fileDigest(ctx, path)
-	if err != nil {
-		return filename, modified, fmt.Errorf("hash optimized output: %w", err)
-	}
-	label := req.label
-	if label == "" {
-		label = filename
-	}
-	newFilename, err := availableContentName(ctx, contentNameRequest{
-		directory: dir, currentName: filename, label: label, digest: digest, extension: filepath.Ext(filename),
-	})
-	if err != nil {
-		return filename, modified, fmt.Errorf("choose optimized output name: %w", err)
-	}
-	if newFilename == filename {
-		return filename, true, nil
-	}
-
-	newPath := filepath.Join(dir, newFilename)
-	if err := durablefs.MoveExclusive(ctx, path, newPath); err != nil {
-		return filename, modified, fmt.Errorf("rename to optimized: %w", err)
-	}
-
-	logger.Info("updated optimized filename", "old", filename, "new", newFilename)
-	return newFilename, true, nil
 }

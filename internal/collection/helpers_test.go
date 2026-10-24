@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"image"
 	"image/color"
@@ -15,7 +16,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
-func TestDefensiveHelpersRejectInconsistentState(t *testing.T) {
+func TestPublicationVerificationAndDimensionsRejectInconsistentState(t *testing.T) {
 	digest := sha256.Sum256([]byte("one"))
 	other := sha256.Sum256([]byte("two"))
 	if err := verifyExpected([]Item{{Name: "one.png", Digest: digest}}, nil); err == nil {
@@ -26,12 +27,6 @@ func TestDefensiveHelpersRejectInconsistentState(t *testing.T) {
 		[]Item{{Name: "two.png", Digest: other}},
 	); err == nil {
 		t.Fatal("expected item mismatch")
-	}
-	if err := copyBytes(errorWriter{}, []byte("data")); err == nil {
-		t.Fatal("expected writer failure")
-	}
-	if got := findDigestName(nil, digest); got != "" {
-		t.Fatalf("missing digest name = %q", got)
 	}
 	if err := validateDimensions(0, 1, 10); err == nil {
 		t.Fatal("expected non-positive width failure")
@@ -48,7 +43,7 @@ func TestCollisionNamingFallsBackAfterEveryDigestPrefixIsOccupied(t *testing.T) 
 	for digestBytes := 6; digestBytes <= len(digest); digestBytes += 2 {
 		items = append(items, Item{Name: artwork.BuildContentName("photo", digest, ".png", digestBytes)})
 	}
-	name := collisionSafeName(items, input)
+	name := collisionSafeName(items, input, Origin{})
 	if name != artwork.BuildContentName("artwork", digest, ".png", len(digest)) {
 		t.Fatalf("fallback name = %q", name)
 	}
@@ -66,7 +61,7 @@ func TestSortItemsUsesDigestAsStableTieBreaker(t *testing.T) {
 
 func TestValidTransactionPathsRequiresExactOwnedLocations(t *testing.T) {
 	root := t.TempDir()
-	digest := stringHex(make([]byte, sha256.Size))
+	digest := hex.EncodeToString(make([]byte, sha256.Size))
 	item := manifestItem{Name: "art.png", Digest: digest}
 	valid := transaction{
 		Version: 1,
@@ -232,24 +227,6 @@ func TestFilesystemHelpersRejectNonDirectories(t *testing.T) {
 		t.Fatal("directory accepted as hashable artwork")
 	}
 }
-
-type errorWriter struct{}
-
-func (errorWriter) Write([]byte) (int, error) {
-	return 0, errors.New("write failed")
-}
-
-func stringHex(data []byte) string {
-	const digits = "0123456789abcdef"
-	result := make([]byte, len(data)*2)
-	for index, value := range data {
-		result[index*2] = digits[value>>4]
-		result[index*2+1] = digits[value&0x0f]
-	}
-	return string(result)
-}
-
-var _ io.Writer = errorWriter{}
 
 func writeTestFile(path string) error {
 	file, err := os.Create(path)

@@ -268,8 +268,9 @@ func TestPreflightPortraitSafetyBranches(t *testing.T) {
 	if err := os.Symlink(target, symlink); err != nil {
 		t.Fatalf("create symlink: %v", err)
 	}
-	if _, _, err := openPreflightInput(StageInput{Name: filepath.Base(symlink), Path: symlink}); err == nil || !strings.Contains(err.Error(), "regular non-symlink") {
-		t.Fatalf("openPreflightInput(symlink) error = %v", err)
+	if _, err := preflightOrientation(context.Background(), StageInput{Name: filepath.Base(symlink), Path: symlink}); err == nil ||
+		!strings.Contains(err.Error(), "regular non-symlink") {
+		t.Fatalf("preflightOrientation(symlink) error = %v", err)
 	}
 
 	rotated := filepath.Join(directory, "upload-rotated.jpg")
@@ -295,8 +296,8 @@ func TestPreflightPortraitSafetyBranches(t *testing.T) {
 		{Name: "upload-missing.jpg", Path: filepath.Join(directory, "missing.jpg")},
 		{Name: "upload-directory.jpg", Path: directory},
 	} {
-		if _, _, err := openPreflightInput(input); err == nil {
-			t.Fatalf("openPreflightInput(%s) error = nil", input.Name)
+		if _, err := preflightOrientation(context.Background(), input); err == nil {
+			t.Fatalf("preflightOrientation(%s) error = nil", input.Name)
 		}
 	}
 }
@@ -315,5 +316,12 @@ func TestPreflightOrientationReadsStableFileAndCancellation(t *testing.T) {
 	cancel()
 	if _, err := preflightOrientation(ctx, StageInput{Name: "exact.jpg", Path: path}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("preflightOrientation(canceled) error = %v", err)
+	}
+	malformed := filepath.Join(t.TempDir(), "malformed.jpg")
+	if err := os.WriteFile(malformed, []byte{0xff, 0xd8}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := preflightOrientation(context.Background(), StageInput{Name: "malformed.jpg", Path: malformed}); err == nil {
+		t.Fatal("preflightOrientation(malformed) error = nil")
 	}
 }

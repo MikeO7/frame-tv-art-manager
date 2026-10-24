@@ -36,41 +36,21 @@ func TestScaleAwareSharpenAmount(t *testing.T) {
 	}
 }
 
-func TestToRGBA(t *testing.T) {
+func TestToRGBANormalizesOriginAndPremultipliesOtherModels(t *testing.T) {
+	t.Parallel()
 	rgba := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	if got := toRGBA(rgba); got != rgba {
 		t.Error("expected same pointer for RGBA input")
 	}
 
-	nrgba := image.NewNRGBA(image.Rect(0, 0, 4, 4))
-	nrgba.Set(1, 1, color.RGBA{10, 20, 30, 255})
+	nrgba := image.NewNRGBA(image.Rect(2, 3, 6, 7))
+	nrgba.SetNRGBA(3, 4, color.NRGBA{R: 200, G: 100, B: 50, A: 128})
 	converted := toRGBA(nrgba)
-	if converted.Bounds().Dx() != 4 {
-		t.Errorf("bounds = %v", converted.Bounds())
+	if converted.Bounds() != image.Rect(0, 0, 4, 4) {
+		t.Fatalf("bounds = %v, want zero-origin 4x4", converted.Bounds())
 	}
-}
-
-func TestCenterCrop(t *testing.T) {
-	wide := image.NewRGBA(image.Rect(0, 0, 200, 100))
-	for y := 0; y < 100; y++ {
-		for x := 0; x < 200; x++ {
-			wide.Set(x, y, color.RGBA{uint8(x), uint8(y), 50, 255})
-		}
-	}
-	croppedWide := centerCrop(wide, 16, 9, false)
-	if croppedWide.Bounds().Dx() != 16 || croppedWide.Bounds().Dy() != 9 {
-		t.Errorf("wide crop = %dx%d", croppedWide.Bounds().Dx(), croppedWide.Bounds().Dy())
-	}
-
-	tall := image.NewRGBA(image.Rect(0, 0, 100, 200))
-	for y := 0; y < 200; y++ {
-		for x := 0; x < 100; x++ {
-			tall.Set(x, y, color.RGBA{uint8(x), uint8(y), 50, 255})
-		}
-	}
-	croppedTall := centerCrop(tall, 16, 9, true)
-	if croppedTall.Bounds().Dx() != 16 || croppedTall.Bounds().Dy() != 9 {
-		t.Errorf("tall crop = %dx%d", croppedTall.Bounds().Dx(), croppedTall.Bounds().Dy())
+	if got := converted.RGBAAt(1, 1); got != (color.RGBA{R: 100, G: 50, B: 25, A: 128}) {
+		t.Fatalf("converted pixel = %+v, want premultiplied {100 50 25 128}", got)
 	}
 }
 
@@ -82,14 +62,5 @@ func TestLinearLightResizePreservesAverageLight(t *testing.T) {
 	output := resizeCrop(source, source.Bounds(), 1, 1, true)
 	if got := output.RGBAAt(0, 0).R; got < 175 || got > 195 {
 		t.Fatalf("linear-light black/white average = %d, want approximately 188", got)
-	}
-}
-
-func TestSharpen_SmallImage(t *testing.T) {
-	small := image.NewRGBA(image.Rect(0, 0, 2, 2))
-	small.Set(0, 0, color.RGBA{100, 100, 100, 255})
-	out := sharpen(small)
-	if out.Bounds().Dx() != 2 {
-		t.Errorf("expected 2x2 output, got %v", out.Bounds())
 	}
 }

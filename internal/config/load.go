@@ -20,14 +20,6 @@ const (
 	smartCropProviderHTTP   = "http"
 )
 
-// Load reads configuration from environment variables, applies defaults,
-// and validates the result. Returns an error if required values are missing
-// or constraints are violated.
-func Load() (*Config, error) {
-	cfg, _, err := LoadWithWarnings()
-	return cfg, err
-}
-
 // LoadWithWarnings reads and validates the process environment and returns
 // compatibility warnings for the composition root to report.
 func LoadWithWarnings() (*Config, []Warning, error) {
@@ -35,11 +27,13 @@ func LoadWithWarnings() (*Config, []Warning, error) {
 }
 
 // validate enforces cross-field constraints and enumerated value membership.
-func validate(cfg *Config) error {
+// It also canonicalizes TV_IPS and parses mac into cfg.TVMAC so consumers can
+// rely on both without revalidating them.
+func validate(cfg *Config, mac string) error {
 	if err := validateRanges(cfg); err != nil {
 		return err
 	}
-	if err := validateLocations(cfg); err != nil {
+	if err := validateLocations(cfg, mac); err != nil {
 		return err
 	}
 	if cfg.BrightnessMin >= cfg.BrightnessMax {
@@ -136,6 +130,7 @@ func validateRanges(cfg *Config) error {
 		{cfg.ShutdownTimeout > 0 && cfg.ShutdownTimeout <= 10*time.Minute, "SHUTDOWN_TIMEOUT_SECONDS must be between 1 and 600"},
 		{between(cfg.SlideshowInterval, 1, 1440), "SLIDESHOW_INTERVAL must be between 1 and 1440"},
 		{cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours <= 168, "AUTO_OFF_GRACE_HOURS must be between 0 and 168"},
+		{between(cfg.RotationIntervalDays, 0, 365), "ROTATION_INTERVAL_DAYS must be between 0 and 365"},
 		{between(cfg.OptimizeMaxWidth, 1, 16384), "IMAGE_MAX_WIDTH must be between 1 and 16384"},
 		{between(cfg.OptimizeMaxHeight, 1, 16384), "IMAGE_MAX_HEIGHT must be between 1 and 16384"},
 		{between(cfg.OptimizeMaxPixels, 1, 100_000_000), "IMAGE_MAX_OUTPUT_PIXELS must be between 1 and 100000000"},
@@ -145,20 +140,20 @@ func validateRanges(cfg *Config) error {
 		},
 		{between(cfg.OptimizeMemoryMB, 128, 4096), "IMAGE_MAX_WORKING_MEMORY_MB must be between 128 and 4096"},
 		{between(cfg.OptimizeJPEGQuality, 1, 100), "IMAGE_JPEG_QUALITY must be between 1 and 100"},
-		{betweenFloat(cfg.SmartCropMinGain, 0, 1), "SMART_CROP_MIN_GAIN must be between 0 and 1"},
-		{betweenFloat(cfg.SmartCropProtectionStrength, 0, 2), "SMART_CROP_PROTECTION_STRENGTH must be between 0 and 2"},
+		{between(cfg.SmartCropMinGain, 0, 1), "SMART_CROP_MIN_GAIN must be between 0 and 1"},
+		{between(cfg.SmartCropProtectionStrength, 0, 2), "SMART_CROP_PROTECTION_STRENGTH must be between 0 and 2"},
 		{supportedSmartCropProvider(cfg.SmartCropProvider), "SMART_CROP_PROVIDER must be local or http"},
 		{
 			cfg.SmartCropProvider != smartCropProviderHTTP || validHTTPURL(cfg.SmartCropProviderURL),
 			"SMART_CROP_PROVIDER_URL must be an absolute HTTP(S) URL for http provider",
 		},
-		{betweenFloat(cfg.SmartCropProviderMinConfidence, 0, 1), "SMART_CROP_PROVIDER_MIN_CONFIDENCE must be between 0 and 1"},
+		{between(cfg.SmartCropProviderMinConfidence, 0, 1), "SMART_CROP_PROVIDER_MIN_CONFIDENCE must be between 0 and 1"},
 		{cfg.SmartCropProviderTimeout > 0 && cfg.SmartCropProviderTimeout <= time.Minute, "SMART_CROP_PROVIDER_TIMEOUT_SECONDS must be between 1 and 60"},
-		{betweenFloat(cfg.SharpenAmount, 0, 2), "IMAGE_SHARPEN_AMOUNT must be between 0 and 2"},
+		{between(cfg.SharpenAmount, 0, 2), "IMAGE_SHARPEN_AMOUNT must be between 0 and 2"},
 		{between(cfg.SharpenThreshold, 0, 255), "IMAGE_SHARPEN_THRESHOLD must be between 0 and 255"},
 		{supportedColorProfilePolicy(cfg.ColorProfilePolicy), "IMAGE_COLOR_PROFILE_POLICY must be convert-srgb, assume-srgb, or reject-embedded"},
-		{betweenFloat(cfg.HDRSourcePeakNits, 100, 10_000), "IMAGE_HDR_SOURCE_PEAK_NITS must be between 100 and 10000"},
-		{betweenFloat(cfg.HDRTargetPeakNits, 80, 500), "IMAGE_HDR_TARGET_PEAK_NITS must be between 80 and 500"},
+		{between(cfg.HDRSourcePeakNits, 100, 10_000), "IMAGE_HDR_SOURCE_PEAK_NITS must be between 100 and 10000"},
+		{between(cfg.HDRTargetPeakNits, 80, 500), "IMAGE_HDR_TARGET_PEAK_NITS must be between 80 and 500"},
 		{between(cfg.MuseumModeIntensity, 1, 10), "IMAGE_MUSEUM_INTENSITY must be between 1 and 10"},
 		{between(cfg.HealthPort, 0, 65535), "HEALTH_PORT must be between 0 and 65535"},
 		{cfg.ConnectionTimeout > 0 && cfg.ConnectionTimeout <= 10*time.Minute, "CONNECTION_TIMEOUT_SECONDS must be between 1 and 600"},
@@ -187,7 +182,7 @@ func validateBrightnessRanges(cfg *Config) error {
 	return nil
 }
 
-func validateLocations(cfg *Config) error {
+func validateLocations(cfg *Config, mac string) error {
 	if err := validateAddresses(cfg); err != nil {
 		return err
 	}
@@ -202,11 +197,17 @@ func validateLocations(cfg *Config) error {
 			return fmt.Errorf("AUTO_OFF_TIME %q: %w", cfg.AutoOffTime, err)
 		}
 	}
-	if cfg.TVMAC != "" {
-		if _, err := net.ParseMAC(cfg.TVMAC); err != nil {
-			return fmt.Errorf("TV_MAC %q: %w", cfg.TVMAC, err)
-		}
+	if mac == "" {
+		return nil
 	}
+	parsed, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("TV_MAC %q: %w", mac, err)
+	}
+	if len(parsed) != 6 {
+		return fmt.Errorf("TV_MAC %q must contain six bytes", mac)
+	}
+	cfg.TVMAC = parsed
 	return nil
 }
 
@@ -244,11 +245,7 @@ func isFinite(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
-func between(value, minimum, maximum int) bool {
-	return value >= minimum && value <= maximum
-}
-
-func betweenFloat(value, minimum, maximum float64) bool {
+func between[T int | float64](value, minimum, maximum T) bool {
 	return value >= minimum && value <= maximum
 }
 

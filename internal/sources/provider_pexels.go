@@ -82,18 +82,9 @@ func (p *pexelsProvider) Curated(ctx context.Context) ([]string, error) {
 
 // FetchCollection retrieves all photos from a specific Pexels collection using pagination.
 func (p *pexelsProvider) FetchCollection(ctx context.Context, collectionID string) ([]string, error) {
-	var allUrls []string
-	for page := 1; page <= pexelsMaxPages; page++ {
-		urls, more, err := p.fetchCollectionPage(ctx, collectionID, page)
-		if err != nil {
-			return nil, err
-		}
-		allUrls = append(allUrls, urls...)
-		if !more {
-			break
-		}
-	}
-	return allUrls, nil
+	return collectPages(pexelsMaxPages, func(page int) ([]string, bool, error) {
+		return p.fetchCollectionPage(ctx, collectionID, page)
+	})
 }
 
 // fetchCollectionPage retrieves a single page of a Pexels collection and
@@ -184,14 +175,5 @@ func (p *pexelsProvider) Resolve(ctx context.Context, line string) ([]SourceImag
 	if err != nil {
 		return nil, err
 	}
-
-	images := make([]SourceImage, 0, len(urls))
-	for _, u := range urls {
-		images = append(images, SourceImage{
-			URL:      u,
-			Identity: sourceURLIdentity(p.Name(), u),
-		})
-	}
-
-	return images, nil
+	return urlSourceImages(p.Name(), urls), nil
 }

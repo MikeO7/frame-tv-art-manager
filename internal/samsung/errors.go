@@ -1,6 +1,4 @@
 // Package samsung provides a client for Samsung Frame TV art management.
-//
-// This file implements errors used across the samsung package.
 package samsung
 
 import (
@@ -62,39 +60,26 @@ const (
 )
 
 // String returns the stable operator-facing name used in structured logs.
-//
-//nolint:gocyclo // An exhaustive enum mapping is clearer and safer than a positional name table.
 func (kind ErrorKind) String() string {
-	switch kind {
-	case ErrorKindNone:
-		return "none"
-	case ErrorKindCanceled:
-		return "canceled"
-	case ErrorKindBackoff:
-		return "backoff"
-	case ErrorKindUnreachable:
-		return "unreachable"
-	case ErrorKindTimeout:
-		return "timeout"
-	case ErrorKindUnauthorized:
-		return "unauthorized"
-	case ErrorKindProtocol:
-		return "protocol"
-	case ErrorKindUnsupported:
-		return "unsupported"
-	case ErrorKindInvalidResponse:
-		return "invalid_response"
-	case ErrorKindStorageFull:
-		return "storage_full"
-	case ErrorKindNotAuthorized:
-		return "not_authorized"
-	case ErrorKindPersistence:
-		return "persistence"
-	case ErrorKindOutcomeUnknown:
-		return "outcome_unknown"
-	default:
-		return fmt.Sprintf("unknown(%d)", kind)
+	names := [...]string{
+		ErrorKindNone:            "none",
+		ErrorKindCanceled:        "canceled",
+		ErrorKindBackoff:         "backoff",
+		ErrorKindUnreachable:     "unreachable",
+		ErrorKindTimeout:         "timeout",
+		ErrorKindUnauthorized:    "unauthorized",
+		ErrorKindProtocol:        "protocol",
+		ErrorKindUnsupported:     "unsupported",
+		ErrorKindInvalidResponse: "invalid_response",
+		ErrorKindStorageFull:     "storage_full",
+		ErrorKindNotAuthorized:   "not_authorized",
+		ErrorKindPersistence:     "persistence",
+		ErrorKindOutcomeUnknown:  "outcome_unknown",
 	}
+	if int(kind) < len(names) {
+		return names[kind]
+	}
+	return fmt.Sprintf("unknown(%d)", kind)
 }
 
 // Outcome records whether a command definitely reached and changed the TV.
@@ -109,18 +94,16 @@ const (
 
 // String returns the stable operator-facing name used in structured logs.
 func (outcome Outcome) String() string {
-	switch outcome {
-	case OutcomeNotAttempted:
-		return "not_attempted"
-	case OutcomeNotApplied:
-		return "not_applied"
-	case OutcomeApplied:
-		return "applied"
-	case OutcomeUnknown:
-		return "unknown"
-	default:
-		return fmt.Sprintf("unknown(%d)", outcome)
+	names := [...]string{
+		OutcomeNotAttempted: "not_attempted",
+		OutcomeNotApplied:   "not_applied",
+		OutcomeApplied:      "applied",
+		OutcomeUnknown:      "unknown",
 	}
+	if int(outcome) < len(names) {
+		return names[outcome]
+	}
+	return fmt.Sprintf("unknown(%d)", outcome)
 }
 
 // Error preserves a stable policy classification and its original cause.

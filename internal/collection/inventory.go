@@ -23,19 +23,33 @@ type inventoryLimits struct {
 	maxPixels int64
 }
 
-func scan(ctx context.Context, root string, maxBytes, maxPixels int64) ([]Item, error) {
+// scan inventories the committed collection, failing on any unreadable or
+// invalid artwork.
+func scan(ctx context.Context, root string, limits inventoryLimits) ([]Item, error) {
 	records, err := readManifestRecords(ctx, root)
 	if err != nil {
 		return nil, err
 	}
 	entries, exists, err := readRoot(root)
-	if err != nil {
-		return nil, err
+	if err != nil || !exists {
+		return []Item{}, err
 	}
-	if !exists {
-		return []Item{}, nil
+	items := make([]Item, 0, len(entries))
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("scan collection: %w", err)
+		}
+		if !isArtworkName(entry.Name()) {
+			continue
+		}
+		item, err := inspectItem(ctx, root, entry, limits, records[entry.Name()])
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, withRecordedMetadata(item, records))
 	}
-	return scanEntries(ctx, root, entries, records, inventoryLimits{maxBytes: maxBytes, maxPixels: maxPixels})
+	sortItems(items)
+	return items, nil
 }
 
 func readRoot(root string) ([]os.DirEntry, bool, error) {
@@ -56,40 +70,43 @@ func readRoot(root string) ([]os.DirEntry, bool, error) {
 	return entries, true, nil
 }
 
-func scanEntries(
-	ctx context.Context,
-	root string,
-	entries []os.DirEntry,
-	records map[string]manifestRecord,
-	limits inventoryLimits,
-) ([]Item, error) {
-	items := make([]Item, 0, len(entries))
-	for _, entry := range entries {
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("scan collection: %w", err)
-		}
-		name := entry.Name()
-		if isReserved(strings.ToLower(name)) || !isSupportedName(name) {
-			continue
-		}
-		record := records[name]
-		item, include, err := inspectItem(ctx, root, entry, limits, record)
-		if err != nil {
-			return nil, err
-		}
-		if include {
-			if metadata, ok := records[item.Name]; ok && metadata.item.Digest == item.Digest {
-				item.Key = metadata.item.Key
-				item.Origin = metadata.item.Origin
-				item.SourceKeys = append([]string(nil), metadata.item.SourceKeys...)
-				item.TransformKey = metadata.item.TransformKey
-				item.Derivative = metadata.item.Derivative
-			}
-			items = append(items, item)
-		}
+// withRecordedMetadata restores the committed logical identity of item when
+// its bytes still match the manifest record.
+func withRecordedMetadata(item Item, records map[string]Item) Item {
+	if record, ok := records[item.Name]; ok && record.Digest == item.Digest {
+		return withMetadata(item, metadataOf(record))
 	}
-	sortItems(items)
-	return items, nil
+	return item
+}
+
+// withMetadata returns item carrying the logical identity in metadata. The
+// committed bytes remain authoritative for every media fact.
+func withMetadata(item Item, metadata ItemMetadata) Item {
+	item.Key = metadata.Key
+	item.Origin = metadata.Origin
+	item.SourceKeys = append([]string(nil), metadata.SourceKeys...)
+	item.TransformKey = metadata.TransformKey
+	item.Derivative = metadata.Derivative
+	return item
+}
+
+func metadataOf(item Item) ItemMetadata {
+	return ItemMetadata{
+		Key: item.Key, Origin: item.Origin, SourceKeys: item.SourceKeys,
+		TransformKey: item.TransformKey, Derivative: item.Derivative,
+	}
+}
+
+// isArtworkName reports whether a directory entry name may be cataloged.
+// Control files and unsupported extensions are never artwork.
+func isArtworkName(name string) bool {
+	return !isReserved(strings.ToLower(name)) && isSupportedName(name)
+}
+
+// validArtworkName additionally rejects names that are not a single path
+// component, as required for names and keys recorded in control files.
+func validArtworkName(name string) bool {
+	return name != "" && filepath.Base(name) == name && !strings.ContainsAny(name, `/\`) && isArtworkName(name)
 }
 
 func isSupportedName(name string) bool {
@@ -134,23 +151,18 @@ func (s *store) plan(items []Item, input validatedImage, origin Origin) ([]Item,
 }
 
 func appendSourceKey(keys []string, key string) []string {
-	for _, existing := range keys {
-		if existing == key {
-			return append([]string(nil), keys...)
-		}
+	result := append([]string(nil), keys...)
+	if slices.Contains(keys, key) {
+		return result
 	}
-	result := append(append([]string(nil), keys...), key)
+	result = append(result, key)
 	sort.Strings(result)
 	return result
 }
 
-func collisionSafeName(items []Item, input validatedImage, origins ...Origin) string {
+func collisionSafeName(items []Item, input validatedImage, origin Origin) string {
 	extension := "." + string(input.typeID)
 	label := input.stem
-	var origin Origin
-	if len(origins) > 0 {
-		origin = origins[0]
-	}
 	if origin.Class == OriginSource {
 		_, identity, found := strings.Cut(origin.Key, ":")
 		if found {

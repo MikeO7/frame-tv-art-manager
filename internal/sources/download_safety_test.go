@@ -19,127 +19,119 @@ func (f downloadRoundTripper) RoundTrip(request *http.Request) (*http.Response, 
 	return f(request)
 }
 
-func TestExecuteDownloadRejectsTruncatedResponseAndRemovesTemporaryFile(t *testing.T) {
+// newDownloadTestLoader isolates the process temporary directory so tests can
+// prove rejected downloads leave no temporary files behind.
+func newDownloadTestLoader(t *testing.T, response func(*http.Request) *http.Response) (*Loader, string, string) {
+	t.Helper()
+	tempDir := t.TempDir()
+	t.Setenv("TMPDIR", tempDir)
 	artworkDir := t.TempDir()
-	loader := newTestLoader(&config.Config{
-		ArtworkDir:        artworkDir,
-		MaxDownloadSizeMB: 1,
-	}, slog.Default())
+	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir, MaxDownloadSizeMB: 1}, slog.New(slog.DiscardHandler))
 	loader.client = &http.Client{Transport: downloadRoundTripper(func(request *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode:    http.StatusOK,
-			ContentLength: 12,
-			Header:        http.Header{"Content-Type": []string{"image/jpeg"}},
-			Body:          io.NopCloser(strings.NewReader("short")),
-			Request:       request,
-		}, nil
+		return response(request), nil
 	})}
+	return loader, tempDir, artworkDir
+}
 
-	downloaded, err := loader.executeDownload(
-		context.Background(),
-		"https://example.test/truncated.jpg",
-		"001__direct__truncated.jpg",
-		"001__direct__truncated",
-	)
-	if err == nil || !strings.Contains(err.Error(), "incomplete download") {
-		t.Fatalf("executeDownload() error = %v, want incomplete download", err)
-	}
-	if downloaded {
-		t.Fatal("executeDownload() reported a truncated response as downloaded")
-	}
-	entries, readErr := os.ReadDir(artworkDir)
-	if readErr != nil {
-		t.Fatalf("read artwork directory: %v", readErr)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("truncated download left files behind: %v", entries)
+func assertDirectoryEmpty(t *testing.T, directory string) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("%s retained %v (read error %v)", directory, entries, err)
 	}
 }
 
-func TestExecuteDownloadRejectsNonImageAndRemovesTemporaryFile(t *testing.T) {
-	artworkDir := t.TempDir()
-	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir, MaxDownloadSizeMB: 1}, slog.Default())
-	loader.client = &http.Client{Transport: downloadRoundTripper(func(request *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"text/html"}},
-			Body:       io.NopCloser(strings.NewReader("<html>not artwork</html>")),
-			Request:    request,
-		}, nil
-	})}
-	downloaded, err := loader.executeDownload(
-		context.Background(), "https://example.test/art", "001__direct__art.jpg", "001__direct__art",
-	)
-	if err == nil || downloaded {
-		t.Fatalf("executeDownload() = %t, %v; want validation failure", downloaded, err)
+func TestPrepareDownloadRejectsUnsafeResponsesWithoutLeavingFiles(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		length      int64
+		body        string
+		want        string
+	}{
+		{name: "truncated body", contentType: "image/jpeg", length: 12, body: "short", want: "incomplete download"},
+		{name: "non-image content", contentType: "text/html", body: "<html>not artwork</html>", want: "validate downloaded image"},
+		{name: "corrupt image bytes", contentType: "image/jpeg", body: "not a jpeg", want: "validate downloaded image"},
 	}
-	entries, readErr := os.ReadDir(artworkDir)
-	if readErr != nil || len(entries) != 0 {
-		t.Fatalf("invalid download left files behind: %v, %v", entries, readErr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			loader, tempDir, artworkDir := newDownloadTestLoader(t, func(request *http.Request) *http.Response {
+				return &http.Response{
+					StatusCode: http.StatusOK, ContentLength: test.length,
+					Header:  http.Header{"Content-Type": []string{test.contentType}},
+					Body:    io.NopCloser(strings.NewReader(test.body)),
+					Request: request,
+				}
+			})
+			_, err := loader.prepareDownload(context.Background(), "https://example.test/art.jpg", "art.jpg", "direct--art")
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("prepareDownload() error = %v, want %q", err, test.want)
+			}
+			assertDirectoryEmpty(t, tempDir)
+			assertDirectoryEmpty(t, artworkDir)
+		})
 	}
 }
 
-func TestExecuteDownloadRejectsExplicitUnsupportedImageFormatBeforeReadingBody(t *testing.T) {
-	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 1}, slog.Default())
+func TestPrepareDownloadRejectsUnsupportedFormatBeforeReadingBody(t *testing.T) {
 	body := &trackingReadCloser{Reader: strings.NewReader("webp")}
-	loader.client = &http.Client{Transport: downloadRoundTripper(func(request *http.Request) (*http.Response, error) {
+	loader, tempDir, _ := newDownloadTestLoader(t, func(request *http.Request) *http.Response {
 		return &http.Response{
 			StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"image/webp"}},
 			Body: body, Request: request,
-		}, nil
-	})}
-	downloaded, err := loader.executeDownload(
-		context.Background(), "https://example.test/art.webp", "001__direct__art.jpg", "001__direct__art",
-	)
-	if err == nil || !strings.Contains(err.Error(), "unsupported source image format") || downloaded {
-		t.Fatalf("executeDownload() = %t, %v", downloaded, err)
+		}
+	})
+	_, err := loader.prepareDownload(context.Background(), "https://example.test/art.webp", "art.jpg", "direct--art")
+	if err == nil || !strings.Contains(err.Error(), "unsupported source image format") {
+		t.Fatalf("prepareDownload() error = %v", err)
 	}
 	if body.read || !body.closed {
 		t.Fatalf("unsupported response body read=%v closed=%v", body.read, body.closed)
 	}
+	assertDirectoryEmpty(t, tempDir)
 }
 
-func TestResolveDownloadNameUsesDetectedExtension(t *testing.T) {
-	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
-	response := &http.Response{Header: http.Header{"Content-Type": []string{"image/png"}}}
-	name := loader.resolveDownloadName(response, "https://example.test/same", "source.jpg")
-	if name != "source.png" {
-		t.Fatalf("resolveDownloadName() = %q, want source.png", name)
-	}
-}
-
-func TestExecuteDownloadNeverFollowsPredictableTemporarySymlink(t *testing.T) {
-	artworkDir := t.TempDir()
+func TestPrepareDownloadStagesPrivateTemporaryFileWithDetectedExtension(t *testing.T) {
+	payload := testPNGBytes(t)
+	loader, tempDir, artworkDir := newDownloadTestLoader(t, func(request *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK, ContentLength: int64(len(payload)),
+			Header: http.Header{"Content-Type": []string{"image/png"}},
+			Body:   io.NopCloser(strings.NewReader(string(payload))), Request: request,
+		}
+	})
+	legacyTemp := filepath.Join(artworkDir, "art.jpg.tmp")
 	outside := filepath.Join(t.TempDir(), "operator-state")
 	if err := os.WriteFile(outside, []byte("preserve me"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	legacyTemp := filepath.Join(artworkDir, "001__direct__safe.jpg.tmp")
 	if err := os.Symlink(outside, legacyTemp); err != nil {
 		t.Fatal(err)
 	}
-	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir, MaxDownloadSizeMB: 1}, slog.Default())
-	payload := testJPEGBytes(t)
-	loader.client = &http.Client{Transport: downloadRoundTripper(func(request *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusOK, ContentLength: int64(len(payload)),
-			Header: http.Header{"Content-Type": []string{"image/jpeg"}},
-			Body:   io.NopCloser(strings.NewReader(string(payload))), Request: request,
-		}, nil
-	})}
 
-	downloaded, err := loader.executeDownload(
-		context.Background(), "https://example.test/safe.jpg", "001__direct__safe.jpg", "001__direct__safe",
-	)
-	if err != nil || !downloaded {
-		t.Fatalf("executeDownload() = %t, %v", downloaded, err)
+	prepared, err := loader.prepareDownload(context.Background(), "https://example.test/art", "art.jpg", "custom")
+	if err != nil {
+		t.Fatalf("prepareDownload() error = %v", err)
+	}
+	defer func() { _ = os.Remove(prepared.path) }()
+	if filepath.Dir(prepared.path) != tempDir || prepared.filename != "art.png" ||
+		prepared.originKey != "source:custom" || prepared.written != int64(len(payload)) {
+		t.Fatalf("prepared download = %+v", prepared)
+	}
+	if info, err := os.Stat(prepared.path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("temporary file mode = %v, %v; want 0600", info, err)
 	}
 	if got, err := os.ReadFile(outside); err != nil || string(got) != "preserve me" {
-		t.Fatalf("symlink target = %q, %v", got, err)
+		t.Fatalf("predictable temporary symlink was followed: %q, %v", got, err)
 	}
-	info, err := os.Lstat(legacyTemp)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("legacy symlink changed: %v, %v", info, err)
+}
+
+func TestResolveDownloadNameUsesDetectedExtension(t *testing.T) {
+	t.Parallel()
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.New(slog.DiscardHandler))
+	response := &http.Response{Header: http.Header{"Content-Type": []string{"image/png"}}}
+	if name := loader.resolveDownloadName(response, "https://example.test/same", "source.jpg"); name != "source.png" {
+		t.Fatalf("resolveDownloadName() = %q, want source.png", name)
 	}
 }
 

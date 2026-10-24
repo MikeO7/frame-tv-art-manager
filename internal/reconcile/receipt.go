@@ -39,8 +39,11 @@ func (s *service) handleAppliedReceipt(
 	receipt samsung.Receipt,
 ) (State, samsung.Observation, error) {
 	updatedObservation := receiptObservation(observation, state.Pending.Command, receipt)
-	if state.Capacity.Probe && state.Pending.Command.Kind == CommandUpload {
-		state.Capacity = CapacityEvidence{}
+	if state.Pending.Command.Kind == CommandUpload {
+		if state.Capacity.Probe {
+			state.Capacity = CapacityEvidence{}
+		}
+		state.Capacity.Shortfalls = 0
 	}
 	state.Revision++
 	state.Pending.Phase = PhaseApplied
@@ -48,11 +51,8 @@ func (s *service) handleAppliedReceipt(
 	if err := s.store.save(ctx, state); err != nil {
 		return state, observation, err
 	}
-	resolved, changed, err := resolvePending(state, observation, s.clock.Now())
-	if err != nil || !changed {
-		if err == nil {
-			err = ErrRecoveryRequired
-		}
+	resolved, err := resolvePending(state, observation, s.clock.Now())
+	if err != nil {
 		return state, observation, err
 	}
 	resolved.Revision++
@@ -71,18 +71,21 @@ func (s *service) handleDefiniteRejection(
 ) (State, samsung.Observation, error) {
 	state.Revision++
 	commandKind := state.Pending.Command.Kind
-	if state.Capacity.Probe && commandKind == CommandUpload {
+	previous := state.Capacity
+	if previous.Probe && commandKind == CommandUpload {
 		state.Capacity = CapacityEvidence{}
 	}
 	state.Pending = nil
-	if commandKind == CommandUpload && receipt.Outcome == samsung.OutcomeNotApplied &&
-		errors.Is(applyErr, samsung.ErrStorageFull) {
-		state.Capacity = CapacityEvidence{
-			Known: true, Maximum: len(observation.Inventory.ContentIDs), ObservedAt: s.clock.Now(),
-		}
+	storageFull := commandKind == CommandUpload && receipt.Outcome == samsung.OutcomeNotApplied &&
+		errors.Is(applyErr, samsung.ErrStorageFull)
+	if storageFull {
+		state.Capacity = storageFullCapacity(previous, len(observation.Inventory.ContentIDs), s.clock.Now())
 	}
 	if err := s.store.save(context.WithoutCancel(ctx), state); err != nil {
 		return state, observation, errors.Join(applyErr, err)
+	}
+	if storageFull {
+		return state, observation, &storageFullRejectionError{cause: applyErr}
 	}
 	if applyErr == nil {
 		applyErr = errors.New("samsung command was not applied")

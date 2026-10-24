@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"path/filepath"
+	"slices"
 )
 
 const (
@@ -46,44 +46,15 @@ func New(cfg Config) (Store, error) {
 	}, nil
 }
 
+// Import validates and commits one artwork through the same transaction as
+// ImportBatch.
 func (s *store) Import(ctx context.Context, request ImportRequest) (Snapshot, error) {
-	if request.Reader == nil {
-		return Snapshot{}, errors.New("import reader is nil")
-	}
-	if err := s.acquire(ctx); err != nil {
-		return Snapshot{}, err
-	}
-	defer s.release()
-
-	input, err := s.validateRequest(ctx, request)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	origin, err := importOrigin(request.Origin, input)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("validate import origin: %w", err)
-	}
-	items, err := s.inventory(ctx, request.DryRun)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	projected, change, duplicate := s.plan(items, input, origin)
-	if request.DryRun {
-		return buildSnapshot(s.root, items, []Change{change}, true), nil
-	}
-	return s.publish(ctx, input, projected, change, duplicate)
-}
-
-type batchImportAddition struct {
-	input validatedImage
-	item  Item
+	return s.ImportBatch(ctx, []ImportRequest{request})
 }
 
 // ImportBatch validates and commits multiple independent imports under one
 // collection mutation. It inventories and verifies the collection once for
 // the whole batch while preserving the ordered change result of each request.
-//
-//nolint:funlen,gocognit,gocyclo // Validation, projection, atomic commit, and verification are one collection transaction.
 func (s *store) ImportBatch(ctx context.Context, requests []ImportRequest) (Snapshot, error) {
 	if len(requests) == 0 {
 		return Snapshot{}, errors.New("import batch is empty")
@@ -119,46 +90,47 @@ func (s *store) ImportBatch(ctx context.Context, requests []ImportRequest) (Snap
 	if err != nil {
 		return Snapshot{}, err
 	}
-	projected := cloneItems(items)
-	changes := make([]Change, 0, len(requests))
-	additions := make([]batchImportAddition, 0, len(requests))
-	for index, input := range inputs {
-		next, change, duplicate := s.plan(projected, input, origins[index])
-		if !duplicate {
-			if s.maxItems > 0 && len(next) > s.maxItems {
-				return Snapshot{}, fmt.Errorf("collection item limit %d exceeded", s.maxItems)
-			}
-			for _, item := range next {
-				if item.Name == change.Name {
-					additions = append(additions, batchImportAddition{input: input, item: item})
-					break
-				}
-			}
-		}
-		projected = next
-		changes = append(changes, change)
+	plan, data, err := s.planImports(items, inputs, origins)
+	if err != nil {
+		return Snapshot{}, err
 	}
 	if dryRun {
-		return buildSnapshot(s.root, items, changes, true), nil
+		return buildSnapshot(s.root, items, plan.changes, nil, true), nil
 	}
 	if err := ensureLayout(s.root); err != nil {
 		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
 	}
-	if len(additions) == 0 {
-		if err := commitManifest(ctx, s.root, newManifest(projected)); err != nil {
+	if len(plan.additions) == 0 {
+		if err := commitManifest(ctx, s.root, newManifest(plan.items)); err != nil {
 			return Snapshot{}, fmt.Errorf("commit import batch manifest: %w", err)
 		}
-	} else if err := s.commitImportBatch(ctx, additions, projected); err != nil {
+	} else if err := s.commitBatch(ctx, plan, func(_ context.Context, item Item) ([]byte, error) {
+		return data[item.Name], nil
+	}); err != nil {
 		return Snapshot{}, fmt.Errorf("commit import batch: %w", err)
 	}
-	committed, err := scan(ctx, s.root, s.maxImportBytes, s.maxPixels)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
+	return s.verifyCommitted(ctx, plan.items, plan.changes)
+}
+
+// planImports projects each validated input onto the collection in order and
+// returns the resulting plan with the bytes of every new addition by name.
+func (s *store) planImports(items []Item, inputs []validatedImage, origins []Origin) (batchPlan, map[string][]byte, error) {
+	plan := batchPlan{items: cloneItems(items)}
+	data := make(map[string][]byte, len(inputs))
+	for index, input := range inputs {
+		next, change, duplicate := s.plan(plan.items, input, origins[index])
+		if !duplicate {
+			if s.maxItems > 0 && len(next) > s.maxItems {
+				return batchPlan{}, nil, fmt.Errorf("collection item limit %d exceeded", s.maxItems)
+			}
+			added := slices.IndexFunc(next, func(item Item) bool { return item.Name == change.Name })
+			plan.additions = append(plan.additions, next[added])
+			data[change.Name] = input.data
+		}
+		plan.items = next
+		plan.changes = append(plan.changes, change)
 	}
-	if err := verifyExpected(projected, committed); err != nil {
-		return Snapshot{}, fmt.Errorf("verify committed manifest: %w", err)
-	}
-	return buildSnapshot(s.root, committed, changes, false), nil
+	return plan, data, nil
 }
 
 func importOrigin(requested Origin, input validatedImage) (Origin, error) {
@@ -202,48 +174,46 @@ func (s *store) validateRequest(ctx context.Context, request ImportRequest) (val
 	return input, nil
 }
 
-func (s *store) inventory(ctx context.Context, dryRun bool) ([]Item, error) {
+// recover validates the layout and finishes an interrupted transaction. A dry
+// run never mutates, so it refuses to observe a collection needing recovery.
+func (s *store) recover(ctx context.Context, dryRun bool) error {
 	if err := validateExistingLayout(s.root); err != nil {
-		return nil, fmt.Errorf("validate collection layout: %w", err)
+		return fmt.Errorf("validate collection layout: %w", err)
 	}
 	if dryRun {
-		if err := rejectActiveTransaction(ctx, s.root); err != nil {
-			return nil, err
-		}
-	} else if err := recoverTransaction(ctx, s.root); err != nil {
-		return nil, fmt.Errorf("recover collection: %w", err)
+		return rejectActiveTransaction(ctx, s.root)
 	}
-	items, err := scan(ctx, s.root, s.maxImportBytes, s.maxPixels)
+	if err := recoverTransaction(ctx, s.root); err != nil {
+		return fmt.Errorf("recover collection: %w", err)
+	}
+	return nil
+}
+
+func (s *store) inventory(ctx context.Context, dryRun bool) ([]Item, error) {
+	if err := s.recover(ctx, dryRun); err != nil {
+		return nil, err
+	}
+	items, err := scan(ctx, s.root, s.limits())
 	if err != nil {
 		return nil, fmt.Errorf("inventory collection: %w", err)
 	}
 	return items, nil
 }
 
-func (s *store) publish(
-	ctx context.Context,
-	input validatedImage,
-	projected []Item,
-	change Change,
-	duplicate bool,
-) (Snapshot, error) {
-	if !duplicate && s.maxItems > 0 && len(projected) > s.maxItems {
-		return Snapshot{}, fmt.Errorf("collection item limit %d exceeded", s.maxItems)
-	}
-	if err := ensureLayout(s.root); err != nil {
-		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
-	}
-	if err := s.commit(ctx, input, projected, duplicate); err != nil {
-		return Snapshot{}, fmt.Errorf("commit import: %w", err)
-	}
-	committed, err := scan(ctx, s.root, s.maxImportBytes, s.maxPixels)
+// verifyCommitted rescans the collection and confirms it matches expected.
+func (s *store) verifyCommitted(ctx context.Context, expected []Item, changes []Change) (Snapshot, error) {
+	committed, err := scan(ctx, s.root, s.limits())
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
 	}
-	if err := verifyExpected(projected, committed); err != nil {
+	if err := verifyExpected(expected, committed); err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed manifest: %w", err)
 	}
-	return buildSnapshot(s.root, committed, []Change{change}, false), nil
+	return buildSnapshot(s.root, committed, changes, nil, false), nil
+}
+
+func (s *store) limits() inventoryLimits {
+	return inventoryLimits{maxBytes: s.maxImportBytes, maxPixels: s.maxPixels}
 }
 
 func (s *store) acquire(ctx context.Context) error {
@@ -284,13 +254,6 @@ func verifyExpected(expected, committed []Item) error {
 		if !itemEqual(expected[index], committed[index]) {
 			return fmt.Errorf("item %d changed during publication", index)
 		}
-	}
-	return nil
-}
-
-func copyBytes(dst io.Writer, data []byte) error {
-	if _, err := dst.Write(data); err != nil {
-		return fmt.Errorf("write artwork bytes: %w", err)
 	}
 	return nil
 }

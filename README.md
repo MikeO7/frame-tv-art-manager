@@ -237,6 +237,13 @@ defaults are 3840×2160 and JPEG quality 95. JPEG and PNG inputs are fully
 decoded before use; PNG optimization is enabled by default and preserves PNG
 output, including alpha.
 
+Each transform is checked against `IMAGE_MAX_WORKING_MEMORY_MB` before it
+starts. Linear-light resizing (the default) works in bounded bands, so a
+24-megapixel camera photo needs roughly 250 MiB and 8K inputs fit the default
+512 MiB budget. Gamma-space resizing (`IMAGE_LINEAR_LIGHT_RESIZE=false`) needs
+more memory and rejects 24-megapixel inputs at the default budget; raise the
+budget if you use it with large photos.
+
 Portrait images can be handled in three ways:
 
 - `crop` fills the screen by cropping to the target aspect ratio;
@@ -332,6 +339,7 @@ the table below covers the settings most people change.
 | `HEALTH_BIND_ADDRESS` | `0.0.0.0` | Local IP address for the HTTP listener |
 | `DRY_RUN` | `false` | Read-only collection and TV planning with no durable mutations |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Delete TV art not known to this manager |
+| `ROTATION_INTERVAL_DAYS` | `14` | How long each artwork stays on a full TV before it rotates out; fractions allowed, `0` disables rotation |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 
 Malformed numeric and boolean values currently fall back to their defaults.
@@ -373,6 +381,44 @@ mode, and solar coordinates are validated at startup.
 does not create or modify local files, pair a TV, persist tokens or state, send
 Wake-on-LAN, expose the upload mutation, or change the TV.
 
+### Full TVs and artwork rotation
+
+The manager does not estimate free TV storage or upload test files to probe it.
+It learns the TV's capacity the first time the TV rejects a real artwork upload
+because storage is full. The same applies when the TV acknowledges an upload by
+reusing an existing content ID without increasing the TV Inventory: ownership
+moves to the acknowledged artwork, and the unchanged count becomes the known
+capacity.
+
+When the Artwork Collection is larger than that capacity, the manager rotates
+artwork instead of stopping. Each piece it uploaded stays on the TV for at
+least `ROTATION_INTERVAL_DAYS` (two weeks by default). After that, it is swapped
+for collection artwork that is waiting: artwork that has never been shown
+comes first, then artwork that has been off the TV the longest. Artwork that
+rotated out is not brought back until it has been away for the same interval,
+so a large collection cycles through completely. Each swap deletes one piece
+and immediately uploads its replacement, so the TV is never more than one piece
+below capacity. Rotation only removes artwork this manager uploaded; the local
+files stay in the collection, and artwork you added to the TV yourself is never
+rotated out.
+
+While rotation is working, a full TV is a normal state: the Sync Cycle succeeds,
+and `/status` reports `rotating`, `artwork_waiting`, and `next_rotation` for the
+TV. If the TV keeps rejecting uploads after space was freed (for example, when
+it limits storage by size rather than by count), rotation pauses after three
+such rejections until an upload succeeds again.
+
+Set `ROTATION_INTERVAL_DAYS=0` to disable rotation. A full TV then reports
+`storage full`, preserves existing artwork, and stops later artwork uploads.
+Rotation also cannot help when the TV is full of artwork the manager does not
+own; that case reports `storage full` too. While the TV Inventory remains at the
+recorded full count, later cycles continue reporting `storage full` without
+another artwork upload. Removing an artwork lets uploads resume immediately;
+otherwise, after 24 hours, one real pending artwork upload is retried. A
+successful retry clears the full condition and normal Reconciliation resumes;
+another rejection restarts the quiet period. With rotation enabled, the same
+daily retry checks whether the TV has gained space.
+
 ## Monitoring
 
 The HTTP server exposes:
@@ -388,18 +434,6 @@ The HTTP server exposes:
 The container healthcheck calls the application's `-livenesscheck` command,
 which reads `/live` on `HEALTH_PORT`. Set `HEALTH_PORT=0` only if you also
 override or disable the image healthcheck in your runtime configuration.
-
-The manager does not estimate free TV storage or upload test files to probe it.
-If the TV rejects a real desired artwork upload because storage is full, the
-Sync Cycle reports `storage full`, preserves existing artwork, and stops later
-mutations. The same fail-safe applies when the TV acknowledges an upload by
-reusing an existing content ID without increasing the TV Inventory: ownership
-moves to the acknowledged artwork, and the unchanged count becomes the known
-capacity. While the TV Inventory remains at the recorded full count, later
-cycles continue reporting `storage full` without another artwork upload. Removing an
-artwork lets uploads resume immediately; otherwise, after 24 hours, one real
-pending artwork upload is retried. A successful retry clears the full condition
-and normal Reconciliation resumes; another rejection restarts the quiet period.
 
 A failed healthcheck does not restart a container by itself. Use a Docker
 restart policy or an orchestrator policy if automatic recovery is required.
@@ -438,6 +472,8 @@ The repository keeps its verification commands in the Makefile:
 ```bash
 make tools       # install the pinned local tools
 make test        # tests with shuffled order and a coverage profile
+make race        # tests under the race detector
+make bench       # image-pipeline benchmarks
 make agent-fix   # formatting, Actions validation, lint, hooks, tests, coverage, vuln scan
 make docker      # build the local container image
 ```
@@ -450,7 +486,7 @@ Run the isolated browser and API journeys with Node.js 26 and pnpm 12:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm exec e2e-web install chromium --with-deps
+pnpm exec e2e-web install chromium   # add --with-deps on a Linux host without browser libraries
 make e2e
 ```
 
@@ -460,6 +496,16 @@ loopback TV address. It never reads operator configuration or contacts a real TV
 Telemetry is disabled. Reports, screenshots, logs, and revision metadata are
 saved under `.e2e/`. See [the flow inventory](tests/e2e/README.md) for coverage
 and device limits.
+
+### Continuous integration
+
+A single [`CI` workflow](.github/workflows/ci.yml) runs lint, pre-commit hooks,
+tests with coverage, race tests, the vulnerability scan, and the end-to-end
+journeys in parallel. Pull requests also build the `linux/amd64` image. Pushes
+to `main` and `v*` tags publish the multi-arch image to GHCR only after every
+check passes, and tags also publish the GitHub release. The workflow reruns
+weekly to catch newly published vulnerabilities. Dependabot opens one grouped
+update per week for Go modules, Actions, Docker images, and the e2e runner.
 
 ## License
 

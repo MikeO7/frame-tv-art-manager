@@ -1,11 +1,11 @@
 package reconcile
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -36,13 +36,7 @@ func (s *service) effectivePolicy(request Policy) Policy {
 	return normalizePolicy(request)
 }
 
-func observe(ctx context.Context, tv samsung.Adapter, request samsung.ObserveRequest) (samsung.Observation, error) {
-	return tv.Observe(ctx, request)
-}
-
-func baseCapabilities() samsung.CapabilitySet {
-	return samsung.CapabilityArtStateObservation | samsung.CapabilityUserArtInventory
-}
+const baseCapabilities = samsung.CapabilityArtStateObservation | samsung.CapabilityUserArtInventory
 
 func initialObservationCapabilities(policy Policy) samsung.CapabilitySet {
 	if policy.Power == PowerOn {
@@ -52,7 +46,7 @@ func initialObservationCapabilities(policy Policy) samsung.CapabilitySet {
 }
 
 func convergenceObservationCapabilities(policy Policy) samsung.CapabilitySet {
-	required := baseCapabilities()
+	required := baseCapabilities
 	if policy.Slideshow.Mode != PolicyPreserve {
 		required |= samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite
 	}
@@ -65,77 +59,37 @@ func convergenceObservationCapabilities(policy Policy) samsung.CapabilitySet {
 	return required
 }
 
-func requiredCapabilities(commands []CommandIntent) samsung.CapabilitySet {
-	if len(commands) == 1 && commands[0].Kind == CommandWake {
+func requiredCapabilities(command CommandIntent) samsung.CapabilitySet {
+	required := baseCapabilities
+	switch command.Kind {
+	case CommandWake:
 		return samsung.CapabilityRemotePower
-	}
-	required := baseCapabilities()
-	for _, command := range commands {
-		switch command.Kind {
-		case CommandUpload:
-			required |= samsung.CapabilityImageUpload
-		case CommandDeleteOwned, CommandDeleteUnknown:
-			required |= samsung.CapabilityImageDeletion
-		case CommandSelect:
-			required |= samsung.CapabilityImageSelection
-		case CommandSlideshow:
-			required |= samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite
-		case CommandBrightness:
-			required |= samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite
-		case CommandPowerOff, CommandWake:
-			required |= samsung.CapabilityRemotePower
-		}
+	case CommandUpload:
+		required |= samsung.CapabilityImageUpload
+	case CommandDeleteOwned, CommandDeleteUnknown:
+		required |= samsung.CapabilityImageDeletion
+	case CommandSelect:
+		required |= samsung.CapabilityImageSelection
+	case CommandSlideshow:
+		required |= samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite
+	case CommandBrightness:
+		required |= samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite
+	case CommandPowerOff:
+		required |= samsung.CapabilityRemotePower
 	}
 	return required
 }
 
-func firstUnsupported(commands []CommandIntent) *CommandIntent {
-	for index := range commands {
-		switch commands[index].Kind {
-		case CommandUpload, CommandDeleteOwned, CommandDeleteUnknown, CommandSelect,
-			CommandSlideshow, CommandBrightness, CommandPowerOff, CommandWake:
-		default:
-			return &commands[index]
-		}
-	}
-	return nil
-}
-
+// sameIntent compares intents by value, including the settings behind their
+// optional pointers.
 func sameIntent(left, right CommandIntent) bool {
-	if !sameIntentPayload(left, right) {
-		return false
-	}
-	return equalOptionalSlideshow(left.PreviousSlideshow, right.PreviousSlideshow) &&
-		equalOptionalSlideshow(left.DesiredSlideshow, right.DesiredSlideshow) &&
-		equalOptionalInt(left.PreviousValue, right.PreviousValue) &&
-		equalOptionalInt(left.DesiredValue, right.DesiredValue)
-}
-
-func sameIntentPayload(left, right CommandIntent) bool {
-	return left.Kind == right.Kind && left.Digest == right.Digest && left.ContentID == right.ContentID &&
-		left.Name == right.Name && left.Path == right.Path && left.FileType == right.FileType &&
-		left.Size == right.Size && left.Matte == right.Matte &&
-		left.RemoveUnknownApproved == right.RemoveUnknownApproved
+	return reflect.DeepEqual(left, right)
 }
 
 func withoutCommand(commands []CommandIntent, kind CommandKind) []CommandIntent {
 	return slices.DeleteFunc(slices.Clone(commands), func(command CommandIntent) bool {
 		return command.Kind == kind
 	})
-}
-
-func equalOptionalInt(left, right *int) bool {
-	if left == nil || right == nil {
-		return left == right
-	}
-	return *left == *right
-}
-
-func equalOptionalSlideshow(left, right *samsung.SlideshowSetting) bool {
-	if left == nil || right == nil {
-		return left == right
-	}
-	return *left == *right
 }
 
 func samsungCommand(intent CommandIntent) (samsung.Command, error) {
@@ -181,11 +135,4 @@ func statusForError(err error) Status {
 	default:
 		return StatusNotApplied
 	}
-}
-
-func dryRunStatus(dryRun bool) Status {
-	if dryRun {
-		return StatusIncompleteDryRun
-	}
-	return StatusComplete
 }

@@ -47,12 +47,7 @@ func (s *service) stateForFirstRun(
 	if err != nil || !exists {
 		return state, err
 	}
-	if err := validateObservation(observation); err != nil {
-		return state, fmt.Errorf("migrate legacy mapping: %w", err)
-	}
-	bindings, ignoredEntries, err := projectLegacyMapping(
-		snapshot, observation, mapping, s.clock.Now(),
-	)
+	bindings, ignoredEntries, err := projectLegacyMapping(snapshot, observation, mapping, s.clock.Now())
 	if err != nil {
 		return state, err
 	}
@@ -78,9 +73,6 @@ func (s *service) completeDeferredLegacyMigration(
 	observation samsung.Observation,
 	dryRun bool,
 ) (State, error) {
-	if !state.LegacyMigrationPending {
-		return state, nil
-	}
 	if state.Pending != nil || len(state.Bindings) != 0 {
 		return state, errors.New("deferred legacy migration requires idle empty reconciliation state")
 	}
@@ -91,9 +83,6 @@ func (s *service) completeDeferredLegacyMigration(
 	bindings := map[string]Binding{}
 	ignoredEntries := 0
 	if exists {
-		if err := validateObservation(observation); err != nil {
-			return state, fmt.Errorf("migrate legacy mapping: %w", err)
-		}
 		bindings, ignoredEntries, err = projectLegacyMapping(snapshot, observation, mapping, s.clock.Now())
 		if err != nil {
 			return state, err
@@ -117,12 +106,17 @@ func (s *service) completeDeferredLegacyMigration(
 	return migrated, nil
 }
 
+// projectLegacyMapping binds legacy mapping entries whose artwork is both in
+// the snapshot and on a trustworthy observed TV Inventory.
 func projectLegacyMapping(
 	snapshot collection.Snapshot,
 	observation samsung.Observation,
 	mapping map[string]string,
 	confirmedAt time.Time,
 ) (map[string]Binding, int, error) {
+	if _, err := validateObservation(observation); err != nil {
+		return nil, 0, fmt.Errorf("migrate legacy mapping: %w", err)
+	}
 	items := make(map[string]collection.Item, len(snapshot.Items))
 	for _, item := range snapshot.Items {
 		items[item.Name] = item

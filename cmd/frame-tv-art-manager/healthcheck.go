@@ -27,14 +27,6 @@ func runHealthCheck(path string) {
 	os.Exit(0)
 }
 
-func performHealthCheck() error {
-	return performEndpointCheck("/health")
-}
-
-func performLivenessCheck() error {
-	return performEndpointCheck("/live")
-}
-
 func performEndpointCheck(path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
 	defer cancel()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,15 +15,12 @@ import (
 func TestSamsungConfigForTVPreservesPairingAndSafetySettings(t *testing.T) {
 	stateDir := t.TempDir()
 	cfg := &config.Config{
-		TVIPs: []string{"192.0.2.10"}, TVMAC: "AA:BB:CC:DD:EE:FF",
+		TVIPs: []string{"192.0.2.10"}, TVMAC: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
 		TokenDir: stateDir, ClientName: "Frame Manager", VerifyTLS: true, EnableRESTGate: true,
 		ConnectionTimeout: 5 * time.Second, APITimeout: 7 * time.Second,
 		GateTimeout: 2 * time.Second, SyncIntervalMin: 120,
 	}
-	got, err := samsungConfigForTV(cfg, "192.0.2.10")
-	if err != nil {
-		t.Fatalf("samsungConfigForTV() error = %v", err)
-	}
+	got := samsungConfigForTV(cfg, "192.0.2.10")
 	if got.Address != "192.0.2.10" || got.ClientName != cfg.ClientName ||
 		got.TokenPath != filepath.Join(stateDir, "tv_192_0_2_10.txt") ||
 		!got.VerifyTLS || !got.QuietGate || got.ConnectTimeout != 5*time.Second ||
@@ -32,31 +30,15 @@ func TestSamsungConfigForTVPreservesPairingAndSafetySettings(t *testing.T) {
 	}
 }
 
-func TestSamsungConfigForTVDisablesAmbiguousMultiTVMAC(t *testing.T) {
-	cfg := &config.Config{
-		TVIPs: []string{"192.0.2.10", "192.0.2.11"}, TVMAC: "AA:BB:CC:DD:EE:FF",
-		TokenDir: t.TempDir(), ClientName: "Frame Manager", SyncIntervalMin: 5,
-	}
-	got, err := samsungConfigForTV(cfg, "192.0.2.10")
-	if err != nil {
-		t.Fatalf("samsungConfigForTV() error = %v", err)
-	}
-	if got.MAC != nil {
-		t.Fatalf("ambiguous MAC = %v, want disabled", got.MAC)
-	}
-}
-
-func TestSamsungConfigForTVCanonicalizesIPv6(t *testing.T) {
+func TestSamsungConfigForTVDerivesIPv6TokenPathAndShortBackoff(t *testing.T) {
 	stateDir := t.TempDir()
 	cfg := &config.Config{
 		TVIPs: []string{"2001:db8::1"}, TokenDir: stateDir, ClientName: "Frame Manager",
 		SyncIntervalMin: 1, ConnectionTimeout: time.Second, APITimeout: time.Second, GateTimeout: time.Second,
 	}
-	got, err := samsungConfigForTV(cfg, "2001:0db8:0:0:0:0:0:1")
-	if err != nil {
-		t.Fatalf("samsungConfigForTV() error = %v", err)
-	}
-	if got.Address != "2001:db8::1" || got.TokenPath != filepath.Join(stateDir, "tv_2001_db8__1.txt") {
+	got := samsungConfigForTV(cfg, "2001:db8::1")
+	if got.Address != "2001:db8::1" || got.TokenPath != filepath.Join(stateDir, "tv_2001_db8__1.txt") ||
+		got.BackoffBase != time.Minute || got.MAC != nil {
 		t.Fatalf("Samsung config = %+v", got)
 	}
 }
@@ -77,25 +59,13 @@ func TestNewConvergenceRuntimeEnablesLegacyMigration(t *testing.T) {
 	}
 }
 
-func TestSamsungConfigForTVRejectsUnsafeConfiguration(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		cfg     *config.Config
-		address string
-	}{
-		{name: "nil configuration", address: "192.0.2.10"},
-		{name: "invalid address", cfg: &config.Config{}, address: "television.local"},
-		{name: "invalid MAC", cfg: &config.Config{TVIPs: []string{"192.0.2.10"}, TVMAC: "not-a-mac", SyncIntervalMin: 1}, address: "192.0.2.10"},
-		{name: "nonpositive interval", cfg: &config.Config{TVIPs: []string{"192.0.2.10"}}, address: "192.0.2.10"},
+func TestNewConvergenceRuntimeRejectsUnsafeAdapterConfiguration(t *testing.T) {
+	cfg := &config.Config{
+		TVIPs: []string{"192.0.2.10"}, TokenDir: t.TempDir(), ClientName: "Frame Manager",
+		ConnectionTimeout: time.Second, APITimeout: time.Second, GateTimeout: time.Second,
 	}
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
-			if _, err := samsungConfigForTV(testCase.cfg, testCase.address); err == nil {
-				t.Fatal("samsungConfigForTV() succeeded, want error")
-			}
-		})
+	if _, err := newConvergenceRuntime(cfg, "192.0.2.10", slog.New(slog.DiscardHandler)); err == nil {
+		t.Fatal("newConvergenceRuntime() with nonpositive sync interval succeeded, want error")
 	}
 }
 

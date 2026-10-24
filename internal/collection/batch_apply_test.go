@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -176,13 +177,13 @@ func TestPrepareRecoversBatchTransaction(t *testing.T) {
 	if err := ensureLayout(root); err != nil {
 		t.Fatalf("ensure layout: %v", err)
 	}
-	effect, err := s.stageBatchAddition(context.Background(), stageDirectory, plan.additions[0], 0)
+	effect, err := s.stageBatchAddition(context.Background(), plan.additions[0], 0, stagedDirectory(stageDirectory))
 	if err != nil {
 		t.Fatalf("stage batch addition: %v", err)
 	}
 	tx := transaction{
 		Version: 1, Kind: transactionKindBatch, Additions: []transactionEffect{effect},
-		Deletions: []transactionEffect{{Final: seed.Items[0].Path, Digest: stringHex(seed.Items[0].Digest[:])}},
+		Deletions: []transactionEffect{{Final: seed.Items[0].Path, Digest: hex.EncodeToString(seed.Items[0].Digest[:])}},
 		Next:      newManifest(items),
 	}
 	if err := writeJournal(context.Background(), root, tx); err != nil {
@@ -434,7 +435,7 @@ func TestPrepareCompletesIdempotentBatchRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan staged collection: %v", err)
 	}
-	effect, err := s.stageBatchAddition(context.Background(), stageDirectory, items[0], 0)
+	effect, err := s.stageBatchAddition(context.Background(), items[0], 0, stagedDirectory(stageDirectory))
 	if err != nil {
 		t.Fatalf("stage batch addition: %v", err)
 	}
@@ -446,7 +447,7 @@ func TestPrepareCompletesIdempotentBatchRecovery(t *testing.T) {
 		Version: 1, Kind: transactionKindBatch, Next: newManifest(items),
 		Additions: []transactionEffect{effect},
 		Deletions: []transactionEffect{{
-			Final: filepath.Join(root, "already-absent.png"), Digest: stringHex(retiredDigest[:]),
+			Final: filepath.Join(root, "already-absent.png"), Digest: hex.EncodeToString(retiredDigest[:]),
 		}},
 	}
 	if err := writeJournal(context.Background(), root, tx); err != nil {
@@ -488,7 +489,7 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("scan staged collection: %v", err)
 		}
-		effect, err := s.stageBatchAddition(context.Background(), stageDirectory, items[0], 0)
+		effect, err := s.stageBatchAddition(context.Background(), items[0], 0, stagedDirectory(stageDirectory))
 		if err != nil {
 			t.Fatalf("stage batch addition: %v", err)
 		}
@@ -533,7 +534,7 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 		}
 		tx := transaction{
 			Version: 1, Kind: transactionKindBatch, Next: newManifest(nil),
-			Deletions: []transactionEffect{{Final: final, Digest: stringHex(originalDigest[:])}},
+			Deletions: []transactionEffect{{Final: final, Digest: hex.EncodeToString(originalDigest[:])}},
 		}
 		if err := writeJournal(context.Background(), root, tx); err != nil {
 			t.Fatalf("write batch intent: %v", err)
@@ -550,7 +551,7 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 
 func TestPrepareRejectsMalformedBatchTransactionIntents(t *testing.T) {
 	digest := sha256.Sum256([]byte("expected"))
-	digestText := stringHex(digest[:])
+	digestText := hex.EncodeToString(digest[:])
 	tests := []struct {
 		name   string
 		mutate func(string, *transaction)
@@ -751,7 +752,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 			Origin: Origin{Key: "operator:missing.png", Class: OriginOperator},
 		}
 		plan := batchPlan{items: []Item{item}, additions: []Item{item}}
-		if err := valueStore.(*store).commitBatch(context.Background(), t.TempDir(), plan); err == nil {
+		if err := valueStore.(*store).commitBatch(context.Background(), plan, stagedDirectory(t.TempDir())); err == nil {
 			t.Fatal("commitBatch accepted a vanished staged source")
 		}
 		if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
@@ -772,7 +773,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 		old := Item{Name: "old.png", Path: filepath.Join(root, "old.png"), Digest: digest}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := valueStore.(*store).commitBatch(ctx, t.TempDir(), batchPlan{deletions: []Item{old}}); !errors.Is(err, context.Canceled) {
+		if err := valueStore.(*store).commitBatch(ctx, batchPlan{deletions: []Item{old}}, stagedDirectory(t.TempDir())); !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled commitBatch error = %v", err)
 		}
 		if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
@@ -808,7 +809,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 		digest := sha256.Sum256([]byte("preserve"))
 		tx := transaction{
 			Next:      newManifest(nil),
-			Deletions: []transactionEffect{{Final: link, Digest: stringHex(digest[:])}},
+			Deletions: []transactionEffect{{Final: link, Digest: hex.EncodeToString(digest[:])}},
 		}
 		if err := recoverBatchTransaction(context.Background(), root, tx); err == nil {
 			t.Fatal("recovery accepted a symlink deletion target")
@@ -872,7 +873,7 @@ func TestStableBatchSourceAndCleanupRejectUnsafeInputs(t *testing.T) {
 	}
 }
 
-func TestBatchApplyCancellationAndDefensiveBranches(t *testing.T) {
+func TestBatchApplyHonorsCancellationAndRejectsUnsafeRecovery(t *testing.T) {
 	t.Run("store mutation wait", func(t *testing.T) {
 		valueStore, err := New(Config{Root: filepath.Join(t.TempDir(), "collection")})
 		if err != nil {
@@ -907,7 +908,7 @@ func TestBatchApplyCancellationAndDefensiveBranches(t *testing.T) {
 		next[0].Origin = Origin{Key: "source:item", Class: OriginSource}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := valueStore.(*store).applyOriginsOnly(ctx, current, next, buildSnapshot(root, next, nil, false)); !errors.Is(err, context.Canceled) {
+		if _, err := valueStore.(*store).applyOriginsOnly(ctx, current, next, buildSnapshot(root, next, nil, nil, false)); !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled origin commit error = %v", err)
 		}
 		if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
@@ -931,9 +932,6 @@ func TestBatchApplyCancellationAndDefensiveBranches(t *testing.T) {
 		}
 	})
 
-	if itemsEqual(nil, []Item{{Name: "extra.png"}}) {
-		t.Fatal("item slices with different lengths compare equal")
-	}
 	valueStore, err := New(Config{Root: t.TempDir()})
 	if err != nil {
 		t.Fatalf("new store: %v", err)

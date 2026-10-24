@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// summaryBoxWidth is the number of runes between the box's side borders.
+const summaryBoxWidth = 50
+
 // CycleSummary holds the per-cycle metrics rendered by LogCycleSummary,
 // bundling the many report inputs into a single cohesive value.
 type CycleSummary struct {
@@ -26,66 +29,29 @@ func LogCycleSummary(logger *slog.Logger, s CycleSummary) {
 	elapsed := time.Since(s.StartTime).Round(time.Millisecond)
 	nextSync := time.Now().Add(time.Duration(s.SyncIntervalMin) * time.Minute)
 
-	const boxWidth = 50
-
-	// Borders are derived from boxWidth so the frame stays aligned with padLine.
-	border := strings.Repeat("═", boxWidth)
-	topBorder := "\n╔" + border + "╗\n"
-	midBorder := "╠" + border + "╣\n"
-	bottomBorder := "╚" + border + "╝\n"
-
-	padLine := func(content string) string {
-		runes := []rune(content)
-		if len(runes) > boxWidth {
-			runes = runes[:boxWidth]
-		}
-		padding := boxWidth - len(runes)
-		return "║" + string(runes) + strings.Repeat(" ", padding) + "║\n"
-	}
-
-	var sb strings.Builder
-	sb.WriteString(topBorder)
-
-	header := fmt.Sprintf("  Sync Cycle #%d - %s", s.CycleNum, time.Now().Format("2006-01-02 15:04:05"))
-	sb.WriteString(padLine(header))
-
-	sb.WriteString(midBorder)
-
+	sections := [][]string{{fmt.Sprintf("  Sync Cycle #%d - %s", s.CycleNum, time.Now().Format("2006-01-02 15:04:05"))}}
 	for _, tv := range s.TVs {
-		writeTVSummary(&sb, tv, padLine)
-		sb.WriteString(midBorder)
+		sections = append(sections, tvSummaryLines(tv))
 	}
-
-	localSummary := fmt.Sprintf("  Local:  %d files", s.TotalLocal)
+	local := fmt.Sprintf("  Local:  %d files", s.TotalLocal)
 	if s.FromSources > 0 {
-		localSummary += fmt.Sprintf(" │ %d from URLs", s.FromSources)
+		local += fmt.Sprintf(" │ %d from URLs", s.FromSources)
 	}
 	if s.Optimized > 0 {
-		localSummary += fmt.Sprintf(" │ %d optimized", s.Optimized)
+		local += fmt.Sprintf(" │ %d optimized", s.Optimized)
 	}
-	sb.WriteString(padLine(localSummary))
-
+	sections = append(sections, []string{local})
 	if len(s.Warnings) > 0 {
-		sb.WriteString(midBorder)
-		writeWarningsSummary(&sb, s.Warnings, padLine)
+		warnings := make([]string, 0, 1+len(s.Warnings))
+		warnings = append(warnings, "  ⚠ Warnings during this cycle:")
+		for _, warning := range s.Warnings {
+			warnings = append(warnings, "  - "+truncateSummary(warning, 44))
+		}
+		sections = append(sections, warnings)
 	}
+	sections = append(sections, []string{"  Took:   " + elapsed.String(), "  Next:   " + nextSync.Format("15:04:05")})
 
-	sb.WriteString(midBorder)
-	sb.WriteString(padLine("  Took:   " + elapsed.String()))
-	sb.WriteString(padLine("  Next:   " + nextSync.Format("15:04:05")))
-	sb.WriteString(bottomBorder)
-
-	logStructuredCycleSummary(logger, sb.String(), s, elapsed, nextSync)
-}
-
-func logStructuredCycleSummary(
-	logger *slog.Logger,
-	message string,
-	s CycleSummary,
-	elapsed time.Duration,
-	nextSync time.Time,
-) {
-	logger.Info(message,
+	logger.Info(renderSummaryBox(sections),
 		"event", "sync_cycle_summary",
 		"cycle", s.CycleNum,
 		"duration_ms", elapsed.Milliseconds(),
@@ -99,44 +65,69 @@ func logStructuredCycleSummary(
 	)
 }
 
-func writeTVSummary(sb *strings.Builder, tv TVSyncResult, padLine func(string) string) {
+// renderSummaryBox frames each line, truncated or padded to summaryBoxWidth
+// runes, and separates consecutive sections with a divider.
+func renderSummaryBox(sections [][]string) string {
+	border := strings.Repeat("═", summaryBoxWidth)
+	var sb strings.Builder
+	sb.WriteString("\n╔" + border + "╗\n")
+	for index, section := range sections {
+		if index > 0 {
+			sb.WriteString("╠" + border + "╣\n")
+		}
+		for _, line := range section {
+			runes := []rune(line)
+			if len(runes) > summaryBoxWidth {
+				runes = runes[:summaryBoxWidth]
+			}
+			sb.WriteString("║" + string(runes) + strings.Repeat(" ", summaryBoxWidth-len(runes)) + "║\n")
+		}
+	}
+	sb.WriteString("╚" + border + "╝\n")
+	return sb.String()
+}
+
+func tvSummaryLines(tv TVSyncResult) []string {
 	name := tv.IP
 	if tv.Model != "" {
 		name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
 	}
-	sb.WriteString(padLine("  TV: " + name))
-
+	lines := []string{"  TV: " + name}
 	switch tv.Status {
 	case "ok":
-		sb.WriteString(padLine("    Status:     ✔ Art Mode"))
-		sb.WriteString(padLine(fmt.Sprintf("    Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted)))
-		sb.WriteString(padLine(fmt.Sprintf("    Total:      %d images on TV", tv.TotalImages)))
+		lines = append(lines,
+			"    Status:     ✔ Art Mode",
+			fmt.Sprintf("    Uploaded:   %d new  │  Deleted: %d", tv.Uploaded, tv.Deleted),
+			fmt.Sprintf("    Total:      %d images on TV", tv.TotalImages),
+		)
+		if tv.Rotating {
+			rotation := fmt.Sprintf("    Rotation:   %d waiting", tv.ArtworkWaiting)
+			if !tv.NextRotation.IsZero() {
+				rotation += " │ next " + tv.NextRotation.Local().Format("Jan 2 15:04")
+			}
+			lines = append(lines, rotation)
+		}
 		if tv.Brightness != "" {
-			sb.WriteString(padLine("    Brightness: " + tv.Brightness))
+			lines = append(lines, "    Brightness: "+tv.Brightness)
 		}
 		if tv.Slideshow != "" {
-			sb.WriteString(padLine("    Slideshow:  " + tv.Slideshow))
+			lines = append(lines, "    Slideshow:  "+tv.Slideshow)
 		}
 	case statusBackoff:
-		sb.WriteString(padLine("    Status:     ⏸ Backing off (unreachable)"))
+		lines = append(lines, "    Status:     ⏸ Backing off (unreachable)")
 	default:
-		sb.WriteString(padLine("    Status:     ✘ " + tv.Status))
+		lines = append(lines, "    Status:     ✘ "+tv.Status)
 		if tv.ErrorMessage != "" {
-			errMsg := tv.ErrorMessage
-			if len(errMsg) > 35 {
-				errMsg = errMsg[:32] + "..."
-			}
-			sb.WriteString(padLine("    Error:      " + errMsg))
+			lines = append(lines, "    Error:      "+truncateSummary(tv.ErrorMessage, 35))
 		}
 	}
+	return lines
 }
 
-func writeWarningsSummary(sb *strings.Builder, warnings []string, padLine func(string) string) {
-	sb.WriteString(padLine("  ⚠ Warnings during this cycle:"))
-	for _, w := range warnings {
-		if len(w) > 44 {
-			w = w[:41] + "..."
-		}
-		sb.WriteString(padLine("  - " + w))
+// truncateSummary shortens value to limit bytes, ending with an ellipsis.
+func truncateSummary(value string, limit int) string {
+	if len(value) > limit {
+		return value[:limit-3] + "..."
 	}
+	return value
 }

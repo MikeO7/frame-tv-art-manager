@@ -4,6 +4,7 @@
 package config
 
 import (
+	"net"
 	"time"
 )
 
@@ -90,6 +91,12 @@ type Config struct {
 	// our filename→content_id mapping.
 	RemoveUnknownImages bool
 
+	// --- Rotation ---
+
+	// RotationIntervalDays is how long each artwork stays on a full TV before
+	// it is swapped for artwork that is waiting. Zero disables rotation.
+	RotationIntervalDays float64
+
 	// --- Auto-Off ---
 
 	// AutoOffTime is a 24-hour time string (e.g. "22:00") at which TVs in
@@ -101,9 +108,9 @@ type Config struct {
 
 	// --- Wake-on-LAN ---
 
-	// TVMAC is a MAC address (e.g. "AA:BB:CC:DD:EE:FF") for Wake-on-LAN.
-	// Empty string disables WoL.
-	TVMAC string
+	// TVMAC is the six-byte Wake-on-LAN address parsed from TV_MAC. It is nil
+	// when TV_MAC is unset or ambiguous because several TVs are configured.
+	TVMAC net.HardwareAddr
 
 	// --- REST Gate ---
 

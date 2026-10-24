@@ -23,20 +23,16 @@ const (
 
 // unsplashProvider handles communication with the Unsplash API and resolves artwork sources.
 type unsplashProvider struct {
-	appID     string
 	accessKey string
-	secretKey string
 	client    *http.Client
 	logger    *slog.Logger
 	BaseURL   string
 }
 
 // newUnsplashProvider creates a new Unsplash provider.
-func newUnsplashProvider(appID, accessKey, secretKey string, logger *slog.Logger) *unsplashProvider {
+func newUnsplashProvider(accessKey string, logger *slog.Logger) *unsplashProvider {
 	return &unsplashProvider{
-		appID:     appID,
 		accessKey: accessKey,
-		secretKey: secretKey,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -79,35 +75,13 @@ func (p *unsplashProvider) CanHandle(line string) bool {
 
 // FetchCollectionPhotos retrieves all photos from a specific Unsplash collection using pagination.
 func (p *unsplashProvider) FetchCollectionPhotos(ctx context.Context, collectionID string) ([]unsplashPhoto, error) {
-	var allPhotos []unsplashPhoto
-	page := 1
-
-	for {
+	return collectPages(unsplashMaxPages, func(page int) ([]unsplashPhoto, bool, error) {
 		apiURL := fmt.Sprintf("%s/collections/%s/photos?per_page=%d&page=%d", p.BaseURL, url.PathEscape(collectionID), unsplashPageSize, page)
 		p.logger.Debug("fetching unsplash collection page", "id", collectionID, "page", page)
-
-		var pagePhotos []unsplashPhoto
-		if err := p.fetchJSON(ctx, apiURL, &pagePhotos); err != nil {
-			return nil, err
-		}
-
-		if len(pagePhotos) == 0 {
-			break
-		}
-
-		allPhotos = append(allPhotos, pagePhotos...)
-
-		if len(pagePhotos) < unsplashPageSize {
-			break
-		}
-		page++
-
-		if page > unsplashMaxPages {
-			break
-		}
-	}
-
-	return allPhotos, nil
+		var photos []unsplashPhoto
+		err := p.fetchJSON(ctx, apiURL, &photos)
+		return photos, len(photos) >= unsplashPageSize, err
+	})
 }
 
 // FetchPhoto retrieves metadata for a single Unsplash photo.
@@ -180,18 +154,13 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]SourceIm
 	}
 
 	images := make([]SourceImage, 0, len(photos))
-	for _, ph := range photos {
-		phCopy := ph
-		urlStr := phCopy.URLs.Raw + "&w=3840&q=95&fm=jpg"
-
-		label := strings.ReplaceAll(Filename(parts[2]+"-"+phCopy.ID), " ", "-")
-		identity := sourceIdentity(p.Name(), phCopy.ID, label)
-
+	for _, photo := range photos {
+		label := strings.ReplaceAll(Filename(parts[2]+"-"+photo.ID), " ", "-")
 		images = append(images, SourceImage{
-			URL:      urlStr,
-			Identity: identity,
+			URL:      photo.URLs.Raw + "&w=3840&q=95&fm=jpg",
+			Identity: sourceIdentity(p.Name(), photo.ID, label),
 			OnDownload: func(ctx context.Context) error {
-				p.TrackDownload(ctx, phCopy.Links.DownloadLocation)
+				p.TrackDownload(ctx, photo.Links.DownloadLocation)
 				return nil
 			},
 		})

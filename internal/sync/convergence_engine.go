@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"slices"
 	"strings"
 	"sync"
@@ -59,18 +58,7 @@ func newConvergenceEngine(
 		cfg: cfg, logger: logger, health: healthStatus, collection: artwork,
 		cycleGate: make(chan struct{}, 1), runtimes: make([]*convergenceRuntime, 0, len(cfg.TVIPs)),
 	}
-	seenAddresses := make(map[string]struct{}, len(cfg.TVIPs))
-	for _, address := range cfg.TVIPs {
-		parsed := net.ParseIP(strings.TrimSpace(address))
-		if parsed == nil {
-			return nil, fmt.Errorf("invalid TV address %q", address)
-		}
-		canonical := parsed.String()
-		if _, duplicate := seenAddresses[canonical]; duplicate {
-			return nil, fmt.Errorf("duplicate TV address %q", canonical)
-		}
-		seenAddresses[canonical] = struct{}{}
-	}
+	// config.LoadEnviron guarantees TVIPs are canonical, unique IP addresses.
 	for _, address := range cfg.TVIPs {
 		runtime, err := newConvergenceRuntime(cfg, address, logger)
 		if err != nil {
@@ -90,29 +78,26 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 		"tvs", len(engine.runtimes), "interval_min", engine.cfg.SyncIntervalMin,
 		"artwork_dir", engine.cfg.ArtworkDir,
 	)
-	if err := engine.RunOnce(ctx); err != nil && ctx.Err() != nil {
-		engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
-		return ctx.Err()
-	}
-	ticker := time.NewTicker(engineSyncInterval(engine.cfg))
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
-			return ctx.Err()
-		case <-ticker.C:
-			if err := engine.RunOnce(ctx); err != nil && ctx.Err() != nil {
-				engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
-				return ctx.Err()
+	// RunOnce records and logs its own failures; only cancellation stops the loop.
+	_ = engine.RunOnce(ctx)
+	if ctx.Err() == nil {
+		ticker := time.NewTicker(engineSyncInterval(engine.cfg))
+		defer ticker.Stop()
+		for ctx.Err() == nil {
+			select {
+			case <-ctx.Done():
+			case <-ticker.C:
+				_ = engine.RunOnce(ctx)
 			}
 		}
 	}
+	engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
+	return ctx.Err()
 }
 
 func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
-	if err := acquireCycle(ctx, engine.cycleGate); err != nil {
-		return err
+	if err := acquireGate(ctx, engine.cycleGate); err != nil {
+		return fmt.Errorf("wait for sync cycle: %w", err)
 	}
 	defer func() { <-engine.cycleGate }()
 
@@ -220,9 +205,14 @@ func (engine *convergenceEngine) publishTVHealth(summary TVSyncResult) {
 	if summary.Model != "" {
 		lastSeen = time.Now().Format(time.RFC3339)
 	}
+	nextRotation := ""
+	if !summary.NextRotation.IsZero() {
+		nextRotation = summary.NextRotation.UTC().Format(time.RFC3339)
+	}
 	engine.health.SetTVStatus(summary.IP, health.TVStatus{
 		IP: summary.IP, LastSeen: lastSeen, ImageCount: summary.TotalImages,
 		ArtMode: summary.ArtMode, Status: summary.Status, LastErrorMessage: summary.ErrorMessage,
+		Rotating: summary.Rotating, ArtworkWaiting: summary.ArtworkWaiting, NextRotation: nextRotation,
 	})
 }
 

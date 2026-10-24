@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"sync"
@@ -38,15 +39,7 @@ const (
 // Status holds the current service health state.
 type Status struct {
 	mu sync.RWMutex
-
-	StartedAt        time.Time
-	LastSyncAt       time.Time
-	LastSyncOK       bool
-	LastErrorMessage string
-	SyncCount        int
-	CurrentStage     string
-	Lifecycle        string
-	TVStatuses       map[string]TVStatus
+	statusSnapshot
 }
 
 // TVStatus tracks per-TV health information.
@@ -57,8 +50,12 @@ type TVStatus struct {
 	ArtMode          bool   `json:"art_mode"`
 	Status           string `json:"status"` // "ok", "unreachable", "backoff"
 	LastErrorMessage string `json:"last_error,omitempty"`
+	Rotating         bool   `json:"rotating,omitempty"`
+	ArtworkWaiting   int    `json:"artwork_waiting,omitempty"`
+	NextRotation     string `json:"next_rotation,omitempty"`
 }
 
+// statusSnapshot is the copyable state guarded by Status.mu.
 type statusSnapshot struct {
 	StartedAt        time.Time
 	LastSyncAt       time.Time
@@ -72,11 +69,11 @@ type statusSnapshot struct {
 
 // NewStatus creates a new thread-safe health status tracker.
 func NewStatus() *Status {
-	return &Status{
+	return &Status{statusSnapshot: statusSnapshot{
 		StartedAt:  time.Now(),
 		Lifecycle:  "starting",
 		TVStatuses: make(map[string]TVStatus),
-	}
+	}}
 }
 
 // SetLifecycle publishes the process supervisor state. Readiness is granted
@@ -122,21 +119,10 @@ func (s *Status) SetTVStatus(ip string, status TVStatus) {
 func (s *Status) snapshot() statusSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	tvs := make(map[string]TVStatus, len(s.TVStatuses))
-	for ip, tvStatus := range s.TVStatuses {
-		tvs[ip] = tvStatus
-	}
-	return statusSnapshot{
-		StartedAt:        s.StartedAt,
-		LastSyncAt:       s.LastSyncAt,
-		LastSyncOK:       s.LastSyncOK,
-		LastErrorMessage: s.LastErrorMessage,
-		SyncCount:        s.SyncCount,
-		CurrentStage:     s.CurrentStage,
-		Lifecycle:        s.Lifecycle,
-		TVStatuses:       tvs,
-	}
+	snapshot := s.statusSnapshot
+	snapshot.TVStatuses = make(map[string]TVStatus, len(s.TVStatuses))
+	maps.Copy(snapshot.TVStatuses, s.TVStatuses)
+	return snapshot
 }
 
 // Server runs a lightweight HTTP health check endpoint.
@@ -229,22 +215,22 @@ func (s *Server) Serve() error {
 
 // Shutdown gracefully stops the health server.
 func (s *Server) Shutdown(ctx context.Context) error {
-	s.mu.Lock()
-	server := s.server
-	s.mu.Unlock()
-	if server == nil {
-		return nil
+	if server := s.boundServer(); server != nil {
+		return server.Shutdown(ctx)
 	}
-	return server.Shutdown(ctx)
+	return nil
 }
 
 // Close immediately releases the listener after a graceful shutdown timeout.
 func (s *Server) Close() error {
-	s.mu.Lock()
-	server := s.server
-	s.mu.Unlock()
-	if server == nil {
-		return nil
+	if server := s.boundServer(); server != nil {
+		return server.Close()
 	}
-	return server.Close()
+	return nil
+}
+
+func (s *Server) boundServer() *http.Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.server
 }

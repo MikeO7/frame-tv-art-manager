@@ -1,6 +1,16 @@
 package config
 
-import "github.com/MikeO7/frame-tv-art-manager/internal/optimize"
+import (
+	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
+)
+
+// RotationInterval returns how long each artwork stays on a full TV before
+// rotation may replace it. Zero disables rotation.
+func (c *Config) RotationInterval() time.Duration {
+	return time.Duration(c.RotationIntervalDays * float64(24*time.Hour)).Round(time.Second)
+}
 
 // OptimizeOptions returns image optimization settings derived from config.
 func (c *Config) OptimizeOptions() optimize.Config {

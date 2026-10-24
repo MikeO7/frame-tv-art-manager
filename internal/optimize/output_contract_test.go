@@ -38,15 +38,18 @@ func TestValidateImageOutputChecksFormatAndDimensions(t *testing.T) {
 	}
 }
 
-func TestEncodeOptimizedTemporaryHonorsCancellation(t *testing.T) {
+func TestWriteValidatedOutputHonorsCancellation(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := encodeOptimizedTemporary(
-		ctx, filepath.Join(t.TempDir(), "output.png"), image.NewRGBA(image.Rect(0, 0, 8, 6)), 95,
-	)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("encodeOptimizedTemporary() error = %v, want context.Canceled", err)
+	out, err := os.Create(filepath.Join(t.TempDir(), "output.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = 8, 6
+	if err := writeValidatedOutput(ctx, out, extPNG, image.NewRGBA(image.Rect(0, 0, 8, 6)), cfg); !errors.Is(err, context.Canceled) {
+		t.Fatalf("writeValidatedOutput() error = %v, want context.Canceled", err)
 	}
 }
 

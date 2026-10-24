@@ -107,7 +107,7 @@ func TestAdapterRejectsUnverifiedFrameTVIdentity(t *testing.T) {
 			if err == nil {
 				t.Fatal("Observe() error = nil")
 			}
-			if observation.Disposition != DispositionUnsafeUnknown || !observation.Authorization.isZero() {
+			if observation.Disposition != DispositionUnsafeUnknown || !unauthorized(observation.Authorization) {
 				t.Fatalf("observation = %+v, want unsafe and unauthorized", observation)
 			}
 			if transport.artModeCalls != 0 || transport.inventoryCalls != 0 {
@@ -170,9 +170,6 @@ func TestProtocolTransportOwnsReusableHTTPClientsAndClosesIdleConnections(t *tes
 		deviceHTTPClient:    &http.Client{Transport: device},
 		gateHTTPClient:      &http.Client{Transport: gate},
 		websocketHTTPClient: &http.Client{Transport: websocket},
-	}
-	if first, second := transport.cachedDeviceHTTPClient(), transport.cachedDeviceHTTPClient(); first != second {
-		t.Fatal("DeviceInfo HTTP client was recreated instead of reused")
 	}
 	if err := transport.Close(context.Background()); err != nil {
 		t.Fatalf("Close() error = %v", err)

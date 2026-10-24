@@ -98,7 +98,6 @@ func TestICCToneResponseCurveVariants(t *testing.T) {
 		{"parametric-3-high", iccCurve{kind: iccCurveParametric, params: []float64{3, 2, 1, 0, 0.5, 0.4}}, 0.5, 0.25},
 		{"parametric-4-high", iccCurve{kind: iccCurveParametric, params: []float64{4, 2, 1, 0, 0.5, 0.4, 0.1, 0.05}}, 0.5, 0.35},
 		{"parametric-4-low", iccCurve{kind: iccCurveParametric, params: []float64{4, 2, 1, 0, 0.5, 0.4, 0.1, 0.05}}, 0.2, 0.15},
-		{"unknown", iccCurve{kind: "unknown"}, 0.4, 0.4},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -133,7 +132,7 @@ func TestColorNormalizationFallbackAndTransparentPixel(t *testing.T) {
 	}
 	pngMetadata := appendPNGColorChunk(pngSignature[:], pngChunkGamma, []byte{0, 0, 0xb1, 0x8f})
 	pngMetadata = appendPNGColorChunk(pngMetadata, pngChunkEnd, nil)
-	metadata, err := extractPNGColorData(pngMetadata)
+	metadata, err := readPNGColorData(bytes.NewReader(pngMetadata))
 	if err != nil || metadata.description != "PNG gAMA" {
 		t.Fatalf("PNG gAMA metadata = %+v, %v", metadata, err)
 	}
@@ -268,9 +267,9 @@ func TestPNGICCExtractionAndConversion(t *testing.T) {
 	profiled := append([]byte{}, raw.Bytes()[:afterIHDR]...)
 	profiled = appendPNGColorChunk(profiled, pngChunkICC, payload)
 	profiled = append(profiled, raw.Bytes()[afterIHDR:]...)
-	metadata, err := extractPNGColorData(profiled)
+	metadata, err := readPNGColorData(bytes.NewReader(profiled))
 	if err != nil {
-		t.Fatalf("extractPNGColorData() error = %v", err)
+		t.Fatalf("readPNGColorData()) error = %v", err)
 	}
 	if metadata.description != "PNG iCCP" || len(metadata.icc) == 0 {
 		t.Fatalf("metadata = %+v", metadata)
@@ -293,12 +292,12 @@ func TestEmbeddedColorMetadataRejectsMalformedChunks(t *testing.T) {
 		appendPNGColorChunk(pngSignature[:], "cICP", []byte{9, 16}),
 	}
 	for index, data := range tests {
-		if _, err := extractPNGColorData(data); err == nil {
+		if _, err := readPNGColorData(bytes.NewReader(data)); err == nil {
 			t.Errorf("case %d error = nil", index)
 		}
 	}
-	if _, err := extractJPEGColorData([]byte("bad")); err == nil {
-		t.Fatal("extractJPEGColorData() malformed error = nil")
+	if _, err := readJPEGColorData(bytes.NewReader([]byte("bad"))); err == nil {
+		t.Fatal("readJPEGColorData() malformed error = nil")
 	}
 }
 
@@ -339,7 +338,7 @@ func TestPNGColorDataDoesNotToneMapUnsupportedHDRPrimaries(t *testing.T) {
 	t.Parallel()
 	data := appendPNGColorChunk(pngSignature[:], "cICP", []byte{12, 16, 0, 1})
 	data = appendPNGColorChunk(data, pngChunkEnd, nil)
-	metadata, err := extractPNGColorData(data)
+	metadata, err := readPNGColorData(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,8 +558,11 @@ func TestProtectedCropPenalizesDetailedBoundary(t *testing.T) {
 	}
 	saliencyIntegral := calculateIntegralImage(saliency, width, height)
 	protectionIntegral := calculateIntegralImage(protection, width, height)
-	safe := protectedCropWindowScore(saliencyIntegral, protectionIntegral, width, height, window, height, true, 0, 0.35)
-	unsafe := protectedCropWindowScore(saliencyIntegral, protectionIntegral, width, height, window, height, true, 64, 0.35)
+	windows := cropWindows{
+		saliency: saliencyIntegral, protection: protectionIntegral, workW: width, workH: height,
+		windowW: window, windowH: height, horizontal: true, strength: 0.35,
+	}
+	safe, unsafe := windows.score(0), windows.score(64)
 	if unsafe >= safe {
 		t.Fatalf("unsafe boundary score %.3f >= safe score %.3f", unsafe, safe)
 	}

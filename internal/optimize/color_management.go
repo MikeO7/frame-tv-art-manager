@@ -44,25 +44,36 @@ func readColorDataWithPolicy(
 	filename string,
 ) (embeddedColorData, error) {
 	metadata, err := readEmbeddedColorData(ctx, file, extension)
+	if err == nil {
+		err = checkColorPolicy(metadata, cfg, logger, filename)
+	}
 	if err != nil {
 		return embeddedColorData{}, err
 	}
-	if metadata.description != "" && cfg.ColorProfilePolicy == profileRejectEmbedded {
-		return embeddedColorData{}, fmt.Errorf("unsupported embedded color metadata %s", metadata.description)
+	return metadata, nil
+}
+
+// checkColorPolicy rejects embedded color metadata under reject-embedded and
+// warns when the configured policy leaves present metadata untransformed.
+func checkColorPolicy(metadata embeddedColorData, cfg Config, logger *slog.Logger, filename string) error {
+	if metadata.description == "" {
+		return nil
 	}
-	if metadata.description != "" && metadata.hdr == nil && cfg.ColorProfilePolicy == profileAssumeSRGB {
+	switch {
+	case cfg.ColorProfilePolicy == profileRejectEmbedded:
+		return fmt.Errorf("unsupported embedded color metadata %s", metadata.description)
+	case cfg.ColorProfilePolicy == profileAssumeSRGB && metadata.hdr == nil:
 		logger.Warn(
 			"embedded color metadata is not transformed; treating decoded samples as sRGB",
 			"file", filename, "metadata", metadata.description,
 		)
-	}
-	if metadata.description != "" && cfg.ColorProfilePolicy == profileConvertSRGB && len(metadata.icc) == 0 && metadata.hdr == nil {
+	case cfg.ColorProfilePolicy == profileConvertSRGB && len(metadata.icc) == 0 && metadata.hdr == nil:
 		logger.Warn(
 			"embedded color metadata is unsupported for conversion; assuming sRGB",
 			"file", filename, "metadata", metadata.description,
 		)
 	}
-	return metadata, nil
+	return nil
 }
 
 func readEmbeddedColorData(ctx context.Context, file *os.File, extension string) (embeddedColorData, error) {
@@ -76,7 +87,7 @@ func readEmbeddedColorData(ctx context.Context, file *os.File, extension string)
 	return readJPEGColorData(reader)
 }
 
-//nolint:funlen,gocognit,gocyclo // bounded marker parsing and ICC segment assembly form one streaming transaction
+//nolint:gocognit // bounded marker parsing and ICC segment assembly form one streaming transaction
 func readJPEGColorData(reader io.Reader) (embeddedColorData, error) {
 	var signature [2]byte
 	if _, err := io.ReadFull(reader, signature[:]); err != nil {
@@ -86,7 +97,7 @@ func readJPEGColorData(reader io.Reader) (embeddedColorData, error) {
 		return embeddedColorData{}, errors.New("not a JPEG while reading embedded color data")
 	}
 	parts := make(map[int][]byte)
-	total := 0
+	total, profileBytes := 0, 0
 	for {
 		marker, err := readJPEGMarker(reader)
 		if err != nil {
@@ -131,11 +142,7 @@ func readJPEGColorData(reader io.Reader) (embeddedColorData, error) {
 		}
 		total = count
 		parts[sequence] = append([]byte(nil), payload[14:]...)
-		profileBytes := 0
-		for _, part := range parts {
-			profileBytes += len(part)
-		}
-		if profileBytes > maxEmbeddedProfileBytes {
+		if profileBytes += len(payload) - 14; profileBytes > maxEmbeddedProfileBytes {
 			return embeddedColorData{}, fmt.Errorf("JPEG ICC profile exceeds %d-byte limit", maxEmbeddedProfileBytes)
 		}
 	}
@@ -177,7 +184,7 @@ func assembleJPEGColorData(parts map[int][]byte, total int) (embeddedColorData, 
 	return embeddedColorData{description: jpegICCMetadata, icc: profile}, nil
 }
 
-//nolint:funlen,gocognit,gocyclo // chunk framing, bounded ICC decompression, and metadata precedence stay local
+//nolint:gocognit // chunk framing, bounded ICC decompression, and metadata precedence stay local
 func readPNGColorData(reader io.Reader) (embeddedColorData, error) {
 	var signature [8]byte
 	if _, err := io.ReadFull(reader, signature[:]); err != nil {
@@ -260,14 +267,6 @@ func decodePNGICC(payload []byte) (embeddedColorData, error) {
 	return embeddedColorData{description: pngICCMetadata, icc: profile}, nil
 }
 
-func extractJPEGColorData(data []byte) (embeddedColorData, error) {
-	return readJPEGColorData(bytes.NewReader(data))
-}
-
-func extractPNGColorData(data []byte) (embeddedColorData, error) {
-	return readPNGColorData(bytes.NewReader(data))
-}
-
 type iccCurve struct {
 	kind   string
 	values []float64
@@ -279,7 +278,6 @@ type matrixProfile struct {
 	curves  [3]iccCurve
 }
 
-//nolint:gocognit,gocyclo // tag-table bounds and required matrix/TRC tags are validated in one pass
 func parseMatrixProfile(data []byte) (matrixProfile, error) {
 	if len(data) < 132 {
 		return matrixProfile{}, errors.New("ICC profile header is truncated")
@@ -352,7 +350,6 @@ func parseICCXYZ(data []byte) ([3]float64, error) {
 	return [3]float64{iccFixed(data[8:12]), iccFixed(data[12:16]), iccFixed(data[16:20])}, nil
 }
 
-//nolint:gocognit // ICC curve types deliberately mirror the standard's cases
 func parseICCCurve(data []byte) (iccCurve, error) {
 	if len(data) < 12 {
 		return iccCurve{}, errors.New("curve tag is truncated")
@@ -366,12 +363,12 @@ func parseICCCurve(data []byte) (iccCurve, error) {
 		if 12+count*2 > len(data) {
 			return iccCurve{}, errors.New("curveType values are truncated")
 		}
+		if count == 1 {
+			return iccCurve{kind: iccCurveGamma, params: []float64{float64(binary.BigEndian.Uint16(data[12:14])) / 256}}, nil
+		}
 		values := make([]float64, count)
 		for index := range count {
 			values[index] = float64(binary.BigEndian.Uint16(data[12+index*2:14+index*2])) / 65535
-		}
-		if count == 1 {
-			return iccCurve{kind: iccCurveGamma, params: []float64{float64(binary.BigEndian.Uint16(data[12:14])) / 256}}, nil
 		}
 		return iccCurve{kind: iccCurveTable, values: values}, nil
 	case "para":
@@ -416,10 +413,8 @@ func (curve iccCurve) evaluate(value float64) float64 {
 		left := int(math.Floor(position))
 		right := min(left+1, len(curve.values)-1)
 		return curve.values[left] + (curve.values[right]-curve.values[left])*(position-float64(left))
-	case iccCurveParametric:
+	default: // iccCurveParametric
 		return evaluateParametricCurve(value, int(curve.params[0]), curve.params[1:])
-	default:
-		return value
 	}
 }
 
@@ -446,52 +441,13 @@ func evaluateParametricCurve(x float64, function int, p []float64) float64 {
 			return math.Pow(a*x+b, g)
 		}
 		return c * x
-	case 4:
+	default: // 4
 		a, b, c, d, e, f := p[1], p[2], p[3], p[4], p[5], p[6]
 		if x >= d {
 			return math.Pow(a*x+b, g) + e
 		}
 		return c*x + f
-	default:
-		return x
 	}
-}
-
-func convertICCToSRGB(src image.Image, profileData []byte) (*image.RGBA, error) {
-	profile, err := parseMatrixProfile(profileData)
-	if err != nil {
-		return nil, err
-	}
-	bounds := src.Bounds()
-	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
-	for y := 0; y < bounds.Dy(); y++ {
-		for x := 0; x < bounds.Dx(); x++ {
-			r16, g16, b16, a16 := src.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
-			if a16 == 0 {
-				dst.SetRGBA(x, y, color.RGBA{})
-				continue
-			}
-			device := [3]float64{
-				profile.curves[0].evaluate(float64(r16) / float64(a16)),
-				profile.curves[1].evaluate(float64(g16) / float64(a16)),
-				profile.curves[2].evaluate(float64(b16) / float64(a16)),
-			}
-			xyz50 := [3]float64{}
-			for channel := range 3 {
-				for row := range 3 {
-					xyz50[row] += profile.columns[channel][row] * device[channel]
-				}
-			}
-			xyz65 := d50ToD65(xyz50)
-			linear := [3]float64{
-				3.2404542*xyz65[0] - 1.5371385*xyz65[1] - 0.4985314*xyz65[2],
-				-0.969266*xyz65[0] + 1.8760108*xyz65[1] + 0.041556*xyz65[2],
-				0.0556434*xyz65[0] - 0.2040259*xyz65[1] + 1.0572252*xyz65[2],
-			}
-			dst.SetRGBA(x, y, rgbaFromFloat(linear, clampByte(float64(a16)/257)))
-		}
-	}
-	return dst, nil
 }
 
 func d50ToD65(v [3]float64) [3]float64 {
@@ -506,19 +462,14 @@ func normalizeColor(src image.Image, metadata embeddedColorData, cfg Config, log
 	if metadata.hdr != nil && cfg.HDRToneMap {
 		return toneMapHDRToSDR(src, *metadata.hdr, cfg.HDRSourcePeakNits, cfg.HDRTargetPeakNits)
 	}
-	var rgba *image.RGBA
 	if len(metadata.icc) > 0 && cfg.ColorProfilePolicy == profileConvertSRGB {
 		converted, err := convertICCToSRGB(src, metadata.icc)
 		if err == nil {
-			rgba = converted
-		} else {
-			logger.Warn("embedded ICC profile conversion failed; assuming sRGB", "file", filename, "error", err)
+			return converted
 		}
+		logger.Warn("embedded ICC profile conversion failed; assuming sRGB", "file", filename, "error", err)
 	}
-	if rgba == nil {
-		rgba = toRGBA(src)
-	}
-	return rgba
+	return toRGBA(src)
 }
 
 func toneMapHDRToSDR(src image.Image, metadata hdrMetadata, sourcePeak, targetPeak float64) *image.RGBA {
@@ -608,12 +559,8 @@ func bt2020ToBT709(v [3]float64) [3]float64 {
 }
 
 func rgbaFromFloat(linear [3]float64, alpha uint8) color.RGBA {
-	return color.RGBA{
-		R: uint8(math.Round(clampUnit(srgbEncode(linear[0])) * 255)),
-		G: uint8(math.Round(clampUnit(srgbEncode(linear[1])) * 255)),
-		B: uint8(math.Round(clampUnit(srgbEncode(linear[2])) * 255)),
-		A: alpha,
-	}
+	tables := srgbLookup()
+	return color.RGBA{R: tables.encode(linear[0]), G: tables.encode(linear[1]), B: tables.encode(linear[2]), A: alpha}
 }
 
 func clampUnit(value float64) float64 { return math.Min(math.Max(value, 0), 1) }

@@ -77,10 +77,26 @@ func TestLoadEnvironDisablesAmbiguousMultiTVWake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadEnviron() error = %v", err)
 	}
-	if cfg.TVMAC != "" {
-		t.Fatalf("TVMAC = %q, want disabled", cfg.TVMAC)
+	if cfg.TVMAC != nil {
+		t.Fatalf("TVMAC = %v, want disabled", cfg.TVMAC)
 	}
 	assertWarningVariables(t, warnings, "TV_MAC")
+}
+
+func TestLoadEnvironCanonicalizesTVAddressAndMAC(t *testing.T) {
+	cfg, _, err := LoadEnviron([]string{
+		"TV_IPS=2001:0db8:0:0:0:0:0:1",
+		"TV_MAC=AA:BB:CC:DD:EE:FF",
+	})
+	if err != nil {
+		t.Fatalf("LoadEnviron() error = %v", err)
+	}
+	if len(cfg.TVIPs) != 1 || cfg.TVIPs[0] != "2001:db8::1" {
+		t.Fatalf("TV addresses = %v, want canonical IPv6", cfg.TVIPs)
+	}
+	if cfg.TVMAC.String() != "aa:bb:cc:dd:ee:ff" {
+		t.Fatalf("TVMAC = %v, want parsed six-byte address", cfg.TVMAC)
+	}
 }
 
 func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
@@ -105,12 +121,17 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "NaN latitude", value: "LOCATION_LATITUDE=NaN", want: "LOCATION_LATITUDE"},
 		{name: "infinite longitude", value: "LOCATION_LONGITUDE=Inf", want: "LOCATION_LONGITUDE"},
 		{name: "invalid auto off", value: "AUTO_OFF_TIME=25:00", want: "AUTO_OFF_TIME"},
+		{name: "invalid MAC", value: "TV_MAC=not-a-mac", want: "TV_MAC"},
+		{name: "non-six-byte MAC", value: "TV_MAC=00:00:00:00:fe:80:00:00", want: "TV_MAC"},
 		{name: "unsupported slideshow interval", value: "SLIDESHOW_INTERVAL=30", want: "SLIDESHOW_INTERVAL"},
 		{name: "oversized import", value: "MAX_DOWNLOAD_SIZE_MB=1025", want: "MAX_DOWNLOAD_SIZE_MB"},
 		{name: "unsafe import allocation", value: "MAX_DOWNLOAD_SIZE_MB=101", want: "MAX_DOWNLOAD_SIZE_MB"},
 		{name: "artwork-shaped control file", value: "ARTWORK_SOURCES_FILE=/srv/sources.jpg", want: "ARTWORK_SOURCES_FILE"},
 		{name: "oversized timeout", value: "API_TIMEOUT_SECONDS=9223372036854775807", want: "API_TIMEOUT_SECONDS"},
 		{name: "oversized shutdown", value: "SHUTDOWN_TIMEOUT_SECONDS=601", want: "SHUTDOWN_TIMEOUT_SECONDS"},
+		{name: "negative rotation", value: "ROTATION_INTERVAL_DAYS=-1", want: "ROTATION_INTERVAL_DAYS"},
+		{name: "oversized rotation", value: "ROTATION_INTERVAL_DAYS=366", want: "ROTATION_INTERVAL_DAYS"},
+		{name: "NaN rotation", value: "ROTATION_INTERVAL_DAYS=NaN", want: "ROTATION_INTERVAL_DAYS"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -159,5 +180,33 @@ func assertWarningVariables(t *testing.T, warnings []Warning, variables ...strin
 		if strings.Contains(warnings[index].Message, "=") {
 			t.Fatalf("warning leaks a supplied value: %+v", warnings[index])
 		}
+	}
+}
+
+func TestLoadEnvironRotationInterval(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  time.Duration
+	}{
+		{name: "default is two weeks", want: 14 * 24 * time.Hour},
+		{name: "custom days", value: "ROTATION_INTERVAL_DAYS=7", want: 7 * 24 * time.Hour},
+		{name: "fractional days", value: "ROTATION_INTERVAL_DAYS=0.5", want: 12 * time.Hour},
+		{name: "zero disables", value: "ROTATION_INTERVAL_DAYS=0", want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			environ := []string{"TV_IPS=192.0.2.10"}
+			if test.value != "" {
+				environ = append(environ, test.value)
+			}
+			cfg, _, err := LoadEnviron(environ)
+			if err != nil {
+				t.Fatalf("LoadEnviron() error = %v", err)
+			}
+			if got := cfg.RotationInterval(); got != test.want {
+				t.Fatalf("RotationInterval() = %s, want %s", got, test.want)
+			}
+		})
 	}
 }

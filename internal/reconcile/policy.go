@@ -15,8 +15,8 @@ func validatePolicy(policy Policy) error {
 	if err := validateSlideshowPolicy(policy.Slideshow); err != nil {
 		return err
 	}
-	if policy.Brightness.Mode == PolicySet && (policy.Brightness.Value < 0 || policy.Brightness.Value > 100) {
-		return errors.New("brightness policy value must be between 0 and 100")
+	if err := validateValuePolicies(policy); err != nil {
+		return err
 	}
 	if policy.DefaultMatte != "" &&
 		(policy.DefaultMatte != strings.TrimSpace(policy.DefaultMatte) || len(policy.DefaultMatte) > 128) {
@@ -67,4 +67,14 @@ func normalizePolicy(policy Policy) Policy {
 		policy.DefaultMatte = defaultMatte
 	}
 	return policy
+}
+
+func validateValuePolicies(policy Policy) error {
+	if policy.Rotation < 0 || policy.Rotation > maximumRotation {
+		return fmt.Errorf("rotation interval must be between 0 and %s", maximumRotation)
+	}
+	if policy.Brightness.Mode == PolicySet && (policy.Brightness.Value < 0 || policy.Brightness.Value > 100) {
+		return errors.New("brightness policy value must be between 0 and 100")
+	}
+	return nil
 }

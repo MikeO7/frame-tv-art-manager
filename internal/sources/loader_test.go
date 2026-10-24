@@ -556,71 +556,6 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	}
 }
 
-func TestLoader_Sync_Yaml(t *testing.T) {
-	artworkDir := t.TempDir()
-	sourcesFile := filepath.Join(t.TempDir(), "sources.yaml")
-
-	content := `
-sources:
-  - unsplash:photo:123
-  - nasa:apod
-`
-	_ = os.WriteFile(sourcesFile, []byte(content), 0o600)
-
-	l := newTestLoader(&config.Config{
-		SourcesFile:       sourcesFile,
-		ArtworkDir:        artworkDir,
-		UnsplashAppID:     "app",
-		UnsplashAccessKey: "key",
-		UnsplashSecretKey: "secret",
-		NasaAPIKey:        providerNASA,
-		PexelsAPIKey:      providerPexels,
-		PixabayAPIKey:     providerPixabay,
-	}, slog.Default())
-
-	// Mock server for downloads
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "/photos") {
-			_, _ = w.Write([]byte(`{"id": "u1", "links": {"download_location": "http://example.com/download"}}`))
-		} else {
-			w.Header().Set("Content-Type", "image/jpeg")
-			_, _ = w.Write([]byte("fake-image-data"))
-		}
-	}))
-	defer server.Close()
-	setMockProviderURLs(l, server.URL)
-
-	_, _ = l.Sync(context.Background(), collection.Snapshot{})
-}
-
-func TestLoader_UtilityMethods(t *testing.T) {
-	// truncateURL
-	u := "https://example.com/very/long/path/to/image.jpg?query=param"
-	trunc := truncateURL(u)
-	if len(trunc) > 80 {
-		t.Errorf("expected truncated URL, got %s", trunc)
-	}
-
-	// extensionFromResponse
-	resp := &http.Response{
-		Header: make(http.Header),
-	}
-	resp.Header.Set("Content-Type", "image/png")
-	ext := extensionFromResponse(resp, "file.jpg")
-	if ext != extPNG {
-		t.Errorf("expected %s, got %s", extPNG, ext)
-	}
-
-	resp.Header.Set("Content-Type", "application/octet-stream")
-	ext = extensionFromResponse(resp, "file"+extPNG)
-	if ext != extPNG {
-		t.Errorf("expected %s from filename, got %s", extPNG, ext)
-	}
-}
-
 func TestLoader_syncLine_ArticSearch(t *testing.T) {
 	artworkDir := t.TempDir()
 	l := newTestLoader(&config.Config{
@@ -652,58 +587,6 @@ func TestLoader_syncLine_ArticSearch(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1 URL, got %d", count)
-	}
-}
-
-func TestLoader_executeDownload(t *testing.T) {
-	artworkDir := t.TempDir()
-	l := newTestLoader(&config.Config{
-		ArtworkDir:        artworkDir,
-		MaxDownloadSizeMB: 1,
-	}, slog.Default())
-
-	imageData := testPNGBytes(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(imageData)
-	}))
-	defer server.Close()
-
-	downloaded, err := l.executeDownload(context.Background(), server.URL, "000__direct__test.jpg", "000__direct__test")
-	if err != nil {
-		t.Fatalf("executeDownload failed: %v", err)
-	}
-	if !downloaded {
-		t.Error("expected downloaded=true")
-	}
-
-	entries, err := os.ReadDir(artworkDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var foundPNG bool
-	for _, entry := range entries {
-		foundPNG = foundPNG || strings.HasSuffix(entry.Name(), ".png")
-	}
-	if !foundPNG {
-		t.Fatalf("expected committed PNG artwork, got %v", entries)
-	}
-}
-
-func TestLoader_downloadWithIdentity_MaxReached(t *testing.T) {
-	artworkDir := t.TempDir()
-	l := newTestLoader(&config.Config{
-		ArtworkDir:       artworkDir,
-		MaxArtworkImages: 1,
-	}, slog.Default())
-	l.collectionSize = 1
-
-	downloaded, err := l.downloadWithIdentity(context.Background(), "http://example.com/x.jpg", "001__direct__x")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if downloaded {
-		t.Error("expected skip when max reached")
 	}
 }
 

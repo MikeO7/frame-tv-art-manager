@@ -37,7 +37,7 @@ func identityFromObservation(observation samsung.Observation) (TVIdentity, error
 	return identity, validateIdentity(identity)
 }
 
-//nolint:gocognit,gocyclo // State validation intentionally checks the complete durable schema.
+//nolint:gocognit // State validation intentionally checks the complete durable schema.
 func validateState(state State, expected TVIdentity) error {
 	if state.Version != stateVersion {
 		return fmt.Errorf("unsupported reconciliation state version %d", state.Version)
@@ -90,15 +90,30 @@ func validateState(state State, expected TVIdentity) error {
 }
 
 func validateStateEvidence(state State) error {
-	if state.Capacity.Known && (state.Capacity.Maximum < 0 || state.Capacity.ObservedAt.IsZero()) {
-		return errors.New("known capacity evidence is invalid")
+	if err := validateCapacityEvidence(state.Capacity); err != nil {
+		return err
 	}
-	if state.Capacity.Probe && !state.Capacity.Known {
-		return errors.New("capacity probe requires known evidence")
+	for digest, at := range state.LastShown {
+		if !validDigest(digest) || at.IsZero() {
+			return fmt.Errorf("rotation history entry %q is invalid", digest)
+		}
 	}
 	if state.LegacyMigrationPending &&
 		(len(state.Bindings) != 0 || state.LastCompleteCycle != "" || state.LastCollectionGen != "") {
 		return errors.New("pending legacy migration cannot coexist with completed reconciliation state")
+	}
+	return nil
+}
+
+func validateCapacityEvidence(capacity CapacityEvidence) error {
+	if capacity.Known && (capacity.Maximum < 0 || capacity.ObservedAt.IsZero()) {
+		return errors.New("known capacity evidence is invalid")
+	}
+	if capacity.Probe && !capacity.Known {
+		return errors.New("capacity probe requires known evidence")
+	}
+	if capacity.Shortfalls < 0 || (capacity.Shortfalls > 0 && !capacity.Known) {
+		return errors.New("capacity shortfall count is invalid")
 	}
 	return nil
 }
@@ -123,7 +138,6 @@ func validateBinding(key string, binding Binding) error {
 	return nil
 }
 
-//nolint:gocyclo,nestif // Phase compatibility is an explicit state-machine matrix.
 func validatePending(pending Pending) error {
 	if strings.TrimSpace(pending.OperationID) == "" || strings.TrimSpace(pending.CycleID) == "" {
 		return errors.New("pending operation and cycle IDs are required")
@@ -157,7 +171,6 @@ func validPendingFingerprints(pending Pending) bool {
 	return pending.Command.Kind == CommandWake || pending.InventoryBefore.Digest != ([sha256.Size]byte{})
 }
 
-//nolint:gocognit,gocyclo // Each sealed intent has distinct fail-closed validation.
 func validateIntent(intent CommandIntent) error {
 	switch intent.Kind {
 	case CommandUpload:
@@ -196,7 +209,6 @@ func validateIntent(intent CommandIntent) error {
 	return nil
 }
 
-//nolint:gocyclo // Snapshot validation keeps all mutation-authority checks together.
 func validateSnapshot(snapshot collection.Snapshot) error {
 	if !validDigest(snapshot.Generation) {
 		return errors.New("collection snapshot generation is invalid")
@@ -226,30 +238,33 @@ func validateSnapshot(snapshot collection.Snapshot) error {
 	return nil
 }
 
-func validateObservation(observation samsung.Observation) error {
-	if _, err := identityFromObservation(observation); err != nil {
-		return err
+// validateObservation proves the observation is a complete, trustworthy TV
+// Inventory and returns the TV identity it carries.
+func validateObservation(observation samsung.Observation) (TVIdentity, error) {
+	identity, err := identityFromObservation(observation)
+	if err != nil {
+		return TVIdentity{}, err
 	}
 	if !observation.Inventory.Known {
-		return errors.New("TV inventory is unknown")
+		return TVIdentity{}, errors.New("TV inventory is unknown")
 	}
 	if strings.TrimSpace(observation.Inventory.CategoryID) == "" || observation.Inventory.ObservedAt.IsZero() {
-		return errors.New("TV inventory evidence is incomplete")
+		return TVIdentity{}, errors.New("TV inventory evidence is incomplete")
 	}
-	ids := slices.Clone(observation.Inventory.ContentIDs)
+	ids := observation.Inventory.ContentIDs
 	for index, id := range ids {
 		if id == "" || id != strings.TrimSpace(id) || (index > 0 && ids[index-1] >= id) {
-			return errors.New("TV inventory IDs must be nonblank, sorted, and unique")
+			return TVIdentity{}, errors.New("TV inventory IDs must be nonblank, sorted, and unique")
 		}
 	}
 	canonical, err := json.Marshal(ids)
 	if err != nil {
-		return fmt.Errorf("encode TV inventory fingerprint: %w", err)
+		return TVIdentity{}, fmt.Errorf("encode TV inventory fingerprint: %w", err)
 	}
 	if sha256.Sum256(canonical) != observation.Inventory.Fingerprint {
-		return errors.New("TV inventory fingerprint does not match its content IDs")
+		return TVIdentity{}, errors.New("TV inventory fingerprint does not match its content IDs")
 	}
-	return nil
+	return identity, nil
 }
 
 func validDigest(value string) bool {

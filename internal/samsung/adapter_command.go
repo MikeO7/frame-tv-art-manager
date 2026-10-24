@@ -31,12 +31,15 @@ type preparedCommand struct {
 	upload  preparedUpload
 }
 
-//nolint:gocyclo // The switch exhaustively validates the sealed command sum type.
 func prepareCommand(command Command) (preparedCommand, func(), error) {
 	prepared := preparedCommand{command: command}
 	switch value := command.(type) {
 	case Upload:
-		upload, cleanup, err := prepareUpload(value)
+		fileType, matte, err := validateUploadMetadata(value)
+		if err != nil {
+			return prepared, nil, err
+		}
+		upload, cleanup, err := openVerifiedUpload(value, fileType, matte)
 		prepared.upload = upload
 		return prepared, cleanup, err
 	case Delete:
@@ -57,14 +60,6 @@ func prepareCommand(command Command) (preparedCommand, func(), error) {
 		return prepared, nil, errors.New("unsupported Samsung command")
 	}
 	return prepared, nil, nil
-}
-
-func prepareUpload(command Upload) (preparedUpload, func(), error) {
-	fileType, matte, err := validateUploadMetadata(command)
-	if err != nil {
-		return preparedUpload{}, nil, err
-	}
-	return openVerifiedUpload(command, fileType, matte)
 }
 
 func validateUploadMetadata(command Upload) (string, string, error) {

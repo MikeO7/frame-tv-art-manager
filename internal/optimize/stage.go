@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -101,29 +102,23 @@ func StageCatalog(ctx context.Context, request StageRequest) (*Stage, error) {
 		return cleanupFailure(fmt.Errorf("secure optimization stage: %w", err))
 	}
 
-	files := make(map[string]struct{}, len(request.Inputs))
+	metadata := make(map[string]StageInput, len(request.Inputs))
 	for _, input := range request.Inputs {
 		if err := copyStageInput(ctx, directory, input); err != nil {
 			return cleanupFailure(err)
 		}
-		files[input.Name] = struct{}{}
+		metadata[input.Name] = input
 	}
 
-	catalog := &stageCatalog{files: files}
-	renames := &renameCollector{}
 	logger := request.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	metadata := make(map[string]StageInput, len(request.Inputs))
-	for _, input := range request.Inputs {
-		metadata[input.Name] = input
-	}
-	stage.Optimized, err = optimizeCatalog(ctx, directory, catalog, request.Config, renames.observe, logger, metadata)
-	if err != nil {
+	pass := &catalogPass{artworkDir: directory, cfg: request.Config, logger: logger, inputs: metadata}
+	if err := pass.run(ctx); err != nil {
 		return cleanupFailure(fmt.Errorf("optimize staged collection: %w", err))
 	}
-	stage.Renames = renames.snapshot()
+	stage.Optimized, stage.Renames = pass.optimized, pass.renames
 	stage.Derivatives = derivativesFromRenames(stage.Renames, TransformKey(request.Config), metadata)
 	return stage, nil
 }
@@ -139,15 +134,10 @@ func derivativesFromRenames(
 			grouped[rename.NewName] = append(grouped[rename.NewName], rename.OldName)
 		}
 	}
-	names := make([]string, 0, len(grouped))
-	for name := range grouped {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	result := make([]Derivative, 0, len(names))
-	for _, name := range names {
+	result := make([]Derivative, 0, len(grouped))
+	for _, name := range slices.Sorted(maps.Keys(grouped)) {
 		inputs := grouped[name]
-		sort.Strings(inputs)
+		slices.Sort(inputs)
 		kind := DerivativeOptimized
 		if len(inputs) > 1 || metadata[inputs[0]].Derivative == DerivativeCollage {
 			kind = DerivativeCollage
@@ -175,46 +165,4 @@ func validateStageRequest(ctx context.Context, inputs []StageInput) error {
 		names[input.Name] = struct{}{}
 	}
 	return nil
-}
-
-type stageCatalog struct {
-	mu    sync.Mutex
-	files map[string]struct{}
-}
-
-func (c *stageCatalog) SupportedFiles() (map[string]struct{}, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	files := make(map[string]struct{}, len(c.files))
-	for name := range c.files {
-		files[name] = struct{}{}
-	}
-	return files, nil
-}
-
-func (c *stageCatalog) NoteFileRename(oldName, newName string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delete(c.files, oldName)
-	if newName != "" {
-		c.files[newName] = struct{}{}
-	}
-}
-
-type renameCollector struct {
-	mu     sync.Mutex
-	events []Rename
-}
-
-func (c *renameCollector) observe(oldName, newName string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.events = append(c.events, Rename{OldName: oldName, NewName: newName})
-	return nil
-}
-
-func (c *renameCollector) snapshot() []Rename {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return append([]Rename(nil), c.events...)
 }

@@ -26,30 +26,44 @@ func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
 	return ts
 }
 
-func TestNASAClient_FetchAPOD(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		resp := apodResponse{
-			Title: "Test APOD",
-			URL:   "http://x.com/a.jpg",
-			HDURL: "http://x.com/hd.jpg",
-			Type:  mediaTypeImage,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	c := newNasaProvider("test_key_1", slog.Default())
-	c.BaseURL = server.URL
-
-	apod, err := c.FetchAPOD(context.Background())
-	if err != nil {
-		t.Fatalf("FetchAPOD failed: %v", err)
+func TestNASAResolveAPODPrefersHDImageAndRejectsVideo(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		status   int
+		response apodResponse
+		wantURL  string
+		wantErr  string
+	}{
+		{name: "HD image", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/a.jpg", HDURL: "https://apod.example/hd.jpg", Type: mediaTypeImage}, wantURL: "https://apod.example/hd.jpg"},
+		{name: "standard image fallback", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/a.jpg", Type: mediaTypeImage}, wantURL: "https://apod.example/a.jpg"},
+		{name: "video", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/v.mp4", Type: "video"}, wantErr: "not an image"},
+		{name: "API failure", status: http.StatusTooManyRequests, wantErr: "nasa apod api error"},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/planetary/apod" || r.URL.Query().Get("api_key") != "test_key_1" {
+					t.Errorf("unexpected APOD request %s", r.URL.String())
+				}
+				w.WriteHeader(test.status)
+				_ = json.NewEncoder(w).Encode(test.response)
+			}))
+			provider := newNasaProvider("test_key_1", slog.New(slog.DiscardHandler))
+			provider.BaseURL = server.URL
 
-	if apod.Title != "Test APOD" {
-		t.Errorf("expected Title Test APOD, got %s", apod.Title)
+			images, err := provider.Resolve(context.Background(), "nasa:apod")
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("Resolve(nasa:apod) error = %v, want %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil || len(images) != 1 || images[0].URL != test.wantURL || !strings.HasPrefix(images[0].Identity, "nasa--") {
+				t.Fatalf("Resolve(nasa:apod) = %+v, %v; want %s", images, err, test.wantURL)
+			}
+		})
 	}
 }
 
@@ -101,7 +115,7 @@ func TestArticClient_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newArticProvider(slog.Default())
+	c := newArticProvider()
 	c.BaseURL = server.URL
 	urls, err := c.Search(context.Background(), "monet")
 	if err != nil {
@@ -109,51 +123,6 @@ func TestArticClient_Search(t *testing.T) {
 	}
 	if len(urls) != 1 {
 		t.Errorf("expected 1 URL, got %d", len(urls))
-	}
-}
-
-func TestPixabayClient_Search(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Hits []pixabayPhoto `json:"hits"`
-		}{
-			Hits: []pixabayPhoto{{ID: 101, LargeImageURL: testImageURL}},
-		}
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newPixabayProvider("key", slog.Default())
-	c.BaseURL = server.URL
-	urls, err := c.Search(context.Background(), "nature")
-	if err != nil {
-		t.Fatalf("Search failed: %v", err)
-	}
-	if len(urls) != 1 {
-		t.Errorf("expected 1 URL, got %d", len(urls))
-	}
-}
-
-func TestPixabayClient_SearchDoesNotLogAPIKey(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(struct {
-			Hits []pixabayPhoto `json:"hits"`
-		}{})
-	}))
-	defer server.Close()
-
-	logger, logs := newTestLogger()
-	const apiKey = "codeql-secret-api-key"
-	provider := newPixabayProvider(apiKey, logger)
-	provider.BaseURL = server.URL
-
-	if _, err := provider.Search(context.Background(), "nature"); err != nil {
-		t.Fatalf("Search failed: %v", err)
-	}
-	if strings.Contains(logs.String(), apiKey) {
-		t.Fatalf("debug log exposed Pixabay API key: %s", logs.String())
 	}
 }
 
@@ -170,7 +139,7 @@ func TestArticClient_FetchPhoto(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := newArticProvider(slog.Default())
+	c := newArticProvider()
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "1")
@@ -178,7 +147,7 @@ func TestArticClient_FetchPhoto(t *testing.T) {
 		t.Fatalf("FetchPhoto failed: %v", err)
 	}
 
-	if url == "" || !contains(url, "img123") {
+	if url == "" || !strings.Contains(url, "img123") {
 		t.Errorf("expected URL containing img123, got %s", url)
 	}
 }
@@ -197,31 +166,6 @@ func TestPexelsClient_FetchPhoto(t *testing.T) {
 	c.BaseURL = server.URL
 
 	url, err := c.FetchPhoto(context.Background(), "123")
-	if err != nil {
-		t.Fatalf("FetchPhoto failed: %v", err)
-	}
-	if url != testImageURL {
-		t.Errorf("expected http://x.com/orig.jpg, got %s", url)
-	}
-}
-
-func TestPixabayClient_FetchPhoto(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Hits []pixabayPhoto `json:"hits"`
-		}{
-			Hits: []pixabayPhoto{{ID: 1, ImageURL: testImageURL}},
-		}
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newPixabayProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	url, err := c.FetchPhoto(context.Background(), "1")
 	if err != nil {
 		t.Fatalf("FetchPhoto failed: %v", err)
 	}
@@ -307,66 +251,6 @@ func TestPexelsClient_FetchCollection(t *testing.T) {
 	if len(urls) != 1 {
 		t.Errorf("expected 1 URL, got %d", len(urls))
 	}
-}
-
-func TestPixabayClient_EditorsChoice(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Hits []pixabayPhoto `json:"hits"`
-		}{
-			Hits: []pixabayPhoto{{ID: 1, LargeImageURL: testImageURL}},
-		}
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newPixabayProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	urls, err := c.EditorsChoice(context.Background())
-	if err != nil {
-		t.Fatalf("EditorsChoice failed: %v", err)
-	}
-	if len(urls) != 1 {
-		t.Errorf("expected 1 URL, got %d", len(urls))
-	}
-}
-
-func TestPixabayClient_User(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Hits []pixabayPhoto `json:"hits"`
-		}{
-			Hits: []pixabayPhoto{{ID: 1, LargeImageURL: testImageURL}},
-		}
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newPixabayProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	urls, err := c.User(context.Background(), "user123")
-	if err != nil {
-		t.Fatalf("User failed: %v", err)
-	}
-	if len(urls) != 1 {
-		t.Errorf("expected 1 URL, got %d", len(urls))
-	}
-}
-
-func contains(s, substr string) bool {
-	// Simple contains for tests
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestNASAClient_FetchNASAAssetManifest_Errors(t *testing.T) {

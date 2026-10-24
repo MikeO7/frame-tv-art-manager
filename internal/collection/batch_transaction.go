@@ -22,14 +22,26 @@ type transactionEffect struct {
 	Digest string `json:"digest"`
 }
 
-func (s *store) commitBatch(ctx context.Context, sourceDirectory string, plan batchPlan) error {
+// stagedBytes returns the validated bytes to publish for one batch addition.
+type stagedBytes func(context.Context, Item) ([]byte, error)
+
+// stagedDirectory reads each addition from an untrusted staging directory,
+// revalidating that its bytes still match the inventoried item.
+func stagedDirectory(directory string) stagedBytes {
+	return func(ctx context.Context, item Item) ([]byte, error) {
+		input, err := readStableBatchSource(ctx, filepath.Join(directory, item.Name), item)
+		return input.data, err
+	}
+}
+
+func (s *store) commitBatch(ctx context.Context, plan batchPlan, read stagedBytes) error {
 	cleanupCtx := context.WithoutCancel(ctx)
 	if err := cleanupBatchStages(ctx, s.root); err != nil {
 		return err
 	}
 	tx := transaction{Version: 1, Kind: transactionKindBatch, Next: newManifest(plan.items)}
 	for index, item := range plan.additions {
-		effect, err := s.stageBatchAddition(ctx, sourceDirectory, item, index)
+		effect, err := s.stageBatchAddition(ctx, item, index, read)
 		if err != nil {
 			return errors.Join(err, cleanupBatchStages(cleanupCtx, s.root))
 		}
@@ -46,55 +58,18 @@ func (s *store) commitBatch(ctx context.Context, sourceDirectory string, plan ba
 	return recoverBatchTransaction(ctx, s.root, tx)
 }
 
-func (s *store) commitImportBatch(ctx context.Context, additions []batchImportAddition, items []Item) error {
-	cleanupCtx := context.WithoutCancel(ctx)
-	if err := cleanupBatchStages(ctx, s.root); err != nil {
-		return err
-	}
-	tx := transaction{Version: 1, Kind: transactionKindBatch, Next: newManifest(items)}
-	for index, addition := range additions {
-		effect, err := s.stageValidatedBatchAddition(ctx, addition, index)
-		if err != nil {
-			return errors.Join(err, cleanupBatchStages(cleanupCtx, s.root))
-		}
-		tx.Additions = append(tx.Additions, effect)
-	}
-	if err := writeJournal(ctx, s.root, tx); err != nil {
-		return errors.Join(fmt.Errorf("publish batch transaction intent: %w", err), cleanupBatchStages(cleanupCtx, s.root))
-	}
-	return recoverBatchTransaction(ctx, s.root, tx)
-}
-
-func (s *store) stageValidatedBatchAddition(
-	ctx context.Context,
-	addition batchImportAddition,
-	index int,
-) (transactionEffect, error) {
-	digest := hex.EncodeToString(addition.input.digest[:])
-	stage := filepath.Join(s.root, controlDirectory, stagingName, fmt.Sprintf("batch-%03d-%s%s", index, digest, filepath.Ext(addition.item.Name)))
-	if err := durablefs.Replace(ctx, stage, 0o644, func(writer io.Writer) error {
-		return copyBytes(writer, addition.input.data)
-	}); err != nil {
-		return transactionEffect{}, fmt.Errorf("stage artwork %s: %w", addition.item.Name, err)
-	}
-	return transactionEffect{Stage: stage, Final: addition.item.Path, Digest: digest}, nil
-}
-
-func (s *store) stageBatchAddition(
-	ctx context.Context,
-	sourceDirectory string,
-	item Item,
-	index int,
-) (transactionEffect, error) {
-	source := filepath.Join(sourceDirectory, item.Name)
-	input, err := readStableBatchSource(ctx, source, item)
+func (s *store) stageBatchAddition(ctx context.Context, item Item, index int, read stagedBytes) (transactionEffect, error) {
+	data, err := read(ctx, item)
 	if err != nil {
 		return transactionEffect{}, err
 	}
 	digest := hex.EncodeToString(item.Digest[:])
 	stage := filepath.Join(s.root, controlDirectory, stagingName, fmt.Sprintf("batch-%03d-%s%s", index, digest, filepath.Ext(item.Name)))
 	if err := durablefs.Replace(ctx, stage, 0o644, func(writer io.Writer) error {
-		return copyBytes(writer, input.data)
+		if _, err := writer.Write(data); err != nil {
+			return fmt.Errorf("write artwork bytes: %w", err)
+		}
+		return nil
 	}); err != nil {
 		return transactionEffect{}, fmt.Errorf("stage artwork %s: %w", item.Name, err)
 	}
@@ -232,8 +207,7 @@ func validBatchEffectBase(root string, effect transactionEffect, seen map[string
 	if err != nil || len(digest) != sha256.Size || filepath.Dir(effect.Final) != root {
 		return false
 	}
-	name := filepath.Base(effect.Final)
-	if name == "." || name == "" || isReserved(strings.ToLower(name)) || !isSupportedName(name) {
+	if !isArtworkName(filepath.Base(effect.Final)) {
 		return false
 	}
 	if _, exists := seen[effect.Final]; exists {

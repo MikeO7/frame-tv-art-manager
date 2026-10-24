@@ -78,9 +78,9 @@ func TestLocalCollectionLogsInventoryBoundaryAndDuration(t *testing.T) {
 	root := t.TempDir()
 	var output bytes.Buffer
 	store := &gatedCollectionStore{
-		CollectionStore: newTestCollectionStore(t, root),
-		started:         make(chan struct{}),
-		release:         make(chan struct{}),
+		Store:   newTestCollectionStore(t, root),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
 	}
 	collection := &localCollection{
 		cfg:    &config.Config{ArtworkDir: root},
@@ -127,10 +127,10 @@ func TestLocalCollectionLogsInventoryFailureDuration(t *testing.T) {
 	release := make(chan struct{})
 	close(release)
 	store := &gatedCollectionStore{
-		CollectionStore: newTestCollectionStore(t, root),
-		started:         make(chan struct{}),
-		release:         release,
-		err:             wantErr,
+		Store:   newTestCollectionStore(t, root),
+		started: make(chan struct{}),
+		release: release,
+		err:     wantErr,
 	}
 	collection := &localCollection{
 		cfg:    &config.Config{ArtworkDir: root},
@@ -150,7 +150,7 @@ func TestLocalCollectionLogsInventoryFailureDuration(t *testing.T) {
 }
 
 type gatedCollectionStore struct {
-	CollectionStore
+	collectionpkg.Store
 	started chan struct{}
 	release chan struct{}
 	err     error
@@ -166,7 +166,7 @@ func (store *gatedCollectionStore) Prepare(
 		if store.err != nil {
 			return collectionpkg.Snapshot{}, store.err
 		}
-		return store.CollectionStore.Prepare(ctx, request)
+		return store.Store.Prepare(ctx, request)
 	case <-ctx.Done():
 		return collectionpkg.Snapshot{}, ctx.Err()
 	}
@@ -234,7 +234,7 @@ func TestLocalCollectionOptimizationPreflightSkipsOrStages(t *testing.T) {
 				t.Fatalf("write artwork: %v", err)
 			}
 			base := newTestCollectionStore(t, artworkDir)
-			recording := &countingCollectionStore{CollectionStore: base}
+			recording := &countingCollectionStore{Store: base}
 			manager := &localCollection{
 				cfg: &config.Config{
 					ArtworkDir: artworkDir, OptimizeEnabled: true,
@@ -296,7 +296,7 @@ func TestLocalCollectionOptimizationPreservesUploadIdentityInManifest(t *testing
 }
 
 type countingCollectionStore struct {
-	CollectionStore
+	collectionpkg.Store
 	applyCalls int
 }
 
@@ -305,7 +305,7 @@ func (store *countingCollectionStore) Apply(
 	request collectionpkg.ApplyRequest,
 ) (collectionpkg.Snapshot, error) {
 	store.applyCalls++
-	return store.CollectionStore.Apply(ctx, request)
+	return store.Store.Apply(ctx, request)
 }
 
 func TestLocalCollectionPrepareOwnsCompleteCycle(t *testing.T) {
@@ -439,7 +439,7 @@ func TestLocalCollectionPrepareDryRunIsReadOnly(t *testing.T) {
 	}
 }
 
-func newTestCollectionStore(t *testing.T, artworkDir string) CollectionStore {
+func newTestCollectionStore(t *testing.T, artworkDir string) collectionpkg.Store {
 	t.Helper()
 	store, err := collectionpkg.New(collectionpkg.Config{Root: artworkDir})
 	if err != nil {

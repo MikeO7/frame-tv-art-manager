@@ -21,10 +21,7 @@ func (t *protocolTransport) Upload(ctx context.Context, upload preparedUpload) (
 	}
 	defer cleanup()
 	requestID := newRequestID()
-	fields := buildSendImageRequest(requestID, upload.fileType, upload.matte, upload.size)
-	delete(fields, keyRequest)
-	delete(fields, "id")
-	delete(fields, keyRequestID)
+	fields := sendImageFields(requestID, upload.fileType, upload.matte, upload.size)
 	response, err := t.mutateOnConnection(ctx, conn, requestSendImage, requestID, fields)
 	if err != nil {
 		return "", err
@@ -36,19 +33,12 @@ func (t *protocolTransport) Upload(ctx context.Context, upload preparedUpload) (
 	if err := json.Unmarshal([]byte(response.ConnInfo()), &info); err != nil {
 		return "", commandError("upload", OutcomeUnknown, fmt.Errorf("parse upload connection info: %w", err))
 	}
-	d2d := preparedD2DUpload{
-		file: upload.file, fileSize: upload.size, fileType: upload.fileType, info: info,
-		timeout: t.config.ConnectTimeout, skipTLSVerify: !t.config.VerifyTLS, digest: upload.digest,
-	}
-	if err := uploadImageD2DFile(ctx, d2d); err != nil {
+	if err := uploadImageD2DFile(ctx, upload, info, t.config.ConnectTimeout, !t.config.VerifyTLS); err != nil {
 		return "", commandError("upload", OutcomeUnknown, fmt.Errorf("transfer upload: %w", err))
 	}
 	contentID, err := waitForImageAdded(ctx, added, t.config.RequestTimeout)
 	if err != nil {
-		if errors.Is(err, ErrArtAPIError) || errors.Is(err, ErrStorageFull) {
-			return "", commandError("upload", OutcomeNotApplied, err)
-		}
-		return "", commandError("upload", OutcomeUnknown, err)
+		return "", commandError("upload", mutationFailureOutcome(err), err)
 	}
 	if strings.TrimSpace(contentID) == "" {
 		return "", commandError("upload", OutcomeUnknown, errors.New("upload confirmation omitted content ID"))
@@ -144,7 +134,7 @@ func (t *protocolTransport) openRemoteControl(ctx context.Context) (*connection,
 		host: host, port: port, endpoint: endpointRemoteControl, name: t.config.ClientName,
 		tokenFile: t.config.TokenPath, timeout: t.config.ConnectTimeout,
 		skipTLSVerify: !t.config.VerifyTLS, logger: t.logger,
-		httpClient: t.cachedWebsocketHTTPClient(),
+		httpClient: t.websocketHTTPClient,
 	})
 	if err := conn.Open(ctx); err != nil {
 		return nil, fmt.Errorf("open remote control: %w", err)
@@ -169,13 +159,10 @@ func (t *protocolTransport) mutateOnConnection(
 	fields map[string]any,
 ) (*artResponse, error) {
 	response, err := t.sendOnConnection(ctx, conn, name, requestID, fields)
-	if err == nil {
-		return response, nil
+	if err != nil {
+		return nil, commandError(name, mutationFailureOutcome(err), err)
 	}
-	if errors.Is(err, ErrArtAPIError) || errors.Is(err, ErrStorageFull) {
-		return nil, commandError(name, OutcomeNotApplied, err)
-	}
-	return nil, commandError(name, OutcomeUnknown, err)
+	return response, nil
 }
 
 func (t *protocolTransport) activeConnection() (*connection, error) {

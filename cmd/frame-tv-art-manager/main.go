@@ -126,11 +126,9 @@ func handleCLIArgs() {
 		switch os.Args[1] {
 		case "--help", "-h":
 			//nolint:forbidigo // standard CLI usage output
-			fmt.Println("Usage: frame-tv-art-manager")
-			//nolint:forbidigo // standard CLI usage output
-			fmt.Println("Configuration is provided entirely via environment variables.")
-			//nolint:forbidigo // standard CLI usage output
-			fmt.Println("See README.md for details.")
+			fmt.Print("Usage: frame-tv-art-manager\n" +
+				"Configuration is provided entirely via environment variables.\n" +
+				"See README.md for details.\n")
 			os.Exit(0)
 		case "--version", "-v":
 			//nolint:forbidigo // standard CLI version output
@@ -146,19 +144,9 @@ func handleCLIArgs() {
 
 func setupLogger(logLevel string) *slog.Logger {
 	var level slog.Level
-	switch logLevel {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
+	if err := level.UnmarshalText([]byte(logLevel)); err != nil {
 		level = slog.LevelInfo
 	}
-
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
 	}))
@@ -182,7 +170,6 @@ func prepareDirectories(cfg *config.Config) error {
 	return nil
 }
 
-//nolint:gocyclo // ordered permission, ownership, and durability probes must fail at their exact boundary
 func prepareDirectory(path string, mode os.FileMode, uid, gid int) error {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {

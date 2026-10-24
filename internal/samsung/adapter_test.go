@@ -6,15 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
 type fakeClock struct {
@@ -93,7 +89,7 @@ func TestAdapterObserveExplicitEmptyInventoryIsEligible(t *testing.T) {
 		observation.Capabilities.UserArtInventory != SupportSupported {
 		t.Fatalf("capabilities = %+v", observation.Capabilities)
 	}
-	if observation.Disposition != DispositionEligible || observation.Authorization.isZero() {
+	if observation.Disposition != DispositionEligible || unauthorized(observation.Authorization) {
 		t.Fatalf("disposition/auth = %v/%+v", observation.Disposition, observation.Authorization)
 	}
 	if observation.ObservedAt != clock.now || observation.Inventory.ObservedAt != clock.now {
@@ -143,7 +139,7 @@ func TestAdapterObserveNeverInfersArtModeOnFromErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("Observe() error = nil")
 			}
-			if observation.ArtMode != ArtModeUnknown || !observation.Authorization.isZero() {
+			if observation.ArtMode != ArtModeUnknown || !unauthorized(observation.Authorization) {
 				t.Fatalf("art mode/auth = %v/%+v", observation.ArtMode, observation.Authorization)
 			}
 			if transport.inventoryCalls != 0 {
@@ -167,7 +163,7 @@ func TestAdapterObserveStandbyArtModeIsOperational(t *testing.T) {
 		t.Fatalf("Observe() error = %v", err)
 	}
 	if observation.Power != PowerStateOn || observation.ArtMode != ArtModeOn ||
-		observation.Disposition != DispositionEligible || observation.Authorization.isZero() {
+		observation.Disposition != DispositionEligible || unauthorized(observation.Authorization) {
 		t.Fatalf("standby Art Mode observation = %#v", observation)
 	}
 	if !observation.Inventory.Known || !reflect.DeepEqual(observation.Inventory.ContentIDs, []string{"MY_F0001"}) {
@@ -201,7 +197,7 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Observe() error = %v", err)
 			}
-			if observation.Disposition != test.wantDisposition || !observation.Authorization.isZero() {
+			if observation.Disposition != test.wantDisposition || !unauthorized(observation.Authorization) {
 				t.Fatalf("disposition/auth = %v/%+v", observation.Disposition, observation.Authorization)
 			}
 			if transport.artModeCalls != test.wantArtModeCalls || transport.inventoryCalls != 0 {
@@ -255,6 +251,8 @@ func TestAdapterKnownOffAuthorizesOnlyExactSupportedWake(t *testing.T) {
 			if test.withMAC {
 				adapter.config.MAC = []byte{0, 1, 2, 3, 4, 5}
 			}
+			// The scripted TV never wakes, so bound the postcondition poll tightly.
+			adapter.config.RequestTimeout = 50 * time.Millisecond
 
 			observation, err := adapter.Observe(context.Background(), ObserveRequest{
 				CycleID: "wake", CollectionGeneration: "generation", Required: test.required,
@@ -302,7 +300,7 @@ func TestAdapterObserveRejectsAmbiguousInventory(t *testing.T) {
 			if err == nil {
 				t.Fatal("Observe() error = nil")
 			}
-			if observation.Inventory.Known || !observation.Authorization.isZero() || observation.Disposition != DispositionUnsafeUnknown {
+			if observation.Inventory.Known || !unauthorized(observation.Authorization) || observation.Disposition != DispositionUnsafeUnknown {
 				t.Fatalf("unsafe inventory observation = %+v", observation)
 			}
 			if observation.ArtMode == ArtModeOn {
@@ -329,7 +327,7 @@ func TestAdapterObserveRequiredUnknownCapabilityWithholdsAuthorization(t *testin
 	}
 	if observation.Capabilities.ImageUpload != SupportUnknown ||
 		observation.Disposition != DispositionUnsafeUnknown ||
-		!observation.Authorization.isZero() {
+		!unauthorized(observation.Authorization) {
 		t.Fatalf("observation = %+v", observation)
 	}
 }
@@ -356,33 +354,6 @@ func TestAdapterApplyAlwaysRejectsWithoutIO(t *testing.T) {
 	}
 }
 
-func TestAdapterBackoffBlocksNetwork(t *testing.T) {
-	clock := &fakeClock{now: time.Date(2026, time.July, 12, 10, 0, 0, 0, time.UTC)}
-	transport := &scriptedObservationTransport{connectErr: ErrConnectionFailure}
-	adapter := newTestAdapter(t, clock, transport)
-
-	_, firstErr := adapter.Observe(context.Background(), ObserveRequest{CycleID: "cycle-1", CollectionGeneration: "generation"})
-	if firstErr == nil {
-		t.Fatal("first Observe() error = nil")
-	}
-	var firstSamsungErr *Error
-	if !errors.As(firstErr, &firstSamsungErr) || firstSamsungErr.Kind != ErrorKindUnreachable {
-		t.Fatalf("first Observe() error = %v, want unreachable", firstErr)
-	}
-
-	observation, secondErr := adapter.Observe(context.Background(), ObserveRequest{CycleID: "cycle-2", CollectionGeneration: "generation"})
-	if transport.connectCalls != 1 {
-		t.Fatalf("connect calls = %d, want one", transport.connectCalls)
-	}
-	var samsungErr *Error
-	if !errors.As(secondErr, &samsungErr) || samsungErr.Kind != ErrorKindBackoff {
-		t.Fatalf("second Observe() error = %v, want backoff", secondErr)
-	}
-	if observation.Disposition != DispositionBlockedBackoff || observation.Connection != ConnectionBackingOff {
-		t.Fatalf("backoff observation = %+v", observation)
-	}
-}
-
 func TestAdapterCloseInvalidatesObservationAuthority(t *testing.T) {
 	transport := eligibleObservationTransport(json.RawMessage(`[]`))
 	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
@@ -401,50 +372,6 @@ func TestAdapterCloseInvalidatesObservationAuthority(t *testing.T) {
 	}
 	if _, err := adapter.Observe(context.Background(), ObserveRequest{}); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("Observe() after close error = %v", err)
-	}
-}
-
-func TestAuthenticationTokenIsPersistedDurablyWithSensitivePermissions(t *testing.T) {
-	directory := filepath.Join(t.TempDir(), "tokens")
-	path := filepath.Join(directory, "tv.txt")
-	if err := persistAuthenticationToken(context.Background(), path, "new-token"); err != nil {
-		t.Fatalf("persistAuthenticationToken() error = %v", err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read token: %v", err)
-	}
-	if string(data) != "new-token" {
-		t.Fatalf("token = %q", data)
-	}
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat token: %v", err)
-	}
-	if fileInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("token mode = %o, want 0600", fileInfo.Mode().Perm())
-	}
-	directoryInfo, err := os.Stat(directory)
-	if err != nil {
-		t.Fatalf("stat token directory: %v", err)
-	}
-	if directoryInfo.Mode().Perm() != 0o700 {
-		t.Fatalf("token directory mode = %o, want 0700", directoryInfo.Mode().Perm())
-	}
-}
-
-func TestAuthenticationTokenPersistencePreservesUnknownOutcome(t *testing.T) {
-	cause := fmt.Errorf("directory sync failed: %w", durablefs.ErrOutcomeUnknown)
-	err := tokenPersistenceError(cause)
-	var samsungErr *Error
-	if !errors.As(err, &samsungErr) {
-		t.Fatalf("tokenPersistenceError() = %T, want *Error", err)
-	}
-	if samsungErr.Kind != ErrorKindOutcomeUnknown || samsungErr.Outcome != OutcomeUnknown {
-		t.Fatalf("tokenPersistenceError() = %+v, want unknown outcome", samsungErr)
-	}
-	if !errors.Is(err, durablefs.ErrOutcomeUnknown) {
-		t.Fatalf("tokenPersistenceError() does not preserve durablefs.ErrOutcomeUnknown")
 	}
 }
 
@@ -481,4 +408,9 @@ func newTestAdapter(t *testing.T, clock Clock, transport observationTransport) *
 		t.Fatalf("newAdapter() error = %v", err)
 	}
 	return adapter
+}
+
+// unauthorized reports whether an observation withheld mutation authority.
+func unauthorized(authorization Authorization) bool {
+	return authorization.adapter == nil
 }

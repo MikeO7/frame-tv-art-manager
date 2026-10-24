@@ -11,48 +11,46 @@ import (
 )
 
 func copyStageInput(ctx context.Context, directory string, input StageInput) (err error) {
-	source, err := openStageInput(input)
+	source, opened, err := openStageInput(input)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, source.file.Close()) }()
-	return writeStageInput(ctx, directory, input, source)
+	defer func() { err = errors.Join(err, source.Close()) }()
+	return writeStageInput(ctx, directory, input, source, opened)
 }
 
-type stageSource struct {
-	file           *os.File
-	before, opened os.FileInfo
-}
-
-func openStageInput(input StageInput) (stageSource, error) {
+// openStageInput opens a regular, non-symlink input and returns the opened
+// file's identity, verified to match its path.
+func openStageInput(input StageInput) (*os.File, os.FileInfo, error) {
 	before, err := os.Lstat(input.Path)
 	if err != nil {
-		return stageSource{}, fmt.Errorf("inspect stage input %q: %w", input.Name, err)
+		return nil, nil, fmt.Errorf("inspect stage input %q: %w", input.Name, err)
 	}
 	if err := requireRegularStageInput(input.Name, before); err != nil {
-		return stageSource{}, err
+		return nil, nil, err
 	}
 	source, err := os.Open(input.Path)
 	if err != nil {
-		return stageSource{}, fmt.Errorf("open stage input %q: %w", input.Name, err)
+		return nil, nil, fmt.Errorf("open stage input %q: %w", input.Name, err)
 	}
 	opened, err := source.Stat()
 	if err != nil {
 		_ = source.Close()
-		return stageSource{}, fmt.Errorf("inspect opened stage input %q: %w", input.Name, err)
+		return nil, nil, fmt.Errorf("inspect opened stage input %q: %w", input.Name, err)
 	}
 	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
 		_ = source.Close()
-		return stageSource{}, fmt.Errorf("stage input %q changed while opening", input.Name)
+		return nil, nil, fmt.Errorf("stage input %q changed while opening", input.Name)
 	}
-	return stageSource{file: source, before: before, opened: opened}, nil
+	return source, opened, nil
 }
 
 func writeStageInput(
 	ctx context.Context,
 	directory string,
 	input StageInput,
-	source stageSource,
+	source *os.File,
+	opened os.FileInfo,
 ) (err error) {
 	destinationPath := filepath.Join(directory, input.Name)
 	destination, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -67,14 +65,14 @@ func writeStageInput(
 	}()
 
 	hash := sha256.New()
-	reader := &contextReader{ctx: ctx, reader: source.file}
+	reader := &contextReader{ctx: ctx, reader: source}
 	if _, err := io.Copy(io.MultiWriter(destination, hash), reader); err != nil {
 		return fmt.Errorf("copy stage input %q: %w", input.Name, err)
 	}
 	if got := [sha256.Size]byte(hash.Sum(nil)); got != input.Digest {
 		return fmt.Errorf("stage input %q digest changed: got %x, want %x", input.Name, got, input.Digest)
 	}
-	if err := verifyStageInputStable(input, source.file, source.before, source.opened); err != nil {
+	if err := verifyStageInputStable(input, source, opened); err != nil {
 		return err
 	}
 	if err := destination.Chmod(0o644); err != nil {
@@ -83,22 +81,25 @@ func writeStageInput(
 	if err := destination.Sync(); err != nil {
 		return fmt.Errorf("sync staged input %q: %w", input.Name, err)
 	}
+	destinationOpen = false
 	if err := destination.Close(); err != nil {
-		destinationOpen = false
 		return fmt.Errorf("close staged input %q: %w", input.Name, err)
 	}
-	destinationOpen = false
 	return nil
 }
 
+// requireRegularStageInput rejects anything but a regular file; Lstat reports
+// symlinks as non-regular.
 func requireRegularStageInput(name string, info os.FileInfo) error {
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+	if !info.Mode().IsRegular() {
 		return fmt.Errorf("stage input %q is not a regular non-symlink file", name)
 	}
 	return nil
 }
 
-func verifyStageInputStable(input StageInput, source *os.File, before, opened os.FileInfo) error {
+// verifyStageInputStable confirms that the opened source was not modified and
+// that its path still names it after copying.
+func verifyStageInputStable(input StageInput, source *os.File, opened os.FileInfo) error {
 	after, err := source.Stat()
 	if err != nil {
 		return fmt.Errorf("reinspect opened stage input %q: %w", input.Name, err)
@@ -110,7 +111,7 @@ func verifyStageInputStable(input StageInput, source *os.File, before, opened os
 	if err := requireRegularStageInput(input.Name, pathAfter); err != nil {
 		return err
 	}
-	if !os.SameFile(before, opened) || !os.SameFile(opened, after) || !os.SameFile(after, pathAfter) {
+	if !os.SameFile(opened, after) || !os.SameFile(after, pathAfter) {
 		return fmt.Errorf("stage input %q changed identity while copying", input.Name)
 	}
 	if opened.Size() != after.Size() || !opened.ModTime().Equal(after.ModTime()) {

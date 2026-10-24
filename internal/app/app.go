@@ -39,8 +39,6 @@ func New(options Options) (*Application, error) {
 
 // Run starts and supervises the application until cancellation or a terminal
 // child error.
-//
-//nolint:funlen // Early HTTP liveness, preparation, child startup, and shared shutdown form one lifecycle.
 func (a *Application) Run(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("run context is required")
@@ -70,7 +68,8 @@ func (a *Application) Run(ctx context.Context) error {
 			results <- childResult{kind: childHTTP, err: server.Serve()}
 		}()
 	}
-	if err := a.prepareStart(ctx); err != nil {
+	if err := a.prepare(ctx); err != nil {
+		err = fmt.Errorf("prepare application: %w", err)
 		a.setState(StateFailed)
 		cancelChildren()
 		if server == nil {
@@ -95,13 +94,6 @@ func (a *Application) Run(ctx context.Context) error {
 		a.setState(StateFailed)
 	}
 	return result
-}
-
-func (a *Application) prepareStart(ctx context.Context) error {
-	if err := a.prepare(ctx); err != nil {
-		return fmt.Errorf("prepare application: %w", err)
-	}
-	return nil
 }
 
 func (a *Application) bindServer(ctx context.Context) (HTTPServer, error) {

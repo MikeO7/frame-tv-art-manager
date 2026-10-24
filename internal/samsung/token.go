@@ -12,7 +12,6 @@ import (
 
 const maxAuthenticationTokenBytes = 4 * 1024
 
-//nolint:gocyclo // ordered Lstat/open/fstat checks make the filesystem trust boundary auditable
 func loadAuthenticationToken(path string) (string, error) {
 	directory := filepath.Dir(path)
 	directoryInfo, err := os.Lstat(directory)

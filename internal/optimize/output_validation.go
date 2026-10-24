@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
 type contentNameRequest struct {
@@ -38,6 +39,28 @@ func availableContentName(ctx context.Context, request contentNameRequest) (stri
 	return "", errors.New("every content-digest filename is occupied")
 }
 
+// moveToContentName moves source to the first unoccupied content-digest name
+// for request in request.directory and returns that name. A source already at
+// request.currentName stays in place when that name is chosen.
+func moveToContentName(ctx context.Context, source string, request contentNameRequest) (string, error) {
+	digest, err := fileDigest(ctx, source)
+	if err != nil {
+		return "", fmt.Errorf("hash output: %w", err)
+	}
+	request.digest = digest
+	name, err := availableContentName(ctx, request)
+	if err != nil {
+		return "", fmt.Errorf("choose output name: %w", err)
+	}
+	if name == request.currentName {
+		return name, nil
+	}
+	if err := durablefs.MoveExclusive(ctx, source, filepath.Join(request.directory, name)); err != nil {
+		return "", fmt.Errorf("move output: %w", err)
+	}
+	return name, nil
+}
+
 func fileDigest(ctx context.Context, path string) ([sha256.Size]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return [sha256.Size]byte{}, err
@@ -51,9 +74,7 @@ func fileDigest(ctx context.Context, path string) ([sha256.Size]byte, error) {
 	if _, err := io.Copy(hash, &contextReader{ctx: ctx, reader: file}); err != nil {
 		return [sha256.Size]byte{}, err
 	}
-	var digest [sha256.Size]byte
-	copy(digest[:], hash.Sum(nil))
-	return digest, nil
+	return [sha256.Size]byte(hash.Sum(nil)), nil
 }
 
 // ValidateImage verifies that the complete encoded pixel stream decodes.
@@ -90,6 +111,5 @@ func decodeImageOutput(ctx context.Context, path string) (image.Image, string, e
 	}
 	defer func() { _ = f.Close() }()
 
-	decoded, format, err := image.Decode(&contextReader{ctx: ctx, reader: f})
-	return decoded, format, err
+	return image.Decode(&contextReader{ctx: ctx, reader: f})
 }

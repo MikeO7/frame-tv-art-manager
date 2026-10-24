@@ -20,9 +20,9 @@ func TestLoadDefaultContract(t *testing.T) {
 	clearEnvironmentForContract(t)
 	t.Setenv("TV_IPS", "192.0.2.10")
 
-	got, err := Load()
+	got, _, err := LoadWithWarnings()
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadWithWarnings() error = %v", err)
 	}
 
 	want := &Config{
@@ -49,9 +49,9 @@ func TestLoadDefaultContract(t *testing.T) {
 		BrightnessMin:                  2,
 		BrightnessMax:                  10,
 		RemoveUnknownImages:            false,
+		RotationIntervalDays:           14,
 		AutoOffTime:                    "",
 		AutoOffGraceHours:              2,
-		TVMAC:                          "",
 		EnableRESTGate:                 false,
 		VerifyTLS:                      false,
 		SourcesFile:                    "",
@@ -98,7 +98,7 @@ func TestLoadDefaultContract(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Load() defaults =\n%+v\nwant\n%+v", got, want)
+		t.Fatalf("LoadWithWarnings() defaults =\n%+v\nwant\n%+v", got, want)
 	}
 }
 
@@ -110,9 +110,9 @@ func TestLoadLegacyEnvironmentPrecedenceContract(t *testing.T) {
 	t.Setenv("SLIDESHOW_ENABLED", "")
 	t.Setenv("SLIDESHOW_INTERVAL", "15")
 
-	got, err := Load()
+	got, _, err := LoadWithWarnings()
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadWithWarnings() error = %v", err)
 	}
 	if got.VerifyTLS {
 		t.Fatal("SKIP_TLS_VERIFY=true must override VERIFY_TLS=true")
@@ -125,8 +125,8 @@ func TestLoadLegacyEnvironmentPrecedenceContract(t *testing.T) {
 func TestLoadRejectsCanonicalDuplicateTVAddresses(t *testing.T) {
 	clearEnvironmentForContract(t)
 	t.Setenv("TV_IPS", "2001:db8::1,2001:0db8:0:0:0:0:0:1")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("Load() error = %v, want duplicate-address rejection", err)
+	if _, _, err := LoadWithWarnings(); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("LoadWithWarnings() error = %v, want duplicate-address rejection", err)
 	}
 }
 
@@ -143,7 +143,7 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		"SOLAR_BRIGHTNESS_ENABLED": contractTrue, "LOCATION_LATITUDE": "40.25",
 		"LOCATION_LONGITUDE": "-105.5", "LOCATION_TIMEZONE": "America/Denver",
 		"BRIGHTNESS_MIN": "1", "BRIGHTNESS_MAX": "20",
-		"REMOVE_UNKNOWN_IMAGES": contractTrue, "AUTO_OFF_TIME": "23:15",
+		"REMOVE_UNKNOWN_IMAGES": contractTrue, "ROTATION_INTERVAL_DAYS": "3.5", "AUTO_OFF_TIME": "23:15",
 		"AUTO_OFF_GRACE_HOURS": "1.5", "TV_MAC": "AA:BB:CC:DD:EE:FF",
 		"ENABLE_REST_GATE": contractTrue, "VERIFY_TLS": contractTrue,
 		"SKIP_TLS_VERIFY": contractFalse, "ARTWORK_SOURCES_FILE": "/srv/sources.yaml",
@@ -201,9 +201,9 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		BrightnessMin:                  1,
 		BrightnessMax:                  20,
 		RemoveUnknownImages:            true,
+		RotationIntervalDays:           3.5,
 		AutoOffTime:                    "23:15",
 		AutoOffGraceHours:              1.5,
-		TVMAC:                          "",
 		EnableRESTGate:                 true,
 		VerifyTLS:                      true,
 		SourcesFile:                    "/srv/sources.yaml",
@@ -251,12 +251,12 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		PortraitMode:                   contractPad,
 	}
 
-	got, err := Load()
+	got, _, err := LoadWithWarnings()
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadWithWarnings() error = %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Load() explicit values =\n%+v\nwant\n%+v", got, want)
+		t.Fatalf("LoadWithWarnings() explicit values =\n%+v\nwant\n%+v", got, want)
 	}
 }
 
