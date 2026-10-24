@@ -1,4 +1,4 @@
-.PHONY: all test lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix shell-test site-check tool-versions benchmark-optimize e2e
+.PHONY: all test race lint build docker check clean tools fmt vuln actionlint tidy coverage coverage-check precommit fix agent-fix site-check tool-versions bench e2e
 .NOTPARALLEL: tidy fmt # These should run sequentially to avoid conflicts
 
 PRE_COMMIT := $(shell command -v pre-commit 2>/dev/null)
@@ -30,6 +30,10 @@ all: check build
 test:
 	@echo "🔍 Running tests..."
 	go test $(GO_TEST_FLAGS) $(GO_TEST_VERBOSE) -coverprofile=coverage.out ./...
+
+race:
+	@echo "🏁 Running race tests..."
+	go test -race -count=1 -shuffle=on ./...
 
 e2e:
 	pnpm test:e2e
@@ -85,9 +89,6 @@ actionlint:
 	@actionlint -version | grep -F "$(ACTIONLINT_VERSION)" >/dev/null || { echo "actionlint $(ACTIONLINT_VERSION) is required. Run 'make tools'."; exit 1; }
 	actionlint
 
-shell-test:
-	@bash scripts/agent-loop_test.sh
-
 site-check:
 	@echo "🌐 Validating GitHub Pages site..."
 	python3 scripts/validate-pages-site.py
@@ -108,8 +109,8 @@ docker:
 	@echo "🐳 Building Docker image (local)..."
 	docker build -t frame-tv-art-manager:local .
 
-benchmark-optimize:
-	@bash scripts/benchmark-optimize.sh
+bench:
+	go test ./internal/optimize -run '^$$' -bench . -benchmem
 
 fix: tidy fmt
 	@echo "🔧 Auto-fixing linter issues..."
@@ -122,20 +123,16 @@ agent-fix:
 # Ordered for fast feedback: cheap/structural checks and the most common
 # failures (formatting, actionlint, lint, anti-slop) run before the slow
 # test suite and govulncheck, so failures surface as early as possible.
-check: tidy fmt actionlint site-check lint shell-test precommit coverage-check vuln
+check: tidy fmt actionlint lint precommit coverage-check vuln
 	@echo "✅ All local checks passed!"
 
+# Tools are built with the toolchain go.mod selects, so golangci-lint can load
+# configuration for the module's Go version.
 tools:
 	@echo "🛠️  Installing development tools..."
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
-	go install golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION)
-	@if ! command -v actionlint &> /dev/null; then \
-		if [[ "$$OSTYPE" == "darwin"* ]]; then \
-			brew install actionlint; \
-		else \
-			go install github.com/rhysd/actionlint/cmd/actionlint@v$(ACTIONLINT_VERSION); \
-		fi \
-	fi
+	GOTOOLCHAIN=$$(go env GOVERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
+	GOTOOLCHAIN=$$(go env GOVERSION) go install golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION)
+	GOTOOLCHAIN=$$(go env GOVERSION) go install github.com/rhysd/actionlint/cmd/actionlint@v$(ACTIONLINT_VERSION)
 	@if [ -z "$(PRE_COMMIT)" ]; then \
 		pip install pre-commit==$(PRE_COMMIT_VERSION); \
 	fi

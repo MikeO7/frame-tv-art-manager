@@ -1,11 +1,5 @@
-# .goreleaser.yaml
-# Optimized for absolute speed and multi-arch delivery
 version: 2
 project_name: frame-tv-art-manager
-
-before:
-  hooks:
-    - go mod tidy
 
 builds:
   - env:
@@ -29,7 +23,6 @@ builds:
 archives:
   - formats:
       - tar.gz
-    # Use a faster compression if possible (default is fine for these sizes)
     name_template: >-
       {{ .ProjectName }}_
       {{- .Os }}_
@@ -37,10 +30,6 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
 
 checksum:
   name_template: 'checksums.txt'

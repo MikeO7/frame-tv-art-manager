@@ -1,9 +1,14 @@
 version: 2
+# Each ecosystem opens at most one grouped pull request per week so routine
+# version bumps stay reviewable. Security updates are not grouped.
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      go-modules:
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "go"
@@ -12,6 +17,31 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-images:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      e2e-runner:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+      - "e2e"

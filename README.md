@@ -472,6 +472,8 @@ The repository keeps its verification commands in the Makefile:
 ```bash
 make tools       # install the pinned local tools
 make test        # tests with shuffled order and a coverage profile
+make race        # tests under the race detector
+make bench       # image-pipeline benchmarks
 make agent-fix   # formatting, Actions validation, lint, hooks, tests, coverage, vuln scan
 make docker      # build the local container image
 ```
@@ -484,7 +486,7 @@ Run the isolated browser and API journeys with Node.js 26 and pnpm 12:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm exec e2e-web install chromium --with-deps
+pnpm exec e2e-web install chromium   # add --with-deps on a Linux host without browser libraries
 make e2e
 ```
 
@@ -494,6 +496,16 @@ loopback TV address. It never reads operator configuration or contacts a real TV
 Telemetry is disabled. Reports, screenshots, logs, and revision metadata are
 saved under `.e2e/`. See [the flow inventory](tests/e2e/README.md) for coverage
 and device limits.
+
+### Continuous integration
+
+A single [`CI` workflow](.github/workflows/ci.yml) runs lint, pre-commit hooks,
+tests with coverage, race tests, the vulnerability scan, and the end-to-end
+journeys in parallel. Pull requests also build the `linux/amd64` image. Pushes
+to `main` and `v*` tags publish the multi-arch image to GHCR only after every
+check passes, and tags also publish the GitHub release. The workflow reruns
+weekly to catch newly published vulnerabilities. Dependabot opens one grouped
+update per week for Go modules, Actions, Docker images, and the e2e runner.
 
 ## License
 
