@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Apply revalidates a single-use authorization and serializes the fresh guard,
@@ -39,11 +40,7 @@ func (a *adapter) Apply(ctx context.Context, authorization Authorization, comman
 		if errors.As(err, &classified) && classified.Outcome != OutcomeApplied {
 			return a.finishCommand(receipt, classified)
 		}
-		outcome := OutcomeUnknown
-		if errors.Is(err, ErrArtAPIError) || errors.Is(err, ErrStorageFull) {
-			outcome = OutcomeNotApplied
-		}
-		return a.finishCommand(receipt, commandError(commandName(command), outcome, err))
+		return a.finishCommand(receipt, commandError(commandName(command), mutationFailureOutcome(err), err))
 	}
 	outcome, err := a.verifyPostcondition(ctx, transport, prepared, contentID)
 	receipt.Outcome = outcome
@@ -228,9 +225,9 @@ func (a *adapter) verifyPostcondition(
 		actual, err := transport.Brightness(ctx)
 		return settingOutcome(actual, value.PreviousValue, value.Value, err)
 	case Wake:
-		return a.powerOutcome(ctx, transport, stringOn)
+		return a.powerOutcome(ctx, transport, PowerStateOn)
 	case PowerOff:
-		return a.powerOutcome(ctx, transport, stringOff)
+		return a.powerOutcome(ctx, transport, PowerStateOff)
 	default:
 		return OutcomeNotAttempted, ErrNotAuthorized
 	}
@@ -258,6 +255,15 @@ func (a *adapter) verifyInventoryMembership(
 	return OutcomeNotApplied, errors.New("TV inventory does not match acknowledged command")
 }
 
+// mutationFailureOutcome classifies a failed TV write: an explicit Art API
+// rejection proves the command was not applied, and anything else is unknown.
+func mutationFailureOutcome(err error) Outcome {
+	if errors.Is(err, ErrArtAPIError) || errors.Is(err, ErrStorageFull) {
+		return OutcomeNotApplied
+	}
+	return OutcomeUnknown
+}
+
 func settingOutcome(actual, previous, desired int, err error) (Outcome, error) {
 	if err != nil {
 		return OutcomeUnknown, err
@@ -282,4 +288,90 @@ func slideshowOutcome(actual, previous, desired SlideshowSetting, err error) (Ou
 		return OutcomeNotApplied, errors.New("slideshow retained its previous setting")
 	}
 	return OutcomeUnknown, errors.New("slideshow changed to an unexpected setting")
+}
+
+type operationalState struct {
+	Power   PowerState
+	ArtMode ArtModeState
+}
+
+func readOperationalState(
+	ctx context.Context,
+	transport observationTransport,
+	device DeviceInfo,
+) (operationalState, error) {
+	rawPower := strings.TrimSpace(device.PowerState)
+	power, known := parseDevicePowerState(rawPower)
+	if !known {
+		return operationalState{}, fmt.Errorf("unrecognized device power state %q", device.PowerState)
+	}
+	if rawPower == stringOff {
+		return operationalState{Power: PowerStateOff}, nil
+	}
+	artMode, err := transport.ArtMode(ctx)
+	if err != nil {
+		return operationalState{}, fmt.Errorf("read art mode: %w", err)
+	}
+	switch strings.TrimSpace(artMode) {
+	case stringOn:
+		return operationalState{Power: PowerStateOn, ArtMode: ArtModeOn}, nil
+	case stringOff:
+		if rawPower == stringStandby {
+			power = PowerStateOff
+		}
+		return operationalState{Power: power, ArtMode: ArtModeOff}, nil
+	default:
+		return operationalState{}, fmt.Errorf("unrecognized art mode %q", artMode)
+	}
+}
+
+func (a *adapter) powerOutcome(ctx context.Context, transport mutationTransport, desired PowerState) (Outcome, error) {
+	pollCtx, cancel := context.WithTimeout(ctx, a.config.RequestTimeout)
+	defer cancel()
+	lastErr := errors.New("power state has not reached the requested value")
+	for {
+		reached, err := desiredPowerObserved(pollCtx, transport, desired)
+		if reached {
+			return OutcomeApplied, nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+		if err := waitForPowerPoll(pollCtx, min(100*time.Millisecond, a.config.RequestTimeout)); err != nil {
+			return OutcomeUnknown, powerPollError(ctx, pollCtx, lastErr)
+		}
+	}
+}
+
+func desiredPowerObserved(ctx context.Context, transport mutationTransport, desired PowerState) (bool, error) {
+	device, err := transport.DeviceInfo(ctx)
+	if err != nil {
+		return false, err
+	}
+	if err := validateFrameTVDevice(device); err != nil {
+		return false, err
+	}
+	actual, err := readOperationalState(ctx, transport, device)
+	if err != nil {
+		return false, err
+	}
+	return actual.Power == desired, nil
+}
+
+func waitForPowerPoll(ctx context.Context, interval time.Duration) error {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func powerPollError(callerCtx, pollCtx context.Context, lastErr error) error {
+	if err := callerCtx.Err(); err != nil {
+		return fmt.Errorf("poll power-state postcondition: %w", err)
+	}
+	return fmt.Errorf("poll power-state postcondition: %w", errors.Join(pollCtx.Err(), lastErr))
 }

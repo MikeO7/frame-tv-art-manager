@@ -131,13 +131,12 @@ func TestDryRunAndConnectionShareStrictTokenLoaderWithoutWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport := &protocolTransport{config: Config{TokenPath: path}}
-	if err := transport.admitConnection(context.Background(), "127.0.0.1", true, nil); err != nil {
+	if err := transport.admitConnection(context.Background(), "127.0.0.1", true); err != nil {
 		t.Fatalf("admitConnection() error = %v", err)
 	}
-	connection := newConnection(connConfig{tokenFile: path})
-	got, err := connection.readToken()
+	got, err := loadAuthenticationToken(path)
 	if err != nil || got != "stable-token" {
-		t.Fatalf("readToken() = %q, %v", got, err)
+		t.Fatalf("loadAuthenticationToken() = %q, %v", got, err)
 	}
 	after, err := os.ReadFile(path)
 	if err != nil {

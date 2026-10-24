@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net"
-	"net/http"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -19,16 +16,7 @@ import (
 
 // connection manages a single WSS connection to a Samsung Frame TV endpoint.
 type connection struct {
-	host          string
-	port          int
-	endpoint      string
-	name          string // client identity sent in WebSocket URL
-	tokenFile     string
-	timeout       time.Duration
-	skipTLSVerify bool
-	logger        *slog.Logger
-	persistToken  func(context.Context, string, string) error
-	httpClient    *http.Client
+	connConfig
 
 	mu       sync.Mutex
 	conn     *websocket.Conn
@@ -125,11 +113,6 @@ func (c *connection) formatURL(token string) string {
 	return u.String()
 }
 
-// readToken reads the saved auth token from the token file.
-func (c *connection) readToken() (string, error) {
-	return loadAuthenticationToken(c.tokenFile)
-}
-
 // extractAndSaveToken pulls the token from a ms.channel.connect response and
 // publishes it durably with sensitive permissions.
 func (c *connection) extractAndSaveToken(ctx context.Context, data json.RawMessage) error {
@@ -143,9 +126,6 @@ func (c *connection) extractAndSaveToken(ctx context.Context, data json.RawMessa
 	if d.Token == "" {
 		c.logger.Debug("token field is empty in handshake data")
 		return nil
-	}
-	if c.persistToken == nil {
-		return errors.New("token persistence is not configured")
 	}
 	if err := c.persistToken(ctx, c.tokenFile, d.Token); err != nil {
 		return fmt.Errorf("save authentication token: %w", err)

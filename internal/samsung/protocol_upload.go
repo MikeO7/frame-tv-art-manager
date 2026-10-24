@@ -34,13 +34,12 @@ func parseImageAdded(data json.RawMessage) (string, error) {
 	return response.ContentID, nil
 }
 
-func buildSendImageRequest(id, fileType, matte string, fileSize int64) map[string]any {
+// sendImageFields builds the send_image request fields; sendOnConnection adds
+// the request name and correlation IDs.
+func sendImageFields(id, fileType, matte string, fileSize int64) map[string]any {
 	const connectionIDModulus = 4 * 1024 * 1024 * 1024
 	return map[string]any{
-		keyRequest:   requestSendImage,
-		"file_type":  fileType,
-		"id":         id,
-		keyRequestID: id,
+		"file_type": fileType,
 		"conn_info": map[string]any{
 			"d2d_mode":      "socket",
 			"connection_id": time.Now().UnixNano() % connectionIDModulus,

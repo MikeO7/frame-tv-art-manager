@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"time"
 )
 
@@ -48,39 +47,32 @@ func streamFile(f io.Reader, conn io.Writer, fileSize int64, expectedDigest [sha
 	return nil
 }
 
+// writeD2DPart writes data completely; bytes.Reader reports a short write as
+// io.ErrShortWrite.
 func writeD2DPart(writer io.Writer, data []byte, description string) error {
-	written, err := io.Copy(writer, bytes.NewReader(data))
-	if err != nil {
+	if written, err := io.Copy(writer, bytes.NewReader(data)); err != nil {
 		return fmt.Errorf("write %s after %d bytes: %w", description, written, err)
-	}
-	if written != int64(len(data)) {
-		return fmt.Errorf("write %s: %w", description, io.ErrShortWrite)
 	}
 	return nil
 }
 
-type preparedD2DUpload struct {
-	file          *os.File
-	fileSize      int64
-	fileType      string
-	info          connInfo
-	timeout       time.Duration
-	skipTLSVerify bool
-	digest        [sha256.Size]byte
-}
-
-func uploadImageD2DFile(ctx context.Context, upload preparedD2DUpload) error {
+func uploadImageD2DFile(
+	ctx context.Context,
+	upload preparedUpload,
+	info connInfo,
+	timeout time.Duration,
+	skipTLSVerify bool,
+) error {
 	if _, err := upload.file.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("rewind image file: %w", err)
 	}
-	// Build the D2D header.
 	header := map[string]any{
 		"num":        0,
 		"total":      1,
-		"fileLength": upload.fileSize,
+		"fileLength": upload.size,
 		"fileName":   "dummy",
 		"fileType":   upload.fileType,
-		"secKey":     upload.info.Key,
+		"secKey":     info.Key,
 		"version":    "0.0.1",
 	}
 
@@ -89,16 +81,15 @@ func uploadImageD2DFile(ctx context.Context, upload preparedD2DUpload) error {
 		return fmt.Errorf("marshal d2d header: %w", err)
 	}
 
-	// Connect to the TV's D2D socket.
-	dialer := net.Dialer{Timeout: upload.timeout}
-	conn, err := dialD2D(ctx, upload.info, &dialer, upload.skipTLSVerify)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialD2D(ctx, info, &dialer, skipTLSVerify)
 	if err != nil {
 		return fmt.Errorf("dial d2d socket: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 
-	// Set a write deadline for the entire transfer.
-	if err := conn.SetWriteDeadline(time.Now().Add(upload.timeout + time.Duration(upload.fileSize/d2dChunkSize)*100*time.Millisecond)); err != nil {
+	// The write deadline covers the entire transfer.
+	if err := conn.SetWriteDeadline(time.Now().Add(timeout + time.Duration(upload.size/d2dChunkSize)*100*time.Millisecond)); err != nil {
 		return fmt.Errorf("set write deadline: %w", err)
 	}
 	// Cancellation interrupts a transfer in progress instead of waiting for the
@@ -118,5 +109,5 @@ func uploadImageD2DFile(ctx context.Context, upload preparedD2DUpload) error {
 		return err
 	}
 
-	return streamFile(upload.file, conn, upload.fileSize, upload.digest)
+	return streamFile(upload.file, conn, upload.size, upload.digest)
 }

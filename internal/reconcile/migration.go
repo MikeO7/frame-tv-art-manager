@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -141,7 +140,7 @@ func decodeLegacyMapping(raw []byte) (map[string]string, error) {
 	if closing != json.Delim('}') {
 		return nil, errors.New("mapping object is not closed")
 	}
-	if err := ensureLegacyMappingEOF(decoder); err != nil {
+	if err := ensureJSONEOF(decoder, "mapping"); err != nil {
 		return nil, err
 	}
 	if err := validateLegacyMapping(mapping); err != nil {
@@ -171,17 +170,6 @@ func decodeLegacyMappingEntries(decoder *json.Decoder) (map[string]string, error
 		mapping[name] = contentID
 	}
 	return mapping, nil
-}
-
-func ensureLegacyMappingEOF(decoder *json.Decoder) error {
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("mapping contains trailing JSON")
-		}
-		return fmt.Errorf("decode mapping trailer: %w", err)
-	}
-	return nil
 }
 
 func validateLegacyMapping(mapping map[string]string) error {

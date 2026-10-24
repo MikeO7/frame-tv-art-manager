@@ -238,30 +238,33 @@ func validateSnapshot(snapshot collection.Snapshot) error {
 	return nil
 }
 
-func validateObservation(observation samsung.Observation) error {
-	if _, err := identityFromObservation(observation); err != nil {
-		return err
+// validateObservation proves the observation is a complete, trustworthy TV
+// Inventory and returns the TV identity it carries.
+func validateObservation(observation samsung.Observation) (TVIdentity, error) {
+	identity, err := identityFromObservation(observation)
+	if err != nil {
+		return TVIdentity{}, err
 	}
 	if !observation.Inventory.Known {
-		return errors.New("TV inventory is unknown")
+		return TVIdentity{}, errors.New("TV inventory is unknown")
 	}
 	if strings.TrimSpace(observation.Inventory.CategoryID) == "" || observation.Inventory.ObservedAt.IsZero() {
-		return errors.New("TV inventory evidence is incomplete")
+		return TVIdentity{}, errors.New("TV inventory evidence is incomplete")
 	}
-	ids := slices.Clone(observation.Inventory.ContentIDs)
+	ids := observation.Inventory.ContentIDs
 	for index, id := range ids {
 		if id == "" || id != strings.TrimSpace(id) || (index > 0 && ids[index-1] >= id) {
-			return errors.New("TV inventory IDs must be nonblank, sorted, and unique")
+			return TVIdentity{}, errors.New("TV inventory IDs must be nonblank, sorted, and unique")
 		}
 	}
 	canonical, err := json.Marshal(ids)
 	if err != nil {
-		return fmt.Errorf("encode TV inventory fingerprint: %w", err)
+		return TVIdentity{}, fmt.Errorf("encode TV inventory fingerprint: %w", err)
 	}
 	if sha256.Sum256(canonical) != observation.Inventory.Fingerprint {
-		return errors.New("TV inventory fingerprint does not match its content IDs")
+		return TVIdentity{}, errors.New("TV inventory fingerprint does not match its content IDs")
 	}
-	return nil
+	return identity, nil
 }
 
 func validDigest(value string) bool {

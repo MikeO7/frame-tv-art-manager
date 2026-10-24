@@ -468,13 +468,13 @@ func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 	tests := []struct {
 		name      string
 		artMode   string
-		desired   string
+		desired   PowerState
 		wantMatch bool
 	}{
-		{name: "Art Mode satisfies on", artMode: stringOn, desired: stringOn, wantMatch: true},
-		{name: "Art Mode does not satisfy off", artMode: stringOn, desired: stringOff},
-		{name: "Art Mode off satisfies off", artMode: stringOff, desired: stringOff, wantMatch: true},
-		{name: "Art Mode off does not satisfy on", artMode: stringOff, desired: stringOn},
+		{name: "Art Mode satisfies on", artMode: stringOn, desired: PowerStateOn, wantMatch: true},
+		{name: "Art Mode does not satisfy off", artMode: stringOn, desired: PowerStateOff},
+		{name: "Art Mode off satisfies off", artMode: stringOff, desired: PowerStateOff, wantMatch: true},
+		{name: "Art Mode off does not satisfy on", artMode: stringOff, desired: PowerStateOn},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -483,23 +483,19 @@ func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 			transport.artMode = test.artMode
 			reached, err := desiredPowerObserved(context.Background(), transport, test.desired)
 			if err != nil || reached != test.wantMatch {
-				t.Fatalf("desiredPowerObserved(standby, %s, %s) = %v, %v", test.artMode, test.desired, reached, err)
+				t.Fatalf("desiredPowerObserved(standby, %s, %d) = %v, %v", test.artMode, test.desired, reached, err)
 			}
 		})
 	}
 	transport := mutationTransportForInventory(`[]`)
 	transport.device.PowerState = stringStandby
 	transport.artModeErr = errors.New("art mode unavailable")
-	if _, err := desiredPowerObserved(context.Background(), transport, stringOff); err == nil {
+	if _, err := desiredPowerObserved(context.Background(), transport, PowerStateOff); err == nil {
 		t.Fatal("desiredPowerObserved() accepted standby with an Art Mode error")
 	}
-	transport.device.PowerState = stringOn
 	transport.artModeErr = nil
-	if _, err := desiredPowerObserved(context.Background(), transport, "sleeping"); err == nil {
-		t.Fatal("desiredPowerObserved() accepted an unknown desired state")
-	}
 	transport.device.PowerState = "sleeping"
-	if _, err := desiredPowerObserved(context.Background(), transport, stringOff); err == nil {
+	if _, err := desiredPowerObserved(context.Background(), transport, PowerStateOff); err == nil {
 		t.Fatal("desiredPowerObserved() accepted an unknown actual state")
 	}
 }

@@ -171,9 +171,6 @@ func TestProtocolTransportOwnsReusableHTTPClientsAndClosesIdleConnections(t *tes
 		gateHTTPClient:      &http.Client{Transport: gate},
 		websocketHTTPClient: &http.Client{Transport: websocket},
 	}
-	if first, second := transport.cachedDeviceHTTPClient(), transport.cachedDeviceHTTPClient(); first != second {
-		t.Fatal("DeviceInfo HTTP client was recreated instead of reused")
-	}
 	if err := transport.Close(context.Background()); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}

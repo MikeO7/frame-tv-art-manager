@@ -13,17 +13,20 @@ import (
 
 // BuildPlan is a pure deterministic planner. It never reads files, observes a
 // TV, or mutates its inputs.
-//
-//nolint:funlen,gocognit,nestif // The linear phases deliberately mirror reconciliation ordering.
 func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
-	policy = normalizePolicy(policy)
 	if err := validateSnapshot(snapshot); err != nil {
 		return Plan{}, err
 	}
-	if err := validateObservation(observation); err != nil {
-		return Plan{}, err
-	}
-	identity, err := identityFromObservation(observation)
+	return planSnapshot(snapshot, observation, state, policy)
+}
+
+// planSnapshot is BuildPlan for a snapshot that Run has already validated. The
+// fresh observation and in-memory state are still validated on every call.
+//
+//nolint:funlen,gocognit,nestif // The linear phases deliberately mirror reconciliation ordering.
+func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
+	policy = normalizePolicy(policy)
+	identity, err := validateObservation(observation)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -195,41 +198,29 @@ func initialState(identity TVIdentity) State {
 	}
 }
 
-//nolint:nestif // Pointer fields are copied together to keep state cloning local.
 func cloneState(state State) State {
 	clone := state
 	clone.Bindings = make(map[string]Binding, len(state.Bindings))
-	for key, value := range state.Bindings {
-		clone.Bindings[key] = value
-	}
+	maps.Copy(clone.Bindings, state.Bindings)
 	clone.Tombstones = make(map[string]Tombstone, len(state.Tombstones))
-	for key, value := range state.Tombstones {
-		clone.Tombstones[key] = value
-	}
+	maps.Copy(clone.Tombstones, state.Tombstones)
 	clone.LastShown = maps.Clone(state.LastShown)
 	if state.Pending != nil {
 		pending := *state.Pending
-		if pending.Command.PreviousSlideshow != nil {
-			value := *pending.Command.PreviousSlideshow
-			pending.Command.PreviousSlideshow = &value
-		}
-		if pending.Command.DesiredSlideshow != nil {
-			value := *pending.Command.DesiredSlideshow
-			pending.Command.DesiredSlideshow = &value
-		}
-		if pending.Command.PreviousValue != nil {
-			value := *pending.Command.PreviousValue
-			pending.Command.PreviousValue = &value
-		}
-		if pending.Command.DesiredValue != nil {
-			value := *pending.Command.DesiredValue
-			pending.Command.DesiredValue = &value
-		}
-		if pending.Receipt != nil {
-			receipt := *pending.Receipt
-			pending.Receipt = &receipt
-		}
+		pending.Command.PreviousSlideshow = clonePointer(pending.Command.PreviousSlideshow)
+		pending.Command.DesiredSlideshow = clonePointer(pending.Command.DesiredSlideshow)
+		pending.Command.PreviousValue = clonePointer(pending.Command.PreviousValue)
+		pending.Command.DesiredValue = clonePointer(pending.Command.DesiredValue)
+		pending.Receipt = clonePointer(pending.Receipt)
 		clone.Pending = &pending
 	}
 	return clone
+}
+
+func clonePointer[T any](value *T) *T {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }

@@ -50,22 +50,13 @@ func validateMatteOverride(entry MatteOverride) error {
 	lowerName := strings.ToLower(name)
 	if name == "" || name != strings.TrimSpace(name) || filepath.Base(name) != name ||
 		strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, "._") ||
-		!supportedMatteFilename(lowerName) {
+		!slices.Contains([]string{".jpg", ".jpeg", ".png"}, filepath.Ext(lowerName)) {
 		return fmt.Errorf("matte override filename %q is unsafe or unsupported", name)
 	}
 	if entry.Matte == "" || entry.Matte != strings.TrimSpace(entry.Matte) || len(entry.Matte) > 128 {
 		return fmt.Errorf("matte override for %q has an invalid matte", name)
 	}
 	return nil
-}
-
-func supportedMatteFilename(name string) bool {
-	switch filepath.Ext(name) {
-	case ".jpg", ".jpeg", ".png":
-		return true
-	default:
-		return false
-	}
 }
 
 func (overrides MatteOverrides) entries() ([]MatteOverride, error) {

@@ -49,14 +49,8 @@ func (c *connection) recvLoop() {
 
 func (c *connection) routeD2DEvent(dataRaw json.RawMessage) {
 	// Some TVs (like the 2024 model) send 'data' as a JSON-encoded string.
-	// Others send it as a raw JSON object. We try to handle both.
-	var dataToParse []byte = dataRaw
-
-	var dataStr string
-	if err := json.Unmarshal(dataRaw, &dataStr); err == nil {
-		// It was a string! Use the unwrapped string content for parsing.
-		dataToParse = []byte(dataStr)
-	}
+	// Others send it as a raw JSON object.
+	dataToParse := []byte(parsePolyString(dataRaw))
 
 	var inner struct {
 		RequestID string `json:"request_id"`

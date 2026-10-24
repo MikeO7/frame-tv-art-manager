@@ -88,11 +88,9 @@ func TestUploadImageD2DFileStopsWhenCanceledMidTransfer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	time.AfterFunc(200*time.Millisecond, cancel)
 	started := time.Now()
-	err = uploadImageD2DFile(ctx, preparedD2DUpload{
-		file: file, fileSize: int64(len(payload)), fileType: "jpg",
-		info:    connInfo{IP: host, Port: json.Number(port), Key: "key"},
-		timeout: time.Minute, digest: sha256.Sum256(payload),
-	})
+	err = uploadImageD2DFile(ctx,
+		preparedUpload{file: file, size: int64(len(payload)), fileType: "jpg", digest: sha256.Sum256(payload)},
+		connInfo{IP: host, Port: json.Number(port), Key: "key"}, time.Minute, false)
 	if err == nil {
 		t.Fatal("uploadImageD2DFile() succeeded although the receiver never read")
 	}

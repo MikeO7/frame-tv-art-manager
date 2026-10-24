@@ -28,6 +28,13 @@ func TestTimerMutationWaiterHonorsCancellation(t *testing.T) {
 	}
 }
 
+func withMutationWaiter(waiter mutationWaiter) Option {
+	return func(configuration *runtimeConfiguration) error {
+		configuration.mutations.waiter = waiter
+		return nil
+	}
+}
+
 func newBlockingMutationWaiter() *blockingMutationWaiter {
 	return &blockingMutationWaiter{calls: make(chan time.Duration, 4), release: make(chan error, 4)}
 }

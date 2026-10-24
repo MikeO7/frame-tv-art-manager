@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
-	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
 const (
@@ -187,27 +186,6 @@ func retainShownHistory(state *State, desired map[string]struct{}) {
 	if len(state.LastShown) == 0 {
 		state.LastShown = nil
 	}
-}
-
-// replanForRotation plans against capacity evidence that a storage-full
-// rejection has just made durable.
-func (s *service) replanForRotation(
-	request Request,
-	policy Policy,
-	state State,
-	observation samsung.Observation,
-	selectedThisCycle bool,
-) (Plan, State, error) {
-	s.logger.Info("TV storage is full; rotating artwork", "cycle_id", request.CycleID,
-		"capacity", state.Capacity.Maximum, "rotation_interval", policy.Rotation.String())
-	plan, planned, err := s.buildPlan(request.Snapshot, observation, state, policy)
-	if err != nil {
-		return Plan{}, state, err
-	}
-	if selectedThisCycle {
-		plan.Commands = withoutCommand(plan.Commands, CommandSelect)
-	}
-	return plan, planned, nil
 }
 
 func snapshotDigests(snapshot collection.Snapshot) map[string]struct{} {

@@ -4,11 +4,13 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -88,7 +90,6 @@ func newAdapter(
 		random:    dependencies.Random,
 		logger:    dependencies.Logger.With("component", "samsung-tv"),
 		transport: transport,
-		runtime:   adapterRuntime{},
 	}, nil
 }
 
@@ -172,9 +173,7 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 		if errors.Is(err, ErrGateFailed) {
 			observation.Connection = ConnectionDisconnected
 			observation.Disposition = DispositionBlockedQuietGate
-			a.resetFailures()
-			a.publishAuthorizationFacts(observation, request)
-			return cloneObservation(observation), nil
+			return a.settleObservation(observation, request), nil
 		}
 		return a.failObservation(ctx, observation, request, "connect", err)
 	}
@@ -211,9 +210,7 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 	}
 	if state.ArtMode == ArtModeOff {
 		observation.Disposition = DispositionBlockedNotArtMode
-		a.resetFailures()
-		a.publishAuthorizationFacts(observation, request)
-		return cloneObservation(observation), nil
+		return a.settleObservation(observation, request), nil
 	}
 
 	rawInventory, err := a.transport.Inventory(ctx)
@@ -236,9 +233,15 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 
 	observation.Disposition = DispositionEligible
 	observation.Authorization = a.newAuthorization(request, connectionGeneration, inventory.Fingerprint)
+	return a.settleObservation(observation, request), nil
+}
+
+// settleObservation completes a successful observation: it clears backoff and
+// publishes the facts a later authorization must match.
+func (a *adapter) settleObservation(observation Observation, request ObserveRequest) Observation {
 	a.resetFailures()
 	a.publishAuthorizationFacts(observation, request)
-	return cloneObservation(observation), nil
+	return cloneObservation(observation)
 }
 
 func (a *adapter) knownPowerOffObservation(
@@ -246,16 +249,13 @@ func (a *adapter) knownPowerOffObservation(
 	request ObserveRequest,
 	connectionGeneration uint64,
 ) Observation {
-	observation.Power = PowerStateOff
 	observation.Disposition = DispositionBlockedPowerOff
 	if _, supportsMutation := a.transport.(mutationTransport); supportsMutation &&
 		request.Required == CapabilityRemotePower && len(a.config.MAC) == 6 {
 		observation.Capabilities.RemotePower = SupportSupported
 		observation.Authorization = a.newAuthorization(request, connectionGeneration, [sha256.Size]byte{})
 	}
-	a.resetFailures()
-	a.publishAuthorizationFacts(observation, request)
-	return cloneObservation(observation)
+	return a.settleObservation(observation, request)
 }
 
 // Close invalidates all issued authorizations and releases the read channel.
@@ -278,4 +278,191 @@ func (a *adapter) Close(ctx context.Context) error {
 		return fmt.Errorf("close Samsung observation transport: %w", err)
 	}
 	return nil
+}
+
+func (a *adapter) newAuthorization(
+	request ObserveRequest,
+	connectionGeneration uint64,
+	inventoryFingerprint [sha256.Size]byte,
+) Authorization {
+	return Authorization{
+		adapter:              a,
+		connectionGeneration: connectionGeneration,
+		cycleID:              request.CycleID,
+		collectionGeneration: request.CollectionGeneration,
+		inventoryFingerprint: inventoryFingerprint,
+		required:             request.Required,
+		dryRun:               request.DryRun,
+	}
+}
+
+func (a *adapter) observeMutationCapabilities(
+	ctx context.Context,
+	request ObserveRequest,
+	observation *Observation,
+) error {
+	transport, ok := a.transport.(mutationTransport)
+	if !ok {
+		return nil
+	}
+	observation.Capabilities.ImageUpload = SupportSupported
+	observation.Capabilities.ImageDeletion = SupportSupported
+	// Samsung's art API does not expose a reliable current-selection readback,
+	// so selection cannot be authorized with a verifiable postcondition.
+	observation.Capabilities.ImageSelection = SupportUnsupported
+	observation.Capabilities.RemotePower = SupportSupported
+	if request.Required&(CapabilitySlideshowRead|CapabilitySlideshowWrite) != 0 {
+		value, err := transport.Slideshow(ctx)
+		if err != nil {
+			return err
+		}
+		observation.Slideshow = SlideshowObservation{Setting: value, Known: true, ObservedAt: observation.ObservedAt}
+		observation.Capabilities.SlideshowRead = SupportSupported
+		observation.Capabilities.SlideshowWrite = SupportSupported
+	}
+	if request.Required&(CapabilityBrightnessRead|CapabilityBrightnessWrite) != 0 {
+		value, err := transport.Brightness(ctx)
+		if err != nil {
+			return err
+		}
+		observation.Brightness = SettingObservation{Value: value, Known: true, ObservedAt: observation.ObservedAt}
+		observation.Capabilities.BrightnessRead = SupportSupported
+		observation.Capabilities.BrightnessWrite = SupportSupported
+	}
+	return nil
+}
+
+func adapterCloseContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if ctx.Err() == nil {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
+}
+
+func (a *adapter) failObservation(
+	ctx context.Context,
+	observation Observation,
+	request ObserveRequest,
+	operation string,
+	cause error,
+) (Observation, error) {
+	typed := classifyObservationError(operation, cause)
+	observation.Disposition = DispositionUnsafeUnknown
+	observation.ArtMode = ArtModeUnknown
+	observation.Authorization = Authorization{}
+	if typed.Kind == ErrorKindCanceled {
+		a.publishAuthorizationFacts(observation, request)
+		return cloneObservation(observation), typed
+	}
+	if typed.Kind == ErrorKindUnauthorized {
+		observation.Connection = ConnectionAuthRequired
+	} else if typed.Retryable {
+		a.stateMu.Lock()
+		a.runtime.ConsecutiveFailures++
+		a.runtime.NextAttemptAt = a.clock.Now().Add(a.backoffDelay(a.runtime.ConsecutiveFailures))
+		typed.ConsecutiveFailures = a.runtime.ConsecutiveFailures
+		typed.RetryAt = a.runtime.NextAttemptAt
+		a.stateMu.Unlock()
+	}
+	if closeErr := a.transport.Close(context.WithoutCancel(ctx)); closeErr != nil {
+		a.logger.Debug("close failed after observation error", "error", closeErr)
+	}
+	a.stateMu.Lock()
+	a.connectionGeneration++
+	a.stateMu.Unlock()
+	a.publishAuthorizationFacts(observation, request)
+	return cloneObservation(observation), typed
+}
+
+func classifyObservationError(operation string, cause error) *Error {
+	kind := ErrorKindInvalidResponse
+	retryable := true
+	switch {
+	case errors.Is(cause, context.Canceled), errors.Is(cause, context.DeadlineExceeded):
+		kind = ErrorKindCanceled
+		retryable = false
+	case errors.Is(cause, ErrUnauthorized):
+		kind = ErrorKindUnauthorized
+		retryable = false
+	case errors.Is(cause, ErrTimeout):
+		kind = ErrorKindTimeout
+	case errors.Is(cause, ErrConnectionFailure), errors.Is(cause, ErrNotConnected):
+		kind = ErrorKindUnreachable
+	}
+	var typed *Error
+	if errors.As(cause, &typed) {
+		kind = typed.Kind
+		retryable = typed.Retryable
+	}
+	return &Error{
+		Kind:      kind,
+		Operation: operation,
+		Retryable: retryable,
+		Outcome:   OutcomeNotAttempted,
+		Cause:     cause,
+	}
+}
+
+func (a *adapter) backoffDelay(failures int) time.Duration {
+	limit := a.config.BackoffBase
+	for failure := 1; failure < failures && limit < a.config.BackoffMaximum; failure++ {
+		if limit > a.config.BackoffMaximum/2 {
+			limit = a.config.BackoffMaximum
+			break
+		}
+		limit *= 2
+	}
+	var randomBytes [8]byte
+	if _, err := io.ReadFull(a.random, randomBytes[:]); err != nil {
+		a.logger.Debug("backoff randomness unavailable; using maximum", "error", err)
+		return limit
+	}
+	value := binary.BigEndian.Uint64(randomBytes[:])
+	if value == math.MaxUint64 {
+		return limit
+	}
+	return time.Duration((float64(value) / float64(math.MaxUint64)) * float64(limit))
+}
+
+func (a *adapter) resetFailures() {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	a.runtime.ConsecutiveFailures = 0
+	a.runtime.NextAttemptAt = time.Time{}
+}
+
+func (a *adapter) publishAuthorizationFacts(observation Observation, request ObserveRequest) {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	a.runtime.InventoryFingerprint = observation.Inventory.Fingerprint
+	a.runtime.CycleID = request.CycleID
+	a.runtime.CollectionGeneration = request.CollectionGeneration
+}
+
+func normalizeInventory(raw json.RawMessage, observedAt time.Time) (Inventory, error) {
+	content, err := parseUploadedContent(raw)
+	if err != nil {
+		return Inventory{}, err
+	}
+	ids := make([]string, 0, len(content))
+	for _, item := range content {
+		ids = append(ids, item.ContentID)
+	}
+	slices.Sort(ids)
+	canonical, err := json.Marshal(ids)
+	if err != nil {
+		return Inventory{}, fmt.Errorf("encode canonical inventory: %w", err)
+	}
+	return Inventory{
+		CategoryID:  userArtCategory,
+		ContentIDs:  ids,
+		Fingerprint: sha256.Sum256(canonical),
+		Known:       true,
+		ObservedAt:  observedAt,
+	}, nil
+}
+
+func cloneObservation(observation Observation) Observation {
+	observation.Inventory.ContentIDs = slices.Clone(observation.Inventory.ContentIDs)
+	return observation
 }

@@ -12,7 +12,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
@@ -80,15 +79,11 @@ func (s stateStore) save(ctx context.Context, state State) error {
 	if !errors.Is(err, durablefs.ErrOutcomeUnknown) {
 		return fmt.Errorf("persist reconciliation state revision %d: %w", state.Revision, err)
 	}
-	observed, exists, readErr := s.load(context.WithoutCancel(ctx), state.TV)
-	if readErr != nil {
+	if _, _, readErr := s.load(context.WithoutCancel(ctx), state.TV); readErr != nil {
 		return errors.Join(ErrPersistenceUnknown, err, fmt.Errorf("inspect unknown persistence outcome: %w", readErr))
 	}
-	if !exists || !reflect.DeepEqual(observed, state) {
-		return errors.Join(ErrPersistenceUnknown, err)
-	}
-	// The intended revision is visible and valid, but its directory durability
-	// was not confirmed. Mutation authority must still fail closed.
+	// Even when the intended revision is visible and valid, its directory
+	// durability was not confirmed. Mutation authority must still fail closed.
 	return errors.Join(ErrPersistenceUnknown, err)
 }
 
@@ -116,13 +111,11 @@ func (s stateStore) validateDirectory(create bool) error {
 }
 
 func encodeState(state State) ([]byte, error) {
-	state.Checksum = ""
-	canonical, err := json.Marshal(state)
+	checksum, err := stateChecksum(state)
 	if err != nil {
 		return nil, fmt.Errorf("encode reconciliation state: %w", err)
 	}
-	digest := sha256.Sum256(canonical)
-	state.Checksum = hex.EncodeToString(digest[:])
+	state.Checksum = checksum
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("encode checksummed reconciliation state: %w", err)
@@ -137,34 +130,43 @@ func decodeState(data []byte, identity TVIdentity) (State, error) {
 	if err := decoder.Decode(&state); err != nil {
 		return State{}, fmt.Errorf("decode reconciliation state: %w", err)
 	}
-	if err := ensureJSONEOF(decoder); err != nil {
+	if err := ensureJSONEOF(decoder, "reconciliation state"); err != nil {
 		return State{}, err
 	}
-	provided := state.Checksum
-	state.Checksum = ""
-	canonical, err := json.Marshal(state)
+	checksum, err := stateChecksum(state)
 	if err != nil {
 		return State{}, fmt.Errorf("verify reconciliation state checksum: %w", err)
 	}
-	digest := sha256.Sum256(canonical)
-	if provided == "" || !strings.EqualFold(provided, hex.EncodeToString(digest[:])) {
+	if state.Checksum == "" || !strings.EqualFold(state.Checksum, checksum) {
 		return State{}, errors.New("reconciliation state checksum mismatch")
 	}
-	state.Checksum = provided
 	if err := validateState(state, identity); err != nil {
 		return State{}, err
 	}
 	return state, nil
 }
 
-func ensureJSONEOF(decoder *json.Decoder) error {
+// stateChecksum digests the canonical encoding of state without its checksum.
+func stateChecksum(state State) (string, error) {
+	state.Checksum = ""
+	canonical, err := json.Marshal(state)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(canonical)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+// ensureJSONEOF rejects trailing content after the single JSON document that
+// describes subject.
+func ensureJSONEOF(decoder *json.Decoder, subject string) error {
 	var trailing any
 	err := decoder.Decode(&trailing)
 	if !errors.Is(err, io.EOF) {
 		if err == nil {
-			return errors.New("reconciliation state contains trailing JSON")
+			return fmt.Errorf("%s contains trailing JSON", subject)
 		}
-		return fmt.Errorf("decode reconciliation state trailer: %w", err)
+		return fmt.Errorf("decode %s trailer: %w", subject, err)
 	}
 	return nil
 }

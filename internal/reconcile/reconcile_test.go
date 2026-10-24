@@ -495,9 +495,9 @@ func TestResolvePendingMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			state := cloneState(base)
 			state.Pending = &test.pending
-			got, resolved, err := resolvePending(state, test.observation, testTime)
-			if resolved != test.resolved || (err == nil) != test.resolved {
-				t.Fatalf("resolved = %v, error = %v", resolved, err)
+			got, err := resolvePending(state, test.observation, testTime)
+			if (err == nil) != test.resolved {
+				t.Fatalf("resolved = %v, error = %v", err == nil, err)
 			}
 			_, bound := got.Bindings[digest]
 			if bound != test.wantBinding {
@@ -606,7 +606,8 @@ func TestValidationFailsClosed(t *testing.T) {
 		{"duplicate inventory", func() error {
 			broken := observation
 			broken.Inventory.ContentIDs = []string{"same", "same"}
-			return validateObservation(broken)
+			_, err := validateObservation(broken)
+			return err
 		}},
 		{"state version", func() error { broken := state; broken.Version = 99; return validateState(broken, identity) }},
 		{"state identity", func() error { return validateState(state, TVIdentity{Address: "other", Model: "model"}) }},
@@ -683,11 +684,15 @@ func TestIntentValidationAndCapabilityMapping(t *testing.T) {
 			t.Errorf("invalid %s accepted", intent.Kind)
 		}
 	}
-	want := baseCapabilities() |
+	want := baseCapabilities |
 		samsung.CapabilityImageUpload | samsung.CapabilityImageDeletion | samsung.CapabilityImageSelection |
 		samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite |
 		samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite | samsung.CapabilityRemotePower
-	if got := requiredCapabilities(valid); got != want {
+	var got samsung.CapabilitySet
+	for _, intent := range valid {
+		got |= requiredCapabilities(intent)
+	}
+	if got != want {
 		t.Fatalf("capabilities = %b, want %b", got, want)
 	}
 	for _, intent := range valid[len(valid)-2:] {
@@ -801,9 +806,9 @@ func TestResolvePendingRemainingCommands(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			state := cloneState(base)
 			state.Pending = &Pending{Command: test.command, Phase: test.phase}
-			got, resolved, err := resolvePending(state, test.observation, testTime)
-			if resolved != test.resolved || (err == nil) != test.resolved {
-				t.Fatalf("state = %#v, resolved = %v, error = %v", got, resolved, err)
+			got, err := resolvePending(state, test.observation, testTime)
+			if (err == nil) != test.resolved {
+				t.Fatalf("state = %#v, error = %v", got, err)
 			}
 		})
 	}
@@ -888,9 +893,6 @@ func TestConstructionHelpersAndErrorStatus(t *testing.T) {
 		if got := statusForError(check.err); got != check.want {
 			t.Errorf("status = %d, want %d", got, check.want)
 		}
-	}
-	if dryRunStatus(true) != StatusIncompleteDryRun || dryRunStatus(false) != StatusComplete {
-		t.Fatal("dry-run status mapping is invalid")
 	}
 }
 
@@ -978,7 +980,7 @@ func TestObservationSnapshotAndRequestValidationBranches(t *testing.T) {
 	for index, mutate := range observationCases {
 		value := validObservation
 		mutate(&value)
-		if err := validateObservation(value); err == nil {
+		if _, err := validateObservation(value); err == nil {
 			t.Errorf("observation case %d accepted", index)
 		}
 	}
@@ -1343,11 +1345,9 @@ func TestResolveRecoveryDryRunProjectsWithoutPersistence(t *testing.T) {
 	state := initialState(identity)
 	state.Pending = &Pending{Command: CommandIntent{Kind: CommandPowerOff}, Phase: PhasePrepared}
 	concrete := newTestService(t, directory, Policy{}).(*service)
-	result, err := concrete.resolveRecovery(context.Background(), recoveryInput{
-		cycleID: "cycle", dryRun: true, observation: observation, state: state,
-	})
-	if err != nil || !result.Resolved || result.Status != StatusIncompleteDryRun || result.State.Pending != nil {
-		t.Fatalf("result = %#v, error = %v", result, err)
+	resolved, err := concrete.resolveRecovery(context.Background(), "cycle", true, observation, state)
+	if err != nil || resolved.Pending != nil || resolved.Revision != state.Revision {
+		t.Fatalf("resolved = %#v, error = %v", resolved, err)
 	}
 	if _, err := os.Lstat(directory); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("dry-run recovery persisted state: %v", err)
@@ -1530,9 +1530,9 @@ func TestAppliedReceiptResolutionMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			state := cloneState(base)
 			state.Pending = &Pending{Command: test.command, Receipt: &test.receipt, Phase: PhaseApplied, CollectionGen: digestHex("generation")}
-			got, resolved, err := resolveAppliedReceipt(state, knownObservation(samsung.PowerStateOn), testTime)
-			if resolved != test.resolved || (err == nil) != test.resolved {
-				t.Fatalf("state = %#v, resolved = %v, error = %v", got, resolved, err)
+			got, err := resolveAppliedReceipt(state, knownObservation(samsung.PowerStateOn), testTime)
+			if (err == nil) != test.resolved {
+				t.Fatalf("state = %#v, error = %v", got, err)
 			}
 		})
 	}
@@ -1558,15 +1558,15 @@ func TestSlideshowRecoveryThreeWayRule(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, resolved, err := resolveSlideshowPending(base, cloneState(base), test.observation)
-			if resolved != test.resolved || (err == nil) != test.resolved {
-				t.Fatalf("state = %#v, resolved = %v, error = %v", got, resolved, err)
+			got, err := resolvePending(base, samsung.Observation{Slideshow: test.observation}, testTime)
+			if (err == nil) != test.resolved || (got.Pending == nil) != test.resolved {
+				t.Fatalf("state = %#v, error = %v", got, err)
 			}
 		})
 	}
 	missing := cloneState(base)
 	missing.Pending.Command.DesiredSlideshow = nil
-	if _, resolved, err := resolveSlideshowPending(base, missing, samsung.SlideshowObservation{Known: true}); resolved || err == nil {
+	if _, err := resolvePending(missing, samsung.Observation{Slideshow: samsung.SlideshowObservation{Known: true}}, testTime); err == nil {
 		t.Fatal("setting recovery accepted missing desired value")
 	}
 }

@@ -51,11 +51,8 @@ func (s *service) handleAppliedReceipt(
 	if err := s.store.save(ctx, state); err != nil {
 		return state, observation, err
 	}
-	resolved, changed, err := resolvePending(state, observation, s.clock.Now())
-	if err != nil || !changed {
-		if err == nil {
-			err = ErrRecoveryRequired
-		}
+	resolved, err := resolvePending(state, observation, s.clock.Now())
+	if err != nil {
 		return state, observation, err
 	}
 	resolved.Revision++
