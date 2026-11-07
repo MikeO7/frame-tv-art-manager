@@ -100,8 +100,8 @@ docker compose logs -f frame-tv-art-manager
    covers both artwork and power control. The pairing token is saved in
    `./data/tokens`; keep that folder when you upgrade or the TV will ask again.
 2. **Add art.** Copy `.jpg`, `.jpeg`, or `.png` files into `./data/artwork`.
-   Copy, don't move: each file is replaced by its prepared version, so keep
-   your originals somewhere else.
+   Each file is replaced by its prepared version, and the untouched original
+   is kept in the hidden `.frame-tv-art-manager` folder beside it.
 3. **Wait for a sync.** The first sync runs at startup, then every 30 minutes
    (`SYNC_INTERVAL_MINUTES`).
 
@@ -123,8 +123,11 @@ YAML, hidden and temporary files, symlinks) are ignored.
 With image preparation on (the default), each file that needs work is
 **replaced in place** by its prepared 3840×2160 version and renamed to a
 readable name plus a short content hash, for example
-`summer-vacation--8f14e45fceea167a.jpg`. Treat the folder as the TV's copy of
-your art and keep your originals elsewhere.
+`summer-vacation--8f14e45fceea167a.jpg`. The untouched original is kept in
+`.frame-tv-art-manager/originals` inside the folder (see
+[Kept originals](#kept-originals)). Rename or delete the prepared file as you
+would any other; adding a file with the same name replaces it and its
+original.
 
 ### The web uploader
 
@@ -345,6 +348,37 @@ default 512 MB). A 24-megapixel camera photo takes about a second and roughly
 250 MB. An 8-bit 8K image (33 megapixels) just fits the default budget; a
 16-bit PNG or a smart crop of that size can need a larger one. Images above
 40 megapixels are left out of the collection with a warning in the log.
+
+### Kept originals
+
+Before a picture's prepared version replaces it, its untouched bytes are
+saved in the artwork folder's hidden control directory,
+`.frame-tv-art-manager/originals`, named by their SHA-256 hash. A collage
+keeps both of its portraits. Every prepared version is made from its
+original, never from an earlier prepared version, so changing any setting
+above (crop or mat, mat tone, sharpening, museum mode, JPEG subsampling,
+resolution) re-prepares the art from scratch on the next sync: nothing
+compounds, and switching from crop to mat brings back the whole picture.
+Restarting with the same settings changes nothing.
+
+- **Disk space.** Originals take about as much space as the pictures you
+  added (camera photos and full-size downloads included), on top of the
+  prepared copies.
+- **Deleting art.** Delete the prepared file from the folder; its original is
+  removed once that deletion is recorded. An original is never removed
+  because a file could not be read for a moment.
+- **Replacing art.** A new file, or new bytes under an existing name, becomes
+  the new original. Renaming a prepared file keeps its original.
+- **Dry run** (`DRY_RUN=true`) saves no originals.
+- **Upgrading.** Pictures prepared by earlier versions, which replaced
+  originals outright, have none. The current prepared file is kept as their
+  original the next time they need work, so they stop losing quality from
+  then on, but what an earlier version cropped away cannot be recovered. To
+  start over from a real original, delete the prepared file and add the
+  original again.
+- The control directory is private (`0700`, files `0600`) and is never shown
+  on the TV. Back it up with the artwork folder if you want to keep the
+  originals.
 
 ### Mattes
 
@@ -584,6 +618,13 @@ Your own TV uploads and your local files are never deleted.
 **Will it delete art I uploaded to the TV myself?**
 No. It only removes art it uploaded, unless you turn on
 `REMOVE_UNKNOWN_IMAGES`.
+
+**Does it keep my original files?**
+Yes. Each picture's untouched original is kept in the artwork folder's hidden
+`.frame-tv-art-manager/originals` directory, and prepared versions are always
+made from it, so you can change any image setting later without losing
+quality. Pictures prepared by versions before this feature keep their current
+file as the original. See [Kept originals](#kept-originals).
 
 **Does it work with portrait photos?**
 Yes. By default they are shown whole on a charcoal gallery mat tinted toward

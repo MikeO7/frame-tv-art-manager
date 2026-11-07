@@ -84,6 +84,9 @@ type ItemMetadata struct {
 	SourceKeys   []string
 	TransformKey string
 	Derivative   DerivativeKind
+	// Originals are the kept untouched bytes a derivative is rendered from,
+	// in render order. Empty for untransformed artwork.
+	Originals []Original
 }
 
 // Policy applies request-specific limits. Zero values retain store limits.
@@ -114,6 +117,10 @@ type Item struct {
 	SourceKeys   []string
 	TransformKey string
 	Derivative   DerivativeKind
+	// Originals links a derivative to the kept untouched bytes it is always
+	// re-rendered from: one image, or a collage's two portraits in order. A
+	// derivative made before originals were kept starts with its own bytes.
+	Originals []Original
 }
 
 type FileType string

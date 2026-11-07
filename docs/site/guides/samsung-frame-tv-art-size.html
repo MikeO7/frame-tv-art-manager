@@ -275,7 +275,7 @@ converts any embedded ICC color profile to sRGB, and tone-maps HDR PNGs to stand
 <li>Applies halo-free, contrast-adaptive sharpening (skipped on images enlarged more than 1.5×).</li>
 <li>Saves JPEG at quality 95 with full 4:4:4 color, so red and blue edges stay crisp (<code>IMAGE_JPEG_SUBSAMPLING=420</code> makes smaller files); PNGs stay PNG, including transparency.</li>
 </ol>
-<p>A 24-megapixel camera photo takes about a second. The prepared file replaces the original in the artwork folder, so keep originals elsewhere.</p>
+<p>A 24-megapixel camera photo takes about a second. The prepared file replaces the picture in the artwork folder, and the untouched original is kept in its hidden <code>.frame-tv-art-manager/originals</code> directory, so changing a setting later re-prepares the art from the original without losing quality. Originals take about as much disk space as the pictures you add.</p>
 </section>
 <section aria-labelledby="file-size">
 <h2 id="file-size">File size and limits</h2>

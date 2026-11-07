@@ -136,7 +136,7 @@ The Docker guide walks through installation. The only required setting is TV_IPS
 - Read each TV to see what's stored on it.
 - Upload what's missing and remove pieces you deleted from the folder.
 - Apply TV settings such as slideshow, brightness, or power-off, only if you configured them.
-The prepared version of each picture replaces the original in the artwork folder, so copy pictures in and keep your originals elsewhere.
+The prepared version of each picture replaces it in the artwork folder, and the untouched original is kept in the folder's hidden .frame-tv-art-manager/originals directory. Prepared versions are always re-made from the original, so changing an image setting later never costs quality.
 
 ### Why you never get duplicates
 A common complaint with upload scripts is the same photos piling up on the TV again and again. Frame TV Art
@@ -396,7 +396,7 @@ converts any embedded ICC color profile to sRGB, and tone-maps HDR PNGs to stand
 - Resizes it in linear light, which keeps fine bright detail such as stars or lace from darkening, to exactly 3840×2160.
 - Applies halo-free, contrast-adaptive sharpening (skipped on images enlarged more than 1.5×).
 - Saves JPEG at quality 95 with full 4:4:4 color, so red and blue edges stay crisp (IMAGE_JPEG_SUBSAMPLING=420 makes smaller files); PNGs stay PNG, including transparency.
-A 24-megapixel camera photo takes about a second. The prepared file replaces the original in the artwork folder, so keep originals elsewhere.
+A 24-megapixel camera photo takes about a second. The prepared file replaces the picture in the artwork folder, and the untouched original is kept in its hidden .frame-tv-art-manager/originals directory, so changing a setting later re-prepares the art from the original without losing quality. Originals take about as much disk space as the pictures you add.
 
 ### File size and limits
 A 3840×2160 JPEG at quality 95 is usually a few megabytes. Downloads and web uploads are limited to 20 MB by
@@ -438,7 +438,7 @@ Run docker compose up -d, then docker compose logs -f frame-tv-art-manager to wa
 Approve it on the TV
 With the TV on, an Allow/Deny prompt named "Frame Art Manager" appears. Choose Allow with the remote. You only do this once.
 Add pictures
-Copy .jpg, .jpeg, or .png files into data/artwork. Copy, don't move: each file is replaced by its prepared version.
+Copy .jpg, .jpeg, or .png files into data/artwork. Each file is replaced by its prepared version, and the untouched original is kept in the hidden data/artwork/.frame-tv-art-manager/originals folder.
 Check that it worked
 Open http://SERVER-IP:8080/status. Your TV should be listed with status ok, and the pictures appear in Art Mode.
 compose.yaml
@@ -506,7 +506,7 @@ Short answer: Frame TV Art Manager is a small Docker container, so any NAS that 
 - A fixed IP for the TV, using a DHCP reservation in your router.
 - A persistent folder mapped to /data. It holds artwork (your collection) and tokens (the pairing token and upload records). You can map your art share straight to /data/artwork instead.
 - The right owner for files, set with PUID and PGID so you can still edit the artwork share over SMB.
-Copy, don't move. Each picture in the artwork folder is replaced by its prepared 3840×2160 version. Keep originals in another share.
+Originals are kept. Each picture in the artwork folder is replaced by its prepared 3840×2160 version, and the untouched original is saved in the share's hidden .frame-tv-art-manager/originals folder. Allow about as much extra space as the pictures you add.
 
 ### Synology DSM (Container Manager)
 - Install Container Manager from Package Center (DSM 7.2 or later).

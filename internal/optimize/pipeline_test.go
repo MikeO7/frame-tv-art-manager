@@ -16,7 +16,7 @@ import (
 
 // OptimizeFile runs the production single-file transform with concise test setup.
 func OptimizeFile(path string, cfg Config, logger *slog.Logger) (string, bool, error) {
-	return optimizeFileWithPolicy(context.Background(), path, filepath.Base(path), false, cfg, logger)
+	return optimizeFileWithPolicy(context.Background(), fileTransform{source: path, path: path, label: filepath.Base(path)}, cfg, logger)
 }
 
 func testPass(dir string, cfg Config) *catalogPass {

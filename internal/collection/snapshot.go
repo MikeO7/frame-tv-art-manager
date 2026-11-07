@@ -13,6 +13,9 @@ import (
 
 const maxCollectionControlBytes int64 = 16 << 20
 
+// manifestVersion 4 adds kept originals to each transformed item.
+const manifestVersion = 4
+
 type manifest struct {
 	Version    int            `json:"version"`
 	Generation string         `json:"generation"`
@@ -34,6 +37,7 @@ type manifestItem struct {
 	SourceKeys   []string       `json:"source_keys,omitempty"`
 	TransformKey string         `json:"transform_key,omitempty"`
 	Derivative   DerivativeKind `json:"derivative,omitempty"`
+	Originals    []string       `json:"originals,omitempty"`
 }
 
 func buildSnapshot(root string, items []Item, changes []Change, warnings []string, dryRun bool) Snapshot {
@@ -52,7 +56,7 @@ func buildSnapshot(root string, items []Item, changes []Change, warnings []strin
 }
 
 func newManifest(items []Item) manifest {
-	return manifest{Version: 3, Generation: generation(items), Items: manifestItems(items)}
+	return manifest{Version: manifestVersion, Generation: generation(items), Items: manifestItems(items)}
 }
 
 func manifestItems(items []Item) []manifestItem {
@@ -64,6 +68,7 @@ func manifestItems(items []Item) []manifestItem {
 			OriginKey: item.Origin.Key, Class: item.Origin.Class, Key: item.Key,
 			SourceKeys:   append([]string(nil), item.SourceKeys...),
 			TransformKey: item.TransformKey, Derivative: item.Derivative,
+			Originals: originalNames(item.Originals),
 		})
 	}
 	return entries
@@ -236,6 +241,9 @@ func validPrefixedKey(key, prefix string) bool {
 
 func validateSnapshotDerivative(item Item) error {
 	if err := validateSourceReferences(item); err != nil {
+		return err
+	}
+	if err := validateOriginals(item); err != nil {
 		return err
 	}
 	return validateTransformMetadata(item)

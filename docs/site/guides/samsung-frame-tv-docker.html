@@ -258,7 +258,7 @@
 <li id="step-compose"><h3 id="step-compose-title">Create the compose file</h3><p>Make a folder for the service and save the <code>compose.yaml</code> below in it, with your TV's address.</p></li>
 <li id="step-start"><h3 id="step-start-title">Start the container</h3><p>Run <code>docker compose up -d</code>, then <code>docker compose logs -f frame-tv-art-manager</code> to watch it connect.</p></li>
 <li id="step-allow"><h3 id="step-allow-title">Approve it on the TV</h3><p>With the TV on, an Allow/Deny prompt named "Frame Art Manager" appears. Choose <strong>Allow</strong> with the remote. You only do this once.</p></li>
-<li id="step-art"><h3 id="step-art-title">Add pictures</h3><p>Copy <code>.jpg</code>, <code>.jpeg</code>, or <code>.png</code> files into <code>data/artwork</code>. Copy, don't move: each file is replaced by its prepared version.</p></li>
+<li id="step-art"><h3 id="step-art-title">Add pictures</h3><p>Copy <code>.jpg</code>, <code>.jpeg</code>, or <code>.png</code> files into <code>data/artwork</code>. Each file is replaced by its prepared version, and the untouched original is kept in the hidden <code>data/artwork/.frame-tv-art-manager/originals</code> folder.</p></li>
 <li id="step-check"><h3 id="step-check-title">Check that it worked</h3><p>Open <code>http://SERVER-IP:8080/status</code>. Your TV should be listed with status <code>ok</code>, and the pictures appear in Art Mode.</p></li>
 </ol>
 <figure>

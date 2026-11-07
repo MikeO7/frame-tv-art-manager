@@ -34,7 +34,7 @@ Affiliation: independent project; not affiliated with or endorsed by Samsung.
 - Landscape pictures fill the screen only when cropping removes at most IMAGE_MAX_CROP_PERCENT (default 25) and enlargement is at most IMAGE_MAX_UPSCALE (default 3x). Otherwise they are shown whole.
 - PORTRAIT_MODE: pad (default, shown whole), collage (two portraits paired by color, lightness, and shape in a double-opening mat; an unpaired one waits for a partner), or crop.
 - IMAGE_PAD_STYLE: mat (default) is a deep charcoal gallery mat faintly tinted toward the art, with a lighter bevel, set slightly above center; a soft warm greige is used only when the art's edge is too dark. IMAGE_MAT_TONE=auto, dark, or light. blur fills the screen with a darkened blur instead.
-- The prepared version replaces the original in the artwork folder, so users should copy pictures in and keep originals elsewhere.
+- The prepared version replaces the file in the artwork folder; the untouched original is kept in the hidden .frame-tv-art-manager/originals folder inside it (a collage keeps both portraits). Prepared versions are always re-made from the original, so changing an image setting (crop or mat, mat tone, sharpening, museum mode, resolution) is lossless to re-apply. Originals use about as much disk space as the pictures added. Pictures prepared before originals were kept use their current file as the original.
 - Optional and off by default: smart crop, an external crop service, and museum mode (canvas texture, warmth, smooth highlight roll-off).
 - Samsung mattes: MATTE_STYLE (default none, for example shadowbox_polar), with per-file overrides in mattes.json.
 

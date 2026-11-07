@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 )
@@ -29,14 +31,47 @@ func (s *store) prepare(ctx context.Context, request PrepareRequest) (Snapshot, 
 	if request.DryRun {
 		return projected, nil
 	}
+	if len(warnings) > 0 && excludesCommittedArtwork(s.root, current, items) {
+		// A recorded file that cannot be read right now may be a transient
+		// failure. Committing would forget its lineage and let its kept
+		// original be collected, so the committed view stays as it is.
+		return projected, nil
+	}
 	if err := ensureLayout(s.root); err != nil {
 		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
 	}
 	next := newManifest(items)
-	if manifestExists && manifestsEqual(current, next) {
-		return projected, nil
+	if !manifestExists || !manifestsEqual(current, next) {
+		projected, err = s.commitPrepared(ctx, items, next, changes)
+		if err != nil {
+			return Snapshot{}, err
+		}
 	}
-	return s.commitPrepared(ctx, items, next, changes)
+	// Originals of deleted or replaced artwork are collected only after the
+	// inventory without them is durable.
+	if err := collectOriginals(ctx, s.root, projected.Items); err != nil {
+		return Snapshot{}, fmt.Errorf("collect unreferenced originals: %w", err)
+	}
+	return projected, nil
+}
+
+// excludesCommittedArtwork reports whether a file the manifest records is
+// still present but was excluded from items. An uncertain observation counts
+// as present.
+func excludesCommittedArtwork(root string, current manifest, items []Item) bool {
+	included := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		included[item.Name] = struct{}{}
+	}
+	for _, record := range current.Items {
+		if _, ok := included[record.Name]; ok {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(root, record.Name)); !errors.Is(err, fs.ErrNotExist) {
+			return true
+		}
+	}
+	return false
 }
 
 // validatePreparedSnapshot checks an inventoried or staged view. It does not
@@ -87,6 +122,7 @@ func scanPrepare(
 	if !exists {
 		return []Item{}, []string{}, nil
 	}
+	renamed := renamedRecords(records, entries)
 	items := make([]Item, 0, len(entries))
 	warnings := make([]string, 0)
 	for _, entry := range entries {
@@ -98,7 +134,7 @@ func scanPrepare(
 			warnings = append(warnings, warning)
 		}
 		if item.Name != "" {
-			item, err := prepareItemOrigin(withRecordedMetadata(item, records), overrides)
+			item, err := prepareItemOrigin(withCommittedMetadata(item, records, renamed), overrides)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -190,6 +226,7 @@ func manifestsEqual(left, right manifest) bool {
 				leftItem.VisualHash == rightItem.VisualHash &&
 				leftItem.OriginKey == rightItem.OriginKey && leftItem.Class == rightItem.Class &&
 				leftItem.Key == rightItem.Key && leftItem.TransformKey == rightItem.TransformKey &&
-				leftItem.Derivative == rightItem.Derivative && slices.Equal(leftItem.SourceKeys, rightItem.SourceKeys)
+				leftItem.Derivative == rightItem.Derivative && slices.Equal(leftItem.SourceKeys, rightItem.SourceKeys) &&
+				slices.Equal(leftItem.Originals, rightItem.Originals)
 		})
 }

@@ -20,8 +20,12 @@ func validateExistingLayout(root string) error {
 	if err != nil || !exists {
 		return err
 	}
-	_, err = inspectOptionalDirectory(filepath.Join(control, stagingName))
-	return err
+	for _, name := range []string{stagingName, originalsName} {
+		if _, err := inspectOptionalDirectory(filepath.Join(control, name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func inspectOptionalDirectory(path string) (bool, error) {

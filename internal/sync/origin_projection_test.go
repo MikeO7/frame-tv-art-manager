@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"crypto/sha256"
 	"reflect"
 	"strings"
 	"testing"
@@ -59,6 +60,10 @@ func TestMetadataProjectionRejectsInvalidLineage(t *testing.T) {
 		{name: "empty inputs", derivative: optimize.Derivative{Name: "output.jpg"}, want: "incomplete"},
 		{name: "unknown input", derivative: optimize.Derivative{Name: "output.jpg", Inputs: []string{"missing.jpg"}, Kind: "optimized"}, want: "unknown"},
 		{name: "unknown kind", derivative: optimize.Derivative{Name: "output.jpg", Inputs: []string{"input.jpg"}, Kind: "mystery"}, want: "unknown kind"},
+		{name: "unknown original", derivative: optimize.Derivative{
+			Name: "output.jpg", Inputs: []string{"input.jpg"}, Kind: "optimized",
+			Originals: [][sha256.Size]byte{sha256.Sum256([]byte("never kept"))},
+		}, want: "original"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := newProjection().apply([]optimize.Derivative{test.derivative})

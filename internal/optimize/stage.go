@@ -1,6 +1,7 @@
 package optimize
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -35,6 +36,17 @@ type StageInput struct {
 	SourceKeys   []string
 	TransformKey string
 	Derivative   DerivativeKind
+	// Originals are the kept untouched bytes a derivative is re-rendered from,
+	// in render order. A derivative without them is re-rendered from its own
+	// current bytes, which then become its original.
+	Originals []StageOriginal
+}
+
+// StageOriginal locates one kept original. Digest is the authoritative
+// SHA-256 of the bytes at Path.
+type StageOriginal struct {
+	Digest [sha256.Size]byte
+	Path   string
 }
 
 // StageRequest describes a complete isolated optimization pass.
@@ -58,6 +70,7 @@ type Stage struct {
 	Renames     []Rename
 	Derivatives []Derivative
 
+	workspace string
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -68,6 +81,9 @@ type Derivative struct {
 	Inputs       []string
 	TransformKey string
 	Kind         DerivativeKind
+	// Originals are the digests of the untouched bytes the output was
+	// rendered from, in render order. The caller must keep each of them.
+	Originals [][sha256.Size]byte
 }
 
 // Close removes the complete transformation workspace. It is idempotent.
@@ -76,8 +92,8 @@ func (s *Stage) Close() error {
 		return nil
 	}
 	s.closeOnce.Do(func() {
-		if s.Directory != "" {
-			s.closeErr = os.RemoveAll(s.Directory)
+		if workspace := cmp.Or(s.workspace, s.Directory); workspace != "" {
+			s.closeErr = os.RemoveAll(workspace)
 		}
 	})
 	return s.closeErr
@@ -90,16 +106,23 @@ func StageCatalog(ctx context.Context, request StageRequest) (*Stage, error) {
 	if err := validateStageRequest(ctx, request.Inputs); err != nil {
 		return nil, err
 	}
-	directory, err := os.MkdirTemp("", stagePattern)
+	workspace, err := os.MkdirTemp("", stagePattern)
 	if err != nil {
 		return nil, fmt.Errorf("create optimization stage: %w", err)
 	}
-	stage := &Stage{Directory: directory}
+	directory := filepath.Join(workspace, "artwork")
+	originals := filepath.Join(workspace, "originals")
+	stage := &Stage{Directory: directory, workspace: workspace}
 	cleanupFailure := func(cause error) (*Stage, error) {
 		return nil, errors.Join(cause, stage.Close())
 	}
-	if err := os.Chmod(directory, 0o700); err != nil {
+	if err := os.Chmod(workspace, 0o700); err != nil {
 		return cleanupFailure(fmt.Errorf("secure optimization stage: %w", err))
+	}
+	for _, path := range []string{directory, originals} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			return cleanupFailure(fmt.Errorf("create optimization stage directory: %w", err))
+		}
 	}
 
 	metadata := make(map[string]StageInput, len(request.Inputs))
@@ -114,12 +137,17 @@ func StageCatalog(ctx context.Context, request StageRequest) (*Stage, error) {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	pass := &catalogPass{artworkDir: directory, cfg: request.Config, logger: logger, inputs: metadata}
+	pass := &catalogPass{
+		artworkDir: directory, originalsDir: originals, cfg: request.Config, logger: logger, inputs: metadata,
+	}
 	if err := pass.run(ctx); err != nil {
 		return cleanupFailure(fmt.Errorf("optimize staged collection: %w", err))
 	}
 	stage.Optimized, stage.Renames = pass.optimized, pass.renames
 	stage.Derivatives = derivativesFromRenames(stage.Renames, TransformKey(request.Config), metadata)
+	for index := range stage.Derivatives {
+		stage.Derivatives[index].Originals = pass.lineage[stage.Derivatives[index].Name]
+	}
 	return stage, nil
 }
 

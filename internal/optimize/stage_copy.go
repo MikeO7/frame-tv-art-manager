@@ -10,6 +10,10 @@ import (
 	"path/filepath"
 )
 
+// errStageDigestMismatch reports bytes that no longer match the digest that
+// identifies them.
+var errStageDigestMismatch = errors.New("digest changed")
+
 func copyStageInput(ctx context.Context, directory string, input StageInput) (err error) {
 	source, opened, err := openStageInput(input)
 	if err != nil {
@@ -70,7 +74,7 @@ func writeStageInput(
 		return fmt.Errorf("copy stage input %q: %w", input.Name, err)
 	}
 	if got := [sha256.Size]byte(hash.Sum(nil)); got != input.Digest {
-		return fmt.Errorf("stage input %q digest changed: got %x, want %x", input.Name, got, input.Digest)
+		return fmt.Errorf("stage input %q: got %x, want %x: %w", input.Name, got, input.Digest, errStageDigestMismatch)
 	}
 	if err := verifyStageInputStable(input, source, opened); err != nil {
 		return err

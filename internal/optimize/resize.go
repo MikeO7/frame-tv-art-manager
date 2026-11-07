@@ -1,6 +1,4 @@
 // Package optimize provides bounded image transformations for Frame TVs.
-//
-//nolint:revive // the optimizer's public configuration and transactional entry point intentionally remain colocated
 package optimize
 
 import (
@@ -76,15 +74,24 @@ type Config struct {
 	JPEGSubsampling                jpegenc.Subsampling
 }
 
-//nolint:revive // explicit transaction inputs avoid hidden optimizer state
+// fileTransform names one single-image transform. The image is decoded from
+// source and the result durably replaces path before moving to its content
+// name. Source is path itself for artwork rendered from its own bytes, or a
+// kept original, so a derivative is never transformed again.
+type fileTransform struct {
+	source string
+	path   string
+	label  string
+	force  bool
+}
+
 func optimizeFileWithPolicy(
 	ctx context.Context,
-	path string,
-	label string,
-	force bool,
+	request fileTransform,
 	cfg Config,
 	logger *slog.Logger,
 ) (string, bool, error) {
+	path := request.path
 	filename := filepath.Base(path)
 	if err := ctx.Err(); err != nil {
 		return filename, false, err
@@ -96,12 +103,12 @@ func optimizeFileWithPolicy(
 		return filename, false, err
 	}
 
-	ext := strings.ToLower(filepath.Ext(path))
-	if !isOptimizableImage(ext, cfg) {
+	if !isOptimizableImage(strings.ToLower(filepath.Ext(path)), cfg) {
 		return filename, false, nil
 	}
+	sourceExt := strings.ToLower(filepath.Ext(request.source))
 
-	f, err := os.Open(path)
+	f, err := os.Open(request.source)
 	if err != nil {
 		return filename, false, fmt.Errorf("open image: %w", err)
 	}
@@ -114,14 +121,14 @@ func optimizeFileWithPolicy(
 	if err := validateWorkingSet(workingInputFor(inputConfig), cfg); err != nil {
 		return filename, false, err
 	}
-	colorMetadata, err := readColorDataWithPolicy(ctx, f, ext, cfg, logger, filename)
+	colorMetadata, err := readColorDataWithPolicy(ctx, f, sourceExt, cfg, logger, filename)
 	if err != nil {
 		return filename, false, fmt.Errorf("read embedded color metadata: %w", err)
 	}
 	if _, err := f.Seek(0, 0); err != nil {
 		return filename, false, fmt.Errorf("seek image orientation: %w", err)
 	}
-	orientation, err := readOrientationForExtension(ctx, f, ext)
+	orientation, err := readOrientationForExtension(ctx, f, sourceExt)
 	if err != nil {
 		return filename, false, fmt.Errorf("read image orientation: %w", err)
 	}
@@ -131,7 +138,7 @@ func optimizeFileWithPolicy(
 	}
 	needsColorNormalization := len(colorMetadata.icc) > 0 && cfg.ColorProfilePolicy == profileConvertSRGB
 	needsHDRToneMap := colorMetadata.hdr != nil && cfg.HDRToneMap
-	needsAdjustment := force || orientation != 1 || displayWidth != cfg.MaxWidth ||
+	needsAdjustment := request.force || orientation != 1 || displayWidth != cfg.MaxWidth ||
 		displayHeight != cfg.MaxHeight || needsColorNormalization || needsHDRToneMap
 	if !needsAdjustment && !cfg.MuseumModeEnabled {
 		return filename, false, validateOptimizedPixels(ctx, f, cfg.MaxWidth, cfg.MaxHeight)
@@ -141,7 +148,7 @@ func optimizeFileWithPolicy(
 		return filename, false, err
 	}
 	newFilename, err := moveToContentName(ctx, path, contentNameRequest{
-		directory: filepath.Dir(path), currentName: filename, label: label, extension: filepath.Ext(filename),
+		directory: filepath.Dir(path), currentName: filename, label: request.label, extension: filepath.Ext(filename),
 	})
 	if err != nil {
 		return filename, true, fmt.Errorf("rename optimized output: %w", err)
