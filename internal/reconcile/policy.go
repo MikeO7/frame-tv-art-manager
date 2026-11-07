@@ -12,6 +12,9 @@ func validatePolicy(policy Policy) error {
 	if policy.Power > PowerOn || policy.Slideshow.Mode > PolicySet || policy.Brightness.Mode > PolicySet {
 		return errors.New("reconciliation policy contains an invalid mode")
 	}
+	if !policy.WakeBoundary.IsZero() && policy.Power != PowerOn {
+		return errors.New("a wake boundary requires the power-on policy")
+	}
 	if err := validateSlideshowPolicy(policy.Slideshow); err != nil {
 		return err
 	}

@@ -24,6 +24,17 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	if err != nil {
 		return Result{Observation: observation}, err
 	}
+	var scheduledWake []CommandKind
+	if policy.Power == PowerOn && !policy.WakeBoundary.IsZero() {
+		step, wakeErr := s.scheduledWake(ctx, request, policy, observation)
+		policy, observation, scheduledWake, err = step.policy, step.observation, step.applied, wakeErr
+		if err != nil {
+			return Result{
+				Status: statusForError(err), Observation: observation,
+				Applied: len(scheduledWake), AppliedCommands: scheduledWake,
+			}, err
+		}
+	}
 	identity, err := identityFromObservation(observation)
 	if err != nil {
 		return Result{Observation: observation}, err
@@ -44,7 +55,9 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		return Result{Status: statusForError(err), State: state, Observation: observation}, err
 	}
 	uploadUnresolved := state.UnresolvedUpload != nil
-	wake := wakePreparation{state: state, observation: observation}
+	wake := wakePreparation{
+		state: state, observation: observation, applied: len(scheduledWake), appliedCommands: scheduledWake,
+	}
 	if policy.Power == PowerOn {
 		wake, err = s.preparePowerOn(ctx, request, policy, state, observation)
 		if wake.terminal != nil {

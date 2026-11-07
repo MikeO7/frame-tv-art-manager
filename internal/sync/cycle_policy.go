@@ -34,10 +34,12 @@ func convergencePolicy(
 		Rotation:       cfg.RotationInterval(),
 	}
 	if cfg.TVMAC != nil {
-		policy.Power = reconcile.WakeWhenKnownOff
+		if boundary, due := autoOnBoundaryAt(cfg.AutoOnTime, cfg.AutoOnGraceHours, cfg.Timezone, now); due {
+			policy.Power, policy.WakeBoundary = reconcile.PowerOn, boundary
+		}
 	}
 	if isWithinAutoOffWindowAt(cfg.AutoOffTime, cfg.AutoOffGraceHours, cfg.Timezone, now) {
-		policy.Power = reconcile.PowerOff
+		policy.Power, policy.WakeBoundary = reconcile.PowerOff, time.Time{}
 	}
 	if cfg.SlideshowOverride {
 		kind := samsung.SlideshowShuffle

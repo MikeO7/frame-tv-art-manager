@@ -112,6 +112,14 @@ type Config struct {
 	// AutoOffGraceHours is how long after AutoOffTime to keep trying.
 	AutoOffGraceHours float64
 
+	// AutoOnTime is a 24-hour time string at which a TV that is off is woken
+	// with Wake-on-LAN, once per day. Empty disables scheduled wake. It needs
+	// TVMAC.
+	AutoOnTime string
+
+	// AutoOnGraceHours is how long after AutoOnTime a wake may still be sent.
+	AutoOnGraceHours float64
+
 	// --- Wake-on-LAN ---
 
 	// TVMAC is the six-byte Wake-on-LAN address parsed from TV_MAC. It is nil

@@ -109,6 +109,10 @@ type Policy struct {
 	// Rotation is how long owned artwork stays on a full TV before it may be
 	// swapped for artwork that is waiting. Zero disables rotation.
 	Rotation time.Duration
+	// WakeBoundary ties PowerOn to one scheduled power-on time. The TV is
+	// woken at most once per boundary, recorded durably. Zero keeps the
+	// unscheduled PowerOn behavior.
+	WakeBoundary time.Time
 }
 
 type PolicyMode uint8

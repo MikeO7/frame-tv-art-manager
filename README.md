@@ -448,10 +448,16 @@ own settings alone.
 - **Nightly power-off.** `AUTO_OFF_TIME` (for example `22:00`, in
   `LOCATION_TIMEZONE`) turns off TVs that are showing art, and leaves TVs that
   are in use alone. It keeps trying for `AUTO_OFF_GRACE_HOURS` (default 2).
-- **Wake-on-LAN.** `TV_MAC` wakes a single TV when it is confirmed off, or
-  when the TV has dropped off the network entirely (deep standby). It is never
-  sent when the TV answers with an unknown state, and it is turned off when
-  `TV_IPS` lists several TVs. The magic packet goes to UDP ports 9 and 7 on
+- **Morning power-on.** `AUTO_ON_TIME` (for example `07:00`, in
+  `LOCATION_TIMEZONE`) together with `TV_MAC` wakes a single TV once a day.
+  The wake is sent on the first sync in the window that starts at
+  `AUTO_ON_TIME` and lasts `AUTO_ON_GRACE_HOURS` (default 2). It is sent only
+  if the TV is confirmed off, or has dropped off the network entirely (deep
+  standby). If the TV is already on, or you turn it off again, it isn't woken
+  again until the next day. Each day's wake is recorded in a `tv_*_wake.json`
+  file in the tokens folder. `TV_MAC` on its own no longer wakes the TV.
+  Wake-on-LAN is never sent when the TV answers with an unknown state, and it
+  is turned off when `TV_IPS` lists several TVs. The magic packet goes to UDP ports 9 and 7 on
   `255.255.255.255` and on the TV's `/24` broadcast address (for example
   `192.168.1.255`). Set `TV_WOL_BROADCAST` to send it to one other IPv4
   broadcast address instead. Broadcasts don't leave a Docker bridge network, so
@@ -499,7 +505,8 @@ the entry under the TV's device connection settings and restart the container.
 
 **Status says `skipped (not art mode)` or `skipped (powered off)`.** The TV is
 off or showing other content. The manager waits and tries again at the next
-sync. With `TV_MAC` set, it can wake a TV that is off.
+sync. With `TV_MAC` and `AUTO_ON_TIME` set, it wakes a TV that is off once a
+day.
 
 **Status says `backoff` or `unreachable`.** The TV didn't answer. Repeated
 failures wait progressively longer between attempts, up to an hour. Check the

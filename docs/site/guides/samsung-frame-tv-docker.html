@@ -312,7 +312,7 @@ and <code>PGID</code> to control file ownership, or own the folders yourself, ad
 <li><strong>Slideshow:</strong> <code>SLIDESHOW_ENABLED</code>, <code>SLIDESHOW_INTERVAL</code> (3, 15, 60, 720, or 1440 minutes), <code>SLIDESHOW_TYPE</code> (<code>shuffle</code> or <code>sequential</code>).</li>
 <li><strong>Brightness:</strong> a fixed <code>BRIGHTNESS</code> (0 to 50), or <code>SOLAR_BRIGHTNESS_ENABLED=true</code> with your latitude, longitude, and time zone to follow the sun between <code>BRIGHTNESS_MIN</code> and <code>BRIGHTNESS_MAX</code>.</li>
 <li><strong>Nightly power-off:</strong> <code>AUTO_OFF_TIME=22:00</code> turns off TVs showing art and leaves TVs in use alone.</li>
-<li><strong>Wake-on-LAN:</strong> <code>TV_MAC</code> wakes a single TV that is confirmed off; never when its state is unknown. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it typically needs <code>network_mode: host</code>.</li>
+<li><strong>Morning power-on:</strong> <code>AUTO_ON_TIME</code> with <code>TV_MAC</code> wakes a single TV once a day when it is confirmed off; never when its state is unknown. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it typically needs <code>network_mode: host</code>.</li>
 </ul>
 <p>If you leave these unset, the manager doesn't touch the TV's own settings.</p>
 </section>

@@ -73,6 +73,8 @@ func (env *environment) loadConfig() (*Config, error) {
 		RotationIntervalDays:           env.decimal("ROTATION_INTERVAL_DAYS", 14),
 		AutoOffTime:                    env.str("AUTO_OFF_TIME", ""),
 		AutoOffGraceHours:              env.decimal("AUTO_OFF_GRACE_HOURS", 2),
+		AutoOnTime:                     env.str("AUTO_ON_TIME", ""),
+		AutoOnGraceHours:               env.decimal("AUTO_ON_GRACE_HOURS", 2),
 		EnableRESTGate:                 env.boolean("ENABLE_REST_GATE", false),
 		VerifyTLS:                      env.boolean("VERIFY_TLS", false) && !skipTLSVerify,
 		SourcesFile:                    env.str("ARTWORK_SOURCES_FILE", ""),
@@ -145,6 +147,10 @@ func (env *environment) loadConfig() (*Config, error) {
 	}
 	if err := validate(cfg, mac); err != nil {
 		return nil, err
+	}
+	if cfg.AutoOnTime != "" && cfg.TVMAC == nil {
+		env.warn("AUTO_ON_TIME", "disabled", "AUTO_ON_TIME needs TV_MAC for a single TV; scheduled wake is disabled")
+		cfg.AutoOnTime = ""
 	}
 	return cfg, nil
 }
