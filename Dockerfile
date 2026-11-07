@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 RUN apk add --no-cache tzdata
 
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /frame-tv-art-manager ./cmd/frame-tv-art-manager
 
 # Runtime stage — minimal distroless image.
-FROM gcr.io/distroless/static-debian13:latest@sha256:15f8637509792e05b97d83451b0b6ccfa4abd548f997e406ac1e72c87fe1fa78
+FROM gcr.io/distroless/static-debian13:latest@sha256:448810357cc8e67b7208988abdba0f5ec3d3aebee0a5b13eb624979792cffc0f
 
 # Copy the binary.
 COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
