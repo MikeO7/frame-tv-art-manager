@@ -226,6 +226,13 @@ type Config struct {
 	// UploadToken is the HTTP Basic-auth password for the upload endpoint.
 	UploadToken string
 
+	// MCPEnabled serves the Model Context Protocol endpoint at /mcp on the
+	// health server so an AI assistant can build themed collections.
+	MCPEnabled bool
+	// MCPToken is the bearer token every /mcp request must present. It is a
+	// secret: it is never logged.
+	MCPToken string
+
 	// --- Timeouts ---
 
 	// ConnectionTimeout is the max time to wait for a WSS handshake.

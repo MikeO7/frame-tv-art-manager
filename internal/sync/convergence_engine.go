@@ -14,6 +14,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
 	"github.com/MikeO7/frame-tv-art-manager/internal/reconcile"
+	"github.com/MikeO7/frame-tv-art-manager/internal/themes"
 )
 
 const maximumConcurrentTVs = 4
@@ -31,11 +32,18 @@ type convergenceEngine struct {
 	collection ArtworkCollection
 	runtimes   []*convergenceRuntime
 	cycleGate  chan struct{}
+	// themes is nil when themed collections are not wired; every item is then
+	// selected. lastThemes is touched only by RunOnce under cycleGate.
+	themes     *themes.Store
+	lastThemes *themes.File
+	// wake coalesces early Sync Cycle requests into one pending cycle.
+	wake chan struct{}
 
-	mu        sync.Mutex
-	cycleNum  int
-	closeOnce sync.Once
-	closeErr  error
+	mu         sync.Mutex
+	cycleNum   int
+	placements map[string][]string
+	closeOnce  sync.Once
+	closeErr   error
 }
 
 func newConvergenceEngine(
@@ -57,6 +65,7 @@ func newConvergenceEngine(
 	engine := &convergenceEngine{
 		cfg: cfg, logger: logger, health: healthStatus, collection: artwork,
 		cycleGate: make(chan struct{}, 1), runtimes: make([]*convergenceRuntime, 0, len(cfg.TVIPs)),
+		wake: make(chan struct{}, 1), placements: make(map[string][]string),
 	}
 	// config.LoadEnviron guarantees TVIPs are canonical, unique IP addresses.
 	for _, address := range cfg.TVIPs {
@@ -88,6 +97,9 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 			case <-ctx.Done():
 			case <-ticker.C:
 				_ = engine.RunOnce(ctx)
+			case <-engine.wake:
+				engine.logger.Info("starting requested sync cycle")
+				_ = engine.RunOnce(ctx)
 			}
 		}
 	}
@@ -116,6 +128,10 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("prepare artwork collection: %w", err)
 	}
+	desired, err := engine.selectThemedArtwork(ctx, prepared.snapshot, startedAt, cycleLog)
+	if err != nil {
+		return err
+	}
 
 	mattes, err := config.ReadMatteConfig(ctx, engine.cfg.ArtworkDir)
 	if err != nil {
@@ -129,7 +145,7 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	if engine.health != nil {
 		engine.health.SetStage("syncing TVs")
 	}
-	summaries, tvErrors := engine.syncAll(ctx, cycleNum, prepared.snapshot, policy)
+	summaries, tvErrors := engine.syncAll(ctx, cycleNum, desired.snapshot, policy)
 	failedTVs = countFailedTVs(summaries)
 	if len(tvErrors) == 1 && errors.Is(tvErrors[0], ctx.Err()) {
 		return ctx.Err()
@@ -140,9 +156,9 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 		Optimized: prepared.optimized, FailedTVs: failedTVs, TVs: summaries, Warnings: prepared.warnings,
 	})
 	if len(tvErrors) > 0 {
-		return fmt.Errorf("sync TVs: %w", errors.Join(tvErrors...))
+		return errors.Join(fmt.Errorf("sync TVs: %w", errors.Join(tvErrors...)), desired.degraded)
 	}
-	return nil
+	return desired.degraded
 }
 
 func (engine *convergenceEngine) nextCycle() int {
@@ -183,6 +199,7 @@ func (engine *convergenceEngine) syncAll(
 		result := <-results
 		summaries = append(summaries, result.summary)
 		engine.publishTVHealth(result.summary)
+		engine.recordPlacements(result.summary)
 		logTVOutcome(ctx, engine.logger.With("cycle", cycleNum), result.summary, result.err)
 		if result.err != nil {
 			errs = append(errs, fmt.Errorf("tv %s: %w", result.summary.IP, result.err))

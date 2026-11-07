@@ -58,6 +58,7 @@ linters:
             - $gostd
             - github.com/MikeO7/frame-tv-art-manager
             - github.com/coder/websocket
+            - github.com/modelcontextprotocol/go-sdk
             - golang.org/x/image
             - gopkg.in/yaml.v3
     forbidigo:

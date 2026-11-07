@@ -109,6 +109,8 @@ func (env *environment) loadConfig() (*Config, error) {
 		HealthBindAddress:              env.str("HEALTH_BIND_ADDRESS", "0.0.0.0"),
 		UploadEnabled:                  env.boolean("UPLOAD_ENABLED", false),
 		UploadToken:                    env.str("UPLOAD_TOKEN", ""),
+		MCPEnabled:                     env.boolean("MCP_ENABLED", false),
+		MCPToken:                       env.str("MCP_TOKEN", ""),
 		ConnectionTimeout:              safeDuration(env.integer("CONNECTION_TIMEOUT_SECONDS", 60), time.Second),
 		APITimeout:                     safeDuration(env.integer("API_TIMEOUT_SECONDS", 60), time.Second),
 		UploadDelay:                    safeDuration(env.integer("UPLOAD_DELAY_MS", 3000), time.Millisecond),

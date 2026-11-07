@@ -28,4 +28,7 @@ type TVSyncResult struct {
 	ArtworkWaiting int
 	// NextRotation is the earliest time another swap can become due.
 	NextRotation time.Time
+	// OnTV lists the digests of Owned Artwork confirmed on the TV. It is nil
+	// when the TV Inventory was not observed this cycle.
+	OnTV []string
 }
