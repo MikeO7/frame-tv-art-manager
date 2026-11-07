@@ -260,7 +260,10 @@ are:
 - resized in linear light to exactly 3840×2160 (`IMAGE_MAX_WIDTH`,
   `IMAGE_MAX_HEIGHT`) and given halo-free contrast-adaptive sharpening
   (none for images enlarged more than 1.5×, which have no detail to recover);
-- saved as JPEG quality 95. PNGs stay PNG, alpha included.
+- saved as baseline JPEG quality 95 with full-resolution 4:4:4 color and
+  per-image optimized Huffman tables, so saturated edges and fine line art
+  stay crisp (`IMAGE_JPEG_SUBSAMPLING=420` trades that for smaller files).
+  PNGs stay PNG, alpha included.
 
 ### Crop or mat
 
@@ -351,6 +354,7 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `IMAGE_MAT_TONE` | `auto` | `auto` (charcoal, greige for dark-edged art), `light`, or `dark` |
 | `IMAGE_MAX_WIDTH` × `IMAGE_MAX_HEIGHT` | `3840` × `2160` | Output size |
 | `IMAGE_JPEG_QUALITY` | `95` | JPEG quality (1–100) |
+| `IMAGE_JPEG_SUBSAMPLING` | `444` | JPEG color resolution: `444` (full) or `420` (smaller files, softer color edges) |
 | `IMAGE_SHARPEN_AMOUNT` | `0.25` | Sharpening strength; `0` turns it off |
 | `SMART_CROP_ENABLED` | `false` | Content-aware cropping |
 | `IMAGE_MUSEUM_MODE` | `false` | Canvas texture and warmth |

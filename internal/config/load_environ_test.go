@@ -108,6 +108,7 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "invalid address", value: "TV_IPS=not-an-ip", want: "TV_IPS"},
 		{name: "invalid timezone", value: "LOCATION_TIMEZONE=Not/A_Zone", want: "LOCATION_TIMEZONE"},
 		{name: "invalid quality", value: "IMAGE_JPEG_QUALITY=101", want: "IMAGE_JPEG_QUALITY"},
+		{name: "unsupported chroma subsampling", value: "IMAGE_JPEG_SUBSAMPLING=422", want: "IMAGE_JPEG_SUBSAMPLING"},
 		{name: "unsafe output allocation", value: "IMAGE_MAX_OUTPUT_PIXELS=8000000", want: "IMAGE_MAX_OUTPUT_PIXELS"},
 		{name: "unsafe working memory", value: "IMAGE_MAX_WORKING_MEMORY_MB=64", want: "IMAGE_MAX_WORKING_MEMORY_MB"},
 		{name: "invalid crop confidence", value: "SMART_CROP_MIN_GAIN=2", want: "SMART_CROP_MIN_GAIN"},

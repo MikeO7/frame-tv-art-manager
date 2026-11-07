@@ -3,6 +3,7 @@ package config
 import (
 	"time"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
@@ -44,5 +45,15 @@ func (c *Config) OptimizeOptions() optimize.Config {
 		MaxCropPercent:                 c.MaxCropPercent,
 		MaxUpscale:                     c.MaxUpscale,
 		MatTone:                        c.MatTone,
+		JPEGSubsampling:                jpegSubsampling(c.JPEGSubsampling),
 	}
+}
+
+// jpegSubsampling maps the validated IMAGE_JPEG_SUBSAMPLING value to the
+// encoder setting; anything other than "420" keeps full-resolution chroma.
+func jpegSubsampling(name string) jpegenc.Subsampling {
+	if name == jpegenc.Subsampling420.String() {
+		return jpegenc.Subsampling420
+	}
+	return jpegenc.Subsampling444
 }

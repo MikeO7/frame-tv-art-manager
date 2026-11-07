@@ -187,6 +187,9 @@ type Config struct {
 
 	// OptimizeJPEGQuality is the JPEG encoding quality (1-100, default 95).
 	OptimizeJPEGQuality int
+	// JPEGSubsampling is the JPEG chroma sampling: "444" (full-resolution
+	// color, default) or "420" (smaller files, softer color edges).
+	JPEGSubsampling string
 	// OptimizePNG enables the same geometry/effect pipeline for PNG inputs.
 	OptimizePNG bool
 	// LinearLightResize performs crop/resampling in linear-light 16-bit RGBA.

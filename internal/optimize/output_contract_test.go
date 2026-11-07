@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
 func TestValidateImageOutputChecksFormatAndDimensions(t *testing.T) {
@@ -50,6 +51,51 @@ func TestWriteValidatedOutputHonorsCancellation(t *testing.T) {
 	cfg.MaxWidth, cfg.MaxHeight = 8, 6
 	if err := writeValidatedOutput(ctx, out, extPNG, image.NewRGBA(image.Rect(0, 0, 8, 6)), cfg); !errors.Is(err, context.Canceled) {
 		t.Fatalf("writeValidatedOutput() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestWriteValidatedOutputUsesConfiguredChromaSubsampling(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		subsampling jpegenc.Subsampling
+		want        image.YCbCrSubsampleRatio
+	}{
+		{name: "default full-resolution chroma", subsampling: jpegenc.Subsampling444, want: image.YCbCrSubsampleRatio444},
+		{name: "operator-selected 4:2:0", subsampling: jpegenc.Subsampling420, want: image.YCbCrSubsampleRatio420},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "output.jpg")
+			out, err := os.Create(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg := DefaultConfig()
+			cfg.MaxWidth, cfg.MaxHeight, cfg.JPEGSubsampling = 24, 16, test.subsampling
+			img := image.NewRGBA(image.Rect(0, 0, 24, 16))
+			for y := range 16 {
+				for x := range 24 {
+					img.SetRGBA(x, y, color.RGBA{R: uint8(200 * (x % 2)), G: 30, B: uint8(200 * (1 - x%2)), A: 255})
+				}
+			}
+			if err := writeValidatedOutput(context.Background(), out, extJPG, img, cfg); err != nil {
+				t.Fatalf("writeValidatedOutput() = %v", err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := jpeg.Decode(bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ycc, ok := decoded.(*image.YCbCr)
+			if !ok || ycc.SubsampleRatio != test.want {
+				t.Fatalf("decoded %T with ratio %v, want *image.YCbCr with %v", decoded, ycc.SubsampleRatio, test.want)
+			}
+		})
 	}
 }
 
