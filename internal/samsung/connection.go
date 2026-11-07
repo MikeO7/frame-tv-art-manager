@@ -30,8 +30,14 @@ type connection struct {
 	pending   map[string]chan json.RawMessage
 }
 
+// pendingBuffer is how many messages a listener holds before the receive loop
+// drops more. Event listeners such as image_added also receive broadcasts from
+// other clients, so one slot would let a foreign event crowd out ours while
+// the caller is still transferring the image.
+const pendingBuffer = 32
+
 func (c *connection) registerPending(key string) (<-chan json.RawMessage, func(), error) {
-	ch := make(chan json.RawMessage, 1)
+	ch := make(chan json.RawMessage, pendingBuffer)
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
 	if c.closed.Load() {
