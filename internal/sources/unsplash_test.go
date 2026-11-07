@@ -1,163 +1,149 @@
 package sources
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync/atomic"
 	"testing"
 )
 
-func TestUnsplashClient_FetchPhoto(t *testing.T) {
+func TestUnsplashResolveSendsVersionAndRequestsBoundedRendition(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		if r.URL.Path != "/photos/123" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
+		if r.Header.Get("Accept-Version") != "v1" || r.Header.Get(headerAuthorization) != "Client-ID key" {
+			t.Errorf("headers = %v", r.Header)
 		}
-		photo := unsplashPhoto{ID: "123", Width: 100, Height: 100}
-		_ = json.NewEncoder(w).Encode(photo)
+		switch r.URL.Path {
+		case "/photos/abc":
+			_, _ = w.Write([]byte(`{"id":"abc","width":4000,"height":6000,"alt_description":"A lake",
+				"user":{"name":"Jo"},"links":{"html":"https://unsplash.com/photos/abc","download_location":"https://api.unsplash.example/photos/abc/download"},
+				"urls":{"raw":"https://images.unsplash.com/photo-abc?ixid=xyz"}}`))
+		case "/photos/empty":
+			_, _ = w.Write([]byte(`{"id":"empty","urls":{"raw":""}}`))
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	defer server.Close()
+	provider := newUnsplashProvider("key", discardLogger())
+	provider.BaseURL = server.URL
 
-	c := newUnsplashProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	photo, err := c.FetchPhoto(context.Background(), "123")
-	if err != nil {
-		t.Fatalf("FetchPhoto failed: %v", err)
+	images, err := provider.Resolve(context.Background(), "unsplash:photo:abc")
+	if err != nil || len(images) != 1 {
+		t.Fatalf("Resolve() = (%+v, %v)", images, err)
 	}
-
-	if photo.ID != "123" {
-		t.Errorf("expected ID 123, got %s", photo.ID)
+	rendition, _ := url.Parse(images[0].URL)
+	query := rendition.Query()
+	if query.Get("fit") != "max" || query.Get("w") != "3840" || query.Get("fm") != "jpg" || query.Get("ixid") != "xyz" {
+		t.Errorf("rendition URL = %s, want fit=max, w=3840, and the original raw parameters", images[0].URL)
+	}
+	if images[0].Identity != sourceIdentity("unsplash", "abc", "abc-abc") {
+		t.Errorf("identity = %q, want the stable photo-ID identity", images[0].Identity)
+	}
+	if images[0].TrackURL != "https://api.unsplash.example/photos/abc/download" {
+		t.Errorf("track URL = %q", images[0].TrackURL)
+	}
+	want := Attribution{
+		Provider: "unsplash", Title: "A lake", Artist: "Jo",
+		SourceURL: "https://unsplash.com/photos/abc?" + unsplashReferral, License: unsplashLicense,
+	}
+	if images[0].Attribution != want {
+		t.Errorf("attribution = %+v, want %+v", images[0].Attribution, want)
+	}
+	if _, err := provider.Resolve(context.Background(), "unsplash:photo:empty"); err == nil {
+		t.Error("Resolve() accepted a photo without a raw URL")
 	}
 }
 
-func TestUnsplashClient_FetchCollectionPhotos(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		photos := []unsplashPhoto{{ID: "1"}, {ID: "2"}}
+func TestUnsplashResolveRejectsMissingKeyAndMalformedLines(t *testing.T) {
+	t.Parallel()
+	if _, err := newUnsplashProvider("", discardLogger()).Resolve(context.Background(), "unsplash:photo:x"); err == nil ||
+		!strings.Contains(err.Error(), "UNSPLASH_ACCESS_KEY") {
+		t.Fatalf("Resolve() without key error = %v", err)
+	}
+	provider := newUnsplashProvider("key", discardLogger())
+	for line, want := range map[string]string{"unsplash:photo": "invalid unsplash format", "unsplash:other:x": "unknown unsplash type"} {
+		if _, err := provider.Resolve(context.Background(), line); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Resolve(%q) error = %v, want %q", line, err, want)
+		}
+	}
+}
+
+func TestUnsplashCollectionPaginatesAndSkipsUnusablePhotos(t *testing.T) {
+	t.Parallel()
+	var pages atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		page := pages.Add(1)
+		count := unsplashPageSize
+		if page == 2 {
+			count = 1
+		}
+		photos := make([]map[string]any, count)
+		for index := range photos {
+			photos[index] = map[string]any{
+				"id": fmt.Sprintf("p%d-%d", page, index), "urls": map[string]string{"raw": "https://images.unsplash.com/x"},
+			}
+		}
+		if page == 2 {
+			photos = append(photos, map[string]any{"id": ""})
+		}
 		_ = json.NewEncoder(w).Encode(photos)
 	}))
 	defer server.Close()
+	provider := newUnsplashProvider("key", discardLogger())
+	provider.BaseURL = server.URL
 
-	c := newUnsplashProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	photos, err := c.FetchCollectionPhotos(context.Background(), "col-abc")
-	if err != nil {
-		t.Fatalf("FetchCollectionPhotos failed: %v", err)
-	}
-
-	if len(photos) != 2 {
-		t.Errorf("expected 2 photos, got %d", len(photos))
+	images, err := provider.Resolve(context.Background(), "unsplash:collection:col")
+	if err != nil || len(images) != unsplashPageSize+1 || pages.Load() != 2 {
+		t.Fatalf("Resolve() = %d images over %d pages, %v; want %d over 2", len(images), pages.Load(), err, unsplashPageSize+1)
 	}
 }
 
-func TestUnsplashClient_TrackDownload(t *testing.T) {
-	tracked := false
+func TestUnsplashTrackDownloadReportsFailures(t *testing.T) {
+	t.Parallel()
+	var tracked atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		if r.URL.Path == "/track" {
-			tracked = true
+		if r.Header.Get("Accept-Version") != "v1" {
+			t.Errorf("tracking request omitted Accept-Version")
 		}
+		tracked.Add(1)
+		if r.URL.Path == "/fail" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"url":"https://images.unsplash.com/x"}`))
 	}))
 	defer server.Close()
+	provider := newUnsplashProvider("key", discardLogger())
+	provider.BaseURL = server.URL
 
-	c := newUnsplashProvider("key", slog.Default())
-	// Set BaseURL to the test server to pass validation
-	c.BaseURL = server.URL
-	c.TrackDownload(context.Background(), server.URL+"/track")
-
-	if !tracked {
-		t.Error("expected track request to be sent")
+	if err := provider.TrackDownload(context.Background(), server.URL+"/track"); err != nil {
+		t.Fatalf("TrackDownload() error = %v", err)
 	}
-}
-
-func TestUnsplashClient_FetchCollectionPhotos_Pagination(t *testing.T) {
-	pages := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		pages++
-		if pages == 1 {
-			// Return a full page
-			photos := make([]unsplashPhoto, 30)
-			for i := 0; i < 30; i++ {
-				photos[i] = unsplashPhoto{ID: "p1"}
-			}
-			_ = json.NewEncoder(w).Encode(photos)
-		} else {
-			// Return a partial page to end
-			photos := []unsplashPhoto{{ID: "p2"}}
-			_ = json.NewEncoder(w).Encode(photos)
-		}
-	}))
-	defer server.Close()
-
-	c := newUnsplashProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	photos, err := c.FetchCollectionPhotos(context.Background(), "col-abc")
-	if err != nil {
-		t.Fatalf("FetchCollectionPhotos failed: %v", err)
-	}
-
-	if len(photos) != 31 {
-		t.Errorf("expected 31 photos, got %d", len(photos))
-	}
-	if pages != 2 {
-		t.Errorf("expected 2 pages fetched, got %d", pages)
-	}
-}
-
-func TestUnsplashClient_TrackDownload_Errors(t *testing.T) {
-	logger, buf := newTestLogger()
-	c := newUnsplashProvider("key", logger)
-	c.BaseURL = defaultUnsplashBaseURL
-
-	// 1. Test invalid URL format
-	c.TrackDownload(context.Background(), "://invalid-url")
-	if !bytes.Contains(buf.Bytes(), []byte("invalid unsplash download location URL format")) {
-		t.Error("expected invalid URL format warning in logs")
-	}
-	buf.Reset()
-
-	// 2. Test invalid host
-	c.TrackDownload(context.Background(), "https://example.com/track")
-	if !bytes.Contains(buf.Bytes(), []byte("invalid unsplash download location host")) {
-		t.Error("expected invalid host warning in logs")
-	}
-	buf.Reset()
-
-	// 3. Test request creation error
-	ctx, cancel := context.WithCancel(context.Background())
+	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	c.TrackDownload(ctx, "https://api.unsplash.com/track")
-	if bytes.Contains(buf.Bytes(), []byte("unsplash download tracked")) {
-		t.Error("expected track request not to succeed on bad context")
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		location string
+		want     string
+	}{
+		{name: "non-success status", ctx: context.Background(), location: server.URL + "/fail", want: "tracking error: 403"},
+		{name: "malformed URL", ctx: context.Background(), location: "://bad", want: "invalid unsplash download location"},
+		{name: "foreign host", ctx: context.Background(), location: "https://example.com/track", want: "not on the API host"},
+		{name: "canceled", ctx: canceled, location: server.URL + "/track", want: "context canceled"},
 	}
-	buf.Reset()
-
-	// 4. Test client execution error
-	c.BaseURL = "invalid-scheme://api.unsplash.com"
-	c.TrackDownload(context.Background(), "invalid-scheme://api.unsplash.com/track")
-	if bytes.Contains(buf.Bytes(), []byte("unsplash download tracked")) {
-		t.Error("expected track request not to succeed on bad client request")
+	for _, test := range tests {
+		if err := provider.TrackDownload(test.ctx, test.location); err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("%s: TrackDownload() error = %v, want %q", test.name, err, test.want)
+		}
 	}
-}
-
-func TestUnsplashClient_TrackDownload_InvalidBaseURL(t *testing.T) {
-	logger, buf := newTestLogger()
-	c := newUnsplashProvider("key", logger)
-	c.BaseURL = "://invalid-base-url"
-
-	c.TrackDownload(context.Background(), "https://api.unsplash.com/track")
-	if !bytes.Contains(buf.Bytes(), []byte("invalid unsplash download location host")) {
-		t.Error("expected invalid host warning in logs due to bad BaseURL")
+	if tracked.Load() != 2 {
+		t.Fatalf("tracking requests = %d, want only the two on-host requests", tracked.Load())
 	}
 }

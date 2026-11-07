@@ -75,6 +75,17 @@ func TestReadStableReadsBoundedRegularFile(t *testing.T) {
 	if _, err := ReadStable(context.Background(), symlink, StableReadOptions{MaxBytes: 6}); err == nil {
 		t.Fatal("ReadStable() accepted symlink")
 	}
+	followed, err := ReadStable(context.Background(), symlink, StableReadOptions{MaxBytes: 6, FollowSymlinks: true})
+	if err != nil || string(followed) != "stable" {
+		t.Fatalf("ReadStable(FollowSymlinks) = (%q, %v), want the link target", followed, err)
+	}
+	dangling := filepath.Join(directory, "dangling.json")
+	if err := os.Symlink(filepath.Join(directory, "missing.json"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadStable(context.Background(), dangling, StableReadOptions{MaxBytes: 6, FollowSymlinks: true}); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ReadStable(dangling, FollowSymlinks) error = %v, want not-exist", err)
+	}
 }
 
 func TestReadStablePreservesCancellationAndCloseErrors(t *testing.T) {

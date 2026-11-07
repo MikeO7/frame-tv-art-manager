@@ -70,9 +70,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		EnableRESTGate:                 env.boolean("ENABLE_REST_GATE", false),
 		VerifyTLS:                      env.boolean("VERIFY_TLS", false) && !env.boolean("SKIP_TLS_VERIFY", false),
 		SourcesFile:                    env.str("ARTWORK_SOURCES_FILE", ""),
-		UnsplashAppID:                  env.str("UNSPLASH_APP_ID", ""),
 		UnsplashAccessKey:              env.str("UNSPLASH_ACCESS_KEY", ""),
-		UnsplashSecretKey:              env.str("UNSPLASH_SECRET_KEY", ""),
 		NasaAPIKey:                     env.str("NASA_API_KEY", "DEMO_KEY"),
 		PexelsAPIKey:                   env.str("PEXELS_API_KEY", ""),
 		PixabayAPIKey:                  env.str("PIXABAY_API_KEY", ""),
@@ -122,6 +120,11 @@ func (env *environment) loadConfig() (*Config, error) {
 
 	if err := env.parseRequiredValues(cfg); err != nil {
 		return nil, err
+	}
+	for _, deprecated := range []string{"UNSPLASH_APP_ID", "UNSPLASH_SECRET_KEY"} {
+		if env.values[deprecated] != "" {
+			env.warn(deprecated, "ignored", deprecated+" is no longer used; only UNSPLASH_ACCESS_KEY is required")
+		}
 	}
 	mac := env.str("TV_MAC", "")
 	if len(cfg.TVIPs) > 1 && mac != "" {

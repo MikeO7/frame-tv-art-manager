@@ -541,9 +541,7 @@ func TestLoader_Sync_Providers(t *testing.T) {
 	l := newTestLoader(&config.Config{
 		SourcesFile:       sourcesFile,
 		ArtworkDir:        artworkDir,
-		UnsplashAppID:     "app",
 		UnsplashAccessKey: "key",
-		UnsplashSecretKey: "secret",
 		NasaAPIKey:        providerNASA,
 		PexelsAPIKey:      providerPexels,
 		PixabayAPIKey:     providerPixabay,
@@ -570,7 +568,7 @@ func TestLoader_syncLine_ArticSearch(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": []any{
-					map[string]any{"id": 1, "image_id": "img1"},
+					map[string]any{"id": 1, "image_id": "img1", "is_public_domain": true},
 				},
 			})
 		} else {
@@ -644,14 +642,30 @@ func TestLoaderLoadTXTSourcesRejectsUnsafeManifestReads(t *testing.T) {
 		}
 	})
 
-	t.Run("symlink", func(t *testing.T) {
+	t.Run("ConfigMap-style symlink chain is followed", func(t *testing.T) {
+		data := filepath.Join(directory, "..data")
+		if err := os.Symlink(directory, data); err != nil {
+			t.Fatal(err)
+		}
 		path := filepath.Join(directory, "sources-link.txt")
-		if err := os.Symlink(valid, path); err != nil {
+		if err := os.Symlink(filepath.Join("..data", "valid.txt"), path); err != nil {
 			t.Fatal(err)
 		}
 		loader.sourcesFile = path
-		if _, err := loader.loadSources(context.Background()); err == nil || !strings.Contains(err.Error(), "non-symlink") {
-			t.Fatalf("loadTxtSources() error = %v, want symlink rejection", err)
+		urls, err := loader.loadSources(context.Background())
+		if err != nil || len(urls) != 1 || urls[0] != "https://example.com/art.jpg" {
+			t.Fatalf("loadSources(symlink) = (%v, %v), want the linked manifest", urls, err)
+		}
+	})
+
+	t.Run("symlink to a directory", func(t *testing.T) {
+		path := filepath.Join(directory, "directory-link.txt")
+		if err := os.Symlink(directory, path); err != nil {
+			t.Fatal(err)
+		}
+		loader.sourcesFile = path
+		if _, err := loader.loadSources(context.Background()); err == nil || !strings.Contains(err.Error(), "regular") {
+			t.Fatalf("loadSources() error = %v, want a regular-file rejection", err)
 		}
 	})
 

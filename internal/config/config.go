@@ -134,14 +134,8 @@ type Config struct {
 	// One URL per line. Lines starting with # are comments. Empty disables.
 	SourcesFile string
 
-	// UnsplashAppID is the Application ID for Unsplash.
-	UnsplashAppID string
-
 	// UnsplashAccessKey is the Access Key for Unsplash.
 	UnsplashAccessKey string
-
-	// UnsplashSecretKey is the Secret Key for Unsplash.
-	UnsplashSecretKey string
 
 	// NasaAPIKey is the API key for NASA APOD downloads.
 	// Defaults to DEMO_KEY if empty.

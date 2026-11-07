@@ -246,32 +246,34 @@ func bootstrapSources(ctx context.Context, cfg *config.Config, logger *slog.Logg
 		"# providers:\n" +
 		"  # --- 🚀 NASA (The Universe) ---\n" +
 		"  # nasa:\n" +
-		"  #   - apod             # Today's Picture of the Day\n" +
-		"  #   - search:nebula     # Top 10 high-res nebula photos\n\n" +
+		"  #   - apod             # Today's Picture of the Day (skipped on video days)\n" +
+		"  #   - search:nebula     # The first 10 nebula results from the NASA image library\n\n" +
 		"  # --- 🎨 Art Institute of Chicago (Fine Art) ---\n" +
 		"  # art_institute_of_chicago:\n" +
-		"  #   - search:monet      # 10 masterpieces by Claude Monet\n" +
-		"  #   - photo:12345       # A specific artwork by ID\n\n" +
+		"  #   - search:monet      # The first 10 public-domain works matching \"monet\"\n" +
+		"  #   - photo:12345       # A specific public-domain artwork by ID\n\n" +
 		"  # --- 📸 Unsplash (Photography) ---\n" +
 		"  # unsplash:\n" +
-		"  #   - collection:225444 # Up to 50 photos from a collection\n" +
-		"  #   - photo:L9W_5q57_V8 # A specific high-res photo\n\n" +
+		"  #   - collection:225444 # Up to 990 photos from a collection\n" +
+		"  #   - photo:L9W_5q57_V8 # A specific photo\n\n" +
 		"  # --- 🌿 Pexels (Nature & Architecture) ---\n" +
 		"  # pexels:\n" +
-		"  #   - search:nature     # 10 high-res photos from Pexels\n" +
-		"  #   - curated           # 10 hand-picked photos from Pexels\n\n" +
+		"  #   - search:nature     # The first 10 search results from Pexels\n" +
+		"  #   - curated           # The latest 10 curated photos from Pexels\n" +
+		"  #   - collection:abc123 # Up to 800 photos from a collection\n\n" +
 		"  # --- 🍃 Pixabay (Free Art) ---\n" +
 		"  # pixabay:\n" +
-		"  #   - search:nature     # 10 high-res photos from Pixabay\n" +
-		"  #   - editors_choice    # 10 hand-picked photos from Pixabay\n" +
-		"  #   - user:12345        # Up to 50 photos from a specific artist\n\n" +
+		"  #   - search:nature     # Up to 500 photos at least 3840 pixels wide\n" +
+		"  #   - editors_choice    # Up to 500 Editor's Choice photos at least 3840 pixels wide\n" +
+		"  #   - photo:12345       # A specific photo by ID\n\n" +
 		"  # --- 🔗 Direct URLs (Any JPEG/PNG) ---\n" +
 		"  # direct:\n" +
 		"  #   - https://example.com/artwork.jpg\n\n" +
+		"# Provider results are cached for 24 hours (APOD until the next day).\n" +
 		"# 🔍 How to find IDs:\n" +
 		"# - Unsplash Photo: unsplash.com/photos/abc123 -> abc123\n" +
 		"# - Pexels Photo: pexels.com/photo/123 -> 123\n" +
-		"# - Pixabay Photo/User: pixabay.com/.../name-123 -> 123\n" +
+		"# - Pixabay Photo: pixabay.com/photos/name-123 -> 123\n" +
 		"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n"
 
 	if err := durablefs.CreateExclusive(ctx, cfg.SourcesFile, 0o600, func(writer io.Writer) error {

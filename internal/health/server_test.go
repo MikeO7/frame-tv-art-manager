@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -200,6 +202,43 @@ func TestLiveEndpointReflectsProcessFailure(t *testing.T) {
 				t.Fatalf("liveness response = %#v", payload)
 			}
 		})
+	}
+}
+
+func TestHTTPStatusReportsSourceAttributions(t *testing.T) {
+	t.Parallel()
+	artworkDir := t.TempDir()
+	statePath := collection.ControlPath(artworkDir, "source-state.json")
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	state := `{"version":1,"resolutions":{},"attributions":{"source:b":{"provider":"pexels","artist":"Ann","license":"Pexels License"},` +
+		`"source:a":{"provider":"unsplash","artist":"Jo","source_url":"https://unsplash.com/photos/a"}}}`
+	if err := os.WriteFile(statePath, []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testConfig(0, false, artworkDir)
+	cfg.SourcesFile = filepath.Join(t.TempDir(), "sources.yaml")
+	server := newTestServer(t, cfg, NewStatus())
+
+	response := httptest.NewRecorder()
+	server.handleStatus(response, httptest.NewRequest(http.MethodGet, "/status", nil))
+	attributions, ok := decodeJSONResponse(t, response)["attributions"].([]any)
+	if !ok || len(attributions) != 2 {
+		t.Fatalf("attributions = %#v, want two credits", attributions)
+	}
+	first, _ := attributions[0].(map[string]any)
+	if first["provider"] != "unsplash" || first["artist"] != "Jo" || first["source_url"] != "https://unsplash.com/photos/a" {
+		t.Fatalf("first attribution = %#v, want credits ordered by source origin", first)
+	}
+
+	if err := os.Chmod(statePath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	response = httptest.NewRecorder()
+	server.handleStatus(response, httptest.NewRequest(http.MethodGet, "/status", nil))
+	if _, present := decodeJSONResponse(t, response)["attributions"]; present || response.Code != http.StatusOK {
+		t.Fatalf("status with an unsafe state file = %d %s, want status without attributions", response.Code, response.Body.String())
 	}
 }
 

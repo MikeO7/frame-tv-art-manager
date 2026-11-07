@@ -174,21 +174,47 @@ providers:
     - https://example.com/image.jpg
 ```
 
-| Provider | Commands | API key |
-| --- | --- | --- |
-| Unsplash | `collection`, `photo` | `UNSPLASH_ACCESS_KEY` |
-| NASA | `apod`, `search` | `NASA_API_KEY` (defaults to `DEMO_KEY`) |
-| Art Institute of Chicago | `search`, `photo` | none |
-| Pexels | `search`, `curated`, `collection`, `photo` | `PEXELS_API_KEY` |
-| Pixabay | `search`, `editors_choice`, `photo`, `user` | `PIXABAY_API_KEY` |
-| Direct link | any HTTP or HTTPS image URL | none |
+| Provider | Commands | What you get | API key |
+| --- | --- | --- | --- |
+| Unsplash | `collection`, `photo` | up to 990 photos per collection | `UNSPLASH_ACCESS_KEY` |
+| NASA | `apod`, `search` | today's picture (skipped on video days); the first 10 library results | `NASA_API_KEY` (defaults to `DEMO_KEY`) |
+| Art Institute of Chicago | `search`, `photo` | public-domain works only; the first 10 search results | none |
+| Pexels | `search`, `curated`, `collection`, `photo` | 10 search or curated results; up to 800 per collection | `PEXELS_API_KEY` |
+| Pixabay | `search`, `editors_choice`, `photo` | up to 500 photos at least 3840 pixels wide | `PIXABAY_API_KEY` |
+| Direct link | any HTTP or HTTPS image URL | that image | none |
 
 A plain list, a top-level `sources:` list, or a text file with one source per
-line (`#` for comments) also works. Downloads go into your collection like any
-other file. If any source fails during a sync, nothing previously downloaded is
-removed. Removing a source from the file doesn't delete what it already
-downloaded; delete those files yourself if you no longer want them. Each
-provider has its own rate limits and terms.
+line (`#` for comments) also works. The sources file may be a symlink, so a
+Kubernetes ConfigMap or Docker config mount works. Downloads go into your
+collection like any other file. If any source fails during a sync, nothing
+previously downloaded is removed. Removing a source from the file doesn't
+delete what it already downloaded; delete those files yourself if you no
+longer want them.
+
+Each provider has its own rate limits and terms, so the manager asks each one
+as little as possible:
+
+- **Results are cached for 24 hours** (APOD until the next day) in
+  `.frame-tv-art-manager/source-state.json` inside the artwork folder. Pixabay
+  requires this. Restarts reuse the cache.
+- **Rate limits are respected.** When a provider answers `429` or reports no
+  requests left, it isn't asked again until its `Retry-After` or reset time.
+  Other failures are retried after 15 minutes, doubling up to a day.
+- **A failing provider keeps its last good results**, so a provider outage or
+  quota doesn't stop the rest of the sync from using what it found before.
+- **Images are requested at 4K**, not as multi-hundred-megapixel originals:
+  just large enough to cover 3840×2160, with a smaller version as a fallback
+  when the large one exceeds `MAX_DOWNLOAD_SIZE_MB` or 40 megapixels. With a
+  standard Pixabay key the API only offers 1280-pixel images.
+- **Credit is recorded.** Unsplash and Pexels require photographer credit, so
+  the title, artist, provider, source page, and license of each downloaded
+  image appear under `attributions` in `/status`. Unsplash downloads are also
+  reported to Unsplash as its API guidelines require.
+
+`pixabay:user:<id>` is no longer supported because the Pixabay API can't filter
+by user; it now fails with an explanation. `UNSPLASH_APP_ID` and
+`UNSPLASH_SECRET_KEY` are ignored with a warning; only `UNSPLASH_ACCESS_KEY` is
+needed.
 
 ## How syncing works
 
@@ -418,7 +444,7 @@ The built-in web server (port `HEALTH_PORT`) provides:
 | --- | --- |
 | `GET /live` | The process is running. The container healthcheck uses this. |
 | `GET /ready`, `GET /health` | 200 once startup finished and the last sync succeeded, otherwise 503. |
-| `GET /status` | Timing, current stage, last error, and per-TV status, including rotation. |
+| `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. |
 | `GET` / `POST /upload` | The upload page, when uploads are enabled. |
 
 Logs are JSON. Each TV's result includes its address, status, upload and delete

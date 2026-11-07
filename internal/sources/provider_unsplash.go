@@ -2,8 +2,11 @@ package sources
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,12 +22,17 @@ const (
 	unsplashPageSize = 30
 	// unsplashMaxPages bounds collection pagination to avoid unbounded crawling.
 	unsplashMaxPages = 33
+	// unsplashReferral is the UTM attribution the Unsplash API guidelines
+	// require on links back to Unsplash.
+	unsplashReferral = "utm_source=frame_tv_art_manager&utm_medium=referral"
+	unsplashLicense  = "Unsplash License"
 )
 
 // unsplashProvider handles communication with the Unsplash API and resolves artwork sources.
 type unsplashProvider struct {
 	accessKey string
 	client    *http.Client
+	gate      *rateGate
 	logger    *slog.Logger
 	BaseURL   string
 }
@@ -36,6 +44,7 @@ func newUnsplashProvider(accessKey string, logger *slog.Logger) *unsplashProvide
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		gate:    newRateGate(),
 		logger:  logger,
 		BaseURL: defaultUnsplashBaseURL,
 	}
@@ -43,24 +52,32 @@ func newUnsplashProvider(accessKey string, logger *slog.Logger) *unsplashProvide
 
 // unsplashPhoto represents the metadata returned by the Unsplash API.
 type unsplashPhoto struct {
-	ID     string `json:"id"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	Links  struct {
-		Download         string `json:"download"`
+	ID             string `json:"id"`
+	Width          int    `json:"width"`
+	Height         int    `json:"height"`
+	Description    string `json:"description"`
+	AltDescription string `json:"alt_description"`
+	User           struct {
+		Name string `json:"name"`
+	} `json:"user"`
+	Links struct {
+		HTML             string `json:"html"`
 		DownloadLocation string `json:"download_location"`
 	} `json:"links"`
 	URLs struct {
-		Full string `json:"full"`
-		Raw  string `json:"raw"`
+		Raw string `json:"raw"`
 	} `json:"urls"`
+}
+
+func (p *unsplashProvider) headers() map[string]string {
+	return map[string]string{headerAuthorization: "Client-ID " + p.accessKey, "Accept-Version": "v1"}
 }
 
 // fetchJSON issues a Client-ID-authorized GET to apiURL and decodes the
 // size-bounded JSON response body into out.
 func (p *unsplashProvider) fetchJSON(ctx context.Context, apiURL string, out any) error {
 	return fetchProviderJSON(ctx, providerJSONRequest{
-		client: p.client, url: apiURL, headers: map[string]string{headerAuthorization: "Client-ID " + p.accessKey},
+		client: p.client, gate: p.gate, provider: p.Name(), url: apiURL, headers: p.headers(),
 		maxBytes: unsplashMaxResponseBytes, statusLabel: "unsplash api", decodeLabel: "unsplash",
 	}, out)
 }
@@ -73,8 +90,8 @@ func (p *unsplashProvider) CanHandle(line string) bool {
 	return strings.HasPrefix(line, "unsplash:")
 }
 
-// FetchCollectionPhotos retrieves all photos from a specific Unsplash collection using pagination.
-func (p *unsplashProvider) FetchCollectionPhotos(ctx context.Context, collectionID string) ([]unsplashPhoto, error) {
+// fetchCollectionPhotos retrieves all photos from a specific Unsplash collection using pagination.
+func (p *unsplashProvider) fetchCollectionPhotos(ctx context.Context, collectionID string) ([]unsplashPhoto, error) {
 	return collectPages(unsplashMaxPages, func(page int) ([]unsplashPhoto, bool, error) {
 		apiURL := fmt.Sprintf("%s/collections/%s/photos?per_page=%d&page=%d", p.BaseURL, url.PathEscape(collectionID), unsplashPageSize, page)
 		p.logger.Debug("fetching unsplash collection page", "id", collectionID, "page", page)
@@ -84,87 +101,106 @@ func (p *unsplashProvider) FetchCollectionPhotos(ctx context.Context, collection
 	})
 }
 
-// FetchPhoto retrieves metadata for a single Unsplash photo.
-func (p *unsplashProvider) FetchPhoto(ctx context.Context, photoID string) (*unsplashPhoto, error) {
-	apiURL := fmt.Sprintf("%s/photos/%s", p.BaseURL, url.PathEscape(photoID))
-
-	var photo unsplashPhoto
-	if err := p.fetchJSON(ctx, apiURL, &photo); err != nil {
-		return nil, err
-	}
-
-	return &photo, nil
-}
-
-// TrackDownload triggers the Unsplash "download" endpoint for a photo.
-func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation string) {
+// TrackDownload reports a download to the Unsplash download endpoint, as the
+// API guidelines require. Only endpoints on the configured API host are called.
+func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation string) error {
 	parsedURL, err := url.Parse(downloadLocation)
 	if err != nil {
-		p.logger.Warn("invalid unsplash download location URL format", "url", truncateURL(downloadLocation))
-		return
+		return errors.New("invalid unsplash download location URL format")
 	}
 	baseURL, err := url.Parse(p.BaseURL)
 	if err != nil || parsedURL.Host != baseURL.Host || parsedURL.Scheme != baseURL.Scheme {
-		p.logger.Warn("invalid unsplash download location host or scheme", "url", truncateURL(downloadLocation))
-		return
+		return errors.New("unsplash download location is not on the API host")
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadLocation, nil)
 	if err != nil {
-		return
+		return providerRequestError(ctx, "create unsplash download tracking request", err)
 	}
-
-	req.Header.Set("Authorization", "Client-ID "+p.accessKey)
-
+	req.Header.Set("User-Agent", userAgent)
+	for name, value := range p.headers() {
+		req.Header.Set(name, value)
+	}
 	resp, err := p.client.Do(req)
-	if err == nil {
-		_ = resp.Body.Close()
-		p.logger.Debug("unsplash download tracked", "url", truncateURL(downloadLocation))
+	if err != nil {
+		return providerRequestError(ctx, "track unsplash download", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, unsplashMaxResponseBytes))
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("unsplash download tracking error: %d", resp.StatusCode)
+	}
+	p.logger.Debug("unsplash download tracked", "url", truncateURL(downloadLocation))
+	return nil
 }
 
 func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
 	if p.accessKey == "" {
-		return nil, fmt.Errorf("UNSPLASH_ACCESS_KEY not configured")
+		return nil, errors.New("UNSPLASH_ACCESS_KEY not configured")
 	}
-
-	parts := strings.Split(line, ":")
-	if len(parts) < 3 {
-		return nil, fmt.Errorf("invalid unsplash format")
+	parts := strings.SplitN(line, ":", 3)
+	if len(parts) < 3 || parts[2] == "" {
+		return nil, errors.New("invalid unsplash format")
 	}
 
 	var photos []unsplashPhoto
-	var err error
-
 	switch parts[1] {
 	case "collection":
-		photos, err = p.FetchCollectionPhotos(ctx, parts[2])
-	case cmdPhoto:
-		photo, fetchErr := p.FetchPhoto(ctx, parts[2])
-		if fetchErr == nil {
-			photos = []unsplashPhoto{*photo}
+		collection, err := p.fetchCollectionPhotos(ctx, parts[2])
+		if err != nil {
+			return nil, err
 		}
-		err = fetchErr
+		photos = collection
+	case cmdPhoto:
+		var photo unsplashPhoto
+		if err := p.fetchJSON(ctx, fmt.Sprintf("%s/photos/%s", p.BaseURL, url.PathEscape(parts[2])), &photo); err != nil {
+			return nil, err
+		}
+		photos = []unsplashPhoto{photo}
 	default:
-		return nil, fmt.Errorf("unknown unsplash type")
-	}
-
-	if err != nil {
-		return nil, err
+		return nil, errors.New("unknown unsplash type")
 	}
 
 	images := make([]SourceImage, 0, len(photos))
 	for _, photo := range photos {
-		label := strings.ReplaceAll(Filename(parts[2]+"-"+photo.ID), " ", "-")
-		images = append(images, SourceImage{
-			URL:      photo.URLs.Raw + "&w=3840&q=95&fm=jpg",
-			Identity: sourceIdentity(p.Name(), photo.ID, label),
-			OnDownload: func(ctx context.Context) error {
-				p.TrackDownload(ctx, photo.Links.DownloadLocation)
-				return nil
-			},
-		})
+		image, err := p.image(parts[2], photo)
+		if err != nil {
+			p.logger.Warn("skipping unsplash photo without a downloadable image", "id", photo.ID, "error", err)
+			continue
+		}
+		images = append(images, image)
 	}
-
+	if parts[1] == cmdPhoto && len(images) == 0 {
+		return nil, errors.New("unsplash photo has no downloadable image")
+	}
 	return images, nil
+}
+
+// image requests a JPEG rendition that covers the panel without upscaling
+// (fit=max) from the raw image URL.
+func (p *unsplashProvider) image(source string, photo unsplashPhoto) (SourceImage, error) {
+	if photo.ID == "" || photo.URLs.Raw == "" {
+		return SourceImage{}, errors.New("missing photo ID or raw URL")
+	}
+	params := map[string]string{"fm": "jpg", "q": "95", "fit": "max"}
+	maps.Copy(params, coverQuery(photo.Width, photo.Height))
+	downloadURL, err := withQuery(photo.URLs.Raw, params)
+	if err != nil {
+		return SourceImage{}, err
+	}
+	sourceURL := photo.Links.HTML
+	if sourceURL != "" {
+		separator := "?"
+		if strings.Contains(sourceURL, "?") {
+			separator = "&"
+		}
+		sourceURL += separator + unsplashReferral
+	}
+	label := strings.ReplaceAll(Filename(source+"-"+photo.ID), " ", "-")
+	return SourceImage{
+		URL: downloadURL, Identity: sourceIdentity(p.Name(), photo.ID, label), TrackURL: photo.Links.DownloadLocation,
+		Attribution: Attribution{
+			Provider: p.Name(), Title: firstNonEmpty(photo.Description, photo.AltDescription),
+			Artist: photo.User.Name, SourceURL: sourceURL, License: unsplashLicense,
+		},
+	}, nil
 }

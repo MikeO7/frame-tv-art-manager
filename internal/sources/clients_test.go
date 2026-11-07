@@ -7,11 +7,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
-
-const testImageURL = "http://x.com/orig.jpg"
 
 func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
 	t.Helper()
@@ -26,19 +25,39 @@ func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
 	return ts
 }
 
-func TestNASAResolveAPODPrefersHDImageAndRejectsVideo(t *testing.T) {
+func discardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
+func TestNASAResolveAPODSkipsNonImageDaysAndPrefersHD(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		status   int
-		response apodResponse
-		wantURL  string
-		wantErr  string
+		name          string
+		status        int
+		response      apodResponse
+		wantURL       string
+		wantFallbacks []string
+		wantLicense   string
+		wantNoImages  bool
+		wantErr       string
 	}{
-		{name: "HD image", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/a.jpg", HDURL: "https://apod.example/hd.jpg", Type: mediaTypeImage}, wantURL: "https://apod.example/hd.jpg"},
-		{name: "standard image fallback", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/a.jpg", Type: mediaTypeImage}, wantURL: "https://apod.example/a.jpg"},
-		{name: "video", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/v.mp4", Type: "video"}, wantErr: "not an image"},
-		{name: "API failure", status: http.StatusTooManyRequests, wantErr: "nasa apod api error"},
+		{
+			name: "HD image with standard fallback", status: http.StatusOK,
+			response: apodResponse{Date: "2024-01-02", Title: "Nebula", URL: "https://apod.example/a.jpg", HDURL: "https://apod.example/hd.jpg", Type: mediaTypeImage},
+			wantURL:  "https://apod.example/hd.jpg", wantFallbacks: []string{"https://apod.example/a.jpg"}, wantLicense: nasaPublicDomain,
+		},
+		{
+			name: "standard image without HD", status: http.StatusOK,
+			response: apodResponse{URL: "https://apod.example/a.png", Type: mediaTypeImage, Copyright: "\nJane  Doe\n"},
+			wantURL:  "https://apod.example/a.png", wantLicense: "Copyright Jane Doe",
+		},
+		{name: "video day is skipped", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/v.mp4", Type: "video"}, wantNoImages: true},
+		{name: "other media is skipped", status: http.StatusOK, response: apodResponse{URL: "https://apod.example/page.html", Type: "other"}, wantNoImages: true},
+		{
+			name: "image type without a JPEG or PNG is skipped", status: http.StatusOK,
+			response: apodResponse{URL: "https://www.youtube.com/embed/x", Type: mediaTypeImage}, wantNoImages: true,
+		},
+		{name: "API failure", status: http.StatusInternalServerError, wantErr: "nasa apod api error"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -50,294 +69,300 @@ func TestNASAResolveAPODPrefersHDImageAndRejectsVideo(t *testing.T) {
 				w.WriteHeader(test.status)
 				_ = json.NewEncoder(w).Encode(test.response)
 			}))
-			provider := newNasaProvider("test_key_1", slog.New(slog.DiscardHandler))
+			provider := newNasaProvider("test_key_1", discardLogger())
 			provider.BaseURL = server.URL
 
 			images, err := provider.Resolve(context.Background(), "nasa:apod")
-			if test.wantErr != "" {
+			switch {
+			case test.wantErr != "":
 				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 					t.Fatalf("Resolve(nasa:apod) error = %v, want %q", err, test.wantErr)
 				}
-				return
-			}
-			if err != nil || len(images) != 1 || images[0].URL != test.wantURL || !strings.HasPrefix(images[0].Identity, "nasa--") {
-				t.Fatalf("Resolve(nasa:apod) = %+v, %v; want %s", images, err, test.wantURL)
+			case test.wantNoImages:
+				if err != nil || images == nil || len(images) != 0 {
+					t.Fatalf("Resolve(nasa:apod) = (%v, %v), want an empty successful resolution", images, err)
+				}
+			default:
+				if err != nil || len(images) != 1 || images[0].URL != test.wantURL ||
+					strings.Join(images[0].Fallbacks, ",") != strings.Join(test.wantFallbacks, ",") ||
+					!strings.HasPrefix(images[0].Identity, "nasa--") || images[0].Attribution.License != test.wantLicense {
+					t.Fatalf("Resolve(nasa:apod) = %+v, %v; want %s", images, err, test.wantURL)
+				}
 			}
 		})
 	}
 }
 
-func TestNASAClient_Search(t *testing.T) {
+func TestAPODPageURL(t *testing.T) {
+	t.Parallel()
+	if got := apodPageURL("2024-01-02"); got != "https://apod.nasa.gov/apod/ap240102.html" {
+		t.Fatalf("apodPageURL() = %q", got)
+	}
+	if got := apodPageURL("not-a-date"); got != "" {
+		t.Fatalf("apodPageURL(malformed) = %q, want empty", got)
+	}
+}
+
+func TestNASASearchSkipsFailedManifestsAndPrefersOriginal(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		manifests map[string]string // path -> response body ("" means HTTP 500)
+		wantURLs  []string
+		wantErr   bool
+	}{
+		{
+			name: "one manifest failure keeps the rest",
+			manifests: map[string]string{
+				"/m1": `["https://assets.example/a~thumb.jpg","https://assets.example/a~large.jpg","https://assets.example/a~orig.jpg"]`,
+				"/m2": "",
+				"/m3": `["https://assets.example/c~small.jpg","https://assets.example/c~large.jpg"]`,
+			},
+			wantURLs: []string{"https://assets.example/a~orig.jpg", "https://assets.example/c~large.jpg"},
+		},
+		{
+			name:      "item without usable rendition is skipped",
+			manifests: map[string]string{"/m1": `["https://assets.example/a~orig.tif","https://assets.example/metadata.json"]`},
+			wantURLs:  []string{},
+		},
+		{name: "every manifest failing is an error", manifests: map[string]string{"/m1": "", "/m2": "{bad"}, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var server *httptest.Server
+			server = newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/search" {
+					if r.URL.Query().Get("q") != "mars rover" || r.URL.Query().Get("media_type") != mediaTypeImage {
+						t.Errorf("unexpected search query %q", r.URL.RawQuery)
+					}
+					var items []map[string]any
+					for _, path := range []string{"/m1", "/m2", "/m3"} {
+						if _, ok := test.manifests[path]; ok {
+							items = append(items, map[string]any{
+								"href": server.URL + path,
+								"data": []map[string]string{{"nasa_id": "id" + path[2:], "title": "Title " + path, "center": "JPL"}},
+							})
+						}
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"collection": map[string]any{"items": items}})
+					return
+				}
+				body := test.manifests[r.URL.Path]
+				if body == "" {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				_, _ = w.Write([]byte(body))
+			}))
+			provider := newNasaProvider("key", discardLogger())
+			provider.SearchURL = server.URL
+
+			images, err := provider.Resolve(context.Background(), "nasa:search:mars rover")
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("Resolve() = %v, want error when every manifest failed", images)
+				}
+				return
+			}
+			if err != nil || len(images) != len(test.wantURLs) {
+				t.Fatalf("Resolve() = (%+v, %v), want %v", images, err, test.wantURLs)
+			}
+			for index, image := range images {
+				if image.URL != test.wantURLs[index] {
+					t.Errorf("image %d URL = %q, want %q", index, image.URL, test.wantURLs[index])
+				}
+				if image.Attribution.Artist != "JPL" || !strings.HasPrefix(image.Attribution.SourceURL, "https://images.nasa.gov/details/") {
+					t.Errorf("image %d attribution = %+v", index, image.Attribution)
+				}
+			}
+			if len(images) > 0 && strings.Join(images[0].Fallbacks, ",") != "https://assets.example/a~large.jpg" {
+				t.Errorf("original rendition fallbacks = %v, want large rendition", images[0].Fallbacks)
+			}
+		})
+	}
+}
+
+func TestNASAResolveRejectsMalformedLines(t *testing.T) {
+	t.Parallel()
+	provider := newNasaProvider("key", discardLogger())
+	for line, want := range map[string]string{"nasa": "invalid nasa format", "nasa:search": "requires a query", "nasa:other": "unknown nasa type"} {
+		if _, err := provider.Resolve(context.Background(), line); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Resolve(%q) error = %v, want %q", line, err, want)
+		}
+	}
+}
+
+func TestArticResolveRequestsPublicDomainRenditionsSizedByAspect(t *testing.T) {
+	t.Parallel()
 	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		if strings.Contains(r.URL.Path, "/search") {
-			result := struct {
-				Collection struct {
-					Items []struct {
-						Href string `json:"href"`
-					} `json:"items"`
-				} `json:"collection"`
-			}{}
-			result.Collection.Items = append(result.Collection.Items, struct {
-				Href string `json:"href"`
-			}{Href: "http://" + r.Host + "/manifest.json"})
-			_ = json.NewEncoder(w).Encode(result)
-		} else {
-			manifest := []string{"http://x.com/image~orig.jpg"}
-			_ = json.NewEncoder(w).Encode(manifest)
+		switch r.URL.Path {
+		case "/api/v1/artworks/search":
+			if r.URL.Query().Get("query[term][is_public_domain]") != "true" || r.URL.Query().Get("q") != "monet" {
+				t.Errorf("search is not limited to public-domain works: %q", r.URL.RawQuery)
+			}
+			if r.Header.Get("AIC-User-Agent") == "" {
+				t.Error("missing AIC-User-Agent header")
+			}
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":1,"title":"Wide","image_id":"wide","is_public_domain":true,"artist_display":"Claude Monet\nFrench","thumbnail":{"width":8000,"height":3000}},
+				{"id":2,"title":"Portrait","image_id":"tall","is_public_domain":true,"thumbnail":{"width":4000,"height":6000}},
+				{"id":3,"title":"Small","image_id":"small","is_public_domain":true,"thumbnail":{"width":1500,"height":1000}},
+				{"id":4,"title":"Restricted","image_id":"restricted","is_public_domain":false},
+				{"id":5,"title":"No image","is_public_domain":true}
+			]}`))
+		case "/api/v1/artworks/7":
+			_, _ = w.Write([]byte(`{"data":{"id":7,"title":"Recent","image_id":"img7","is_public_domain":false}}`))
+		case "/api/v1/artworks/8":
+			_, _ = w.Write([]byte(`{"data":{"id":8,"title":"Unknown size","image_id":"img8","is_public_domain":true}}`))
+		default:
+			http.NotFound(w, r)
 		}
 	}))
-	defer server.Close()
+	provider := newArticProvider(discardLogger())
+	provider.BaseURL, provider.IIIFBaseURL = server.URL, "https://iiif.example/iiif/2"
 
-	c := newNasaProvider("some_other_key", slog.Default())
-	c.SearchURL = server.URL
-
-	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")
-	if err != nil {
-		t.Fatalf("Search failed: %v", err)
+	images, err := provider.Resolve(context.Background(), "artic:search:monet")
+	if err != nil || len(images) != 3 {
+		t.Fatalf("Resolve(search) = (%+v, %v), want three public-domain images", images, err)
 	}
-	if len(urls) != 1 || urls[0] != "http://x.com/image~orig.jpg" {
-		t.Errorf("expected 1 URL, got %v", urls)
+	want := []struct{ url, firstFallback string }{
+		{"https://iiif.example/iiif/2/wide/full/,3000/0/default.jpg", "https://iiif.example/iiif/2/wide/full/,1686/0/default.jpg"},
+		{"https://iiif.example/iiif/2/tall/full/3000,/0/default.jpg", "https://iiif.example/iiif/2/tall/full/1686,/0/default.jpg"},
+		{"https://iiif.example/iiif/2/small/full/1200,/0/default.jpg", "https://iiif.example/iiif/2/small/full/843,/0/default.jpg"},
 	}
-}
-
-func TestArticClient_Search(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Data []articArtwork `json:"data"`
-		}{
-			Data: []articArtwork{{ID: 456, ImageID: "a1"}},
+	for index, image := range images {
+		if image.URL != want[index].url || len(image.Fallbacks) == 0 || image.Fallbacks[0] != want[index].firstFallback {
+			t.Errorf("image %d = %s %v, want %s then %s", index, image.URL, image.Fallbacks, want[index].url, want[index].firstFallback)
 		}
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newArticProvider()
-	c.BaseURL = server.URL
-	urls, err := c.Search(context.Background(), "monet")
-	if err != nil {
-		t.Fatalf("Search failed: %v", err)
 	}
-	if len(urls) != 1 {
-		t.Errorf("expected 1 URL, got %d", len(urls))
+	legacy := sourceURLIdentity("artic", "https://iiif.example/iiif/2/wide/full/!3840,2160/0/default.jpg")
+	if images[0].Identity != legacy {
+		t.Errorf("identity = %q, want the stable pre-sizing identity %q", images[0].Identity, legacy)
+	}
+	if images[0].Attribution.Artist != "Claude Monet French" || images[0].Attribution.SourceURL != "https://www.artic.edu/artworks/1" {
+		t.Errorf("attribution = %+v", images[0].Attribution)
+	}
+
+	if _, err := provider.Resolve(context.Background(), "artic:photo:7"); err == nil || !strings.Contains(err.Error(), "public domain") {
+		t.Fatalf("Resolve(non-public-domain photo) error = %v", err)
+	}
+	unknown, err := provider.Resolve(context.Background(), "art_institute_of_chicago:photo:8")
+	if err != nil || len(unknown) != 1 || !strings.HasSuffix(unknown[0].URL, "/img8/full/3000,/0/default.jpg") || len(unknown[0].Fallbacks) != 3 {
+		t.Fatalf("Resolve(photo without dimensions) = (%+v, %v)", unknown, err)
 	}
 }
 
-func TestArticClient_FetchPhoto(t *testing.T) {
+func TestArticImageCandidatesRespectPixelCap(t *testing.T) {
+	t.Parallel()
+	provider := newArticProvider(discardLogger())
+	// A 10:1 panorama sized to 3000 tall would exceed the 40 MP download cap.
+	candidates := provider.imageCandidates("pano", 40000, 4000)
+	if len(candidates) == 0 || !strings.Contains(candidates[0], "/full/,1686/") {
+		t.Fatalf("imageCandidates(panorama) = %v, want the largest size within the pixel cap", candidates)
+	}
+	if got := provider.imageCandidates("tiny", 500, 400); len(got) != 0 {
+		t.Fatalf("imageCandidates(tiny) = %v, want none below the smallest allowed size", got)
+	}
+}
+
+func TestPexelsResolveRequestsCoveringRenditionAndSkipsEmptySources(t *testing.T) {
+	t.Parallel()
 	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Data articArtwork `json:"data"`
-		}{
-			Data: articArtwork{ID: 1, Title: "Art", ImageID: "img123"},
+		if r.Header.Get(headerAuthorization) != "p-key" {
+			t.Errorf("Pexels authorization = %q", r.Header.Get(headerAuthorization))
 		}
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newArticProvider()
-	c.BaseURL = server.URL
-
-	url, err := c.FetchPhoto(context.Background(), "1")
-	if err != nil {
-		t.Fatalf("FetchPhoto failed: %v", err)
-	}
-
-	if url == "" || !strings.Contains(url, "img123") {
-		t.Errorf("expected URL containing img123, got %s", url)
-	}
-}
-
-func TestPexelsClient_FetchPhoto(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		photo := pexelsPhoto{ID: 123}
-		photo.Src.Original = testImageURL
-		_ = json.NewEncoder(w).Encode(photo)
-	}))
-	defer server.Close()
-
-	c := newPexelsProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	url, err := c.FetchPhoto(context.Background(), "123")
-	if err != nil {
-		t.Fatalf("FetchPhoto failed: %v", err)
-	}
-	if url != testImageURL {
-		t.Errorf("expected http://x.com/orig.jpg, got %s", url)
-	}
-}
-
-func TestPexelsClient_Search(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Photos []pexelsPhoto `json:"photos"`
-		}{
-			Photos: []pexelsPhoto{{ID: 1}},
+		switch r.URL.Path {
+		case "/v1/search":
+			if r.URL.Query().Get("query") != "red fox" || r.URL.Query().Get("per_page") != "10" {
+				t.Errorf("unexpected search query %q", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"photos":[
+				{"id":1,"width":6000,"height":4000,"url":"https://www.pexels.com/photo/1/","photographer":"Ann","alt":"Fox",
+				 "src":{"original":"https://images.pexels.com/photos/1/a.jpeg","large2x":"https://images.pexels.com/photos/1/a.jpeg?w=940"}},
+				{"id":2,"width":8000,"height":2000,"src":{"original":"https://images.pexels.com/photos/2/b.jpeg"}},
+				{"id":3,"src":{"original":""}}
+			]}`))
+		case "/v1/curated", "/v1/collections/c1":
+			_, _ = w.Write([]byte(`{"photos":[],"media":[{"id":4,"type":"Photo","src":{"original":"https://images.pexels.com/photos/4/d.jpeg"}},{"id":5,"type":"Video"}]}`))
+		case "/v1/photos/9":
+			_, _ = w.Write([]byte(`{"id":9,"src":{"original":""}}`))
+		default:
+			http.NotFound(w, r)
 		}
-		result.Photos[0].Src.Original = testImageURL
-		_ = json.NewEncoder(w).Encode(result)
 	}))
-	defer server.Close()
+	provider := newPexelsProvider("p-key", discardLogger())
+	provider.BaseURL = server.URL
 
-	c := newPexelsProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	urls, err := c.Search(context.Background(), "nature")
-	if err != nil {
-		t.Fatalf("Search failed: %v", err)
+	images, err := provider.Resolve(context.Background(), "pexels:search:red fox")
+	if err != nil || len(images) != 2 {
+		t.Fatalf("Resolve(search) = (%+v, %v), want two photos with originals", images, err)
+	}
+	first, _ := url.Parse(images[0].URL)
+	if first.Query().Get("w") != "3840" || first.Query().Get("cs") != "tinysrgb" || first.Query().Has("h") {
+		t.Errorf("3:2 photo rendition = %s, want width 3840", images[0].URL)
+	}
+	if images[0].Identity != sourceURLIdentity(providerPexels, "https://images.pexels.com/photos/1/a.jpeg") {
+		t.Errorf("identity %q is not derived from the original URL", images[0].Identity)
+	}
+	if len(images[0].Fallbacks) != 1 || images[0].Attribution != (Attribution{
+		Provider: providerPexels, Title: "Fox", Artist: "Ann", SourceURL: "https://www.pexels.com/photo/1/", License: pexelsLicense,
+	}) {
+		t.Errorf("image = %+v", images[0])
+	}
+	if wide, _ := url.Parse(images[1].URL); wide.Query().Get("h") != "2160" || wide.Query().Has("w") {
+		t.Errorf("4:1 photo rendition = %s, want height 2160", images[1].URL)
 	}
 
-	if len(urls) != 1 || urls[0] != testImageURL {
-		t.Errorf("expected 1 URL, got %v", urls)
+	collection, err := provider.Resolve(context.Background(), "pexels:collection:c1")
+	if err != nil || len(collection) != 1 {
+		t.Fatalf("Resolve(collection) = (%+v, %v), want videos skipped", collection, err)
+	}
+	if curated, err := provider.Resolve(context.Background(), "pexels:curated"); err != nil || len(curated) != 0 {
+		t.Fatalf("Resolve(curated) = (%+v, %v)", curated, err)
+	}
+	if _, err := provider.Resolve(context.Background(), "pexels:photo:9"); err == nil || !strings.Contains(err.Error(), "no downloadable image") {
+		t.Fatalf("Resolve(photo without original) error = %v", err)
 	}
 }
 
-func TestPexelsClient_Curated(t *testing.T) {
-	server := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Photos []pexelsPhoto `json:"photos"`
-		}{
-			Photos: []pexelsPhoto{{ID: 1}},
+func TestPexelsResolveRejectsMalformedLines(t *testing.T) {
+	t.Parallel()
+	provider := newPexelsProvider("key", discardLogger())
+	for line, want := range map[string]string{
+		"pexels": "invalid pexels format", "pexels:search": "requires a query", "pexels:collection": "requires an ID",
+		"pexels:photo": "requires an ID", "pexels:other": "unknown pexels type",
+	} {
+		if _, err := provider.Resolve(context.Background(), line); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Resolve(%q) error = %v, want %q", line, err, want)
 		}
-		result.Photos[0].Src.Original = testImageURL
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newPexelsProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	urls, err := c.Curated(context.Background())
-	if err != nil {
-		t.Fatalf("Curated failed: %v", err)
-	}
-	if len(urls) != 1 {
-		t.Errorf("expected 1 URL, got %d", len(urls))
 	}
 }
 
-func TestPexelsClient_FetchCollection(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = w
-		_ = r
-		result := struct {
-			Media []pexelsPhoto `json:"media"`
-		}{
-			Media: []pexelsPhoto{{ID: 1}},
+func TestCoverRendition(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		width, height int
+		axis          string
+		size          int
+	}{
+		{name: "unknown", axis: axisWidth, size: targetArtworkWidth},
+		{name: "exact 16:9", width: 1920, height: 1080, axis: axisWidth, size: targetArtworkWidth},
+		{name: "portrait", width: 2000, height: 3000, axis: axisWidth, size: targetArtworkWidth},
+		{name: "panorama", width: 9000, height: 3000, axis: axisHeight, size: targetArtworkHeight},
+		{name: "extreme portrait capped", width: 1000, height: 4000, axis: axisWidth, size: 3162},
+	}
+	for _, test := range tests {
+		axis, size := coverRendition(test.width, test.height)
+		if axis != test.axis || size != test.size {
+			t.Errorf("%s: coverRendition(%d, %d) = (%s, %d), want (%s, %d)", test.name, test.width, test.height, axis, size, test.axis, test.size)
 		}
-		result.Media[0].Src.Original = testImageURL
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newPexelsProvider("key", slog.Default())
-	c.BaseURL = server.URL
-
-	urls, err := c.FetchCollection(context.Background(), "abc")
-	if err != nil {
-		t.Fatalf("FetchCollection failed: %v", err)
 	}
-	if len(urls) != 1 {
-		t.Errorf("expected 1 URL, got %d", len(urls))
+	if _, err := withQuery("ftp://example.com/a.jpg", nil); err == nil {
+		t.Error("withQuery accepted a non-HTTP URL")
 	}
-}
-
-func TestNASAClient_FetchNASAAssetManifest_Errors(t *testing.T) {
-	// Test HTTP non-200
-	server500 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server500.Close()
-
-	c := newNasaProvider("some_other_key", slog.Default())
-	_, err := c.fetchNASAAssetManifest(context.Background(), server500.URL)
-	if err == nil || !strings.Contains(err.Error(), "nasa asset manifest api error") {
-		t.Errorf("expected 500 error, got %v", err)
-	}
-
-	// Test Malformed JSON
-	serverBadJSON := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("{bad-json}"))
-	}))
-	defer serverBadJSON.Close()
-
-	_, err = c.fetchNASAAssetManifest(context.Background(), serverBadJSON.URL)
-	if err == nil {
-		t.Error("expected json decode error, got nil")
-	}
-
-	// Test Large.jpg fallback
-	serverLarge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		manifest := []string{"http://x.com/image~small.jpg", "http://x.com/image~large.jpg"}
-		_ = json.NewEncoder(w).Encode(manifest)
-	}))
-	defer serverLarge.Close()
-
-	url, err := c.fetchNASAAssetManifest(context.Background(), serverLarge.URL)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if url != "http://x.com/image~large.jpg" {
-		t.Errorf("expected large image fallback, got %s", url)
-	}
-
-	// Test client Do error
-	// Use an invalid URL protocol to force http.Client.Do to fail
-	_, err = c.fetchNASAAssetManifest(context.Background(), "invalid-url://foo")
-	if err == nil {
-		t.Error("expected client do error, got nil")
-	}
-
-	// Test request context error
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err = c.fetchNASAAssetManifest(ctx, serverLarge.URL)
-	if err == nil {
-		t.Error("expected context canceled error, got nil")
-	}
-
-	// Test bad URL error
-	_, err = c.fetchNASAAssetManifest(context.Background(), "://foo")
-	if err == nil {
-		t.Error("expected new request error, got nil")
-	}
-}
-
-func TestNASAClient_SearchNASAImageLibrary_Errors(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		result := struct {
-			Collection struct {
-				Items []struct {
-					Href string `json:"href"`
-				} `json:"items"`
-			} `json:"collection"`
-		}{}
-		result.Collection.Items = append(result.Collection.Items, struct {
-			Href string `json:"href"`
-		}{Href: "invalid-url://foo"}) // Will cause fetchNASAAssetManifest to return an error, hitting the `if err != nil { p.logger.Warn(...); continue }` block
-		_ = json.NewEncoder(w).Encode(result)
-	}))
-	defer server.Close()
-
-	c := newNasaProvider("some_other_key", slog.Default())
-	c.SearchURL = server.URL
-
-	urls, err := c.SearchNASAImageLibrary(context.Background(), "mars")
-	if err == nil {
-		t.Fatal("expected incomplete NASA resolution to return an error")
-	}
-	if len(urls) != 0 {
-		t.Errorf("expected 0 URLs, got %v", urls)
+	if _, err := withQuery("http://[::1", nil); err == nil {
+		t.Error("withQuery accepted a malformed URL")
 	}
 }
