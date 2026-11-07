@@ -40,15 +40,50 @@ func (e *rateLimitError) Error() string {
 }
 
 // rateGate remembers a provider's rate-limit window across requests and
-// source lines so that an exhausted quota stops further requests.
+// source lines so that an exhausted quota stops further requests. A gate with
+// an interval also spaces requests at least that far apart, for providers
+// whose resolutions take many requests.
 type rateGate struct {
-	mu    sync.Mutex
-	until time.Time
-	now   func() time.Time
+	mu       sync.Mutex
+	until    time.Time
+	next     time.Time
+	interval time.Duration
+	now      func() time.Time
 }
 
 func newRateGate() *rateGate {
 	return &rateGate{now: time.Now}
+}
+
+func newPacedRateGate(interval time.Duration) *rateGate {
+	return &rateGate{now: time.Now, interval: interval}
+}
+
+// wait reserves the next request slot and blocks until it arrives or ctx ends.
+func (g *rateGate) wait(ctx context.Context) error {
+	if g == nil || g.interval <= 0 {
+		return nil
+	}
+	g.mu.Lock()
+	now := g.now()
+	slot := g.next
+	if slot.Before(now) {
+		slot = now
+	}
+	g.next = slot.Add(g.interval)
+	g.mu.Unlock()
+	delay := slot.Sub(now)
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("wait for request slot: %w", ctx.Err())
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (g *rateGate) check(provider string) error {
@@ -135,6 +170,9 @@ type providerJSONRequest struct {
 
 func fetchProviderJSON(ctx context.Context, request providerJSONRequest, out any) error {
 	if err := request.gate.check(request.provider); err != nil {
+		return err
+	}
+	if err := request.gate.wait(ctx); err != nil {
 		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, request.url, nil)

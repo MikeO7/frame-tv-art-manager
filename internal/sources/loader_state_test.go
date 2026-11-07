@@ -301,6 +301,9 @@ func TestResolutionExpiryPolicy(t *testing.T) {
 		{providerNASA, "nasa:apod", evening, time.Date(2026, 3, 2, 6, 0, 0, 0, time.UTC)},
 		{providerNASA, "nasa:search:moon", morning, morning.Add(sourceResolutionTTL)},
 		{providerPixabay, "pixabay:search:moon", evening, evening.Add(sourceResolutionTTL)},
+		{providerCommons, "commons:potd", evening, time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC)},
+		{providerCommons, "commons:featured", evening, evening.Add(sourceResolutionTTL)},
+		{museumProviderName, "museum:search:winter", morning, morning.Add(sourceResolutionTTL)},
 	}
 	for _, test := range tests {
 		if got := resolutionExpiry(test.provider, test.line, test.now); !got.Equal(test.want) {

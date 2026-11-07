@@ -45,8 +45,10 @@ Guides:
 - **Automatic rotation when the TV is full.** Each piece stays up for two weeks
   (configurable), then makes room for art that hasn't been shown yet.
 - **Many ways to add art.** A local folder, a password-protected web uploader
-  (works with iPhone Shortcuts), or online sources: Unsplash, NASA, the Art
-  Institute of Chicago, Pexels, Pixabay, and direct image links.
+  (works with iPhone Shortcuts), or online sources: public-domain paintings
+  from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and
+  SMK (no API keys needed), Wikimedia Commons' Picture of the Day and Featured
+  Pictures, Unsplash, NASA, Pexels, Pixabay, and direct image links.
 - **Careful by default.** It only removes art it uploaded, leaves your own TV
   uploads alone, and makes no changes when it can't be sure of the TV's state.
 - **Optional TV controls.** Slideshow settings, fixed or sun-following
@@ -180,6 +182,22 @@ providers:
   art_institute_of_chicago:
     - search:monet
     - photo:20684
+  met:
+    - search:sunflowers
+    - search:?isHighlight=true&departmentId=11
+    - object:436524
+  cleveland:
+    - search:snow?type=Painting
+    - object:1997.111
+  smk:
+    - search:hammershøi
+    - object:KMS1
+  museum:
+    - search:christmas
+  commons:
+    - potd
+    - featured
+    - search:northern lights
   pexels:
     - curated
     - search:architecture
@@ -195,9 +213,39 @@ providers:
 | Unsplash | `collection`, `photo` | up to 990 photos per collection | `UNSPLASH_ACCESS_KEY` |
 | NASA | `apod`, `search` | today's picture (skipped on video days); the first 10 library results | `NASA_API_KEY` (defaults to `DEMO_KEY`) |
 | Art Institute of Chicago | `search`, `photo` | public-domain works only; the first 10 search results | none |
+| The Met (`met`) | `search`, `object` | public-domain works only; the first 10 search results with an open-access image | none |
+| Cleveland Museum of Art (`cleveland`) | `search`, `object` | CC0 works only; the first 10 search results | none |
+| SMK, National Gallery of Denmark (`smk`) | `search`, `object` | public-domain works only; the first 10 search results | none |
+| All four museums (`museum`) | `search` | up to 20 public-domain works for a theme, mixed across the museums above | none |
+| Wikimedia Commons (`commons`) | `potd`, `featured`, `search` | today's Picture of the Day; the 10 newest Featured Pictures; 10 Featured Pictures matching a query | none |
 | Pexels | `search`, `curated`, `collection`, `photo` | 10 search or curated results; up to 800 per collection | `PEXELS_API_KEY` |
 | Pixabay | `search`, `editors_choice`, `photo` | up to 500 photos at least 3840 pixels wide | `PIXABAY_API_KEY` |
 | Direct link | any HTTP or HTTPS image URL | that image | none |
+
+Museum searches can be narrowed with filters after a `?`, written as
+`name=value` pairs joined by `&`. The query before the `?` may be empty when a
+filter is given:
+
+- **The Met:** `departmentId`, `isHighlight`, `isOnView`, `artistOrCulture`,
+  `title`, `tags`, `medium`, `geoLocation`, `dateBegin`, `dateEnd` (the Met's
+  [search parameters](https://metmuseum.github.io/#search-v11); department IDs
+  come from its `/departments` endpoint).
+- **Cleveland:** `type` (such as `Painting` or `Print`), `department`,
+  `highlight`, `artists`, `title`, `created_after`, `created_before`,
+  `currently_on_view`.
+- **SMK** takes no filters.
+
+Unknown filters are rejected, so a typo can't widen a search, and the
+public-domain and has-image filters are always applied. IDs come from each
+work's page: `metmuseum.org/art/collection/search/436524` → `436524`;
+`clevelandart.org/art/1997.111` → `1997.111` (the numeric ID works too);
+`open.smk.dk/artwork/image/KMS1` → `KMS1`.
+
+`museum:search:<theme>` searches all four museums at once and mixes their
+results, dropping the same title by the same artist when two museums hold
+copies (common for prints). If one museum is down, the others' works are still
+used. The Picture of the Day changes at midnight UTC, so `commons:potd` adds one
+picture a day; `commons:search` only searches Featured Pictures.
 
 A plain list, a top-level `sources:` list, or a text file with one source per
 line (`#` for comments) also works. The sources file may be a symlink, so a
@@ -210,7 +258,8 @@ longer want them.
 Each provider has its own rate limits and terms, so the manager asks each one
 as little as possible:
 
-- **Results are cached for 24 hours** (APOD until the next day) in
+- **Results are cached for 24 hours** (APOD and the Commons Picture of the Day
+  until the next day) in
   `.frame-tv-art-manager/source-state.json` inside the artwork folder. Pixabay
   requires this. Restarts reuse the cache.
 - **Rate limits are respected.** When a provider answers `429` or reports no
@@ -221,11 +270,31 @@ as little as possible:
 - **Images are requested at 4K**, not as multi-hundred-megapixel originals:
   just large enough to cover 3840×2160, with a smaller version as a fallback
   when the large one exceeds `MAX_DOWNLOAD_SIZE_MB` or 40 megapixels. With a
-  standard Pixabay key the API only offers 1280-pixel images.
-- **Credit is recorded.** Unsplash and Pexels require photographer credit, so
-  the title, artist, provider, source page, and license of each downloaded
-  image appear under `attributions` in `/status`. Unsplash downloads are also
-  reported to Unsplash as its API guidelines require.
+  standard Pixabay key the API only offers 1280-pixel images. SMK and
+  Wikimedia images are requested at 3840 pixels; Cleveland's 3400-pixel print
+  JPEG is used because its full-size file is a TIFF of several hundred
+  megabytes; the Met publishes only full-size originals. Cleveland, SMK, and
+  Commons images smaller than 1920 pixels on the long edge are skipped.
+- **Museums are asked gently.** A Met search costs one request per work it
+  checks, so Met requests are spaced at most 8 per second (a tenth of its
+  published limit), works it has read are remembered for a day, and a search
+  checks at most 64 works. SMK and Wikimedia requests are spaced as well.
+- **Credit is recorded.** Unsplash and Pexels require photographer credit, and
+  Wikimedia Commons files are often CC BY or CC BY-SA, which require crediting
+  the author and license. So the title, artist, provider, source page, and
+  license of each downloaded image appear under `attributions` in `/status`.
+  Museum images are public domain (CC0 or the Public Domain Mark), and their
+  credit is recorded too. Unsplash downloads are also reported to Unsplash as
+  its API guidelines require. Commons files without license information are
+  skipped.
+
+For developers, `sources.NewArtSearcher(client, logger)` exposes the same
+four-museum search as a Go API: `Search(ctx, sources.SearchQuery{Text:
+"christmas", Limit: 20})` returns candidates with provider, ID, title, artist,
+date, a panel-sized image URL, pixel size when known, license, museum link, and
+the `source_line` (such as `met:object:436524`) that adds that one work. Each
+museum has its own timeout (30 seconds by default), and a museum that fails is
+listed under `failures` while the others' results are still returned.
 
 `pixabay:user:<id>` is no longer supported because the Pixabay API can't filter
 by user; it now fails with an explanation. `UNSPLASH_APP_ID` and
@@ -622,6 +691,13 @@ new images to every configured Frame TV over your local network.
 **Do I need SmartThings or a Samsung account?**
 No. It talks directly to the TV on your network. Only optional online sources
 such as Unsplash or NASA contact the internet.
+
+**Where can I get free famous paintings without signing up for anything?**
+The museum sources need no API key: `museum:search:<theme>` searches the Art
+Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK at once,
+and only returns public-domain works. Wikimedia Commons' Picture of the Day and
+Featured Pictures also need no key; their credit and license are shown in
+`/status`.
 
 **Which Frame TVs does it support?**
 Samsung Frame TVs running Tizen 8.0 or newer. Older firmware may work, but

@@ -15,10 +15,7 @@ import (
 const (
 	// articMaxResponseBytes caps a decoded Art Institute API response to bound memory.
 	articMaxResponseBytes = 10 << 20 // 10 MiB
-	// articSearchLimit is the number of search results resolved per query.
-	articSearchLimit = 10
-	articFields      = "id,title,image_id,artist_display,is_public_domain,thumbnail"
-	articLicense     = "CC0 1.0 (public domain)"
+	articFields           = "id,title,image_id,artist_display,date_display,is_public_domain,thumbnail"
 )
 
 // articProvider handles communication with the Art Institute of Chicago API and resolves artwork sources.
@@ -50,6 +47,7 @@ type articArtwork struct {
 	Title          string `json:"title"`
 	ImageID        string `json:"image_id"`
 	ArtistDisplay  string `json:"artist_display"`
+	DateDisplay    string `json:"date_display"`
 	IsPublicDomain bool   `json:"is_public_domain"`
 	Thumbnail      *struct {
 		Width  int `json:"width"`
@@ -93,8 +91,16 @@ func (p *articProvider) Resolve(ctx context.Context, line string) ([]SourceImage
 // search resolves public-domain matches only: other works are served at a
 // copyright-restricted size far below the panel resolution.
 func (p *articProvider) search(ctx context.Context, query string) ([]SourceImage, error) {
+	candidates, err := p.searchCandidates(ctx, query, museumSearchLimit)
+	if err != nil {
+		return nil, err
+	}
+	return candidateImages(candidates), nil
+}
+
+func (p *articProvider) searchCandidates(ctx context.Context, query string, limit int) ([]Candidate, error) {
 	params := url.Values{
-		"q": {query}, "fields": {articFields}, "limit": {strconv.Itoa(articSearchLimit)},
+		"q": {query}, "fields": {articFields}, paramLimit: {strconv.Itoa(searchLimit(limit))},
 		"query[term][is_public_domain]": {"true"},
 	}
 	var result struct {
@@ -103,15 +109,15 @@ func (p *articProvider) search(ctx context.Context, query string) ([]SourceImage
 	if err := p.fetchJSON(ctx, p.BaseURL+"/api/v1/artworks/search?"+params.Encode(), "artic search", &result); err != nil {
 		return nil, err
 	}
-	images := make([]SourceImage, 0, len(result.Data))
+	candidates := make([]Candidate, 0, len(result.Data))
 	for _, artwork := range result.Data {
-		if image, ok := p.image(artwork); ok {
-			images = append(images, image)
+		if candidate, ok := p.candidate(artwork); ok {
+			candidates = append(candidates, candidate)
 		} else {
 			p.logger.Warn("skipping art institute artwork without a public-domain image", "id", artwork.ID)
 		}
 	}
-	return images, nil
+	return candidates, nil
 }
 
 // resolvePhoto retrieves a single artwork by its ID.
@@ -129,16 +135,16 @@ func (p *articProvider) resolvePhoto(ctx context.Context, id string) ([]SourceIm
 	if !result.Data.IsPublicDomain {
 		return nil, errors.New("artwork is not in the public domain, so its image is only available at a restricted size")
 	}
-	image, ok := p.image(result.Data)
+	candidate, ok := p.candidate(result.Data)
 	if !ok {
 		return nil, errors.New("artwork image is too small for an allowed IIIF size")
 	}
-	return []SourceImage{image}, nil
+	return []SourceImage{candidate.image}, nil
 }
 
-func (p *articProvider) image(artwork articArtwork) (SourceImage, bool) {
+func (p *articProvider) candidate(artwork articArtwork) (Candidate, bool) {
 	if artwork.ImageID == "" || !artwork.IsPublicDomain {
-		return SourceImage{}, false
+		return Candidate{}, false
 	}
 	var width, height int
 	if artwork.Thumbnail != nil {
@@ -146,18 +152,42 @@ func (p *articProvider) image(artwork articArtwork) (SourceImage, bool) {
 	}
 	candidates := p.imageCandidates(artwork.ImageID, width, height)
 	if len(candidates) == 0 {
-		return SourceImage{}, false
+		return Candidate{}, false
 	}
 	// The identity keeps the original rendition URL as its stable key so
 	// artwork resolved before size selection is recognized.
 	legacy := fmt.Sprintf("%s/%s/full/!3840,2160/0/default.jpg", p.IIIFBaseURL, artwork.ImageID)
-	return SourceImage{
-		URL: candidates[0], Fallbacks: candidates[1:], Identity: sourceURLIdentity(p.Name(), legacy),
-		Attribution: Attribution{
-			Provider: p.Name(), Title: artwork.Title, Artist: strings.Join(strings.Fields(artwork.ArtistDisplay), " "),
-			SourceURL: "https://www.artic.edu/artworks/" + strconv.Itoa(artwork.ID), License: articLicense,
+	id := strconv.Itoa(artwork.ID)
+	attribution := Attribution{
+		Provider: p.Name(), Title: artwork.Title, Artist: strings.Join(strings.Fields(artwork.ArtistDisplay), " "),
+		SourceURL: "https://www.artic.edu/artworks/" + id, License: publicDomainCC0,
+	}
+	renditionWidth, renditionHeight := articRenditionSize(candidates[0], width, height)
+	return Candidate{
+		Provider: p.Name(), ID: id, Title: attribution.Title, Artist: attribution.Artist, Date: plainText(artwork.DateDisplay),
+		ImageURL: candidates[0], Width: renditionWidth, Height: renditionHeight, License: publicDomainCC0,
+		Link: attribution.SourceURL, SourceLine: "artic:" + cmdPhoto + ":" + id,
+		image: SourceImage{
+			URL: candidates[0], Fallbacks: candidates[1:], Identity: sourceURLIdentity(p.Name(), legacy), Attribution: attribution,
 		},
 	}, true
+}
+
+// articRenditionSize returns the pixel size of an IIIF rendition URL whose
+// size segment is "w," or ",h", or zeros when the source size is unknown.
+func articRenditionSize(renditionURL string, width, height int) (int, int) {
+	segments := strings.Split(renditionURL, "/")
+	if len(segments) < 3 {
+		return 0, 0
+	}
+	widthText, heightText, _ := strings.Cut(segments[len(segments)-3], ",")
+	if size, err := strconv.Atoi(widthText); err == nil {
+		return scaledSize(width, height, axisWidth, size)
+	}
+	if size, err := strconv.Atoi(heightText); err == nil {
+		return scaledSize(width, height, axisHeight, size)
+	}
+	return 0, 0
 }
 
 // imageCandidates lists IIIF renditions from largest to smallest. The Art

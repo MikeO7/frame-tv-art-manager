@@ -252,6 +252,23 @@ func bootstrapSources(ctx context.Context, cfg *config.Config, logger *slog.Logg
 		"  # art_institute_of_chicago:\n" +
 		"  #   - search:monet      # The first 10 public-domain works matching \"monet\"\n" +
 		"  #   - photo:12345       # A specific public-domain artwork by ID\n\n" +
+		"  # --- 🏛️ The Met, Cleveland Museum of Art, SMK (Fine Art, no API key) ---\n" +
+		"  # met:\n" +
+		"  #   - search:sunflowers # The first 10 public-domain works matching \"sunflowers\"\n" +
+		"  #   - search:?isHighlight=true&departmentId=11 # Highlights of European Paintings\n" +
+		"  #   - object:436524     # A specific public-domain object by ID\n" +
+		"  # cleveland:\n" +
+		"  #   - search:snow?type=Painting # The first 10 CC0 paintings matching \"snow\"\n" +
+		"  # smk:\n" +
+		"  #   - search:hammershøi # The first 10 public-domain works from SMK\n\n" +
+		"  # --- 🖼️ Every museum at once (no API key) ---\n" +
+		"  # museum:\n" +
+		"  #   - search:christmas  # Up to 20 public-domain works across all four museums\n\n" +
+		"  # --- 🌍 Wikimedia Commons (credit and license shown in /status) ---\n" +
+		"  # commons:\n" +
+		"  #   - potd              # Today's Picture of the Day\n" +
+		"  #   - featured          # The 10 newest Featured Pictures\n" +
+		"  #   - search:aurora     # 10 Featured Pictures matching \"aurora\"\n\n" +
 		"  # --- 📸 Unsplash (Photography) ---\n" +
 		"  # unsplash:\n" +
 		"  #   - collection:225444 # Up to 990 photos from a collection\n" +
@@ -269,12 +286,15 @@ func bootstrapSources(ctx context.Context, cfg *config.Config, logger *slog.Logg
 		"  # --- 🔗 Direct URLs (Any JPEG/PNG) ---\n" +
 		"  # direct:\n" +
 		"  #   - https://example.com/artwork.jpg\n\n" +
-		"# Provider results are cached for 24 hours (APOD until the next day).\n" +
+		"# Provider results are cached for 24 hours (APOD and commons:potd until the next day).\n" +
 		"# 🔍 How to find IDs:\n" +
 		"# - Unsplash Photo: unsplash.com/photos/abc123 -> abc123\n" +
 		"# - Pexels Photo: pexels.com/photo/123 -> 123\n" +
 		"# - Pixabay Photo: pixabay.com/photos/name-123 -> 123\n" +
-		"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n"
+		"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n" +
+		"# - The Met: metmuseum.org/art/collection/search/436524 -> 436524\n" +
+		"# - Cleveland: clevelandart.org/art/1997.111 -> 1997.111\n" +
+		"# - SMK: open.smk.dk/artwork/image/KMS1 -> KMS1\n"
 
 	if err := durablefs.CreateExclusive(ctx, cfg.SourcesFile, 0o600, func(writer io.Writer) error {
 		_, err := io.WriteString(writer, template)
