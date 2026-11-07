@@ -39,6 +39,11 @@ func (s *store) apply(ctx context.Context, request ApplyRequest) (Snapshot, erro
 	if err := ensureLayout(s.root); err != nil {
 		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
 	}
+	// Originals are durable before the transaction that deletes the artwork
+	// they were copied from.
+	if err := s.keepOriginals(ctx, current, plan.items); err != nil {
+		return Snapshot{}, err
+	}
 	if err := s.commitBatch(ctx, plan, stagedDirectory(request.Directory)); err != nil {
 		return Snapshot{}, fmt.Errorf("commit staged collection: %w", err)
 	}
@@ -67,6 +72,9 @@ func (s *store) applyOriginsOnly(ctx context.Context, current, next []Item, proj
 	}
 	if err := ensureLayout(s.root); err != nil {
 		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
+	}
+	if err := s.keepOriginals(ctx, current, next); err != nil {
+		return Snapshot{}, err
 	}
 	if err := commitManifest(ctx, s.root, newManifest(next)); err != nil {
 		return Snapshot{}, fmt.Errorf("commit staged collection origins: %w", err)

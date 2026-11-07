@@ -240,7 +240,7 @@
 <li><strong>A persistent folder mapped to <code>/data</code></strong>. It holds <code>artwork</code> (your collection) and <code>tokens</code> (the pairing token and upload records). You can map your art share straight to <code>/data/artwork</code> instead.</li>
 <li><strong>The right owner for files</strong>, set with <code>PUID</code> and <code>PGID</code> so you can still edit the artwork share over SMB.</li>
 </ol>
-<div class="note"><p><strong>Copy, don't move.</strong> Each picture in the artwork folder is replaced by its prepared 3840×2160 version. Keep originals in another share.</p></div>
+<div class="note"><p><strong>Originals are kept.</strong> Each picture in the artwork folder is replaced by its prepared 3840×2160 version, and the untouched original is saved in the share’s hidden <code>.frame-tv-art-manager/originals</code> folder. Allow about as much extra space as the pictures you add.</p></div>
 </section>
 <section aria-labelledby="synology">
 <h2 id="synology">Synology DSM (Container Manager)</h2>

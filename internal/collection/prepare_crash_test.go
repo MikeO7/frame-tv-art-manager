@@ -97,7 +97,7 @@ func TestManifestTransactionRejectsCancellationAndInvalidIntent(t *testing.T) {
 		t.Fatal("unknown transaction kind accepted")
 	}
 	invalidManifest := valid
-	invalidManifest.Next.Version = 4
+	invalidManifest.Next.Version = manifestVersion + 1
 	if validTransaction(root, invalidManifest) {
 		t.Fatal("invalid next manifest accepted")
 	}

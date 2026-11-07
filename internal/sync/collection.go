@@ -191,7 +191,7 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 	}
 	metadata := newMetadataProjection(baseline)
 	stageRequest := optimize.StageRequest{
-		Inputs: stageInputs(baseline), Config: c.cfg.OptimizeOptions(), Logger: c.logger,
+		Inputs: stageInputs(c.cfg.ArtworkDir, baseline), Config: c.cfg.OptimizeOptions(), Logger: c.logger,
 	}
 	requiresStage, err := optimize.RequiresStage(ctx, stageRequest)
 	if err != nil {

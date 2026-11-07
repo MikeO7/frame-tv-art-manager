@@ -581,7 +581,9 @@ func TestOptimizeFileContextHonorsCancellationBeforeIO(t *testing.T) {
 	cancel()
 	path := filepath.Join(t.TempDir(), "missing.jpg")
 
-	name, modified, err := optimizeFileWithPolicy(ctx, path, filepath.Base(path), false, DefaultConfig(), discardLogger())
+	name, modified, err := optimizeFileWithPolicy(
+		ctx, fileTransform{source: path, path: path, label: filepath.Base(path)}, DefaultConfig(), discardLogger(),
+	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("OptimizeFileContext() error = %v, want context.Canceled", err)
 	}

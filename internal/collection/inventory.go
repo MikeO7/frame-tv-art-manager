@@ -34,6 +34,7 @@ func scan(ctx context.Context, root string, limits inventoryLimits) ([]Item, err
 	if err != nil || !exists {
 		return []Item{}, err
 	}
+	renamed := renamedRecords(records, entries)
 	items := make([]Item, 0, len(entries))
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
@@ -46,7 +47,7 @@ func scan(ctx context.Context, root string, limits inventoryLimits) ([]Item, err
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, withRecordedMetadata(item, records))
+		items = append(items, withCommittedMetadata(item, records, renamed))
 	}
 	sortItems(items)
 	return items, nil
@@ -79,6 +80,39 @@ func withRecordedMetadata(item Item, records map[string]Item) Item {
 	return item
 }
 
+// withCommittedMetadata restores item's committed logical identity by name,
+// or, for a file the operator renamed, from the derivative record with the
+// same bytes whose name is gone. Without that, a renamed derivative would be
+// mistaken for new artwork, lose its kept original, and be transformed again.
+func withCommittedMetadata(item Item, records map[string]Item, renamed map[[sha256.Size]byte]Item) Item {
+	if _, named := records[item.Name]; named {
+		return withRecordedMetadata(item, records)
+	}
+	if record, ok := renamed[item.Digest]; ok {
+		return withMetadata(item, metadataOf(record))
+	}
+	return item
+}
+
+// renamedRecords returns, by digest, the committed derivative records whose
+// name no longer exists in the directory. A record whose artwork key is now
+// taken by another file's name is left out so keys stay unique.
+func renamedRecords(records map[string]Item, entries []os.DirEntry) map[[sha256.Size]byte]Item {
+	present := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		present[strings.ToLower(entry.Name())] = struct{}{}
+	}
+	renamed := make(map[[sha256.Size]byte]Item)
+	for name, record := range records {
+		_, nameExists := present[strings.ToLower(name)]
+		_, keyTaken := present[strings.ToLower(record.Key)]
+		if record.Derivative != "" && !nameExists && !keyTaken {
+			renamed[record.Digest] = record
+		}
+	}
+	return renamed
+}
+
 // withMetadata returns item carrying the logical identity in metadata. The
 // committed bytes remain authoritative for every media fact.
 func withMetadata(item Item, metadata ItemMetadata) Item {
@@ -87,13 +121,14 @@ func withMetadata(item Item, metadata ItemMetadata) Item {
 	item.SourceKeys = append([]string(nil), metadata.SourceKeys...)
 	item.TransformKey = metadata.TransformKey
 	item.Derivative = metadata.Derivative
+	item.Originals = append([]Original(nil), metadata.Originals...)
 	return item
 }
 
 func metadataOf(item Item) ItemMetadata {
 	return ItemMetadata{
 		Key: item.Key, Origin: item.Origin, SourceKeys: item.SourceKeys,
-		TransformKey: item.TransformKey, Derivative: item.Derivative,
+		TransformKey: item.TransformKey, Derivative: item.Derivative, Originals: item.Originals,
 	}
 }
 
@@ -202,6 +237,8 @@ func cloneItems(items []Item) []Item {
 	for index := range cloned {
 		//nolint:gosec // cloned is allocated to exactly len(items) immediately above
 		cloned[index].SourceKeys = append([]string(nil), items[index].SourceKeys...)
+		//nolint:gosec // cloned is allocated to exactly len(items) immediately above
+		cloned[index].Originals = append([]Original(nil), items[index].Originals...)
 	}
 	return cloned
 }
@@ -211,7 +248,7 @@ func itemEqual(left, right Item) bool {
 		left.Digest == right.Digest && left.Type == right.Type && left.Size == right.Size &&
 		left.Width == right.Width && left.Height == right.Height && left.Origin == right.Origin &&
 		left.TransformKey == right.TransformKey && left.Derivative == right.Derivative &&
-		slices.Equal(left.SourceKeys, right.SourceKeys)
+		slices.Equal(left.SourceKeys, right.SourceKeys) && slices.Equal(left.Originals, right.Originals)
 }
 
 func hashFile(path string) ([sha256.Size]byte, error) {

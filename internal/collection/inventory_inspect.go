@@ -104,6 +104,7 @@ func (inspection artworkInspection) read(
 	}
 	if record.Digest == digest {
 		record.SourceKeys = append([]string(nil), record.SourceKeys...)
+		record.Originals = append([]Original(nil), record.Originals...)
 		return record, bytesRead, nil
 	}
 	if err := ctx.Err(); err != nil {
