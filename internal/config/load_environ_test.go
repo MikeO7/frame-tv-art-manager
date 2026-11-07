@@ -83,6 +83,27 @@ func TestLoadEnvironDisablesAmbiguousMultiTVWake(t *testing.T) {
 	assertWarningVariables(t, warnings, "TV_MAC")
 }
 
+func TestLoadEnvironWarnsAboutDeprecatedUnsplashKeys(t *testing.T) {
+	cfg, warnings, err := LoadEnviron([]string{
+		"TV_IPS=192.0.2.10",
+		"UNSPLASH_APP_ID=app",
+		"UNSPLASH_ACCESS_KEY=access",
+		"UNSPLASH_SECRET_KEY=secret",
+	})
+	if err != nil {
+		t.Fatalf("LoadEnviron() error = %v, want deprecated keys accepted", err)
+	}
+	if cfg.UnsplashAccessKey != "access" {
+		t.Fatalf("UnsplashAccessKey = %q", cfg.UnsplashAccessKey)
+	}
+	assertWarningVariables(t, warnings, "UNSPLASH_APP_ID", "UNSPLASH_SECRET_KEY")
+	for _, warning := range warnings {
+		if strings.Contains(warning.Message, "secret") || strings.Contains(warning.Fallback, "app") {
+			t.Fatalf("warning %+v echoes a configured value", warning)
+		}
+	}
+}
+
 func TestLoadEnvironCanonicalizesTVAddressAndMAC(t *testing.T) {
 	cfg, _, err := LoadEnviron([]string{
 		"TV_IPS=2001:0db8:0:0:0:0:0:1",

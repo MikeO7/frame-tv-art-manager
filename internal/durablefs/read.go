@@ -11,20 +11,25 @@ import (
 
 type stableReadOperations struct {
 	lstat func(string) (fs.FileInfo, error)
+	stat  func(string) (fs.FileInfo, error)
 	open  func(string) (*os.File, error)
 	close func(*os.File) error
 }
 
 // StableReadOptions defines the trust boundary for one control-file read.
-// RequiredMode is ignored when zero.
+// RequiredMode is ignored when zero. FollowSymlinks is only for read-only
+// operator inputs such as a mounted ConfigMap; the resolved target must still
+// be a stable regular file. Control files never set it.
 type StableReadOptions struct {
-	MaxBytes     int64
-	RequiredMode fs.FileMode
+	MaxBytes       int64
+	RequiredMode   fs.FileMode
+	FollowSymlinks bool
 }
 
 func defaultStableReadOperations() stableReadOperations {
 	return stableReadOperations{
 		lstat: os.Lstat,
+		stat:  os.Stat,
 		open:  os.Open,
 		close: func(file *os.File) error { return file.Close() },
 	}
@@ -50,6 +55,11 @@ func readStable(
 	}
 	if options.MaxBytes <= 0 {
 		return nil, errors.New("stable read byte limit must be positive")
+	}
+	if options.FollowSymlinks {
+		// Inspect the resolved target before and after the read instead of
+		// the link itself; the opened descriptor must still be that target.
+		ops.lstat = ops.stat
 	}
 
 	before, err := ops.lstat(path)

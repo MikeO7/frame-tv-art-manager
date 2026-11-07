@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
 // handleHealth returns a simple 200 OK with basic status, or 503 when the
@@ -46,12 +48,21 @@ func (s *Server) handleLive(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, code, map[string]any{fieldStatus: state, fieldLifecycle: snapshot.Lifecycle})
 }
 
-// handleStatus returns detailed per-TV status information.
-func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
+// handleStatus returns detailed per-TV status information and the credits
+// that provider terms require for downloaded artwork.
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.status.snapshot()
 	fields := s.syncFields(snapshot, statusOK)
 	fields["started_at"] = snapshot.StartedAt.Format(time.RFC3339)
 	fields["tvs"] = snapshot.TVStatuses
+	if s.cfg != nil && s.cfg.SourcesFile != "" {
+		attributions, err := sources.ReadAttributions(r.Context(), s.cfg.ArtworkDir)
+		if err != nil {
+			s.logger.Warn("read source attributions failed", "error", err)
+		} else {
+			fields["attributions"] = attributions
+		}
+	}
 	writeJSON(w, http.StatusOK, fields)
 }
 

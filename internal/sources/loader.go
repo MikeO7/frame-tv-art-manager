@@ -61,6 +61,10 @@ type Loader struct {
 	lastSourcesDigest [sha256.Size]byte
 	hasSourcesDigest  bool
 	cachedUrls        []string
+	statePath         string
+	state             *sourceState
+	stateDirty        bool
+	now               func() time.Time
 }
 
 // CollectionImporter is the narrow collection seam used to transactionally
@@ -79,7 +83,7 @@ func NewLoader(
 	providers := []SourceProvider{
 		newUnsplashProvider(cfg.UnsplashAccessKey, logger),
 		newNasaProvider(cfg.NasaAPIKey, logger),
-		newArticProvider(),
+		newArticProvider(logger),
 		newPexelsProvider(cfg.PexelsAPIKey, logger),
 		newPixabayProvider(cfg.PixabayAPIKey, logger),
 		newDirectProvider(),
@@ -97,6 +101,8 @@ func NewLoader(
 		providers:     providers,
 		importer:      importer,
 		sourceOrigins: make(map[string]struct{}),
+		statePath:     sourceStatePath(cfg.ArtworkDir),
+		now:           time.Now,
 	}
 }
 
@@ -173,7 +179,11 @@ func parseYamlSources(data []byte) ([]string, error) {
 }
 
 func (l *Loader) readSourcesManifest(ctx context.Context) ([]byte, error) {
-	data, err := durablefs.ReadStable(ctx, l.sourcesFile, durablefs.StableReadOptions{MaxBytes: maxSourcesManifestBytes})
+	// The sources file is read-only input, so a symlink (Kubernetes ConfigMap,
+	// Docker config) is followed; it is never a durable write target.
+	data, err := durablefs.ReadStable(ctx, l.sourcesFile, durablefs.StableReadOptions{
+		MaxBytes: maxSourcesManifestBytes, FollowSymlinks: true,
+	})
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}

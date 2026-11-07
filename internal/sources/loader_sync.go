@@ -18,6 +18,7 @@ const (
 type pendingSourceDownload struct {
 	prepared preparedDownload
 	image    SourceImage
+	tracker  downloadTracker
 }
 
 // SourceLoader downloads remote artwork into the local collection.
@@ -45,6 +46,9 @@ func (l *Loader) Sync(ctx context.Context, snapshot collection.Snapshot) (int, e
 	if len(urls) == 0 {
 		return 0, nil
 	}
+	if err := l.ensureState(ctx); err != nil {
+		return 0, err
+	}
 
 	l.logger.Info("processing image sources", "urls", len(urls))
 
@@ -70,6 +74,9 @@ func (l *Loader) Sync(ctx context.Context, snapshot collection.Snapshot) (int, e
 	}
 	if err := ctx.Err(); err != nil {
 		return downloaded, err
+	}
+	if err := l.persistState(ctx, urls); err != nil {
+		cycleErrors = append(cycleErrors, err)
 	}
 
 	// Every successful addition is already committed with its Source Origin by
@@ -112,10 +119,11 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 		return 0, errors.New("no provider found for source")
 	}
 
-	images, err := provider.Resolve(ctx, line)
+	images, err := l.resolve(ctx, provider, line)
 	if err != nil {
 		return 0, err
 	}
+	tracker, _ := provider.(downloadTracker)
 
 	var count int
 	var downloadErrors []error
@@ -151,15 +159,14 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 			l.logger.Warn("global image limit reached, skipping download", "limit", l.maxImages)
 			break
 		}
-		filename := img.Identity + ".jpg"
-		prepared, dErr := l.prepareDownload(ctx, img.URL, filename, img.Identity)
+		prepared, dErr := l.prepareImage(ctx, img)
 		if dErr != nil {
 			if ctx.Err() != nil {
 				discard()
 				return count, ctx.Err()
 			}
 			l.logger.Warn("source download failed", "url", truncateURL(img.URL), "error", dErr)
-			downloadErrors = append(downloadErrors, fmt.Errorf("download %s: %w", truncateURL(img.URL), dErr))
+			downloadErrors = append(downloadErrors, dErr)
 			continue
 		}
 		if len(pending) > 0 && pendingBytes+prepared.written > sourceImportBatchMaxBytes {
@@ -168,7 +175,7 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 				return count, errors.Join(append(downloadErrors, err)...)
 			}
 		}
-		pending = append(pending, pendingSourceDownload{prepared: prepared, image: img})
+		pending = append(pending, pendingSourceDownload{prepared: prepared, image: img, tracker: tracker})
 		pendingBytes += prepared.written
 		if len(pending) == sourceImportBatchSize {
 			if err := flush(); err != nil {
@@ -225,15 +232,16 @@ func (l *Loader) importSourceBatch(ctx context.Context, pending []pendingSourceD
 		//nolint:gosec // exact slice lengths are checked before this paired ordered walk
 		download := pending[index]
 		l.sourceOrigins[download.prepared.originKey] = struct{}{}
+		l.recordAttribution(download.prepared.originKey, download.image.Attribution)
 		if change.Kind != collection.ChangeAdded {
 			continue
 		}
 		added++
 		l.collectionSize++
 		l.logger.Info("downloaded source image", "file", items[change.Name].Name, "size_bytes", download.prepared.written)
-		if download.image.OnDownload != nil {
-			if hookErr := download.image.OnDownload(ctx); hookErr != nil {
-				l.logger.Warn("post-download hook failed", "error", hookErr)
+		if download.tracker != nil && download.image.TrackURL != "" {
+			if trackErr := download.tracker.TrackDownload(ctx, download.image.TrackURL); trackErr != nil {
+				l.logger.Warn("provider download tracking failed", "error", trackErr)
 			}
 		}
 	}

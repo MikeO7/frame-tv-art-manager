@@ -33,6 +33,24 @@ func (l *Loader) checkExisting(identity string) bool {
 	return exists
 }
 
+// prepareImage downloads the preferred rendition, falling back to the next
+// one whenever a candidate cannot be fetched or fails validation (for example
+// because it exceeds the size or pixel caps).
+func (l *Loader) prepareImage(ctx context.Context, img SourceImage) (preparedDownload, error) {
+	var failures []error
+	for _, candidate := range append([]string{img.URL}, img.Fallbacks...) {
+		prepared, err := l.prepareDownload(ctx, candidate, img.Identity+extJPG, img.Identity)
+		if err == nil {
+			return prepared, nil
+		}
+		if ctx.Err() != nil {
+			return preparedDownload{}, fmt.Errorf("download %s: %w", truncateURL(candidate), ctx.Err())
+		}
+		failures = append(failures, fmt.Errorf("download %s: %w", truncateURL(candidate), err))
+	}
+	return preparedDownload{}, errors.Join(failures...)
+}
+
 func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity string) (preparedDownload, error) {
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
@@ -87,7 +105,6 @@ func validateDownloadedImage(path, extension string) error {
 	if err != nil {
 		return fmt.Errorf("decode configuration: %w", err)
 	}
-	const maxDownloadedPixels int64 = 40_000_000
 	if configuration.Width <= 0 || configuration.Height <= 0 ||
 		int64(configuration.Width) > maxDownloadedPixels/int64(configuration.Height) {
 		return fmt.Errorf("dimensions %dx%d exceed safety limit", configuration.Width, configuration.Height)
@@ -166,7 +183,7 @@ func (l *Loader) resolveDownloadName(resp *http.Response, url, filename string) 
 // private temporary file outside the Artwork Collection and returns its path
 // and byte count. Only the Collection Store can publish the final artwork.
 func (l *Loader) downloadToTemp(resp *http.Response) (string, int64, error) {
-	out, err := os.CreateTemp("", ".frame-tv-source-download-*.tmp")
+	out, err := os.CreateTemp("", sourceDownloadPattern)
 	if err != nil {
 		return "", 0, fmt.Errorf("create temp file: %w", err)
 	}

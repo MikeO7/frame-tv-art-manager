@@ -2,10 +2,12 @@ package sources
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,14 +17,20 @@ const (
 	pixabayMaxResponseBytes = 10 << 20 // 10 MiB
 	// pixabayPageSize is the per-page item count requested (Pixabay's max).
 	pixabayPageSize = 200
-	// pixabayMaxPages bounds pagination to avoid unbounded crawling.
-	pixabayMaxPages = 5
+	// pixabayMaxResults is the most hits Pixabay serves for one query.
+	pixabayMaxResults = 500
+	// pixabayMaxQueryRunes is Pixabay's documented limit for the q parameter.
+	pixabayMaxQueryRunes = 100
+	// pixabayMinWidth keeps searches to originals wide enough for a 4K panel.
+	pixabayMinWidth = "3840"
+	pixabayLicense  = "Pixabay Content License"
 )
 
 // pixabayProvider handles communication with the Pixabay API and resolves artwork sources.
 type pixabayProvider struct {
 	apiKey  string
 	client  *http.Client
+	gate    *rateGate
 	logger  *slog.Logger
 	BaseURL string
 }
@@ -34,6 +42,7 @@ func newPixabayProvider(apiKey string, logger *slog.Logger) *pixabayProvider {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		gate:    newRateGate(),
 		logger:  logger,
 		BaseURL: "https://pixabay.com/api/",
 	}
@@ -43,9 +52,16 @@ func newPixabayProvider(apiKey string, logger *slog.Logger) *pixabayProvider {
 type pixabayPhoto struct {
 	ID            int    `json:"id"`
 	PageURL       string `json:"pageURL"`
+	Tags          string `json:"tags"`
+	User          string `json:"user"`
 	LargeImageURL string `json:"largeImageURL"`
 	FullHDURL     string `json:"fullHDURL"`
 	ImageURL      string `json:"imageURL"` // Original high-res (requires approved access)
+}
+
+type pixabayPage struct {
+	TotalHits int            `json:"totalHits"`
+	Hits      []pixabayPhoto `json:"hits"`
 }
 
 func (p *pixabayProvider) Name() string {
@@ -56,106 +72,119 @@ func (p *pixabayProvider) CanHandle(line string) bool {
 	return strings.HasPrefix(line, "pixabay:")
 }
 
-// Search retrieves photos from Pixabay based on a search query with pagination.
-func (p *pixabayProvider) Search(ctx context.Context, query string) ([]string, error) {
-	return p.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&q=%s&image_type=photo", p.BaseURL, p.apiKey, url.QueryEscape(query)))
-}
-
-// EditorsChoice retrieves all editor's choice photos from Pixabay with pagination.
-func (p *pixabayProvider) EditorsChoice(ctx context.Context) ([]string, error) {
-	return p.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&editors_choice=true&image_type=photo", p.BaseURL, p.apiKey))
-}
-
-// FetchPhoto retrieves a single photo by its ID.
-func (p *pixabayProvider) FetchPhoto(ctx context.Context, photoID string) (string, error) {
-	u := fmt.Sprintf("%s?key=%s&id=%s", p.BaseURL, p.apiKey, url.QueryEscape(photoID))
-	urls, err := p.fetchPhotoList(ctx, u)
-	if err != nil {
-		return "", err
-	}
-	if len(urls) == 0 {
-		return "", fmt.Errorf("pixabay photo not found")
-	}
-	return urls[0], nil
-}
-
-// User retrieves all photos from a specific Pixabay user with pagination.
-func (p *pixabayProvider) User(ctx context.Context, userID string) ([]string, error) {
-	return p.fetchAllPages(ctx, fmt.Sprintf("%s?key=%s&user_id=%s&image_type=photo", p.BaseURL, p.apiKey, url.QueryEscape(userID)))
-}
-
-func (p *pixabayProvider) fetchAllPages(ctx context.Context, baseURL string) ([]string, error) {
-	return collectPages(pixabayMaxPages, func(page int) ([]string, bool, error) {
-		p.logger.Debug("fetching pixabay page", "page", page)
-		urls, err := p.fetchPhotoList(ctx, fmt.Sprintf("%s&per_page=%d&page=%d", baseURL, pixabayPageSize, page))
-		return urls, len(urls) >= pixabayPageSize, err
-	})
-}
-
-func (p *pixabayProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]string, error) {
-	var result struct {
-		Hits []pixabayPhoto `json:"hits"`
-	}
-	if err := fetchProviderJSON(ctx, providerJSONRequest{
-		client: p.client, url: apiURL, maxBytes: pixabayMaxResponseBytes,
-		statusLabel: "pixabay api", decodeLabel: "pixabay",
-	}, &result); err != nil {
-		return nil, err
-	}
-
-	var urls []string
-	for _, hit := range result.Hits {
-		best := hit.ImageURL
-		if best == "" {
-			best = hit.FullHDURL
-		}
-		if best == "" {
-			best = hit.LargeImageURL
-		}
-		if best != "" {
-			urls = append(urls, best)
-		}
-	}
-	return urls, nil
-}
-
 func (p *pixabayProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
-	parts := strings.Split(line, ":")
+	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid pixabay format")
+		return nil, errors.New("invalid pixabay format")
+	}
+	argument := ""
+	if len(parts) == 3 {
+		argument = parts[2]
 	}
 
-	var urls []string
-	var err error
-
+	query := url.Values{"image_type": {"photo"}, "min_width": {pixabayMinWidth}}
 	switch parts[1] {
 	case cmdSearch:
-		if len(parts) < 3 {
-			return nil, fmt.Errorf("pixabay search requires a query")
+		if argument == "" {
+			return nil, errors.New("pixabay search requires a query")
 		}
-		urls, err = p.Search(ctx, parts[2])
+		query.Set("q", truncateRunes(argument, pixabayMaxQueryRunes))
 	case "editors_choice":
-		urls, err = p.EditorsChoice(ctx)
+		query.Set("editors_choice", "true")
 	case cmdPhoto:
-		if len(parts) < 3 {
-			return nil, fmt.Errorf("pixabay photo requires an ID")
+		if argument == "" {
+			return nil, errors.New("pixabay photo requires an ID")
 		}
-		var photoURL string
-		photoURL, err = p.FetchPhoto(ctx, parts[2])
-		if err == nil {
-			urls = []string{photoURL}
-		}
+		return p.resolvePhoto(ctx, argument)
 	case "user":
-		if len(parts) < 3 {
-			return nil, fmt.Errorf("pixabay user requires an ID")
-		}
-		urls, err = p.User(ctx, parts[2])
+		return nil, errors.New("pixabay user sources are not supported because the Pixabay API cannot filter by user; " +
+			"use pixabay:photo:<id> or pixabay:search:<query>")
 	default:
-		return nil, fmt.Errorf("unknown pixabay type")
+		return nil, errors.New("unknown pixabay type")
 	}
-
+	photos, err := p.fetchAllPages(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	return urlSourceImages(p.Name(), urls), nil
+	return p.images(photos), nil
+}
+
+func (p *pixabayProvider) resolvePhoto(ctx context.Context, photoID string) ([]SourceImage, error) {
+	page, err := p.fetchPage(ctx, url.Values{"id": {photoID}})
+	if err != nil {
+		return nil, err
+	}
+	images := p.images(page.Hits)
+	if len(images) == 0 {
+		return nil, errors.New("pixabay photo not found")
+	}
+	return images[:1], nil
+}
+
+// fetchAllPages follows pagination only while Pixabay reports more
+// accessible hits; requesting a page beyond totalHits is rejected by the API.
+func (p *pixabayProvider) fetchAllPages(ctx context.Context, query url.Values) ([]pixabayPhoto, error) {
+	var photos []pixabayPhoto
+	query.Set("per_page", strconv.Itoa(pixabayPageSize))
+	for page := 1; (page-1)*pixabayPageSize < pixabayMaxResults; page++ {
+		p.logger.Debug("fetching pixabay page", "page", page)
+		query.Set("page", strconv.Itoa(page))
+		result, err := p.fetchPage(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		photos = append(photos, result.Hits...)
+		available := min(result.TotalHits, pixabayMaxResults)
+		if len(result.Hits) < pixabayPageSize || page*pixabayPageSize >= available {
+			break
+		}
+	}
+	return photos, nil
+}
+
+func (p *pixabayProvider) fetchPage(ctx context.Context, query url.Values) (pixabayPage, error) {
+	authorized := maps.Clone(query)
+	authorized.Set("key", p.apiKey)
+	var result pixabayPage
+	err := fetchProviderJSON(ctx, providerJSONRequest{
+		client: p.client, gate: p.gate, provider: p.Name(), url: p.BaseURL + "?" + authorized.Encode(),
+		maxBytes: pixabayMaxResponseBytes, statusLabel: "pixabay api", decodeLabel: "pixabay",
+	}, &result)
+	return result, err
+}
+
+// images converts hits to source images, preferring the highest resolution
+// the API key may access. Pixabay download URLs are temporary, so identity
+// is derived from the stable photo ID.
+func (p *pixabayProvider) images(hits []pixabayPhoto) []SourceImage {
+	images := make([]SourceImage, 0, len(hits))
+	for _, hit := range hits {
+		var candidates []string
+		for _, candidate := range []string{hit.ImageURL, hit.FullHDURL, hit.LargeImageURL} {
+			if candidate != "" {
+				candidates = append(candidates, candidate)
+			}
+		}
+		if len(candidates) == 0 || hit.ID <= 0 {
+			p.logger.Warn("skipping pixabay hit without a downloadable image", "id", hit.ID)
+			continue
+		}
+		id := strconv.Itoa(hit.ID)
+		images = append(images, SourceImage{
+			URL: candidates[0], Fallbacks: candidates[1:], Identity: sourceIdentity(p.Name(), "photo:"+id, "photo-"+id),
+			Attribution: Attribution{
+				Provider: p.Name(), Title: hit.Tags, Artist: hit.User, SourceURL: hit.PageURL, License: pixabayLicense,
+			},
+		})
+	}
+	return images
+}
+
+// truncateRunes shortens value to at most limit runes.
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
 }

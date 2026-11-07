@@ -85,3 +85,9 @@ func ensureDirectory(path string, mode fs.FileMode) error {
 func journalPath(root string) string {
 	return filepath.Join(root, controlDirectory, transactionName)
 }
+
+// ControlPath returns the path of a named file inside the collection's private
+// control directory. Control files are never cataloged as artwork.
+func ControlPath(root, name string) string {
+	return filepath.Join(root, controlDirectory, name)
+}

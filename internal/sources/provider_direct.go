@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// directProviderName identifies plain image URLs, which resolve locally.
+const directProviderName = "direct"
+
 type directProvider struct{}
 
 func newDirectProvider() *directProvider {
@@ -14,7 +17,7 @@ func newDirectProvider() *directProvider {
 }
 
 func (p *directProvider) Name() string {
-	return "direct"
+	return directProviderName
 }
 
 func (p *directProvider) CanHandle(line string) bool {
