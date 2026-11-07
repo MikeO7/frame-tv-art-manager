@@ -1,0 +1,905 @@
+# Frame TV Art Manager: full documentation summary
+
+> Plain-text digest of every guide on https://mikeo7.github.io/frame-tv-art-manager/ for AI search and answer engines. The short fact sheet is at https://mikeo7.github.io/frame-tv-art-manager/llms.txt.
+
+Last substantive update: 2026-11-06
+Source: https://github.com/MikeO7/frame-tv-art-manager
+License: PolyForm Noncommercial License 1.0.0. Free for personal and other noncommercial use. Source-available, not open source.
+Affiliation: independent project; not affiliated with or endorsed by Samsung.
+
+## Home: https://mikeo7.github.io/frame-tv-art-manager/
+
+Q: What is Frame TV Art Manager?
+A: Frame TV Art Manager is a free, self-hosted service for Samsung The Frame owners. It runs in Docker on a NAS or home server and keeps the TV's Art Mode in sync with a folder of JPEG and PNG pictures, preparing each one for the 3840×2160 screen and uploading it over your home network.
+
+Q: Do I need a Samsung Art Store subscription?
+A: No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog.
+
+Q: Do I need SmartThings or a Samsung account?
+A: No. It talks to the TV directly on your local network. Only optional online sources such as NASA or Unsplash contact the internet, and only when you turn them on.
+
+Q: How does it handle portrait photos?
+A: By default portraits are shown whole on a deep charcoal gallery mat, faintly tinted toward the picture's colors, instead of being cropped. You can also pair two portraits side by side, matched by color, or crop to fill the screen.
+
+Q: Will it delete art I already put on my TV?
+A: No. It only removes art it uploaded itself. Art you added with SmartThings, a USB stick, or anything else stays unless you deliberately set REMOVE_UNKNOWN_IMAGES=true.
+
+Q: What happens when my Frame TV's storage is full?
+A: It rotates the art it uploaded: each piece stays at least 14 days by default, then is swapped for art that hasn't been shown yet. Your own uploads and the files in your folder are never deleted.
+
+Q: Will it upload the same photo twice?
+A: No. Pictures are recognized by their contents, so a photo that is already on the TV is never sent again, even under a new name.
+
+Q: What can I run it on?
+A: Anything that runs Docker and stays on: a Synology, Unraid, or TrueNAS NAS, a mini PC, a Raspberry Pi-class board, or a Mac. The image is built for amd64, arm64, and armv7.
+
+Q: Which Frame TVs does it work with?
+A: Samsung Frame TVs running Tizen 8.0 or newer. Older firmware may work, but Samsung's private Art Mode protocol changes between models and releases. Several TVs can be managed at once.
+
+Q: Is Frame TV Art Manager free and open source?
+A: It is free for personal and other noncommercial use under the PolyForm Noncommercial License 1.0.0. The code is public, but commercial use isn't permitted, so it is source-available rather than open source. It is not affiliated with Samsung.
+
+## Samsung Frame TV art without a subscription
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-without-subscription.html
+
+Short answer: you don't need Samsung's Art Store to enjoy The Frame. Your own photos in My Photos are free to display, and museums publish thousands of public-domain paintings you can use at no cost. Frame TV Art Manager, a free self-hosted service, keeps a folder of that art on the TV for you: it prepares each picture for the 4K screen, uploads it over your home network, and swaps art in and out when the TV is full.
+
+### What costs money on The Frame, and what doesn't
+The Samsung Art Store is a paid subscription: US$4.99 a month or US$49.99 a year
+as reported in October 2026, with prices varying by country. It unlocks Samsung's licensed catalog of paintings and photography.
+Your own pictures are a different matter. Photos you add to the My Photos collection, from the SmartThings
+app, a USB stick, or a tool like Frame TV Art Manager, don't need a subscription to display. Samsung's own
+Art Mode page describes showing all of My Photos as free for personal photo collections.
+About the slideshow reports. Since about July 2025, some owners have reported on
+Samsung's community forum that the "Display All" slideshow of My Photos asked them for an
+Art Store subscription. Samsung's help pages still describe it as free, and the behavior seems to vary by model and
+firmware. If your TV shows the prompt, the options below still work: they change which art is stored on the TV, and the
+TV can show any stored piece.
+
+### Three ways to fill Art Mode for free
+1. Your own photos
+Family photos, travel shots, and your kids' drawings all work. The catch with doing it by hand is the routine: one
+upload at a time from a phone, portraits that get cropped, and a TV that eventually runs out of room.
+Automatic uploads turn that into "drop files in a folder".
+2. Public-domain masterpieces
+The Art Institute of Chicago, The Met, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish
+high-resolution images of public-domain works for anyone to use. Van Gogh, Monet, Hokusai, Vermeer, and Seurat are all
+there. The free 4K art guide lists where to look and how to
+pull art in automatically.
+3. Free photo and space imagery
+NASA's image library and Astronomy Picture of the Day, Unsplash, Pexels, and Pixabay offer free images under their own
+licenses. Frame TV Art Manager can download from all of them on a schedule; Unsplash, Pexels, and Pixabay need a free API key.
+
+### How to keep the art changing without a subscription
+A Frame looks best when the art changes now and then. Frame TV Art Manager handles the parts that are tedious by hand:
+- New art arrives on its own. Pictures you add to the folder, and art from online sources, are uploaded on the next sync (every 30 minutes by default).
+- A large collection takes turns. When the TV is full, each piece the manager uploaded stays for 14 days (ROTATION_INTERVAL_DAYS) and is then swapped for art that hasn't been shown yet.
+- The slideshow can be set for you. SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), and SLIDESHOW_TYPE (shuffle or sequential) set the TV's slideshow for your uploaded photos over the local network. What the TV then allows is up to Samsung's firmware.
+- Nothing is uploaded twice. Pictures are recognized by their content, so re-adding the same file doesn't create duplicates on the TV.
+The manager never picks which piece is on screen; the TV and its slideshow do that. It also never deletes art you put on the TV yourself.
+
+### What you need
+- A Samsung Frame TV running Tizen 8.0 or newer. Older firmware may work, but Samsung's private Art Mode protocol changes between models and releases.
+- An always-on computer on the same network: a Synology, Unraid, or TrueNAS NAS, a mini PC, a Raspberry Pi-class board, or a Mac with Docker.
+- About ten minutes for the Docker setup. The only required setting is the TV's IP address.
+No Samsung account, SmartThings account, or cloud service is involved; the service talks to the TV directly on your network.
+
+### What Frame TV Art Manager costs
+Nothing for home use. Frame TV Art Manager is free for personal and other noncommercial use under the PolyForm Noncommercial License 1.0.0; it is source-available, not open source. Commercial use, for example in a shop, office, or hotel, is not permitted.
+It is an independent project and is not affiliated with or endorsed by Samsung.
+
+Q: Do I need a subscription to show my own photos on The Frame?
+A: No. Photos in My Photos can be displayed without the Art Store subscription. Some owners have reported since July 2025 that the Display All slideshow of My Photos asked for a subscription on their TVs; Samsung's help pages still describe it as free.
+
+Q: How much is the Samsung Art Store?
+A: As reported in October 2026, US$4.99 per month or US$49.99 per year in the US. Prices vary by country, so check the Art Store on your TV.
+
+Q: Where can I get free art for a Samsung Frame TV?
+A: Museum open-access collections such as the Art Institute of Chicago, The Met, the National Gallery of Art, and the Rijksmuseum publish public-domain works for free. NASA, Unsplash, Pexels, and Pixabay offer free images under their own licenses. Frame TV Art Manager can download from several of these automatically.
+
+Q: Can Frame TV Art Manager unlock Art Store content?
+A: No. It does not touch the Art Store or Samsung's licensed catalog. It only uploads your own pictures and art you choose from free sources.
+
+Q: Is Frame TV Art Manager really free?
+A: Yes, for personal and other noncommercial use under the PolyForm Noncommercial License 1.0.0. There is no paid tier and no account to create.
+
+## How to upload photos to a Samsung Frame TV automatically
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/automatically-upload-art-samsung-frame-tv.html
+
+Short answer: run Frame TV Art Manager on a NAS or home server, give it your Frame TV's IP address, and put JPEG or PNG files in its artwork folder. It uploads new pictures at startup and every 30 minutes, removes ones you delete from the folder, never uploads the same picture twice, and leaves art you added yourself alone. No SmartThings app or Samsung account is needed.
+
+### Every way to get photos onto The Frame
+Ways to upload your own photos to a Samsung Frame TV
+- Method | Good for | Drawbacks
+- SmartThings app | A few photos from your phone | One batch at a time, by hand, per TV; a Samsung account
+- USB stick | A one-off batch without a phone | Walking to the TV for every change
+- Frame TV Art Manager | A collection that changes, several TVs, large libraries | Needs an always-on computer running Docker
+The first two are Samsung's built-in options. This guide covers the third: a folder that the TV follows on its own.
+
+### What "automatic" means here
+Frame TV Art Manager treats a folder as the list of art that should be on your Frame. At startup and every
+30 minutes after (SYNC_INTERVAL_MINUTES), it compares the folder with what's stored on each TV, uploads anything
+missing, and removes pieces it uploaded that you have since deleted from the folder. You never open an app.
+
+### What you need
+- A Samsung Frame TV running Tizen 8.0 or newer, on your home network.
+- An always-on machine on the same network that runs Docker: a NAS, Unraid server, mini PC, Raspberry Pi-class board, or Mac.
+- A fixed IP address for each TV, set with a DHCP reservation in your router.
+- Pictures as JPEG (.jpg, .jpeg) or PNG (.png). iPhone HEIC photos need converting first; the Apple Photos guide shows how.
+The Docker guide walks through installation. The only required setting is TV_IPS.
+
+### How each sync works
+- Download anything new from your online sources, if you set any up.
+- Check the folder and prepare pictures that need it: turned upright, fitted to the 16:9 screen, converted to sRGB, and resized to 3840×2160.
+- Read each TV to see what's stored on it.
+- Upload what's missing and remove pieces you deleted from the folder.
+- Apply TV settings such as slideshow, brightness, or power-off, only if you configured them.
+The prepared version of each picture replaces the original in the artwork folder, so copy pictures in and keep your originals elsewhere.
+
+### Why you never get duplicates
+A common complaint with upload scripts is the same photos piling up on the TV again and again. Frame TV Art
+Manager identifies each picture by a hash of its contents and keeps a per-TV record of what it uploaded. A picture that is
+already on the TV is never sent again, renaming a file doesn't make it new, and two identical files in the folder are stored once.
+
+### Removing art
+Delete a picture from the folder and the next sync removes the copy the manager uploaded. If the folder becomes
+completely empty, the last piece stays on the TV so a mistake can't leave the screen blank. Art you added through
+SmartThings or USB is never removed unless you deliberately set REMOVE_UNKNOWN_IMAGES=true.
+
+### Several Frame TVs, one folder
+List every TV in TV_IPS, separated by commas, for example TV_IPS=192.168.1.150,192.168.1.151.
+Each TV gets the same collection and is tracked separately, so a TV that's off doesn't hold up the others.
+
+### Adding art from your phone and the web
+- Network share: copy files into the artwork folder from any computer.
+- Upload page: turn on UPLOAD_ENABLED and open http://SERVER-IP:8080/upload in a browser. It also accepts iPhone Shortcuts and curl; see the Apple Photos guide.
+- Online sources: NASA, the Art Institute of Chicago, Unsplash, Pexels, Pixabay, and direct image links; see the free art guide.
+
+### What it won't do
+- Delete art you added yourself, unless REMOVE_UNKNOWN_IMAGES=true.
+- Choose which piece is on screen. The TV and its slideshow decide.
+- Change anything on a TV whose state it can't confirm. That TV is skipped until the next sync.
+- Treat a failed folder scan or a website that's down as "delete everything".
+- Change anything at all in a dry run (DRY_RUN=true).
+
+Q: Can I upload photos to a Samsung Frame TV without the SmartThings app?
+A: Yes. Samsung's own alternative is a USB stick. Frame TV Art Manager is another: it uploads from a folder over your local network without SmartThings or a Samsung account.
+
+Q: How often does Frame TV Art Manager upload new art?
+A: At startup and then every 30 minutes by default. Change it with SYNC_INTERVAL_MINUTES.
+
+Q: Will it upload the same photo twice?
+A: No. Pictures are identified by their contents, so a photo already on the TV is never uploaded again, even if you rename or re-copy the file.
+
+Q: Can it delete photos from the Frame TV for me?
+A: Yes, but only the ones it uploaded. Delete the picture from the folder and the next sync removes it from the TV. Art you added another way stays.
+
+Q: Does it work with more than one Frame TV?
+A: Yes. List each TV's IP address in TV_IPS, separated by commas. Every TV is kept in sync with the same folder.
+
+## Portrait photos on Samsung The Frame: a gallery mat, not a crop
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-portrait-photos-mat.html
+
+Short answer: The Frame's screen is a 16:9 landscape, so a portrait photo either gets cropped, which often cuts off heads, or needs a border. Frame TV Art Manager shows portraits, square art, panoramas, and small images whole on a deep charcoal gallery mat, faintly tinted from the art's own colors and calm in a dark room. You can also pair two portraits side by side or keep cropping.
+
+### Why portraits look wrong on The Frame
+A portrait photo is taller than it is wide; The Frame is 16:9 wide. Filling the screen means throwing away
+most of the picture's height, usually the top and bottom, which is where heads and feet are. Samsung's mattes add a
+border, but owners often find the default off-white matte too bright, especially at night.
+
+### Before and after
+A portrait painting
+Cropped to fill
+Cropped to fill the screen: the younger sister is reduced to the top of her hat.
+Frame TV Art Manager default
+Shown whole on the gallery mat, set slightly above center as framers do.
+A nearly square painting
+Cropped to fill
+Cropped: almost 30% of the painting, including the village, is gone.
+Frame TV Art Manager default
+Matted: the whole painting, on a charcoal mat tinted toward its blues.
+A landscape that already fits
+Hokusai's Great Wave loses about 16% from the top and bottom, within the 25% limit, so it fills the screen. Cropping is still the right call when little is lost.
+Artwork: Pierre-Auguste Renoir, Two Sisters (On the Terrace), 1881, Art Institute of Chicago, public domain (CC0).
+Vincent van Gogh, The Starry Night, 1889, public domain. Katsushika Hokusai, The Great Wave off Kanagawa, c. 1831, public domain.
+Every image on this page was rendered by Frame TV Art Manager at 3840×2160 and scaled down for the web.
+
+### When it crops and when it mats
+Every picture goes through the same decision:
+- Landscape pictures fill the screen when cropping removes at most 25% of the image (IMAGE_MAX_CROP_PERCENT) and filling needs no more than 3× enlargement (IMAGE_MAX_UPSCALE). That covers 3:2 camera photos and 4:3 paintings.
+- Everything else is shown whole: square art, very wide panoramas, and small images that would turn to mush if blown up.
+- Portraits follow PORTRAIT_MODE: pad (default, shown whole), collage (paired side by side), or crop (fill the screen).
+Set IMAGE_MAX_CROP_PERCENT=100 if you always want the screen filled.
+
+### How the gallery mat looks
+- Deep charcoal by default. It stays calm in a dark room at night instead of glowing like a white border.
+- Tinted from the art. The mat is faintly shifted toward the picture's own colors, so it looks chosen rather than generic.
+- A lighter bevel around the opening, and the opening sits slightly above center, the way picture framers cut mats.
+- A soft warm greige (never bright white) is used only when the art's edge is too dark to stand out against charcoal. Force either tone with IMAGE_MAT_TONE=dark or light.
+- Prefer a blurred backdrop? IMAGE_PAD_STYLE=blur fills the screen with a darkened, desaturated blur of the image instead.
+
+### Two portraits side by side
+With PORTRAIT_MODE=collage, portraits are paired on one screen. Pairs are matched by color,
+lightness, and shape, so a warm sunset portrait isn't stuck next to a cold blue one. Both images appear whole, at equal
+height, in a double-opening gallery mat. A portrait without a good partner waits for one instead of being forced into a bad pair.
+
+### Samsung's own mattes
+The Frame can also draw its own matte around a picture. MATTE_STYLE sets one for every upload, as
+style_color: styles include modernthin, modern, modernwide, flexible,
+shadowbox, panoramic, triptych, mix, and squares; colors include
+black, neutral, antique, warm, polar, sand, sage,
+navy, and more. The default is none, full screen.
+For one picture, add a mattes.json file to the artwork folder:
+{
+"_default": "none",
+"wedding-portrait.jpg": "shadowbox_polar"
+}
+An override keeps working after the manager renames the file. An invalid mattes.json stops the sync before any TV is touched, so a typo can't go unnoticed.
+The gallery mat is part of the picture itself, so with the default MATTE_STYLE=none you won't get a border inside a border.
+
+### Settings at a glance
+Portrait and mat settings
+- Setting | Default | What it does
+- PORTRAIT_MODE | pad | pad, collage, or crop
+- IMAGE_PAD_STYLE | mat | mat (gallery mat) or blur
+- IMAGE_MAT_TONE | auto | auto, dark, or light
+- IMAGE_MAX_CROP_PERCENT | 25 | Most of a landscape picture that may be cropped away
+- IMAGE_MAX_UPSCALE | 3 | Largest enlargement before a picture is matted instead
+- SMART_CROP_ENABLED | false | Crop toward the interesting part instead of the center
+- MATTE_STYLE | none | Samsung's own matte for every upload
+
+Q: How do I show portrait photos on a Samsung Frame TV without cropping?
+A: Use a border instead of a crop. Frame TV Art Manager does this by default: portraits are shown whole on a charcoal gallery mat tinted toward the photo's colors. Samsung's own mattes are another option.
+
+Q: Why does my Frame TV crop my photos?
+A: The Frame's screen is 16:9. Any picture with a different shape has to be either cropped or bordered to fill it, and portraits lose the most.
+
+Q: Can I put two portrait photos side by side on The Frame?
+A: Yes. With PORTRAIT_MODE=collage, Frame TV Art Manager pairs portraits matched by color, lightness, and shape and shows both whole in a double-opening mat.
+
+Q: How do I get rid of the white matte on my Frame TV?
+A: Choose a different matte or none in Art Mode on the TV. With Frame TV Art Manager, MATTE_STYLE=none (the default) uploads without a Samsung matte, and the gallery mat is charcoal rather than white.
+
+Q: Will a gallery mat make my photo smaller?
+A: Yes, a portrait shown whole is narrower than the screen. That's the trade-off for keeping heads and edges intact. Set PORTRAIT_MODE=crop if you prefer to fill the screen.
+
+## Free public-domain 4K art for Samsung The Frame
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/free-public-domain-art-samsung-frame-tv.html
+
+Short answer: major museums publish high-resolution images of public-domain paintings for anyone to use, including the Art Institute of Chicago, The Met, the National Gallery of Art, the Rijksmuseum, and the Smithsonian. NASA's imagery and photo sites such as Unsplash, Pexels, and Pixabay are free under their own terms. Frame TV Art Manager can download from the Art Institute of Chicago, NASA, Unsplash, Pexels, Pixabay, and direct links on a schedule and prepare each image for the TV's 3840×2160 screen.
+
+### Where to find free art for The Frame
+Free sources of high-resolution art and photography
+- Source | What's there | Terms | Automatic download
+- Art Institute of Chicago | Impressionism, American art, Japanese prints | Public-domain works released under CC0 | Yes, no key
+- The Met Open Access | Paintings, prints, and objects from every era | Public-domain works released under CC0 | Via direct links
+- National Gallery of Art | European and American painting | Open-access public-domain images | Via direct links
+- Rijksmuseum | Dutch Golden Age: Vermeer, Rembrandt | Public-domain images free to download | Via direct links
+- Smithsonian Open Access | Art, nature, and history | CC0 items marked as such | Via direct links
+- NASA | Space telescopes, Earth from orbit, Astronomy Picture of the Day | Generally free to use; see NASA's media guidelines | Yes, free key or DEMO_KEY
+- Unsplash, Pexels, Pixabay | Modern photography | Each site's own free license | Yes, free API key
+"Public domain" means the copyright has expired; museums that release those images under CC0 put no conditions on them.
+Each site's terms are its own and can change, so check them before relying on an image. Note that NASA's APOD sometimes features
+images credited to other photographers, under their own terms.
+
+### Download art to The Frame automatically
+Frame TV Art Manager can fetch art for you. Set ARTWORK_SOURCES_FILE=/data/sources.yaml; if the file
+doesn't exist, a commented starter file is created. A sources file looks like this:
+providers:
+art_institute_of_chicago:
+- photo:20684 # one artwork by its ID
+- search:impressionism # the top results for a search
+nasa:
+- apod # NASA Astronomy Picture of the Day
+- search:james webb
+unsplash:
+- collection:225444
+pexels:
+- curated
+pixabay:
+- editors_choice
+direct:
+- https://example.com/painting.jpg
+Downloads land in your artwork folder like any other picture, are prepared for the screen, and are uploaded on the next
+sync. If a source fails, nothing previously downloaded is removed. Removing a line from the file doesn't delete what it
+already downloaded; delete those files yourself.
+Choosing public-domain works from the Art Institute of Chicago. A search: line downloads the
+top results for that search, and those can include works still under copyright. For public-domain art only, browse the
+public-domain filter on artic.edu and add each work as
+photo: plus the number in its address; for example, artic.edu/artworks/27992/… is photo:27992.
+
+### What makes art look good on The Frame
+- Landscape works fill the screen best. Paintings close to 16:9, 3:2, or 4:3 are cropped only slightly; square and tall works are shown whole on a gallery mat.
+- Resolution matters. Aim for images at least 3840 pixels wide. Images that would need more than 3× enlargement are matted rather than blown up into blur.
+- Matte finish suits paintings. Oil paintings, watercolors, and prints look more like real art on The Frame's matte screen than glossy photographs do.
+- Change with the seasons. Searches such as search:winter landscape or search:autumn give the collection a seasonal feel.
+See the art size guide for exactly what happens to each shape.
+
+### A few public-domain favorites
+- Georges Seurat, A Sunday on La Grande Jatte, 1884 to 1886, Art Institute of Chicago.
+- Katsushika Hokusai, The Great Wave off Kanagawa, about 1831, in many museum collections.
+- Claude Monet's Water Lilies and Stacks of Wheat series.
+- Vincent van Gogh, The Bedroom, 1889, Art Institute of Chicago.
+- Johannes Vermeer, The Milkmaid, about 1660, Rijksmuseum.
+
+### Coming soon: art curated by your AI assistant
+A built-in MCP server is planned so AI assistants such as Claude or ChatGPT can put together themed sets, for
+example "a Christmas set from public-domain museum paintings", and send them to the TV without API keys. It is not
+available yet; this page will be updated when it ships.
+
+Q: Where can I get free art for my Samsung Frame TV?
+A: Museum open-access programs at the Art Institute of Chicago, The Met, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish public-domain artwork for free. NASA, Unsplash, Pexels, and Pixabay offer free images under their own terms.
+
+Q: Is public-domain art free to display on my TV?
+A: Yes. Public-domain works are no longer under copyright, and museums that release images under CC0 put no conditions on using them. Photo sites such as Unsplash use their own licenses, so check each one.
+
+Q: Can Frame TV Art Manager download art automatically?
+A: Yes. List sources in a sources file and it downloads from the Art Institute of Chicago, NASA, Unsplash, Pexels, Pixabay, and direct image links on each sync, then prepares and uploads the art.
+
+Q: Does the Art Institute of Chicago search only return public-domain works?
+A: No. A search downloads the top results, which can include works still in copyright. Use photo: with an artwork ID from the public-domain filter on artic.edu to choose only public-domain works.
+
+Q: What resolution should free art be for The Frame?
+A: At least 3840 pixels wide for the 4K models. Smaller images are shown whole on a gallery mat instead of being enlarged into blur.
+
+## Samsung Frame TV art size: 3840×2160 explained
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-art-size.html
+
+Short answer: make art for The Frame at 3840×2160 pixels, a 16:9 landscape, in the sRGB color space, saved as a high-quality JPEG. That matches the 4K panel exactly, so the TV doesn't have to crop or scale. The 32-inch Frame has a 1920×1080 panel. Frame TV Art Manager prepares every picture to this size automatically: it rotates it upright, converts its colors to sRGB, and crops it or sets it on a gallery mat to fit.
+
+### Quick reference
+Recommended image specification for Samsung The Frame
+- Pixel size | 3840×2160 (4K models); 1920×1080 for the 32-inch model
+- Aspect ratio | 16:9 landscape
+- Color space | sRGB
+- File format | JPEG, high quality; PNG also works
+- Not accepted | HEIC (iPhone default), RAW, TIFF, WebP: convert to JPEG first
+Check your model's specifications if you're unsure of its panel resolution. To prepare everything at 1080p, set
+IMAGE_MAX_WIDTH=1920 and IMAGE_MAX_HEIGHT=1080.
+
+### What happens to each shape
+Frame TV Art Manager fills the screen only when cropping removes at most 25% of the picture
+(IMAGE_MAX_CROP_PERCENT). Anything else is shown whole on a gallery mat.
+How common aspect ratios fit a 16:9 Frame with default settings
+- Shape | Typical source | Cropped away to fill | Result
+- 16:9 | TV and phone landscape video frames | 0% | Fills the screen
+- 2:1 | Wide panoramas | 11% | Fills the screen
+- 3:2 | Most cameras | 16% | Fills the screen
+- 21:9 | Ultra-wide crops | 24% | Fills the screen
+- 4:3 | Phones, many paintings | 25% | Fills the screen
+- 5:4 | Large-format photos, many paintings | 30% | Gallery mat
+- 1:1 | Square posts, album art | 44% | Gallery mat
+- 3:1 or wider | Long panoramas | 41% or more | Gallery mat
+- Portrait | Phone portraits, portrait paintings | More than 50% | Follows PORTRAIT_MODE: gallery mat by default
+See the portrait and mat guide for before-and-after examples.
+
+### Small images and blur
+Enlarging a small image can't add detail; it just makes it soft. Frame TV Art Manager fills the screen only
+when that needs at most 3× enlargement (IMAGE_MAX_UPSCALE). A 1200×800 photo, for example, would need 3.2× and is
+shown whole on a mat instead. Sharpening is also skipped on images enlarged more than 1.5×, because there's no detail to
+recover and sharpening would only exaggerate the blur.
+
+### Color: why sRGB
+The Frame expects standard sRGB color. Pictures from cameras and editing apps often carry a different color
+profile, such as Display P3 or Adobe RGB; shown without conversion, they look dull or oversaturated. Frame TV Art Manager
+converts any embedded ICC color profile to sRGB, and tone-maps HDR PNGs to standard range so bright skies don't clip.
+
+### How Frame TV Art Manager prepares each picture
+- Rotates it upright using its EXIF orientation, so phone photos aren't sideways.
+- Decides between a crop and a gallery mat using the rules above.
+- Converts its color to sRGB and tone-maps HDR PNGs.
+- Resizes it in linear light, which keeps fine bright detail such as stars or lace from darkening, to exactly 3840×2160.
+- Applies halo-free, contrast-adaptive sharpening (skipped on images enlarged more than 1.5×).
+- Saves JPEG at quality 95; PNGs stay PNG, including transparency.
+A 24-megapixel camera photo takes about a second. The prepared file replaces the original in the artwork folder, so keep originals elsewhere.
+
+### File size and limits
+A 3840×2160 JPEG at quality 95 is usually a few megabytes. Downloads and web uploads are limited to 20 MB by
+default (MAX_DOWNLOAD_SIZE_MB). Each image is processed within a 512 MB memory budget, which is enough for 8K originals.
+
+Q: What size should pictures be for a Samsung Frame TV?
+A: 3840×2160 pixels for the 4K models, a 16:9 landscape. The 32-inch Frame has a 1920×1080 panel.
+
+Q: What aspect ratio is The Frame?
+A: 16:9. Pictures with other shapes are cropped or shown with a border.
+
+Q: Should Frame TV art be JPEG or PNG?
+A: High-quality JPEG in sRGB is the safest choice. PNG also works. iPhone HEIC photos must be converted to JPEG first.
+
+Q: Why does my art look blurry on The Frame?
+A: Usually because a small image was enlarged to fill the 4K screen. Use images at least 3840 pixels wide, or let Frame TV Art Manager show small images whole on a mat instead of blowing them up.
+
+Q: Do I need to resize photos myself?
+A: Not with Frame TV Art Manager. It rotates, color-converts, and resizes every picture to 3840×2160 automatically.
+
+## Install Frame TV Art Manager with Docker
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-docker.html
+
+Short answer: run the ghcr.io/mikeo7/frame-tv-art-manager:latest image with your Samsung Frame TV's IP address in TV_IPS and a ./data:/data volume. Approve the connection once on the TV, then copy JPEG or PNG files into data/artwork. The image runs on amd64, arm64, and armv7, so it fits a NAS, a mini PC, a Raspberry Pi-class board, or a Mac.
+
+### Before you start
+- A Samsung Frame TV running Tizen 8.0 or newer, on the same network as the server.
+- Docker with Compose on a machine that stays on.
+- Access to your router, to give the TV a fixed address.
+
+### Install in six steps
+Give the TV a fixed IP address
+In your router, create a DHCP reservation so the Frame always gets the same address. The TV shows its current address under its network settings.
+Create the compose file
+Make a folder for the service and save the compose.yaml below in it, with your TV's address.
+Start the container
+Run docker compose up -d, then docker compose logs -f frame-tv-art-manager to watch it connect.
+Approve it on the TV
+With the TV on, an Allow/Deny prompt named "Frame Art Manager" appears. Choose Allow with the remote. You only do this once.
+Add pictures
+Copy .jpg, .jpeg, or .png files into data/artwork. Copy, don't move: each file is replaced by its prepared version.
+Check that it worked
+Open http://SERVER-IP:8080/status. Your TV should be listed with status ok, and the pictures appear in Art Mode.
+compose.yaml
+services:
+frame-tv-art-manager:
+image: ghcr.io/mikeo7/frame-tv-art-manager:latest
+container_name: frame-tv-art-manager
+restart: unless-stopped
+environment:
+TV_IPS: "192.168.1.150" # your TV's address; comma-separate several
+CLIENT_NAME: "Frame Art Manager"
+ports:
+- "8080:8080"
+volumes:
+- ./data:/data
+docker compose up -d
+docker compose logs -f frame-tv-art-manager
+
+### Folders and permissions
+Everything lives in the /data volume:
+- /data/artwork is your collection. Mount a different host folder here if your art lives elsewhere, for example /volume1/photos/frame:/data/artwork.
+- /data/tokens holds the TV's pairing token and the record of what was uploaded. Keep it across upgrades, or the TV will ask to pair again and existing uploads will be treated as yours.
+If the container can't write to ./data, create the folders with mkdir -p data/artwork data/tokens. Set PUID
+and PGID to control file ownership, or own the folders yourself, add user: "UID:GID", and leave PUID/PGID unset.
+
+### Settings you'll likely want
+Common settings (all optional except TV_IPS)
+- Setting | Default | Purpose
+- TV_IPS | required | TV address, or several separated by commas
+- SYNC_INTERVAL_MINUTES | 30 | Time between syncs
+- PORTRAIT_MODE | pad | Portraits on a gallery mat; or collage, crop
+- ROTATION_INTERVAL_DAYS | 14 | How long each piece stays on a full TV
+- MATTE_STYLE | none | Samsung matte for every upload
+- UPLOAD_ENABLED, UPLOAD_TOKEN | off | Web and iPhone Shortcut uploads
+- ARTWORK_SOURCES_FILE | unset | Download art from NASA, museums, and photo sites
+- DRY_RUN | false | Plan without changing anything
+Every setting, with comments, is in .env.example.
+
+### Optional TV controls
+- Slideshow: SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), SLIDESHOW_TYPE (shuffle or sequential).
+- Brightness: a fixed BRIGHTNESS (0 to 50), or SOLAR_BRIGHTNESS_ENABLED=true with your latitude, longitude, and time zone to follow the sun between BRIGHTNESS_MIN and BRIGHTNESS_MAX.
+- Nightly power-off: AUTO_OFF_TIME=22:00 turns off TVs showing art and leaves TVs in use alone.
+- Wake-on-LAN: TV_MAC wakes a single TV that is confirmed off; never when its state is unknown. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it typically needs network_mode: host.
+If you leave these unset, the manager doesn't touch the TV's own settings.
+
+### Monitoring and upgrades
+- GET /live: the process is running (used by the container healthcheck).
+- GET /ready and /health: 200 once the last sync succeeded, otherwise 503.
+- GET /status: per-TV status, last error, and rotation details as JSON.
+Logs are structured JSON. To upgrade, run docker compose pull and docker compose up -d; your data folder carries over.
+Never expose port 8080 to the internet; keep it on your home network or behind a TLS reverse proxy.
+
+### Running without Docker
+Build a single binary with the Go version in go.mod:
+go build -o frame-tv-art-manager ./cmd/frame-tv-art-manager
+TV_IPS=192.168.1.150 ARTWORK_DIR="$PWD/data/artwork" TOKEN_DIR="$PWD/data/tokens" ./frame-tv-art-manager
+
+## Samsung Frame TV art from a Synology, Unraid, or TrueNAS NAS
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html
+
+Short answer: Frame TV Art Manager is a small Docker container, so any NAS that runs containers can keep your Frame in sync. On Synology use Container Manager's Projects, on Unraid add a container from the Docker tab, and on TrueNAS install a custom app from YAML. In each case you set TV_IPS, map a folder to /data, and approve the connection once on the TV.
+
+### The same three things on every NAS
+- A fixed IP for the TV, using a DHCP reservation in your router.
+- A persistent folder mapped to /data. It holds artwork (your collection) and tokens (the pairing token and upload records). You can map your art share straight to /data/artwork instead.
+- The right owner for files, set with PUID and PGID so you can still edit the artwork share over SMB.
+Copy, don't move. Each picture in the artwork folder is replaced by its prepared 3840×2160 version. Keep originals in another share.
+
+### Synology DSM (Container Manager)
+- Install Container Manager from Package Center (DSM 7.2 or later).
+- In File Station, create docker/frame-tv-art-manager with data/artwork and data/tokens inside it.
+- Open Container Manager, go to Project, choose Create, pick that folder as the path, and choose to create a docker-compose.yml.
+- Paste the compose file below, set your TV's address, and add PUID/PGID for the DSM user who owns the share. Running id yourname over SSH shows them; DSM users usually belong to group 100 (users).
+- Finish the wizard to build and start the project, then approve the prompt on the TV.
+- Copy pictures into docker/frame-tv-art-manager/data/artwork from File Station or over SMB.
+
+### Unraid (Docker tab)
+- Open the Docker tab and choose Add Container.
+- Set Repository to ghcr.io/mikeo7/frame-tv-art-manager:latest and a name such as frame-tv-art-manager.
+- Add a Path: container path /data, host path /mnt/user/appdata/frame-tv-art-manager. To use an existing share for art, add another path from /mnt/user/your-art-share to /data/artwork.
+- Add a Variable TV_IPS with your TV's address, plus PUID=99 and PGID=100, Unraid's usual nobody:users owner for shares.
+- Add a Port mapping 8080 to 8080 if you want the status page or uploader.
+- Apply, then approve the prompt on the TV.
+If you prefer compose files, the Compose Manager plugin accepts the same file as the Docker guide.
+
+### TrueNAS SCALE / Community Edition
+- Create a dataset, for example apps/frame-tv-art-manager, with data/artwork and data/tokens folders.
+- Go to Apps, then Discover Apps, and choose Install via YAML from the menu (TrueNAS 24.10 and later use Docker for apps).
+- Paste the compose file below with the host path changed to your dataset, such as /mnt/tank/apps/frame-tv-art-manager/data:/data.
+- Set PUID/PGID to the user that owns the dataset; TrueNAS's built-in apps user is 568.
+- Save, then approve the prompt on the TV.
+
+### Compose file for any NAS
+services:
+frame-tv-art-manager:
+image: ghcr.io/mikeo7/frame-tv-art-manager:latest
+container_name: frame-tv-art-manager
+restart: unless-stopped
+environment:
+TV_IPS: "192.168.1.150" # your TV's address; comma-separate several
+CLIENT_NAME: "Frame Art Manager"
+ports:
+- "8080:8080"
+volumes:
+- ./data:/data
+Add PUID and PGID under environment for your NAS. QNAP Container Station, OpenMediaVault, Portainer, and
+anything else that accepts a compose file work the same way.
+
+### Raspberry Pi, mini PC, or Mac
+The image is built for amd64, arm64, and armv7, so a Raspberry Pi-class board, an Intel or AMD mini PC, or a Mac
+running Docker all work. Preparing a 24-megapixel photo uses roughly 250 MB of memory, and each picture stays within a
+512 MB budget by default (IMAGE_MAX_WORKING_MEMORY_MB).
+
+### Network checklist
+- The NAS and the TV must reach each other: same network, or routing between VLANs.
+- Nothing needs to be opened to the internet. Keep port 8080 on your home network.
+- Wake-on-LAN (TV_MAC) is a broadcast that Docker's default bridge network doesn't forward, so it usually needs host networking.
+
+## Home Assistant and Samsung Frame TV art
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/home-assistant-samsung-frame-tv-art.html
+
+Short answer: Home Assistant is good at controlling the TV; Frame TV Art Manager is good at keeping its art collection in sync. Run the art manager as its own Docker container on your network, watch it from Home Assistant with a REST sensor on /status, and send pictures to it from automations with the upload endpoint. Everything stays local; no SmartThings cloud is involved.
+
+### Why keep Frame art local
+Home Assistant can reach a Samsung TV in two ways: locally over the network, or through Samsung's SmartThings
+cloud. In June 2026 Samsung announced paid SmartThings API access, with a US$4.99-a-month personal
+plan and free access ending after the third quarter of 2026. Frame TV Art Manager talks to the TV directly over your network,
+so its art sync doesn't depend on SmartThings at all.
+
+### Who does what
+Splitting the work between Home Assistant and Frame TV Art Manager
+- Job | Good fit
+- Power, inputs, presence-based scenes | Home Assistant
+- Keeping a folder of art on one or more Frames | Frame TV Art Manager
+- Preparing pictures for 4K, portraits on a gallery mat | Frame TV Art Manager
+- Rotating art when the TV is full | Frame TV Art Manager
+- Slideshow, brightness, nightly power-off | Either, but only one of them
+
+### Install it next to Home Assistant
+If Home Assistant runs in Docker, add Frame TV Art Manager to the same host with the compose file from the
+Docker guide. If you use Home Assistant OS, run Frame TV Art Manager on another
+always-on machine, such as your NAS. The two only need to reach each other and the TV over the network.
+
+### Watch sync health with a REST sensor
+The /status endpoint returns JSON with last_sync_ok, last_error, and a tvs object with each TV's
+status, image count, and rotation details. Add this to configuration.yaml:
+rest:
+- resource: http://SERVER-IP:8080/status
+scan_interval: 300
+sensor:
+- name: Frame art last sync OK
+value_template: "{{ value_json.last_sync_ok }}"
+- name: Frame art last error
+value_template: "{{ value_json.last_error | default('', true) | truncate(250) }}"
+Then alert yourself when last_sync_ok stays false. /ready returns HTTP 200 or 503 if you'd rather use a simple binary check.
+
+### Send pictures from an automation
+Turn on the uploader (UPLOAD_ENABLED=true and a 16-character-plus UPLOAD_TOKEN). Home Assistant's
+shell_command can then post a JPEG or PNG, for example a snapshot saved by another automation:
+# configuration.yaml
+shell_command:
+send_to_frame: "/config/scripts/send_to_frame.sh {{ filename }}"
+#!/bin/sh
+# /config/scripts/send_to_frame.sh (chmod +x); the token lives in a file only root can read
+TOKEN="$(cat /config/.frame_upload_token)"
+curl --fail -u "frame:$TOKEN" -F "file=@/config/www/frame/$1" http://SERVER-IP:8080/upload
+Keep the token out of configuration.yaml, and only pass simple file names you control. Uploads are handled one at a time; a second
+upload sent at the same moment gets HTTP 429 and should be retried.
+
+### Avoid two tools fighting over the TV
+- Frame TV Art Manager leaves the slideshow, brightness, and power settings alone unless you set them. If Home Assistant already manages them, leave the matching settings unset.
+- It never picks which piece is on screen and never deletes art it didn't upload, so pictures you push another way stay put.
+- Each tool that connects to the TV may need its own one-time Allow on the TV. Use a clear CLIENT_NAME so you know which prompt is which.
+
+Q: Can Home Assistant control Samsung Frame TV Art Mode?
+A: Home Assistant's Samsung integrations can control power and, with some community integrations, parts of Art Mode. For keeping a collection of art on the TV, Frame TV Art Manager runs alongside Home Assistant and handles uploads, preparation, and rotation.
+
+Q: Does Frame TV Art Manager need SmartThings?
+A: No. It connects to the TV directly on your local network, so Samsung's SmartThings API changes don't affect it.
+
+Q: Is there a Home Assistant add-on for Frame TV Art Manager?
+A: No. It runs as a standalone Docker container. Home Assistant OS users can run it on another machine such as a NAS.
+
+Q: How do I know if the Frame art sync failed?
+A: Poll http://SERVER-IP:8080/status with a REST sensor and watch last_sync_ok, or check /ready, which returns 503 when the last sync failed.
+
+## How to send photos from an iPhone or Apple Photos to a Samsung Frame TV
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html
+
+Short answer: turn on Frame TV Art Manager's upload page and send photos to it from your iPhone, iPad, or Mac. The quickest way is the upload page in Safari; an iPhone Shortcut or a Mac script can send favorites or an album on a schedule. Photos join the artwork folder and reach every Frame TV on the next sync, within 30 minutes by default.
+
+### Turn on the uploader
+The uploader is off by default. Add two settings to your compose file and restart the container:
+environment:
+TV_IPS: "192.168.1.150"
+UPLOAD_ENABLED: "true"
+UPLOAD_TOKEN: "a-long-random-password-of-16-plus-characters"
+ports:
+- "8080:8080"
+Sign in with username frame and your UPLOAD_TOKEN as the password. Each upload can be up to 20 MB (MAX_DOWNLOAD_SIZE_MB).
+
+### Quickest: the upload page in Safari
+Open http://SERVER-IP:8080/upload in Safari, sign in, tap the drop area, and choose photos. The page sends
+them one by one and shows each result. On a Mac you can drag files onto it. It accepts JPEG and PNG; if a HEIC photo is
+rejected, use the Shortcut below, which converts explicitly.
+
+### Build an iPhone or iPad Shortcut
+First make the sign-in value the Shortcut needs. On a Mac or Linux computer, run this with your own token and copy the output:
+printf '%s' 'frame:YOUR_UPLOAD_TOKEN' | base64
+- Create the shortcut. In Shortcuts, tap +, and name it "Send to Frame TV".
+- Find the photos. Add Find Photos, filter for Favorites or an album, add Media Type is Image, and set a small Limit while testing.
+- Loop over them. Add Repeat with Each.
+- Convert to JPEG. Inside the loop, add Convert Image to JPEG. iPhone photos are usually HEIC, which the uploader doesn't accept.
+- Upload each photo. Add Get Contents of URL: URL http://SERVER-IP:8080/upload, method POST, request body Form with a File field named file, and a header Authorization set to Basic, a space, and your encoded value.
+- Test it. Each photo should return "File imported successfully", or "File already exists (deduplicated)" if it was sent before.
+To run it on a schedule, use the Automation tab: Time of Day, run immediately, and pick the shortcut. Identical files are
+skipped, but if iOS produces a slightly different JPEG of the same photo on a later run, it's stored as a new picture, so keep the album focused.
+
+### Send favorites from a Mac automatically
+The free third-party tool osxphotos exports favorites or an album as JPEGs, and a short script uploads them.
+Give your terminal Full Disk Access in System Settings, install osxphotos (for example pipx install osxphotos), and save this as ~/frame-tv-sync.sh:
+#!/bin/bash
+set -euo pipefail
+SERVER="http://192.168.1.20:8080" # the Frame TV Art Manager server, not the TV
+UPLOAD_TOKEN="your-upload-token"
+EXPORT_DIR="$HOME/Pictures/frame-tv-export"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+mkdir -p "$EXPORT_DIR"
+osxphotos export "$EXPORT_DIR" --favorite \
+--convert-to-jpeg --jpeg-quality 0.95 \
+--skip-live --skip-raw --update --cleanup
+for file in "$EXPORT_DIR"/*.jpeg "$EXPORT_DIR"/*.jpg; do
+[ -f "$file" ] || continue
+curl --fail --silent --show-error -u "frame:$UPLOAD_TOKEN" \
+-F "file=@$file" "$SERVER/upload"
+echo
+done
+Replace --favorite with --album "Frame TV" to send an album. Run it hourly with a LaunchAgent whose
+StartInterval is 3600; if it works by hand but not on schedule, grant Full Disk Access to /bin/bash.
+
+### Upload a photo with curl
+curl -u "frame:$UPLOAD_TOKEN" -F "file=@/path/to/photo.jpg" http://SERVER-IP:8080/upload
+The form field must be named file. Send files one at a time: a second upload sent at the same moment gets HTTP 429.
+
+### What happens after a photo is uploaded
+On the next sync it's prepared like any other picture: turned upright, shown whole on a gallery mat if it's a portrait,
+converted to sRGB, sharpened, and resized to 3840×2160. Then it goes to every TV in TV_IPS. To take it off the TV,
+delete its file from the artwork folder; the upload response tells you its name.
+
+### Upload errors
+Responses from /upload
+- Response | Meaning and fix
+- 401 Authentication required | Wrong username or password. The username is always frame.
+- 403 Upload endpoint is disabled | Set UPLOAD_ENABLED=true and restart. Uploads are also off during DRY_RUN.
+- 400 file too large | Over MAX_DOWNLOAD_SIZE_MB (20 MB by default).
+- 400 Invalid or unsafe image | Not a complete JPEG or PNG. HEIC photos land here; convert to JPEG first.
+- 400 missing 'file' parameter | The form field isn't named file.
+- 429 Another artwork import is in progress | Two uploads at once. Send them one after another.
+
+### Keep the uploader private
+- It's off until you set UPLOAD_ENABLED=true, and every request needs the password.
+- Plain HTTP doesn't encrypt the password or photos. Keep it on your home network or behind a TLS reverse proxy.
+- Never forward port 8080 from your router to the internet.
+- Uploads are checked to be complete images, and original filenames are never used on the server.
+
+Q: How do I add photos to a Samsung Frame TV from an iPhone?
+A: Samsung's way is the SmartThings app. With Frame TV Art Manager, open its upload page in Safari or use an iPhone Shortcut; photos reach every Frame TV on the next sync.
+
+Q: Why won't my iPhone photos upload?
+A: iPhone photos are usually HEIC, which the uploader doesn't accept. Convert them to JPEG first, for example with the Convert Image action in Shortcuts.
+
+Q: Can I sync an Apple Photos album to The Frame automatically?
+A: Yes. A scheduled iPhone Shortcut or a Mac script with osxphotos can send an album or your favorites on a timer. Photos already sent are recognized and skipped.
+
+## Samsung Frame TV storage full? Rotate your art automatically
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-storage-full-art-rotation.html
+
+Short answer: The Frame stores a limited number of your own pictures, and once it's full it refuses new uploads (some models show an "Insufficient storage space" error). Frame TV Art Manager handles this by rotating: each piece it uploaded stays at least 14 days, then is swapped for art from your folder that's waiting its turn, never-shown pieces first. Art you added yourself is never touched, and no files are deleted from your folder.
+
+### Why The Frame runs out of room
+Uploaded pictures live in the TV's built-in storage, which is shared with everything else on it. How many fit
+depends on the model, the firmware, and the file sizes, so Frame TV Art Manager doesn't guess. Without rotation, a full TV
+means new pictures in your folder never appear, and you're back to deleting art by hand.
+Some owners have also filled their TVs with duplicates, from tools that upload the same photos again on every run. Frame TV Art
+Manager recognizes pictures by their contents, so it never adds a second copy.
+
+### Freeing space by hand
+On the TV, open Art Mode, go to My Photos, select pictures, and delete them; the SmartThings app can do the same.
+That works, but it has to be repeated every time you want new art.
+
+### How automatic rotation works
+The first time the TV rejects a real upload because it's full, the manager records how many pieces were on it as that TV's
+capacity. If your collection is bigger, rotation starts on its own, and a full TV becomes a normal, healthy state.
+- Each piece stays at least ROTATION_INTERVAL_DAYS (default 14; fractions such as 0.5 work).
+- Waiting art goes up next: never-shown pieces first, then the ones away longest. New files count as never shown.
+- A rotated-out piece doesn't come back until it has been away just as long, so a large collection works all the way through.
+- One swap at a time: each swap deletes one piece and immediately uploads its replacement, so the TV is never more than one short.
+
+### A worked example
+150 pictures, a TV that holds 60, default 14-day interval
+- When | What happens
+- Day 0 | Pictures upload until the TV refuses one as full. 60 is recorded as its capacity; 90 pictures wait.
+- Day 14 | The first 60 have had their time and are swapped, one by one, for 60 never-shown pictures.
+- Day 28 | The last 30 never-shown pictures go up, plus 30 from the first group that have been away longest.
+- After that | Every picture has been shown; the cycle continues, always bringing back the art away longest.
+The numbers are made up for illustration. A shorter interval cycles faster.
+
+### What rotation never touches
+- Art you added yourself through SmartThings, USB, or any other way.
+- Files in your artwork folder. Rotation only removes copies from the TV.
+- The TV's choice of what's on screen. If the displayed piece rotates out, the TV moves on to another.
+If the TV is full mostly of your own pieces, rotation can't free room and the TV reports storage full. Remove some of those
+pieces yourself. REMOVE_UNKNOWN_IMAGES=true would also free space, but it deletes every piece the manager didn't upload, so treat it as a last resort.
+
+### Rotation and the slideshow work together
+The slideshow changes which stored piece is on screen, from every 3 minutes to once a day. Rotation changes which pieces
+are stored, every 14 days by default. Together, a large collection keeps moving through the TV.
+
+### Checking on rotation
+http://SERVER-IP:8080/status shows rotating, artwork_waiting, and next_rotation for each TV.
+Some TVs limit storage by size rather than count; if uploads keep failing after space was freed, rotation pauses after three failures in a row and resumes once an upload succeeds.
+Set ROTATION_INTERVAL_DAYS=0 to turn rotation off. A full TV then reports storage full, keeps what's on it, and retries one upload a day, or immediately once something on the TV is removed.
+
+Q: How many pictures can a Samsung Frame TV hold?
+A: It depends on the model, the firmware, and the file sizes. Frame TV Art Manager learns each TV's limit the first time the TV refuses an upload because it's full.
+
+Q: What does the storage full error on The Frame mean?
+A: The TV's built-in storage for your pictures is full, so it rejects new uploads until something is deleted. Frame TV Art Manager rotates its own uploads to make room automatically.
+
+Q: Will rotation delete my photos?
+A: No. It only removes copies it uploaded from the TV. Files in your folder and pictures you added to the TV yourself are never deleted.
+
+Q: How do I stop duplicate photos filling my Frame TV?
+A: Use an uploader that recognizes pictures by content. Frame TV Art Manager never uploads a picture that's already on the TV, even under a new name.
+
+## Samsung Frame TV art troubleshooting
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-art-mode-troubleshooting.html
+
+Short answer: most problems come down to three things: the TV hasn't approved the connection, the TV was off or not in Art Mode during the sync, or its storage is full. Check http://SERVER-IP:8080/status; each TV's status says which it is, and the sections below explain each one.
+
+### The TV never shows an Allow/Deny prompt
+- Make sure the TV is on and in Art Mode, and that the server can reach it (ping TV-IP).
+- Check TV_IPS matches the TV's current address, and give the TV a DHCP reservation so it doesn't change.
+- If you pressed Deny before, remove the entry from the TV's device connection settings and restart the container.
+- Keep /data/tokens across upgrades. Without the saved token, the TV asks again.
+
+### What each status means
+Per-TV status values in /status
+- Status | Meaning | What to do
+- ok | The last sync finished. | Nothing.
+- skipped (not art mode) | The TV was showing other content. | Nothing; it tries again next sync.
+- skipped (powered off) | The TV was off. | Nothing, or set TV_MAC to wake it.
+- backoff, unreachable | The TV didn't answer; retries wait longer, up to an hour. | Check the IP address and that server and TV share a network.
+- storage full | Rotation is off, or the TV is full of art the manager didn't upload. | See the storage guide.
+- recovery required | An upload or delete was interrupted before its result was confirmed. | Usually clears on its own; see below.
+- dry-run | DRY_RUN=true is set. | Unset it to make changes.
+
+### Pictures don't appear on the TV
+- Wait for the next sync (30 minutes by default), or restart the container to sync now.
+- Only .jpg, .jpeg, and .png are used. Hidden files, temporary files, JSON, YAML, and symlinks are ignored.
+- Look in Art Mode under My Photos; uploaded pictures appear there, not in the Art Store.
+- The manager doesn't choose what's on screen. Turn on the TV's slideshow, or set SLIDESHOW_ENABLED, to cycle through new art.
+
+### "Recovery required" won't clear
+To avoid duplicates or wrong deletions, that TV is paused until the result can be confirmed. If it doesn't clear on later syncs,
+stop the container and delete that TV's tv_*_reconciliation.json file in the tokens folder. The manager then forgets which art it uploaded:
+existing art stays on the TV as if you'd added it yourself, and your collection is uploaded again.
+
+### Art looks cropped, blurry, or too bright
+- Cropped portraits: the default PORTRAIT_MODE=pad shows them whole; see the portrait guide.
+- Blurry: the source is too small for 4K; see the art size guide.
+- Too bright or dim at night: set BRIGHTNESS, or SOLAR_BRIGHTNESS_ENABLED=true to follow the sun.
+- Left on all night: AUTO_OFF_TIME turns off TVs showing art at a set time.
+
+### Permission errors on /data
+Create the folders yourself with mkdir -p data/artwork data/tokens, then set PUID and PGID to the owner you want,
+or own the folders and add user: "UID:GID" to the service with PUID/PGID unset.
+
+### Upload page errors
+HEIC photos, wrong passwords, and parallel uploads cause most upload errors. The Apple Photos guide lists every response and its fix.
+
+### Still stuck?
+Open an issue on GitHub with your TV model, firmware version, and the relevant log lines.
+Logs are JSON; errors from the TV include error_kind, operation, and retryable fields. Set LOG_LEVEL=debug for more detail.
+
+Q: Why isn't my Frame TV showing the Allow prompt?
+A: The TV must be on, in Art Mode, and reachable from the server. If you denied it before, remove the entry from the TV's device connection settings and restart the container.
+
+Q: Why is my Frame TV skipped during sync?
+A: It was off or showing other content. Frame TV Art Manager never changes a TV whose state it can't confirm, and tries again on the next sync.
+
+Q: Why don't new pictures show on the TV?
+A: They are added to My Photos on the next sync, but the TV decides which piece is on screen. Turn on the slideshow to cycle through new art.
+
+## SmartThings alternative for Samsung Frame TV art
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-manager-vs-smartthings.html
+
+Short answer: if you add a photo now and then, Samsung's SmartThings app is the simplest way. Frame TV Art Manager is a local alternative for people with a NAS or home server who want The Frame to follow a folder automatically, with several TVs, large collections, portraits shown whole, and rotation when the TV is full. You can use both.
+
+### Ways to get art onto The Frame, side by side
+Getting art onto a Samsung Frame TV (as of November 2026)
+- | SmartThings app | USB stick | Art Store | Frame TV Art Manager
+- What you get | Your photos | Your photos | Samsung's licensed catalog | Your photos and free sources
+- Cost | Free app | Free | US$4.99/month or US$49.99/year (US, reported Oct 2026) | Free for personal use
+- Account | Samsung account | None | Samsung account | None
+- How art arrives | Pick photos on your phone | Plug in at the TV | Choose in Art Mode | Copy into a folder; syncs every 30 minutes
+- Several TVs | One at a time | One at a time | Per TV | All from one folder
+- Duplicates | Up to you | Up to you | Not applicable | Never uploads the same picture twice
+- Portraits | Cropped by hand or Samsung matte | Samsung matte | Prepared by Samsung | Whole on a tinted gallery mat, or paired
+- Storage full | Delete by hand | Delete by hand | Managed by Samsung | Rotates automatically
+- Needs | A phone | A USB stick | A subscription | An always-on computer running Docker
+- Support | Samsung | Samsung | Samsung | GitHub issues
+
+### SmartThings and its API
+The SmartThings phone app stays free. Separately, in June 2026 Samsung announced paid access to the
+SmartThings API, which tools and smart-home integrations use: a US$4.99-a-month personal plan, with free access through the
+third quarter of 2026. Frame TV Art Manager doesn't use SmartThings or its API; it talks to the TV on your local network.
+Some owners have also reported since July 2025 that the "Display All" slideshow of My Photos asked for an Art Store subscription
+(forum thread); Samsung's help pages still describe it as free. See
+Frame TV art without a subscription.
+
+### Other community tools
+Several community projects also work with The Frame, including Home Assistant integrations and Python libraries for Samsung's
+Art Mode API. They suit different needs: some focus on remote control, others are building blocks for your own scripts.
+When choosing one for unattended use, check how it handles duplicates, whether its cleanup can delete pictures you uploaded by
+hand, and what it does when the TV is off or unreachable.
+
+### Choose Frame TV Art Manager when
+- You already run a NAS, home server, mini PC, or Mac that stays on.
+- Your art lives in a folder, or you'd like it to.
+- Your collection is bigger than the TV holds and should rotate.
+- You have more than one Frame.
+- You shoot portraits and want them shown whole.
+- You'd like museum or NASA art to arrive on its own.
+
+### Choose SmartThings when
+- You only add a photo now and then.
+- You don't want a computer running all the time.
+- You prefer an official app with Samsung support.
+
+### Using both
+Frame TV Art Manager only manages pieces it uploaded. Anything you add through SmartThings or USB stays on the TV and is never
+rotated out, unless you deliberately set REMOVE_UNKNOWN_IMAGES=true. Those pieces do take up space, which leaves less room for rotation.
+
+### Why not a simple upload script?
+Uploading files is easy. Keeping a TV matched to a folder for months without mistakes is harder: knowing which pieces you uploaded
+and which you didn't, not treating an unreachable TV or failed folder scan as "delete everything", coping with a full TV, and surviving a power
+cut mid-write. Frame TV Art Manager keeps checksummed per-TV records, writes them so a crash can't leave a half-written file, and makes no changes
+when it can't confirm what's on the TV.
+
+Q: Is there an alternative to SmartThings for Frame TV art?
+A: Yes. A USB stick works without an account, and Frame TV Art Manager uploads from a folder on your home network without SmartThings or a Samsung account.
+
+Q: Does the SmartThings API price change affect Frame TV Art Manager?
+A: No. Frame TV Art Manager talks to the TV directly on your local network and doesn't use the SmartThings API.
+
+Q: Can I use SmartThings and Frame TV Art Manager together?
+A: Yes. Frame TV Art Manager only manages the pieces it uploaded, so photos you add through SmartThings stay on the TV.

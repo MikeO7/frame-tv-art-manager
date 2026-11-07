@@ -3,19 +3,75 @@
 This document is an operator checklist for the public project site. It is not
 included in the GitHub Pages artifact.
 
-## Search intent map
+## Keyword research (November 2026)
 
-| Intent | Target page | Primary query family |
+Sources: about 90 Google autocomplete queries
+(`suggestqueries.google.com/complete/search?client=firefox&q=…`, including
+a–z expansions of "samsung frame tv art" and "frame tv art mode"), web search
+for People Also Ask style questions, and owner threads on Samsung's community
+forum. Autocomplete returned nothing for self-hosting seeds (docker,
+synology, unraid, self hosted, github) or for "storage full", "slideshow own
+photos", and "portrait photos". Those terms have too little volume to appear,
+so pages lead with mainstream pain-point wording and use the NAS and Docker
+terms as secondary, long-tail targets.
+
+Clusters seen in autocomplete, strongest fit for this project first:
+
+1. Subscription: "samsung frame tv art without subscription", "how to get art
+   on frame tv without subscription", "samsung art store subscription cost",
+   "does the frame tv come with free art".
+2. Free art: "free frame tv art", "frame tv art 4k free", "free public domain
+   art for frame tv", "best art for frame tv free", plus seasonal variants
+   (christmas, fall, halloween).
+3. Uploading: "upload photos to samsung frame tv", "add photos to samsung
+   frame tv iphone", "transfer photos to samsung frame tv", "add photos to
+   samsung frame tv usb".
+4. Size and format: "frame tv art size", "frame tv art dimensions", "samsung
+   frame tv art resolution", "samsung frame tv art aspect ratio", "frame tv
+   photo converter".
+5. Matte and portrait: "samsung frame tv portrait art", "samsung frame tv
+   vertical art", "frame tv matte border", "samsung frame tv art no mat",
+   "samsung frame tv photos full screen".
+6. Home Assistant: "samsung frame tv art mode home assistant", "frame tv home
+   assistant".
+7. Troubleshooting: "frame tv art mode not working", "samsung frame tv art
+   disappeared", "frame tv slideshow not working".
+
+Dated competitive facts used on the site, with sources cited in the pages:
+
+- Samsung Art Store: US$4.99 a month or US$49.99 a year (SamMobile, updated
+  2026-10-05). Prices vary by country.
+- Owners have reported since about July 2025 on Samsung's community forum that
+  the My Photos "Display All" slideshow asked for an Art Store subscription.
+  Samsung's own Art Mode page still describes it as free. The site presents
+  both, as owner reports, never as a confirmed Samsung policy.
+- SmartThings API: Samsung announced paid access on 2026-06-23, with a
+  US$4.99-a-month personal plan, and free access through Q3 2026.
+
+Re-check these facts, and the "as of" dates on the comparison page, every
+quarter.
+
+## Keyword-to-page map
+
+| Page | Primary keyword | Secondary keywords |
 | --- | --- | --- |
-| Product discovery | `/` | Samsung Frame TV art manager; Frame TV art sync |
-| Automation | `/guides/automatically-upload-art-samsung-frame-tv.html` | automatically upload art to Samsung Frame TV; sync Frame TV artwork |
-| Self-hosting | `/guides/samsung-frame-tv-docker.html` | Samsung Frame TV Docker; Frame TV art manager NAS, Synology, Unraid |
-| Evaluation | `/guides/frame-tv-art-manager-vs-smartthings.html` | SmartThings alternative for Frame TV art; Frame TV Art Manager vs SmartThings |
-| Storage full | `/guides/samsung-frame-tv-storage-full-art-rotation.html` | Samsung Frame TV storage full; rotate art on Frame TV automatically |
-| Apple Photos | `/guides/apple-photos-to-samsung-frame-tv.html` | send Apple Photos to Samsung Frame TV; iPhone Shortcut Frame TV upload |
+| `/` | samsung frame tv art (no subscription, self-hosted) | frame tv art without subscription; samsung art store alternative; frame tv art sync; Frame TV Art Manager |
+| `/guides/frame-tv-art-without-subscription.html` | frame tv art without subscription | samsung art store subscription cost; does the frame tv come with free art; frame tv slideshow own photos |
+| `/guides/automatically-upload-art-samsung-frame-tv.html` | upload photos to samsung frame tv | automatically upload art; transfer photos to frame tv; upload without SmartThings; duplicate uploads |
+| `/guides/samsung-frame-tv-portrait-photos-mat.html` | samsung frame tv portrait photos | vertical art; frame tv matte border; art no mat; full screen; photos cropped |
+| `/guides/free-public-domain-art-samsung-frame-tv.html` | free frame tv art | free public domain art for frame tv; frame tv art 4k free; best free art; museum open access |
+| `/guides/samsung-frame-tv-art-size.html` | frame tv art size | 3840x2160; dimensions; resolution; aspect ratio; format jpeg; blurry |
+| `/guides/samsung-frame-tv-docker.html` | samsung frame tv docker | docker compose; self-hosted frame tv art; raspberry pi |
+| `/guides/frame-tv-art-synology-unraid-truenas.html` | frame tv art synology | unraid; truenas; NAS; container manager |
+| `/guides/home-assistant-samsung-frame-tv-art.html` | samsung frame tv art mode home assistant | frame tv home assistant; SmartThings API fee; local control |
+| `/guides/apple-photos-to-samsung-frame-tv.html` | add photos to samsung frame tv from iphone | apple photos frame tv; iPhone Shortcut; HEIC |
+| `/guides/samsung-frame-tv-storage-full-art-rotation.html` | samsung frame tv storage full | how many photos can frame tv hold; delete art; art rotation; duplicates |
+| `/guides/samsung-frame-tv-art-mode-troubleshooting.html` | samsung frame tv art not working | allow prompt; art not showing; art mode troubleshooting |
+| `/guides/frame-tv-art-manager-vs-smartthings.html` | smartthings alternative frame tv | frame tv without smartthings; SmartThings API pricing; comparison |
 
 The pages should answer their target intent directly without repeating the
-same complete article under multiple URLs.
+same complete article under multiple URLs. Existing URLs are permanent; add
+pages rather than renaming them.
 
 Each page targets one primary query. It appears naturally in the `<title>`
 (60 characters or fewer), the meta description (155 characters or fewer,
@@ -42,13 +98,29 @@ so it is cited accurately:
 - Guides show a visible "Last updated" date in a `<time>` element. That date
   matches `dateModified` in the JSON-LD and `lastmod` in the sitemap.
 - Structured data mirrors visible content only. The homepage carries
-  `SoftwareApplication` and `FAQPage`, and its visible FAQ must equal the
-  JSON-LD questions (the validator enforces this). Every guide carries
-  `TechArticle` and `BreadcrumbList`. `HowTo` appears only on the Docker and
-  Apple Photos guides, for the numbered steps shown on those pages.
+  `SoftwareApplication` (with a free `Offer`) and `FAQPage`. Every guide
+  carries `TechArticle` and `BreadcrumbList`. Guides with a visible
+  "Questions people ask" section carry `FAQPage`, and every page's visible FAQ
+  must equal its JSON-LD questions. `HowTo` appears only on the Docker and
+  Synology/Unraid/TrueNAS guides, for the numbered steps shown on those pages.
+- Only merged behavior is described. Planned features (currently the MCP
+  server) are labelled "coming soon" in prose and never appear in
+  `featureList` or other structured data.
+- Images are WebP at 640 and 1280 pixels wide, under 150 KB each, with
+  `width`, `height`, and descriptive `alt`. Before-and-after art is rendered by
+  the real optimizer from public-domain works, credited on the page (artist,
+  title, year, collection, public domain).
+- Search is the top priority, but no trackers or third-party scripts: the
+  site is static HTML and one stylesheet with system fonts.
 - `llms.txt` is a concise fact sheet: defaults, limits, safety rules, a short
-  common-questions list, and indexable page URLs only. Update its "Last
-  substantive update" line whenever a fact changes.
+  common-questions list, and indexable page URLs only. `llms-full.txt` is a
+  plain-text digest of every page. Update the "Last substantive update" lines
+  whenever a fact changes.
+- `scripts/validate-pages-site.py` enforces titles of 60 characters or fewer,
+  descriptions of 155 or fewer, unique titles and descriptions, one `h1`,
+  landmarks, image dimensions and alt text, JSON-LD parsing, FAQ parity,
+  article dates matching the sitemap, sitemap coverage, link and fragment
+  integrity, and a 1200×630 social image.
 - `robots.txt` explicitly allows the major search and AI crawlers. GitHub
   Pages serves it under `/frame-tv-art-manager/`, but crawlers only read
   `robots.txt` at the host root (`mikeo7.github.io/robots.txt`), which this
@@ -96,6 +168,10 @@ whether the answer cites a project page and whether it gets the facts right.
 - "Can I run Samsung Frame TV art sync in Docker on a Synology or Unraid?"
 - "How do I send Apple Photos to a Samsung Frame TV?"
 - "Is there a SmartThings alternative for Frame TV art?"
+- "How do I get art on a Frame TV without a subscription?"
+- "How do I show portrait photos on a Samsung Frame TV without cropping?"
+- "Where can I get free public-domain art for The Frame?"
+- "What size should pictures be for a Samsung Frame TV?"
 - "Is Frame TV Art Manager open source?" (the correct answer is no: it is
   source-available under PolyForm Noncommercial 1.0.0)
 
