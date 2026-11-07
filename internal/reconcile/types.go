@@ -205,6 +205,10 @@ type TVIdentity struct {
 	Address         string `json:"address"`
 	Model           string `json:"model"`
 	FirmwareVersion string `json:"firmware_version,omitempty"`
+	// DeviceID is the TV's stable identifier (DUID). When both sides know it,
+	// it identifies the TV instead of its address, so an address change keeps
+	// the record. Older state files omit it.
+	DeviceID string `json:"device_id,omitempty"`
 }
 
 type Binding struct {

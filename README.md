@@ -379,7 +379,7 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `SYNC_INTERVAL_MINUTES` | `30` | Time between syncs |
 | `CLIENT_NAME` | `Frame Art Manager` | Name shown in the TV's Allow/Deny prompt |
 | `ARTWORK_DIR` | `/data/artwork` | Your collection |
-| `TOKEN_DIR` | `/data/tokens` | Pairing tokens and per-TV records |
+| `TOKEN_DIR` | `/data/tokens` | Pairing tokens and per-TV records. Records follow the TV's device ID, so a new IP address keeps them |
 | `ROTATION_INTERVAL_DAYS` | `14` | Days each piece stays on a full TV; `0` turns rotation off |
 | `MATTE_STYLE` | `none` | Matte for every upload |
 | `PORTRAIT_MATTE` | same as `MATTE_STYLE` | Matte the TV uses when it shows art in portrait orientation |

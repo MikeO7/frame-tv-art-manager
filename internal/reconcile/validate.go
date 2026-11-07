@@ -33,6 +33,7 @@ func identityFromObservation(observation samsung.Observation) (TVIdentity, error
 		Address:         strings.TrimSpace(observation.TV.Address),
 		Model:           strings.TrimSpace(observation.TV.Model),
 		FirmwareVersion: strings.TrimSpace(observation.TV.FirmwareVersion),
+		DeviceID:        strings.TrimSpace(observation.TV.DeviceID),
 	}
 	return identity, validateIdentity(identity)
 }
@@ -127,6 +128,9 @@ func validateCapacityEvidence(capacity CapacityEvidence) error {
 }
 
 func sameStableTV(left, right TVIdentity) bool {
+	if left.DeviceID != "" && right.DeviceID != "" {
+		return left.DeviceID == right.DeviceID && left.Model == right.Model
+	}
 	return left.Address == right.Address && left.Model == right.Model
 }
 
