@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-11-06">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="Portraits and mats">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Portrait photos on Samsung The Frame: a gallery mat instead of a crop">
@@ -44,7 +44,7 @@
       "name": "Samsung Frame TV Portrait Photos: Mat, Not Crop",
       "description": "Show portrait and square photos whole on The Frame. See before-and-after examples of cropping vs. a charcoal gallery mat, plus collages and mattes.",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "Show portrait and square photos whole on The Frame. See before-and-after examples of cropping vs. a charcoal gallery mat, plus collages and mattes.",
       "inLanguage": "en",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -205,7 +205,7 @@
 <p class="eyebrow">Portraits and mats</p>
 <h1>Portrait photos on Samsung The Frame: a gallery mat, not a crop</h1>
 <p class="answer"><strong>Short answer:</strong> The Frame's screen is a 16:9 landscape, so a portrait photo either gets cropped, which often cuts off heads, or needs a border. Frame TV Art Manager shows portraits, square art, panoramas, and small images whole on a deep charcoal gallery mat, faintly tinted from the art's own colors and calm in a dark room. You can also pair two portraits side by side or keep cropping.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <nav class="toc" aria-labelledby="toc-title">
 <h2 id="toc-title">On this page</h2>
@@ -303,6 +303,8 @@ height, in a double-opening gallery mat. A portrait without a good partner waits
 }</code></pre>
 <p>An override keeps working after the manager renames the file. An invalid <code>mattes.json</code> stops the sync before any TV is touched, so a typo can't go unnoticed.
 The gallery mat is part of the picture itself, so with the default <code>MATTE_STYLE=none</code> you won't get a border inside a border.</p>
+<p><code>PORTRAIT_MATTE</code> sets the matte the TV uses when it shows art in portrait orientation; it defaults to the same value as <code>MATTE_STYLE</code>.
+Before each upload the manager checks the matte against the list the TV reports, and a matte the TV doesn't offer is replaced with <code>none</code> and logged as a warning.</p>
 </section>
 <section aria-labelledby="settings">
 <h2 id="settings">Settings at a glance</h2>
@@ -317,6 +319,7 @@ The gallery mat is part of the picture itself, so with the default <code>MATTE_S
 <tr><td><code>IMAGE_MAX_UPSCALE</code></td><td><code>3</code></td><td>Largest enlargement before a picture is matted instead</td></tr>
 <tr><td><code>SMART_CROP_ENABLED</code></td><td><code>false</code></td><td>Crop toward the interesting part instead of the center</td></tr>
 <tr><td><code>MATTE_STYLE</code></td><td><code>none</code></td><td>Samsung's own matte for every upload</td></tr>
+<tr><td><code>PORTRAIT_MATTE</code></td><td>same as <code>MATTE_STYLE</code></td><td>Samsung's matte when the TV shows art in portrait orientation</td></tr>
 </tbody></table></div>
 </section>
 <section class="faq" aria-labelledby="faq-title">
@@ -380,6 +383,8 @@ The gallery mat is part of the picture itself, so with the default <code>MATTE_S
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

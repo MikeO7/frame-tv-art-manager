@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-07-26">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="Automatic uploads">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="How to upload photos to a Samsung Frame TV automatically">
@@ -44,7 +44,7 @@
       "name": "Upload Photos to Samsung Frame TV Automatically",
       "description": "Upload photos to a Samsung Frame TV automatically from a folder on your NAS. New art appears within 30 minutes, with no duplicates and no app.",
       "datePublished": "2026-07-26",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "Upload photos to a Samsung Frame TV automatically from a folder on your NAS. New art appears within 30 minutes, with no duplicates and no app.",
       "inLanguage": "en",
       "datePublished": "2026-07-26",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -203,7 +203,7 @@
 <p class="eyebrow">Automatic uploads</p>
 <h1>How to upload photos to a Samsung Frame TV automatically</h1>
 <p class="answer"><strong>Short answer:</strong> run Frame TV Art Manager on a NAS or home server, give it your Frame TV's IP address, and put JPEG or PNG files in its artwork folder. It uploads new pictures at startup and every 30 minutes, removes ones you delete from the folder, never uploads the same picture twice, and leaves art you added yourself alone. No SmartThings app or Samsung account is needed.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <nav class="toc" aria-labelledby="toc-title">
 <h2 id="toc-title">On this page</h2>
@@ -257,7 +257,8 @@ missing, and removes pieces it uploaded that you have since deleted from the fol
 <li><strong>Upload what's missing</strong> and remove pieces you deleted from the folder.</li>
 <li><strong>Apply TV settings</strong> such as slideshow, brightness, or power-off, only if you configured them.</li>
 </ol>
-<p>The prepared version of each picture replaces it in the artwork folder, and the untouched original is kept in the folder’s hidden <code>.frame-tv-art-manager/originals</code> directory. Prepared versions are always re-made from the original, so changing an image setting later never costs quality.</p>
+<p>If you use <a href="seasonal-art-collections-samsung-frame-tv.html">themed collections</a>, each sync also picks which pictures are wanted today, for example only the Christmas art from December 1 to January 6. Pictures that aren't wanted today are removed from the TV but stay in the folder.</p>
+<p>The prepared version of each picture replaces it in the artwork folder, and the untouched original is kept in the folder's hidden <code>.frame-tv-art-manager/originals</code> directory. Prepared versions are always re-made from the original, so changing an image setting later never costs quality.</p>
 </section>
 <section aria-labelledby="no-duplicates">
 <h2 id="no-duplicates">Why you never get duplicates</h2>
@@ -281,7 +282,8 @@ Each TV gets the same collection and is tracked separately, so a TV that's off d
 <ul>
 <li><strong>Network share:</strong> copy files into the artwork folder from any computer.</li>
 <li><strong>Upload page:</strong> turn on <code>UPLOAD_ENABLED</code> and open <code>http://SERVER-IP:8080/upload</code> in a browser. It also accepts iPhone Shortcuts and <code>curl</code>; see the <a href="apple-photos-to-samsung-frame-tv.html">Apple Photos guide</a>.</li>
-<li><strong>Online sources:</strong> NASA, the Art Institute of Chicago, Unsplash, Pexels, Pixabay, and direct image links; see the <a href="free-public-domain-art-samsung-frame-tv.html">free art guide</a>.</li>
+<li><strong>Online sources:</strong> public-domain works from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK, and Wikimedia Commons' Picture of the Day and Featured Pictures, all with no API key; plus NASA, Unsplash, Pexels, Pixabay, and direct image links. See the <a href="free-public-domain-art-samsung-frame-tv.html">free art guide</a>.</li>
+<li><strong>An AI assistant:</strong> with the optional MCP endpoint, Claude or another assistant can add images it makes or finds, preview them, and schedule them; see the <a href="ai-art-samsung-frame-tv-mcp.html">AI art guide</a>.</li>
 </ul>
 </section>
 <section aria-labelledby="safety">
@@ -290,7 +292,7 @@ Each TV gets the same collection and is tracked separately, so a TV that's off d
 <li>Delete art you added yourself, unless <code>REMOVE_UNKNOWN_IMAGES=true</code>.</li>
 <li>Choose which piece is on screen. The TV and its slideshow decide.</li>
 <li>Change anything on a TV whose state it can't confirm. That TV is skipped until the next sync.</li>
-<li>Treat a failed folder scan or a website that's down as "delete everything".</li>
+<li>Treat a failed folder scan or a website that's down as "delete everything". A failing source keeps its last good results, and the rest of the sync goes ahead.</li>
 <li>Change anything at all in a dry run (<code>DRY_RUN=true</code>).</li>
 </ul>
 </section>
@@ -355,6 +357,8 @@ Each TV gets the same collection and is tracked separately, so a TV that's off d
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

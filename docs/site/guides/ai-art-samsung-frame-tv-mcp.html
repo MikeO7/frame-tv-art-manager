@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Art for Samsung Frame TV with Claude or ChatGPT (MCP)</title>
+<meta name="description" content="Make AI art for The Frame with Claude over MCP: your assistant makes the images; Frame TV Art Manager sizes, previews, and schedules them. No API keys.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html">
+<link rel="stylesheet" href="../styles.css">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager fact sheet">
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="Frame TV Art Manager">
+<meta property="og:title" content="Make AI art for your Samsung Frame TV with Claude or ChatGPT">
+<meta property="og:description" content="Your own AI assistant makes the images; Frame TV Art Manager&#x27;s MCP endpoint sizes, previews, schedules, and syncs them to The Frame. No AI keys in the app.">
+<meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html">
+<meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
+<meta property="article:published_time" content="2026-11-07">
+<meta property="article:modified_time" content="2026-11-07">
+<meta property="article:section" content="AI art with MCP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Make AI art for your Samsung Frame TV with Claude or ChatGPT">
+<meta name="twitter:description" content="Your own AI assistant makes the images; Frame TV Art Manager&#x27;s MCP endpoint sizes, previews, schedules, and syncs them to The Frame. No AI keys in the app.">
+<meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+<meta name="twitter:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#webpage",
+      "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html",
+      "name": "AI Art for Samsung Frame TV with Claude or ChatGPT (MCP)",
+      "description": "Make AI art for The Frame with Claude over MCP: your assistant makes the images; Frame TV Art Manager sizes, previews, and schedules them. No API keys.",
+      "datePublished": "2026-11-07",
+      "dateModified": "2026-11-07",
+      "isPartOf": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
+      },
+      "breadcrumb": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#breadcrumbs"
+      },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "TechArticle",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#article",
+      "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html",
+      "headline": "Make AI art for your Samsung Frame TV with Claude or ChatGPT (MCP)",
+      "description": "Make AI art for The Frame with Claude over MCP: your assistant makes the images; Frame TV Art Manager sizes, previews, and schedules them. No API keys.",
+      "inLanguage": "en",
+      "datePublished": "2026-11-07",
+      "dateModified": "2026-11-07",
+      "author": {
+        "@id": "https://github.com/MikeO7#person"
+      },
+      "publisher": {
+        "@id": "https://github.com/MikeO7#person"
+      },
+      "isPartOf": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
+      },
+      "mainEntityOfPage": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#webpage"
+      },
+      "about": [
+        {
+          "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software"
+        },
+        "Samsung The Frame",
+        "Model Context Protocol",
+        "AI-generated art",
+        "Claude"
+      ],
+      "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+      "citation": [
+        "https://modelcontextprotocol.io",
+        "https://github.com/MikeO7/frame-tv-art-manager#ai-assistants-mcp",
+        "https://www.npmjs.com/package/mcp-remote"
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#breadcrumbs",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Frame TV Art Manager",
+          "item": "https://mikeo7.github.io/frame-tv-art-manager/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Guides",
+          "item": "https://mikeo7.github.io/frame-tv-art-manager/#guides"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "AI art with MCP",
+          "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html"
+        }
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website",
+      "url": "https://mikeo7.github.io/frame-tv-art-manager/",
+      "name": "Frame TV Art Manager"
+    },
+    {
+      "@type": "Person",
+      "@id": "https://github.com/MikeO7#person",
+      "name": "MikeO7",
+      "url": "https://github.com/MikeO7"
+    },
+    {
+      "@type": "HowTo",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#howto",
+      "name": "Connect an AI assistant to Frame TV Art Manager over MCP",
+      "description": "Turn on Frame TV Art Manager's MCP endpoint and connect Claude Code, Claude Desktop, or another MCP client so it can build art collections for a Samsung Frame TV.",
+      "inLanguage": "en",
+      "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+      "step": [
+        {
+          "@type": "HowToStep",
+          "position": 1,
+          "name": "Make a token",
+          "text": "Run openssl rand -hex 24 and keep the result. The token must be at least 24 characters with no spaces.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#step-token"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 2,
+          "name": "Turn on the endpoint",
+          "text": "Add MCP_ENABLED and MCP_TOKEN to the container's environment, as below, and run docker compose up -d.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#step-enable"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 3,
+          "name": "Connect your assistant",
+          "text": "Add the server to Claude Code or Claude Desktop with the commands below, or to any MCP client that supports streamable HTTP.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#step-connect"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 4,
+          "name": "Check the connection",
+          "text": "Ask \"What does my Frame TV need from an image?\" The assistant should call get_display_spec and answer with the screen's size.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#step-check"
+        }
+      ],
+      "supply": [
+        {
+          "@type": "HowToSupply",
+          "name": "Frame TV Art Manager running with its web server on (HEALTH_PORT, default 8080)"
+        },
+        {
+          "@type": "HowToSupply",
+          "name": "An MCP client such as Claude Code or Claude Desktop"
+        }
+      ],
+      "tool": [
+        {
+          "@type": "HowToTool",
+          "name": "openssl, or another way to make a long random token"
+        }
+      ],
+      "totalTime": "PT10M"
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#faq",
+      "isPartOf": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html#webpage"
+      },
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do I need an OpenAI or Anthropic API key to make AI art for my Frame TV?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Not for Frame TV Art Manager. It holds no AI keys and calls no AI service. Your assistant makes the images under your own account with it, and the manager sizes, previews, schedules, and syncs them."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which AI assistants work with Frame TV Art Manager?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Claude Code, Claude Desktop through the mcp-remote bridge, and other MCP clients that support streamable HTTP with an Authorization header and can reach your server. An assistant that connects from its own cloud servers needs the endpoint exposed behind a TLS reverse proxy."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can the AI assistant delete my photos or change what's on screen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. No tool deletes image files, and there is no tool to show a picture right away. The TV changes only through the normal sync and its safety checks."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What size should AI-generated art be for The Frame?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A 16:9 landscape, ideally exactly 3840×2160 pixels, as JPEG or PNG. Anything smaller than about 2560×1440 is visibly enlarged on the 4K screen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can my assistant use real paintings instead of AI images?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The search_public_domain_art tool searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works, and add_artwork records each one's title, artist, license, and museum link."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+<div class="wrap">
+<a class="brand" href="../"><img src="../assets/favicon.svg" width="28" height="28" alt=""><span>Frame TV Art Manager</span></a>
+<nav class="site-nav" aria-label="Main">
+<ul>
+<li><a href="../#how-it-works">How it works</a></li>
+<li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits</a></li>
+<li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free art</a></li>
+<li><a href="../guides/samsung-frame-tv-docker.html">Install</a></li>
+<li><a href="../#guides">Guides</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="main" class="article">
+<div class="wrap">
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+<ol><li><a href="../">Home</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">AI art with MCP</li></ol>
+</nav>
+<article>
+<header>
+<p class="eyebrow">AI art with MCP</p>
+<h1>Make AI art for your Samsung Frame TV with Claude or ChatGPT (MCP)</h1>
+<p class="answer"><strong>Short answer:</strong> Frame TV Art Manager has a built-in MCP endpoint, off by default, that lets your own AI assistant build art collections for your Samsung Frame TV. The assistant makes the images with its own tools; the manager holds no AI keys and calls no AI service. It tells the assistant the screen's exact size and format, stores and checks each image, previews how it will be fitted, puts it in a themed collection, schedules it, and syncs it to the TV. Turn it on with <code>MCP_ENABLED=true</code> and an <code>MCP_TOKEN</code> of at least 24 characters, then connect Claude Code, Claude Desktop, or another MCP client.</p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-07">November 7, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
+</header>
+<nav class="toc" aria-labelledby="toc-title">
+<h2 id="toc-title">On this page</h2>
+<ol>
+<li><a href="#what-is-mcp">What MCP is</a></li>
+<li><a href="#no-api-keys">Why the manager needs no AI keys</a></li>
+<li><a href="#set-up">Set it up in four steps</a></li>
+<li><a href="#tools">The tools your assistant gets</a></li>
+<li><a href="#example">Example: a Christmas collection</a></li>
+<li><a href="#prompt-tips">Prompt tips for a matte art screen</a></li>
+<li><a href="#limits">What the assistant can't do</a></li>
+<li><a href="#safety">Keep it safe</a></li>
+<li><a href="#faq-title">Questions people ask</a></li>
+</ol>
+</nav>
+<section aria-labelledby="what-is-mcp">
+<h2 id="what-is-mcp">What MCP is</h2>
+<p>The <a href="https://modelcontextprotocol.io">Model Context Protocol</a> (MCP) is an open standard that lets an AI assistant use tools provided by
+other programs. A program that speaks MCP, called a server, lists its tools with their names, inputs, and purpose, and the assistant
+decides when to call them during a conversation. Frame TV Art Manager is an MCP server: when you ask your assistant for a Christmas
+collection, it calls the manager's tools to read the TV's display spec, add the images, and set the dates.</p>
+</section>
+<section aria-labelledby="no-api-keys">
+<h2 id="no-api-keys">Why the manager needs no AI keys</h2>
+<p>The images come from your assistant, under your own account with it. Frame TV Art Manager never calls an AI service and stores no AI credentials. Its job is everything that happens after an image exists:</p>
+<ul class="check">
+<li>Telling the assistant what the TV needs: 3840×2160 by default, 16:9, sRGB, JPEG or PNG, the size limit, and how other shapes are cropped or matted.</li>
+<li>Storing each image after checking it is a real JPEG or PNG, and recognizing duplicates by their contents.</li>
+<li>Showing a preview of each picture exactly as it will be prepared for the TV.</li>
+<li>Putting the pictures in a themed collection, scheduling it, and starting a sync.</li>
+</ul>
+<p>If your assistant can't make images, it can still search public-domain museum collections, or add images from <code>https</code> links you give it.</p>
+</section>
+<section aria-labelledby="set-up">
+<h2 id="set-up">Set it up in four steps</h2>
+<ol class="steps">
+<li id="step-token"><h3 id="step-token-title">Make a token</h3><p>Run <code>openssl rand -hex 24</code> and keep the result. The token must be at least 24 characters with no spaces.</p></li>
+<li id="step-enable"><h3 id="step-enable-title">Turn on the endpoint</h3><p>Add <code>MCP_ENABLED</code> and <code>MCP_TOKEN</code> to the container's environment, as below, and run <code>docker compose up -d</code>.</p></li>
+<li id="step-connect"><h3 id="step-connect-title">Connect your assistant</h3><p>Add the server to Claude Code or Claude Desktop with the commands below, or to any MCP client that supports streamable HTTP.</p></li>
+<li id="step-check"><h3 id="step-check-title">Check the connection</h3><p>Ask "What does my Frame TV need from an image?" The assistant should call <code>get_display_spec</code> and answer with the screen's size.</p></li>
+</ol>
+<figure>
+<figcaption><strong>compose.yaml</strong> (add to the service's <code>environment</code>)</figcaption>
+<pre><code>    environment:
+      MCP_ENABLED: "true"
+      MCP_TOKEN: "paste-the-output-of: openssl rand -hex 24"</code></pre>
+</figure>
+<p>The endpoint is <code>http://&lt;server-address&gt;:8080/mcp</code> (port <code>HEALTH_PORT</code>, which must stay on), and every request must send
+<code>Authorization: Bearer &lt;MCP_TOKEN&gt;</code>. While <code>MCP_ENABLED</code> is off, the address returns <code>404</code>.</p>
+<h3 id="claude-code">Claude Code</h3>
+<pre><code>claude mcp add --transport http frame-tv http://&lt;server-address&gt;:8080/mcp \
+  --header "Authorization: Bearer &lt;MCP_TOKEN&gt;"</code></pre>
+<h3 id="claude-desktop">Claude Desktop</h3>
+<p>Claude Desktop connects through the <a href="https://www.npmjs.com/package/mcp-remote"><code>mcp-remote</code></a> bridge, which needs Node.js.
+Add this to <code>claude_desktop_config.json</code> and restart Claude Desktop:</p>
+<pre><code>{
+  "mcpServers": {
+    "frame-tv": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://&lt;server-address&gt;:8080/mcp", "--allow-http",
+               "--header", "Authorization:${FRAME_TV_AUTH}"],
+      "env": { "FRAME_TV_AUTH": "Bearer &lt;MCP_TOKEN&gt;" }
+    }
+  }
+}</code></pre>
+<p>Use <code>https://</code> and drop <code>--allow-http</code> when the manager is behind a TLS proxy.</p>
+<h3 id="other-clients">ChatGPT and other MCP clients</h3>
+<p>Other clients use the streamable HTTP transport with the URL and header above. Whether an assistant can connect depends on two things:
+its MCP support must let you send the <code>Authorization</code> header, and it must be able to reach your server. Claude Code and Claude Desktop
+run on your computer, so they reach a server on your home network. An assistant that connects from its own cloud servers, rather than from
+your computer, can't reach a home-network address; it would need the endpoint exposed behind a TLS reverse proxy (see <a href="#safety">Keep it safe</a>).
+Check your assistant's current documentation before exposing anything.</p>
+</section>
+<section aria-labelledby="tools">
+<h2 id="tools">The tools your assistant gets</h2>
+<div class="table-wrap"><table>
+<caption>MCP tools provided by Frame TV Art Manager</caption>
+<thead><tr><th scope="col">Tool</th><th scope="col">What it does</th></tr></thead>
+<tbody>
+<tr><td><code>get_display_spec</code></td><td>The target size (3840×2160 by default), aspect ratio, formats, size limit, and how pictures that don't fit are cropped or matted, with prompt tips</td></tr>
+<tr><td><code>search_public_domain_art</code></td><td>Searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works</td></tr>
+<tr><td><code>add_artwork</code></td><td>Stores one JPEG or PNG (an <code>https</code> link or base64 data) in a collection, creating the collection if needed, and records its title, artist, license, and link</td></tr>
+<tr><td><code>preview_artwork</code></td><td>Shows a 960×540 preview of a picture exactly as it will be prepared for the TV; nothing is saved</td></tr>
+<tr><td><code>list_artwork</code></td><td>Lists stored pictures with their collections, whether today's rules show them, and which TVs hold them</td></tr>
+<tr><td><code>list_collections</code>, <code>create_collection</code>, <code>update_collection</code>, <code>delete_collection</code></td><td>Manage collections and their schedules</td></tr>
+<tr><td><code>remove_from_collection</code></td><td>Takes a picture out of a collection</td></tr>
+<tr><td><code>sync_now</code></td><td>Starts a sync now instead of waiting for the next one</td></tr>
+<tr><td><code>get_status</code></td><td>The last sync's result and each TV's state</td></tr>
+</tbody></table></div>
+</section>
+<section aria-labelledby="example">
+<h2 id="example">Example: a Christmas collection</h2>
+<p>This is how a typical request plays out, shortened. Your assistant's wording will differ; the tool calls are the same.</p>
+<div class="note">
+<p><strong>You:</strong> Make me 12 Christmas paintings in the style of Dutch winter landscapes and show them Dec 1 to Jan 6.</p>
+<p><strong>Assistant</strong> calls <code>get_display_spec</code>, learns the screen is 3840×2160 and 16:9, and generates 12 landscape images with its own image tool, in one painterly style, with no text or frames.</p>
+<p><strong>Assistant</strong> calls <code>add_artwork</code> once per image with the collection <code>Christmas</code>, a title, and the prompt as the description. The first call creates the collection, which starts off and exclusive.</p>
+<p><strong>Assistant</strong> calls <code>preview_artwork</code> to check how the pictures will be fitted, then <code>update_collection</code> with the schedule <code>window</code>, <code>12-01</code> to <code>01-06</code>, and finally <code>sync_now</code> and <code>get_status</code>.</p>
+<p><strong>Assistant:</strong> The Christmas collection is scheduled from December 1 to January 6. Until then it stays hidden. On December 1 it replaces your everyday art, and on January 7 your everyday art comes back.</p>
+<p><strong>You:</strong> Add a few real winter paintings too.</p>
+<p><strong>Assistant</strong> calls <code>search_public_domain_art</code> for "winter", lists candidates with their title, artist, museum, and license, and adds the ones you pick with <code>add_artwork</code>, using each result's image link, license, and museum page.</p>
+</div>
+<p>The window opens at midnight in <code>LOCATION_TIMEZONE</code> (UTC by default), so set it to your own time zone. The <a href="seasonal-art-collections-samsung-frame-tv.html">seasonal collections guide</a> explains schedules, exclusive and everyday art, and what happens on a full TV.</p>
+</section>
+<section aria-labelledby="prompt-tips">
+<h2 id="prompt-tips">Prompt tips for a matte art screen</h2>
+<p>The Frame's anti-reflection matte panel makes paintings look like paintings, but it is still a lit screen in your living room. <code>get_display_spec</code> hands your assistant these tips, and they work just as well in your own prompts:</p>
+<ul>
+<li><strong>16:9 landscape, highest resolution.</strong> Ask for a landscape composition at the highest resolution your image model supports, ideally exactly 3840×2160. Anything smaller than about 2560×1440 is visibly enlarged on a 4K screen. Keep the main subject away from the edges.</li>
+<li><strong>Painterly and textured.</strong> Oil, gouache, watercolor, etching, and woodcut styles look most like real art on the matte screen; glossy photoreal renders look like a TV.</li>
+<li><strong>Muted palettes, soft light.</strong> Avoid large pure-white or neon areas: they glow in a dark room at night.</li>
+<li><strong>No text, frames, or watermarks.</strong> Leave out text, signatures, watermarks, borders, frames, and mats; the TV and the manager add their own.</li>
+<li><strong>One style per set.</strong> Keep the style and palette the same across a collection so it feels curated.</li>
+</ul>
+<pre><code>A snowy Dutch canal at dusk with skaters and a windmill, painted in oil
+with visible brushwork, muted blues and warm lamplight, 16:9 landscape,
+no text, no signature, no frame.</code></pre>
+<p>Images that aren't exactly 16:9 are still handled: with the default settings, a landscape image fills the screen when that crops away at most 25%
+and needs no more than 3× enlargement; otherwise it is shown whole on a gallery mat. <code>preview_artwork</code> shows exactly which. See the
+<a href="samsung-frame-tv-art-size.html">art size guide</a> for the details.</p>
+</section>
+<section aria-labelledby="limits">
+<h2 id="limits">What the assistant can't do</h2>
+<ul class="cross">
+<li>Delete image files. Removing a picture from a collection, or deleting a collection, leaves the files in the folder.</li>
+<li>Put a picture on screen right now. There is no "show this picture now" tool; the TV changes only through the normal sync, with all of its safety checks.</li>
+<li>Fetch from your home network. Links must be <code>https</code> and point to the public internet; private addresses are refused, even after redirects.</li>
+<li>Get around the upload rules. Images must be JPEG or PNG, no larger than <code>MAX_DOWNLOAD_SIZE_MB</code> (20 MB by default), and are checked and deduplicated before they are kept.</li>
+<li>Change anything during a dry run. With <code>DRY_RUN=true</code> the read-only tools still work, and tools that would change anything are refused.</li>
+</ul>
+<p>Most assistants hand over generated images as links, so <code>image_url</code> is usually the practical choice; base64 data works for smaller images.</p>
+</section>
+<section aria-labelledby="safety">
+<h2 id="safety">Keep it safe</h2>
+<ul>
+<li><strong>Off by default.</strong> Nothing listens at <code>/mcp</code> until you set <code>MCP_ENABLED=true</code> and a token.</li>
+<li><strong>Treat the token like a password.</strong> Anyone with it can add art, change collections and their schedules, and start a sync, though not delete image files. Use a long random token, such as the output of <code>openssl rand -hex 24</code>.</li>
+<li><strong>Keep it on your home network.</strong> If you expose the endpoint beyond it, put it behind a reverse proxy with TLS; the token is sent with every request. Never forward port 8080 from your router.</li>
+<li><strong>Guessing is slowed down.</strong> Wrong tokens count toward the same per-address limit as upload passwords, and browser requests from other websites are refused.</li>
+</ul>
+</section>
+<section class="faq" aria-labelledby="faq-title">
+<h2 id="faq-title">Questions people ask</h2>
+<details>
+<summary>Do I need an OpenAI or Anthropic API key to make AI art for my Frame TV?</summary>
+<p>Not for Frame TV Art Manager. It holds no AI keys and calls no AI service. Your assistant makes the images under your own account with it, and the manager sizes, previews, schedules, and syncs them.</p>
+</details>
+<details>
+<summary>Which AI assistants work with Frame TV Art Manager?</summary>
+<p>Claude Code, Claude Desktop through the mcp-remote bridge, and other MCP clients that support streamable HTTP with an Authorization header and can reach your server. An assistant that connects from its own cloud servers needs the endpoint exposed behind a TLS reverse proxy.</p>
+</details>
+<details>
+<summary>Can the AI assistant delete my photos or change what's on screen?</summary>
+<p>No. No tool deletes image files, and there is no tool to show a picture right away. The TV changes only through the normal sync and its safety checks.</p>
+</details>
+<details>
+<summary>What size should AI-generated art be for The Frame?</summary>
+<p>A 16:9 landscape, ideally exactly 3840×2160 pixels, as JPEG or PNG. Anything smaller than about 2560×1440 is visibly enlarged on the 4K screen.</p>
+</details>
+<details>
+<summary>Can my assistant use real paintings instead of AI images?</summary>
+<p>Yes. The search_public_domain_art tool searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works, and add_artwork records each one's title, artist, license, and museum link.</p>
+</details>
+</section>
+</article>
+<section class="related" aria-labelledby="related-title">
+<h2 id="related-title">Related guides</h2>
+<div class="grid">
+<a class="card" href="seasonal-art-collections-samsung-frame-tv.html">
+<h3 id="related-seasonal-art-collections-samsung-frame-tv">Seasonal and holiday art collections on The Frame</h3>
+<p>Show Christmas, Halloween, or spring art on yearly dates, then return to your everyday art automatically.</p>
+<span class="more">Read: Seasonal collections <span aria-hidden="true">→</span></span>
+</a>
+<a class="card" href="free-public-domain-art-samsung-frame-tv.html">
+<h3 id="related-free-public-domain-art-samsung-frame-tv">Free public-domain 4K art for Samsung The Frame</h3>
+<p>Museum open-access collections, NASA, and photo sites, and how to pull art from them automatically.</p>
+<span class="more">Read: Free 4K art <span aria-hidden="true">→</span></span>
+</a>
+<a class="card" href="samsung-frame-tv-art-size.html">
+<h3 id="related-samsung-frame-tv-art-size">Samsung Frame TV art size: 3840×2160 explained</h3>
+<p>The right pixel size, aspect ratio, color space, and file format, and what happens to odd shapes.</p>
+<span class="more">Read: Image size <span aria-hidden="true">→</span></span>
+</a>
+</div>
+</section>
+</div>
+</main>
+<footer class="site-footer">
+<div class="wrap">
+<section aria-labelledby="footer-about">
+<h2 id="footer-about">Frame TV Art Manager</h2>
+<p>A self-hosted service that keeps Samsung The Frame's Art Mode in sync with a folder on your home network.</p>
+<p>Free for personal and other noncommercial use under the <a rel="license" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">PolyForm Noncommercial License 1.0.0</a>. Source-available, not open source.</p>
+<p>Independent project; not affiliated with or endorsed by Samsung. Samsung, The Frame, and SmartThings are trademarks of Samsung Electronics.</p>
+</section>
+<section aria-labelledby="footer-guides">
+<h2 id="footer-guides">Guides</h2>
+<ul>
+<li><a href="../guides/frame-tv-art-without-subscription.html">No subscription</a></li>
+<li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
+<li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
+<li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
+<li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
+<li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
+<li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>
+<li><a href="../guides/home-assistant-samsung-frame-tv-art.html">Home Assistant</a></li>
+<li><a href="../guides/apple-photos-to-samsung-frame-tv.html">iPhone and Apple Photos</a></li>
+<li><a href="../guides/samsung-frame-tv-storage-full-art-rotation.html">Storage full</a></li>
+<li><a href="../guides/samsung-frame-tv-art-mode-troubleshooting.html">Troubleshooting</a></li>
+<li><a href="../guides/frame-tv-art-manager-vs-smartthings.html">Comparison</a></li>
+</ul>
+</section>
+<section aria-labelledby="footer-project">
+<h2 id="footer-project">Project</h2>
+<ul>
+<li><a href="../">Home</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager">Source on GitHub</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose">Quick start</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Every setting</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Report an issue</a></li>
+<li><a href="../llms.txt">Fact sheet (llms.txt)</a></li>
+</ul>
+</section>
+</div>
+</footer>
+</body>
+</html>
