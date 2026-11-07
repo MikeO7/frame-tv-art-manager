@@ -154,6 +154,8 @@ func TestProductionPipelinePreservesTypedSlideshowKind(t *testing.T) {
 	if err != nil || first.Status != reconcile.StatusComplete || first.Applied != 1 {
 		t.Fatalf("first typed slideshow reconciliation = %+v, %v", first, err)
 	}
+	// The TV keeps playing its current category; only interval and kind change.
+	desired.Category = "MY-C0002"
 	if got := fixture.SlideshowSetting(); got != desired {
 		t.Fatalf("fixture slideshow = %+v, want %+v", got, desired)
 	}

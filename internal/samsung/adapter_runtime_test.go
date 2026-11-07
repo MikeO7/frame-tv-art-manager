@@ -3,6 +3,7 @@ package samsung
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -97,7 +98,8 @@ func TestAdapterCloseContextRetainsCleanupOpportunity(t *testing.T) {
 
 func TestObservationBackoffBlocksNetworkAndReportsSchedule(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)}
-	transport := &scriptedObservationTransport{connectErr: ErrConnectionFailure}
+	transport := eligibleObservationTransport(json.RawMessage(`[]`))
+	transport.connectErr = ErrConnectionFailure
 	adapter := newTestAdapter(t, clock, transport)
 
 	_, firstErr := adapter.Observe(context.Background(), ObserveRequest{

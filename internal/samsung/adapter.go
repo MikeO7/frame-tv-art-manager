@@ -128,8 +128,6 @@ func validateAdapterConfig(config Config) error {
 
 // Observe returns only facts obtained successfully during this call. It never
 // wakes the TV or sends any TV mutation.
-//
-//nolint:funlen // The linear fail-closed state sequence mirrors the protocol safety matrix.
 func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observation, error) {
 	a.operationMu.Lock()
 	defer a.operationMu.Unlock()
@@ -152,7 +150,10 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 	if err := ctx.Err(); err != nil {
 		return a.failObservation(ctx, observation, request, operationObserve, err)
 	}
-	if now.Before(nextAttemptAt) {
+	wakeOnly := request.Required == CapabilityRemotePower
+	// A wake request only reads REST and sends Wake-on-LAN, so backoff from
+	// earlier unreachable observations never delays a scheduled wake.
+	if now.Before(nextAttemptAt) && !wakeOnly {
 		observation.Connection = ConnectionBackingOff
 		observation.Disposition = DispositionBlockedBackoff
 		err := &Error{
@@ -168,23 +169,18 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 		return cloneObservation(observation), err
 	}
 
-	observation.Connection = ConnectionConnecting
-	if err := a.transport.Connect(ctx, request.DryRun); err != nil {
-		if errors.Is(err, ErrGateFailed) {
-			observation.Connection = ConnectionDisconnected
-			observation.Disposition = DispositionBlockedQuietGate
-			return a.settleObservation(observation, request), nil
-		}
-		return a.failObservation(ctx, observation, request, "connect", err)
-	}
 	a.stateMu.Lock()
 	a.connectionGeneration++
 	connectionGeneration := a.connectionGeneration
 	a.stateMu.Unlock()
-	observation.Connection = ConnectionReady
 
+	// REST answers in network standby while the art channel refuses
+	// connections, so the power fact is read before any websocket is opened.
 	device, err := a.transport.DeviceInfo(ctx)
 	if err != nil {
+		if wakeOnly && a.canWake() && unreachableError(err) {
+			return a.presumedStandbyObservation(observation, request, connectionGeneration), nil
+		}
 		return a.failObservation(ctx, observation, request, "observe device info", err)
 	}
 	if err := validateFrameTVDevice(device); err != nil {
@@ -194,68 +190,13 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 		Address:         a.config.Address,
 		Model:           strings.TrimSpace(device.ModelName),
 		FirmwareVersion: strings.TrimSpace(device.FirmwareVersion),
+		DeviceID:        device.stableDeviceID(),
 		Known:           strings.TrimSpace(device.ModelName) != "",
 	}
-	state, err := readOperationalState(ctx, a.transport, device)
-	if err != nil {
-		return a.failObservation(ctx, observation, request, "observe operational state", err)
-	}
-	observation.Power = state.Power
-	observation.ArtMode = state.ArtMode
-	if state.ArtMode != ArtModeUnknown {
-		observation.Capabilities.ArtStateObservation = SupportSupported
-	}
-	if state.Power == PowerStateOff {
+	if strings.TrimSpace(device.PowerState) == stringOff {
 		return a.knownPowerOffObservation(observation, request, connectionGeneration), nil
 	}
-	if state.ArtMode == ArtModeOff {
-		observation.Disposition = DispositionBlockedNotArtMode
-		return a.settleObservation(observation, request), nil
-	}
-
-	rawInventory, err := a.transport.Inventory(ctx)
-	if err != nil {
-		return a.failObservation(ctx, observation, request, "observe inventory", err)
-	}
-	inventory, err := normalizeInventory(rawInventory, now)
-	if err != nil {
-		return a.failObservation(ctx, observation, request, "observe inventory", err)
-	}
-	observation.Inventory = inventory
-	observation.Capabilities.UserArtInventory = SupportSupported
-	if err := a.observeMutationCapabilities(ctx, request, &observation); err != nil {
-		return a.failObservation(ctx, observation, request, "observe command capabilities", err)
-	}
-	if !observation.Capabilities.supports(request.Required) {
-		a.publishAuthorizationFacts(observation, request)
-		return cloneObservation(observation), nil
-	}
-
-	observation.Disposition = DispositionEligible
-	observation.Authorization = a.newAuthorization(request, connectionGeneration, inventory.Fingerprint)
-	return a.settleObservation(observation, request), nil
-}
-
-// settleObservation completes a successful observation: it clears backoff and
-// publishes the facts a later authorization must match.
-func (a *adapter) settleObservation(observation Observation, request ObserveRequest) Observation {
-	a.resetFailures()
-	a.publishAuthorizationFacts(observation, request)
-	return cloneObservation(observation)
-}
-
-func (a *adapter) knownPowerOffObservation(
-	observation Observation,
-	request ObserveRequest,
-	connectionGeneration uint64,
-) Observation {
-	observation.Disposition = DispositionBlockedPowerOff
-	if _, supportsMutation := a.transport.(mutationTransport); supportsMutation &&
-		request.Required == CapabilityRemotePower && len(a.config.MAC) == 6 {
-		observation.Capabilities.RemotePower = SupportSupported
-		observation.Authorization = a.newAuthorization(request, connectionGeneration, [sha256.Size]byte{})
-	}
-	return a.settleObservation(observation, request)
+	return a.observeReachable(ctx, observation, request, device, connectionGeneration)
 }
 
 // Close invalidates all issued authorizations and releases the read channel.
@@ -294,42 +235,6 @@ func (a *adapter) newAuthorization(
 		required:             request.Required,
 		dryRun:               request.DryRun,
 	}
-}
-
-func (a *adapter) observeMutationCapabilities(
-	ctx context.Context,
-	request ObserveRequest,
-	observation *Observation,
-) error {
-	transport, ok := a.transport.(mutationTransport)
-	if !ok {
-		return nil
-	}
-	observation.Capabilities.ImageUpload = SupportSupported
-	observation.Capabilities.ImageDeletion = SupportSupported
-	// Samsung's art API does not expose a reliable current-selection readback,
-	// so selection cannot be authorized with a verifiable postcondition.
-	observation.Capabilities.ImageSelection = SupportUnsupported
-	observation.Capabilities.RemotePower = SupportSupported
-	if request.Required&(CapabilitySlideshowRead|CapabilitySlideshowWrite) != 0 {
-		value, err := transport.Slideshow(ctx)
-		if err != nil {
-			return err
-		}
-		observation.Slideshow = SlideshowObservation{Setting: value, Known: true, ObservedAt: observation.ObservedAt}
-		observation.Capabilities.SlideshowRead = SupportSupported
-		observation.Capabilities.SlideshowWrite = SupportSupported
-	}
-	if request.Required&(CapabilityBrightnessRead|CapabilityBrightnessWrite) != 0 {
-		value, err := transport.Brightness(ctx)
-		if err != nil {
-			return err
-		}
-		observation.Brightness = SettingObservation{Value: value, Known: true, ObservedAt: observation.ObservedAt}
-		observation.Capabilities.BrightnessRead = SupportSupported
-		observation.Capabilities.BrightnessWrite = SupportSupported
-	}
-	return nil
 }
 
 func adapterCloseContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

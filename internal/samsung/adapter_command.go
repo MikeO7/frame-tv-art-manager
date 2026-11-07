@@ -78,6 +78,9 @@ func validateUploadMetadata(command Upload) (string, string, error) {
 	if matte == "" || len(matte) > 128 {
 		return "", "", errors.New("upload matte is invalid")
 	}
+	if len(strings.TrimSpace(command.PortraitMatte)) > 128 {
+		return "", "", errors.New("upload portrait matte is invalid")
+	}
 	return fileType, matte, nil
 }
 
@@ -113,7 +116,8 @@ func openVerifiedUpload(command Upload, fileType, matte string) (preparedUpload,
 		return preparedUpload{}, nil, errors.New("upload digest does not match committed metadata")
 	}
 	return preparedUpload{
-		file: file, fileType: fileType, matte: matte, size: command.Size, digest: command.Digest,
+		file: file, fileType: fileType, matte: matte, portraitMatte: strings.TrimSpace(command.PortraitMatte),
+		size: command.Size, digest: command.Digest,
 	}, cleanup, nil
 }
 

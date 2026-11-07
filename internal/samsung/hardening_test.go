@@ -27,7 +27,13 @@ func TestParseUploadedContentRequiresExplicitValidInventory(t *testing.T) {
 		{name: "malformed", raw: json.RawMessage(`[{`)},
 		{name: "object", raw: json.RawMessage(`{}`)},
 		{name: "blank id", raw: json.RawMessage(`[{"content_id":" ","category_id":"MY-C0002"}]`)},
-		{name: "wrong category", raw: json.RawMessage(`[{"content_id":"id-1","category_id":"SAM-C0001"}]`)},
+		{name: "other category only", raw: json.RawMessage(`[{"content_id":"id-1","category_id":"SAM-C0001"}]`), wantIDs: []string{}},
+		{
+			name: "favorites repeat user art",
+			raw: json.RawMessage(`[{"content_id":"id-1","category_id":"MY-C0002"},{"content_id":"id-1","category_id":"MY-C0004"},` +
+				`{"content_id":"SAM-S1","category_id":"MY-C0008"},{"content_id":"","category_id":"MY-C0008"}]`),
+			wantIDs: []string{"id-1"},
+		},
 		{name: "duplicate id", raw: json.RawMessage(`[{"content_id":"id-1","category_id":"MY-C0002"},{"content_id":"id-1","category_id":"MY-C0002"}]`)},
 		{name: "explicit empty array", raw: json.RawMessage(`[]`), wantIDs: []string{}},
 		{name: "string encoded array", raw: json.RawMessage(`"[{\"content_id\":\" id-1 \",\"category_id\":\"MY-C0002\"}]"`), wantIDs: []string{"id-1"}},
@@ -119,7 +125,7 @@ func TestAdapterRejectsUnverifiedFrameTVIdentity(t *testing.T) {
 
 func TestWaitForImageAddedTimesOut(t *testing.T) {
 	events := make(chan json.RawMessage)
-	if _, err := waitForImageAdded(context.Background(), events, time.Millisecond); !errors.Is(err, ErrTimeout) {
+	if _, err := waitForImageAdded(context.Background(), events, imageAddedMatch{requestID: "upload"}, time.Millisecond); !errors.Is(err, ErrTimeout) {
 		t.Fatalf("wait() error = %v, want ErrTimeout", err)
 	}
 }

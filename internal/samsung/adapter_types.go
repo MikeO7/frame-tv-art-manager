@@ -122,7 +122,10 @@ type TVIdentity struct {
 	Address         string
 	Model           string
 	FirmwareVersion string
-	Known           bool
+	// DeviceID is the TV's hardware identity (REST duid, id, or wifiMac). It
+	// survives DHCP address changes and is empty when the TV reported none.
+	DeviceID string
+	Known    bool
 }
 
 // Inventory is a trustworthy observation of user-managed artwork. Known is
@@ -141,7 +144,10 @@ type ObserveRequest struct {
 	CycleID              string
 	CollectionGeneration string
 	Required             CapabilitySet
-	DryRun               bool
+	// Optional capabilities are observed when the TV supports them, but an
+	// unsupported optional setting never makes the observation ineligible.
+	Optional CapabilitySet
+	DryRun   bool
 }
 
 // Authorization is an opaque, single-use planning token whose private facts
@@ -154,6 +160,7 @@ type Authorization struct {
 	inventoryFingerprint [sha256.Size]byte
 	required             CapabilitySet
 	dryRun               bool
+	presumedStandby      bool
 }
 
 // Observation is an immutable, normalized view of the facts successfully
@@ -170,6 +177,9 @@ type Observation struct {
 	ObservedAt    time.Time
 	Disposition   Disposition
 	Authorization Authorization
+	// PresumedStandby reports that REST did not answer a wake observation.
+	// Power stays unknown; only a Wake is authorized.
+	PresumedStandby bool
 }
 
 // SlideshowObservation is a complete slideshow value proven by a matched TV
@@ -181,11 +191,26 @@ type SlideshowObservation struct {
 }
 
 // SettingObservation is an integer value proven by a matched TV read in this
-// cycle. It is used for brightness.
+// cycle. It is used for brightness. Min and Max are the range the TV reported
+// for the setting (0 to 10 on Frame TVs).
 type SettingObservation struct {
 	Value      int
+	Min        int
+	Max        int
 	Known      bool
 	ObservedAt time.Time
+}
+
+// BrightnessReading is one Art Mode brightness read with the TV's range.
+type BrightnessReading struct {
+	Value int
+	Min   int
+	Max   int
+}
+
+// Clamp limits value to the TV's reported range.
+func (reading BrightnessReading) Clamp(value int) int {
+	return min(max(value, reading.Min), reading.Max)
 }
 
 // Command is sealed to the Samsung package so arbitrary wire messages cannot
@@ -237,6 +262,9 @@ type Config struct {
 	GateTimeout    time.Duration
 	BackoffBase    time.Duration
 	BackoffMaximum time.Duration
+	// WakeBroadcast replaces the default Wake-on-LAN broadcast addresses when
+	// set (TV_WOL_BROADCAST).
+	WakeBroadcast string
 }
 
 // Dependencies contains operational dependencies shared by one adapter.
@@ -252,8 +280,11 @@ type Upload struct {
 	Name     string
 	FileType string
 	Matte    string
-	Digest   [sha256.Size]byte
-	Size     int64
+	// PortraitMatte is the matte the TV uses when it shows the artwork in
+	// portrait orientation. Empty uses Matte.
+	PortraitMatte string
+	Digest        [sha256.Size]byte
+	Size          int64
 }
 
 func (Upload) isSamsungCommand() {}
@@ -295,12 +326,14 @@ type artMutationTransport interface {
 	Upload(context.Context, preparedUpload) (string, error)
 	Delete(context.Context, string) error
 	Select(context.Context, string) error
+	CurrentArtwork(context.Context) (string, error)
+	MatteCatalog(context.Context) (matteCatalog, error)
 }
 
 type settingMutationTransport interface {
 	Slideshow(context.Context) (SlideshowSetting, error)
 	ConfigureSlideshow(context.Context, SlideshowSetting) error
-	Brightness(context.Context) (int, error)
+	Brightness(context.Context) (BrightnessReading, error)
 	ConfigureBrightness(context.Context, int) error
 }
 
@@ -310,9 +343,13 @@ type powerMutationTransport interface {
 }
 
 type preparedUpload struct {
-	file     *os.File
-	fileType string
-	matte    string
-	size     int64
-	digest   [sha256.Size]byte
+	file          *os.File
+	fileType      string
+	matte         string
+	portraitMatte string
+	size          int64
+	digest        [sha256.Size]byte
+	// existing holds the content IDs on the TV before the upload, so an
+	// image_added event without a request ID is matched only to a new ID.
+	existing map[string]struct{}
 }

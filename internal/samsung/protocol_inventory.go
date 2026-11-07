@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// parseUploadedContent returns the user-uploaded artwork (category MY-C0002)
+// from a get_content_list reply. TVs return every category in one list, and
+// favorites (MY-C0004) or Art Store items (MY-C0008) repeat or add content IDs,
+// so other categories are filtered out rather than treated as an anomaly.
 func parseUploadedContent(raw json.RawMessage) ([]ArtContent, error) {
 	if len(raw) == 0 || strings.TrimSpace(string(raw)) == jsonNull {
 		return nil, errors.New("content list is absent")
@@ -26,27 +30,22 @@ func parseUploadedContent(raw json.RawMessage) ([]ArtContent, error) {
 	if content == nil {
 		return nil, errors.New("content list is not an explicit array")
 	}
+	user := make([]ArtContent, 0, len(content))
 	seen := make(map[string]struct{}, len(content))
-	for index := range content {
-		if err := normalizeUploadedItem(&content[index], seen); err != nil {
-			return nil, err
+	for _, item := range content {
+		item.ContentID = strings.TrimSpace(item.ContentID)
+		item.CategoryID = strings.TrimSpace(item.CategoryID)
+		if item.CategoryID != userArtCategory {
+			continue
 		}
+		if item.ContentID == "" {
+			return nil, errors.New("content list contains a blank ID")
+		}
+		if _, duplicate := seen[item.ContentID]; duplicate {
+			return nil, fmt.Errorf("content list contains duplicate ID %q", item.ContentID)
+		}
+		seen[item.ContentID] = struct{}{}
+		user = append(user, item)
 	}
-	return content, nil
-}
-
-func normalizeUploadedItem(item *ArtContent, seen map[string]struct{}) error {
-	item.ContentID = strings.TrimSpace(item.ContentID)
-	item.CategoryID = strings.TrimSpace(item.CategoryID)
-	if item.ContentID == "" {
-		return errors.New("content list contains a blank ID")
-	}
-	if item.CategoryID != userArtCategory {
-		return fmt.Errorf("content %q has unexpected category %q", item.ContentID, item.CategoryID)
-	}
-	if _, duplicate := seen[item.ContentID]; duplicate {
-		return fmt.Errorf("content list contains duplicate ID %q", item.ContentID)
-	}
-	seen[item.ContentID] = struct{}{}
-	return nil
+	return user, nil
 }

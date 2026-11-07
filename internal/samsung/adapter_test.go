@@ -121,7 +121,6 @@ func TestAdapterObserveNeverInfersArtModeOnFromErrors(t *testing.T) {
 		value string
 		err   error
 	}{
-		{name: "standby request error", power: stringStandby, err: errors.New("connection lost")},
 		{name: "blank response"},
 		{name: "standby unknown response", power: stringStandby, value: "ambient"},
 	}
@@ -176,6 +175,8 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 		name             string
 		power            string
 		artMode          string
+		artModeErr       error
+		connectErr       error
 		wantDisposition  Disposition
 		wantArtModeCalls int
 	}{
@@ -185,12 +186,22 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 			wantDisposition: DispositionBlockedPowerOff, wantArtModeCalls: 1,
 		},
 		{name: "art mode off", power: "on", artMode: "off", wantDisposition: DispositionBlockedNotArtMode, wantArtModeCalls: 1},
+		{
+			name: "standby with silent art channel", power: stringStandby, artModeErr: errors.New("connection lost"),
+			wantDisposition: DispositionBlockedPowerOff, wantArtModeCalls: 1,
+		},
+		{
+			name: "standby refusing the art channel", power: stringStandby, connectErr: ErrConnectionFailure,
+			wantDisposition: DispositionBlockedPowerOff,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			transport := eligibleObservationTransport(json.RawMessage(`[]`))
 			transport.device.PowerState = test.power
 			transport.artMode = test.artMode
+			transport.artModeErr = test.artModeErr
+			transport.connectErr = test.connectErr
 			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 
 			observation, err := adapter.Observe(context.Background(), ObserveRequest{CycleID: "cycle", CollectionGeneration: "generation"})
@@ -291,7 +302,6 @@ func TestAdapterObserveRejectsAmbiguousInventory(t *testing.T) {
 		{name: "malformed", raw: json.RawMessage(`[{`)},
 		{name: "duplicate", raw: json.RawMessage(`[{"content_id":"MY_F0001","category_id":"MY-C0002"},{"content_id":"MY_F0001","category_id":"MY-C0002"}]`)},
 		{name: "blank ID", raw: json.RawMessage(`[{"content_id":"","category_id":"MY-C0002"}]`)},
-		{name: "wrong category", raw: json.RawMessage(`[{"content_id":"MY_F0001","category_id":"OTHER"}]`)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

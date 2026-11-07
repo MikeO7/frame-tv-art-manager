@@ -23,6 +23,29 @@ func (w shortWriter) Write(payload []byte) (int, error) {
 	return min(len(payload), w.limit), nil
 }
 
+func TestDialSecuredD2DHonorsCancellationDuringConnectDelay(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	conn, err := dialD2D(ctx, connInfo{IP: "127.0.0.1", Port: json.Number(port), Secured: true}, &net.Dialer{}, true)
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) >= d2dSecuredConnectDelay {
+		t.Fatalf("dialD2D() = %v after %s, want prompt cancellation", err, time.Since(started))
+	}
+}
+
 func TestStreamFileRejectsShortWrite(t *testing.T) {
 	payload := bytes.Repeat([]byte("art"), 100)
 	err := streamFile(bytes.NewReader(payload), shortWriter{limit: 7}, int64(len(payload)), sha256.Sum256(payload))

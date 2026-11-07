@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -15,13 +14,13 @@ func (t *protocolTransport) Upload(ctx context.Context, upload preparedUpload) (
 	if err != nil {
 		return "", commandError("upload", OutcomeNotAttempted, err)
 	}
-	added, cleanup, err := conn.registerPending("image_added")
+	added, cleanup, err := conn.registerPending(eventImageAdded)
 	if err != nil {
 		return "", commandError("upload", OutcomeNotAttempted, err)
 	}
 	defer cleanup()
 	requestID := newRequestID()
-	fields := sendImageFields(requestID, upload.fileType, upload.matte, upload.size)
+	fields := sendImageFields(requestID, upload)
 	response, err := t.mutateOnConnection(ctx, conn, requestSendImage, requestID, fields)
 	if err != nil {
 		return "", err
@@ -36,7 +35,9 @@ func (t *protocolTransport) Upload(ctx context.Context, upload preparedUpload) (
 	if err := uploadImageD2DFile(ctx, upload, info, t.config.ConnectTimeout, !t.config.VerifyTLS); err != nil {
 		return "", commandError("upload", OutcomeUnknown, fmt.Errorf("transfer upload: %w", err))
 	}
-	contentID, err := waitForImageAdded(ctx, added, t.config.RequestTimeout)
+	contentID, err := waitForImageAdded(ctx, added, imageAddedMatch{
+		requestID: requestID, existing: upload.existing,
+	}, t.config.RequestTimeout)
 	if err != nil {
 		return "", commandError("upload", mutationFailureOutcome(err), err)
 	}
@@ -46,58 +47,87 @@ func (t *protocolTransport) Upload(ctx context.Context, upload preparedUpload) (
 	return strings.TrimSpace(contentID), nil
 }
 
+// Delete sends delete_image_list. Some TVs answer with an image_deleted event
+// lacking the request ID, and others never answer, so a
+// missing reply is not a failure: the adapter proves the outcome from a fresh
+// inventory. Only an explicit error reply proves the delete was rejected.
 func (t *protocolTransport) Delete(ctx context.Context, contentID string) error {
-	return t.mutate(ctx, "delete_image_list", map[string]any{
+	conn, err := t.activeConnection()
+	if err != nil {
+		return commandError(commandDeleteName, OutcomeNotAttempted, err)
+	}
+	deleted, cleanup, err := conn.registerPending(eventImageDeleted)
+	if err != nil {
+		return commandError(commandDeleteName, OutcomeNotAttempted, err)
+	}
+	defer cleanup()
+	requestID := newRequestID()
+	replies, cleanupReply, err := conn.registerPending(requestID)
+	if err != nil {
+		return commandError(commandDeleteName, OutcomeNotAttempted, err)
+	}
+	defer cleanupReply()
+	payload, err := artAppRequest(map[string]any{
+		keyRequest: requestDeleteImageList, "id": requestID, keyRequestID: requestID,
 		"content_id_list": []map[string]string{{keyContentID: contentID}},
 	})
+	if err != nil {
+		return commandError(commandDeleteName, OutcomeNotAttempted, fmt.Errorf("build delete request: %w", err))
+	}
+	if err := conn.Send(ctx, payload); err != nil {
+		return commandError(commandDeleteName, OutcomeUnknown, fmt.Errorf("send delete request: %w", err))
+	}
+	timer := time.NewTimer(t.probeTimeout())
+	defer timer.Stop()
+	select {
+	case raw, ok := <-replies:
+		return deleteReplyError(raw, ok)
+	case raw, ok := <-deleted:
+		return deleteReplyError(raw, ok)
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return commandError(commandDeleteName, OutcomeUnknown, ctx.Err())
+	}
 }
 
+func deleteReplyError(raw json.RawMessage, ok bool) error {
+	if !ok {
+		return commandError(commandDeleteName, OutcomeUnknown, ErrNotConnected)
+	}
+	// image_deleted lists content IDs as an array, so only the error envelope
+	// fields are decoded.
+	var envelope struct {
+		Event     string         `json:"event"`
+		ErrorCode protocolString `json:"error_code"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return commandError(commandDeleteName, OutcomeUnknown, fmt.Errorf("parse delete reply: %w", err))
+	}
+	response := artResponse{Event: envelope.Event, ErrorCode: envelope.ErrorCode}
+	if err := checkArtError(&response); err != nil {
+		return commandError(commandDeleteName, OutcomeNotApplied, fmt.Errorf("delete reply: %w", err))
+	}
+	return nil
+}
+
+// Select shows one artwork; the adapter verifies it with get_current_artwork.
 func (t *protocolTransport) Select(ctx context.Context, contentID string) error {
-	return t.mutate(ctx, "select_image", map[string]any{keyContentID: contentID, "show": true})
-}
-
-func (t *protocolTransport) Slideshow(ctx context.Context) (SlideshowSetting, error) {
-	response, err := t.send(ctx, "get_slideshow_status", nil)
-	if err != nil {
-		return SlideshowSetting{}, err
-	}
-	return parseSlideshowSetting(string(response.Value), string(response.Type))
-}
-
-func (t *protocolTransport) ConfigureSlideshow(ctx context.Context, setting SlideshowSetting) error {
-	if !setting.Valid() {
-		return commandError(commandConfigureSlidesName, OutcomeNotAttempted, errors.New("invalid slideshow setting"))
-	}
-	wireValue := strconv.Itoa(setting.Interval)
-	if setting.Interval == 0 {
-		wireValue = stringOff
-	}
-	return t.mutate(ctx, requestSetSlideshowStatus, map[string]any{
-		keyValue: wireValue, keyCategoryID: userArtCategory, "type": string(setting.Kind),
+	return t.mutate(ctx, "select_image", map[string]any{
+		keyContentID: contentID, keyCategoryID: userArtCategory, "show": true,
 	})
-}
-
-func (t *protocolTransport) Brightness(ctx context.Context) (int, error) {
-	response, err := t.send(ctx, "get_brightness", nil)
-	if err != nil {
-		return 0, err
-	}
-	value, err := strconv.Atoi(strings.TrimSpace(string(response.Value)))
-	if err != nil || value < 0 || value > 100 {
-		return 0, fmt.Errorf("invalid brightness value %q", response.Value)
-	}
-	return value, nil
-}
-
-func (t *protocolTransport) ConfigureBrightness(ctx context.Context, value int) error {
-	return t.mutate(ctx, "set_brightness", map[string]any{keyValue: value})
 }
 
 func (t *protocolTransport) Wake(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return commandError(commandWakeName, OutcomeNotAttempted, err)
 	}
-	if err := sendWakeOnLAN(ctx, t.config.MAC, t.config.ConnectTimeout); err != nil {
+	host, _, err := observationAddress(t.config.Address)
+	if err != nil {
+		return commandError(commandWakeName, OutcomeNotAttempted, err)
+	}
+	targets := wakeTargets(host, t.config.WakeBroadcast)
+	if err := sendWakeOnLAN(ctx, t.config.MAC, targets, t.config.ConnectTimeout); err != nil {
 		return commandError(commandWakeName, OutcomeUnknown, err)
 	}
 	return nil
@@ -159,6 +189,20 @@ func (t *protocolTransport) mutateOnConnection(
 	fields map[string]any,
 ) (*artResponse, error) {
 	response, err := t.sendOnConnection(ctx, conn, name, requestID, fields)
+	if err != nil {
+		return nil, commandError(name, mutationFailureOutcome(err), err)
+	}
+	return response, nil
+}
+
+func (t *protocolTransport) mutateWithTimeout(
+	ctx context.Context,
+	conn *connection,
+	name string,
+	fields map[string]any,
+	timeout time.Duration,
+) (*artResponse, error) {
+	response, err := t.sendWithTimeout(ctx, conn, name, fields, timeout)
 	if err != nil {
 		return nil, commandError(name, mutationFailureOutcome(err), err)
 	}

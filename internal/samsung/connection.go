@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,6 +34,9 @@ func (c *connection) registerPending(key string) (<-chan json.RawMessage, func()
 	ch := make(chan json.RawMessage, 1)
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
+	if c.closed.Load() {
+		return nil, nil, ErrNotConnected
+	}
 	if _, exists := c.pending[key]; exists {
 		return nil, nil, fmt.Errorf("listener %q is already registered", key)
 	}
@@ -116,18 +120,20 @@ func (c *connection) formatURL(token string) string {
 // extractAndSaveToken pulls the token from a ms.channel.connect response and
 // publishes it durably with sensitive permissions.
 func (c *connection) extractAndSaveToken(ctx context.Context, data json.RawMessage) error {
+	// Most TVs send the token as a string; some firmware sends a number.
 	var d struct {
-		Token string `json:"token"`
+		Token protocolString `json:"token"`
 	}
 	if err := json.Unmarshal(data, &d); err != nil {
 		c.logger.Debug("failed to parse token from handshake", "error", err)
 		return nil
 	}
-	if d.Token == "" {
+	token := strings.TrimSpace(string(d.Token))
+	if token == "" {
 		c.logger.Debug("token field is empty in handshake data")
 		return nil
 	}
-	if err := c.persistToken(ctx, c.tokenFile, d.Token); err != nil {
+	if err := c.persistToken(ctx, c.tokenFile, token); err != nil {
 		return fmt.Errorf("save authentication token: %w", err)
 	}
 	c.logger.Info("new authentication token saved")

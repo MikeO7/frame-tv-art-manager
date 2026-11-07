@@ -30,6 +30,11 @@ func (c *connection) recvLoop() {
 			if !c.closed.Load() {
 				c.logger.Debug("recv loop error", "error", err)
 			}
+			// A dead socket can never deliver a reply: mark the connection
+			// closed so it is replaced, and fail every waiter now instead of
+			// letting each one run out its request timeout.
+			c.closed.Store(true)
+			c.failPending()
 			return
 		}
 

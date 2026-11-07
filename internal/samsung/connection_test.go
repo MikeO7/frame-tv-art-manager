@@ -155,6 +155,36 @@ func TestConnectionOpenPersistsTokenAndCorrelatesResponses(t *testing.T) {
 	}
 }
 
+func unrelatedEvents(t *testing.T, count int) [][]byte {
+	t.Helper()
+	frames := make([][]byte, 0, count)
+	for index := range count {
+		event := "ed.edenTV.update"
+		if index%2 == 1 {
+			event = "ms.voiceApp.hide"
+		}
+		frames = append(frames, wsFrame(t, event, map[string]string{}))
+	}
+	return frames
+}
+
+func TestConnectionOpenSkipsUnrelatedHandshakeEvents(t *testing.T) {
+	t.Parallel()
+	handshake := append(unrelatedEvents(t, 2), wsFrame(t, EventChannelConnect, map[string]any{"token": 123456789}))
+	handshake = append(handshake, unrelatedEvents(t, 3)...)
+	handshake = append(handshake, wsFrame(t, EventChannelReady, map[string]string{}))
+	host, port := newWebSocketTV(t, handshake, nil)
+	conn := newTestConnection(t, host, port, endpointArtApp)
+	if err := conn.Open(context.Background()); err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = conn.CloseContext(context.Background()) })
+	token, err := loadAuthenticationToken(conn.tokenFile)
+	if err != nil || token != "123456789" {
+		t.Fatalf("persisted token = %q, %v; want numeric token as text", token, err)
+	}
+}
+
 func TestConnectionOpenRejectsInvalidHandshakes(t *testing.T) {
 	t.Parallel()
 	connect := func(t *testing.T) []byte {
@@ -178,8 +208,8 @@ func TestConnectionOpenRejectsInvalidHandshakes(t *testing.T) {
 			wantErr:   ErrTimeout,
 		},
 		{
-			name: "unexpected event", endpoint: endpointRemoteControl,
-			handshake: func(t *testing.T) [][]byte { return [][]byte{wsFrame(t, "ms.channel.clientConnect", nil)} },
+			name: "only unrelated events", endpoint: endpointRemoteControl,
+			handshake: func(t *testing.T) [][]byte { return unrelatedEvents(t, maxHandshakeEvents) },
 			wantErr:   ErrConnectionFailure,
 		},
 		{
@@ -189,8 +219,10 @@ func TestConnectionOpenRejectsInvalidHandshakes(t *testing.T) {
 		},
 		{
 			name: "art app without ready", endpoint: endpointArtApp,
-			handshake: func(t *testing.T) [][]byte { return [][]byte{connect(t), wsFrame(t, EventD2DServiceMessage, nil)} },
-			wantErr:   ErrConnectionFailure,
+			handshake: func(t *testing.T) [][]byte {
+				return append([][]byte{connect(t)}, unrelatedEvents(t, maxHandshakeEvents)...)
+			},
+			wantErr: ErrConnectionFailure,
 		},
 		{
 			name: "art app malformed ready", endpoint: endpointArtApp,
@@ -346,5 +378,43 @@ func TestExtractAndSaveTokenIgnoresEmptyTokensAndReportsPersistenceFailure(t *te
 	c.tokenFile = filepath.Join(blocked, "token.txt")
 	if err := c.extractAndSaveToken(context.Background(), json.RawMessage(`{"token":"abcdefghijk"}`)); err == nil {
 		t.Fatal("blocked token path error = nil")
+	}
+}
+
+func TestConnectionDeadSocketFailsWaitersAndReportsDead(t *testing.T) {
+	t.Parallel()
+	handshake := [][]byte{
+		wsFrame(t, EventChannelConnect, map[string]string{"token": "token"}),
+		wsFrame(t, EventChannelReady, map[string]string{}),
+	}
+	drop := make(chan struct{})
+	host, port := newWebSocketTV(t, handshake, func(_ context.Context, conn *websocket.Conn) {
+		<-drop
+		_ = conn.CloseNow()
+	})
+	conn := newTestConnection(t, host, port, endpointArtApp)
+	if err := conn.Open(context.Background()); err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = conn.CloseContext(context.Background()) })
+	waiter, cleanup, err := conn.registerPending("request-1")
+	if err != nil {
+		t.Fatalf("registerPending() error = %v", err)
+	}
+	defer cleanup()
+	close(drop)
+	select {
+	case _, ok := <-waiter:
+		if ok {
+			t.Fatal("waiter received a reply from a dead socket")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiter was not failed when the socket died")
+	}
+	if conn.IsAlive() {
+		t.Fatal("dead socket still reported alive")
+	}
+	if _, _, err := conn.registerPending("request-2"); !errors.Is(err, ErrNotConnected) {
+		t.Fatalf("registerPending() after death error = %v, want ErrNotConnected", err)
 	}
 }

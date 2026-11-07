@@ -32,6 +32,22 @@ type DeviceInfo struct {
 	FirmwareVersion string `json:"firmwareVersion"`
 	FrameTVSupport  string `json:"FrameTVSupport"` // "true" or "false"
 	PowerState      string `json:"PowerState"`     // "on", "off", or "standby"
+	// DUID, ID, and WifiMac are hardware identities that survive DHCP
+	// address changes. Real TVs report at least one of them.
+	DUID    string `json:"duid"`
+	ID      string `json:"id"`
+	WifiMac string `json:"wifiMac"`
+}
+
+// stableDeviceID returns the TV's hardware identity, preferring the device
+// UUID, or "" when the TV reported none.
+func (info DeviceInfo) stableDeviceID() string {
+	for _, candidate := range []string{info.DUID, info.ID, info.WifiMac} {
+		if value := strings.TrimSpace(candidate); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func validateFrameTVDevice(info DeviceInfo) error {
@@ -84,7 +100,9 @@ type artResponse struct {
 	Event     string `json:"event"`
 	RequestID string `json:"request_id"`
 	ID        string `json:"id"`
-	ErrorCode int    `json:"error_code,omitempty"`
+	// ErrorCode is a string on real TVs ("-1") and a number on some
+	// firmware, so it accepts either.
+	ErrorCode protocolString `json:"error_code,omitempty"`
 
 	// Fields vary by request type — parsed individually per command.
 	// We use json.RawMessage because older Samsung TVs return these fields
@@ -97,6 +115,13 @@ type artResponse struct {
 	ConnInfoRaw    json.RawMessage `json:"conn_info,omitempty"`
 	Status         string          `json:"status,omitempty"`
 	RequestData    string          `json:"request_data,omitempty"`
+	CategoryID     string          `json:"category_id,omitempty"`
+	Min            protocolString  `json:"min,omitempty"`
+	Max            protocolString  `json:"max,omitempty"`
+	Version        string          `json:"version,omitempty"`
+	DataRaw        json.RawMessage `json:"data,omitempty"`
+	MatteTypesRaw  json.RawMessage `json:"matte_type_list,omitempty"`
+	MatteColorsRaw json.RawMessage `json:"matte_color_list,omitempty"`
 }
 
 type protocolString string

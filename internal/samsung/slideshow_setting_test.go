@@ -7,12 +7,18 @@ func TestParseSlideshowSettingPreservesIntervalAndKind(t *testing.T) {
 		name      string
 		value     string
 		kind      string
+		category  string
 		want      SlideshowSetting
 		wantError bool
 	}{
 		{name: "sequential", value: "15", kind: "slideshow", want: SlideshowSetting{Interval: 15, Kind: SlideshowSequential}},
 		{name: "shuffle", value: "60", kind: "shuffleslideshow", want: SlideshowSetting{Interval: 60, Kind: SlideshowShuffle}},
 		{name: "disabled", value: "off", kind: "shuffleslideshow", want: SlideshowSetting{Kind: SlideshowShuffle}},
+		{
+			name: "2022 favorites", value: "1440", kind: "shuffleslideshow", category: "MY-C0004",
+			want: SlideshowSetting{Interval: 1440, Kind: SlideshowShuffle, Category: "MY-C0004"},
+		},
+		{name: "disabled without kind", value: "off", want: SlideshowSetting{Kind: SlideshowShuffle}},
 		{name: "missing kind", value: "15", wantError: true},
 		{name: "unknown kind", value: "15", kind: "random", wantError: true},
 		{name: "invalid interval", value: "later", kind: "slideshow", wantError: true},
@@ -20,7 +26,7 @@ func TestParseSlideshowSettingPreservesIntervalAndKind(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := parseSlideshowSetting(test.value, test.kind)
+			got, err := parseSlideshowSetting(test.value, test.kind, test.category)
 			if test.wantError {
 				if err == nil {
 					t.Fatalf("parseSlideshowSetting() = %+v, want error", got)

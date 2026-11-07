@@ -14,13 +14,25 @@ import (
 	"time"
 )
 
-const d2dChunkSize = 64 * 1024 // 64KB chunks for image transfer
+const (
+	d2dChunkSize           = 64 * 1024 // 64KB chunks for image transfer
+	d2dSecuredConnectDelay = time.Second
+)
 
 // dialD2D opens the TCP (or TLS, when info.Secured) connection to the TV's
 // Device-to-Device socket at info.IP:info.Port.
 func dialD2D(ctx context.Context, info connInfo, dialer *net.Dialer, skipTLSVerify bool) (net.Conn, error) {
 	addr := net.JoinHostPort(info.IP, string(info.Port))
 	if info.Secured {
+		// A 2022+ Frame resets a secured transfer socket, and abandons the
+		// transfer, when the client connects as soon as the TV answers.
+		timer := time.NewTimer(d2dSecuredConnectDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		tlsConf := &tls.Config{InsecureSkipVerify: skipTLSVerify} //nolint:gosec // Samsung self-signed cert
 		tlsDialer := &tls.Dialer{
 			NetDialer: dialer,
