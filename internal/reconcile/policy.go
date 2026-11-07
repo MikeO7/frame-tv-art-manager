@@ -25,6 +25,9 @@ func validatePolicy(policy Policy) error {
 		(policy.DefaultMatte != strings.TrimSpace(policy.DefaultMatte) || len(policy.DefaultMatte) > 128) {
 		return errors.New("default matte must be normalized and no longer than 128 characters")
 	}
+	if policy.PortraitMatte != strings.TrimSpace(policy.PortraitMatte) || len(policy.PortraitMatte) > 128 {
+		return errors.New("portrait matte must be normalized and no longer than 128 characters")
+	}
 	if _, err := policy.MatteOverrides.entries(); err != nil {
 		return fmt.Errorf("invalid matte override policy: %w", err)
 	}

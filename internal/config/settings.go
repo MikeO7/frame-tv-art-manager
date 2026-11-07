@@ -58,6 +58,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		SyncIntervalMin:                env.integer("SYNC_INTERVAL_MINUTES", 30),
 		ShutdownTimeout:                safeDuration(env.integer("SHUTDOWN_TIMEOUT_SECONDS", 30), time.Second),
 		MatteStyle:                     env.str("MATTE_STYLE", "none"),
+		PortraitMatte:                  strings.TrimSpace(env.str("PORTRAIT_MATTE", "")),
 		ClientName:                     env.str("CLIENT_NAME", "Frame Art Manager"),
 		DryRun:                         env.boolean("DRY_RUN", false),
 		LogLevel:                       strings.ToLower(env.str("LOG_LEVEL", "info")),

@@ -382,6 +382,7 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `TOKEN_DIR` | `/data/tokens` | Pairing tokens and per-TV records |
 | `ROTATION_INTERVAL_DAYS` | `14` | Days each piece stays on a full TV; `0` turns rotation off |
 | `MATTE_STYLE` | `none` | Matte for every upload |
+| `PORTRAIT_MATTE` | same as `MATTE_STYLE` | Matte the TV uses when it shows art in portrait orientation |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 
 **Images**

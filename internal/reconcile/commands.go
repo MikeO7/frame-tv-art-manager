@@ -110,7 +110,7 @@ func samsungCommand(intent CommandIntent) (samsung.Command, error) {
 		var digest [sha256.Size]byte
 		copy(digest[:], digestBytes)
 		return samsung.Upload{
-			Path: intent.Path, Name: intent.Name, FileType: string(intent.FileType), Matte: intent.Matte,
+			Path: intent.Path, Name: intent.Name, FileType: string(intent.FileType), Matte: intent.Matte, PortraitMatte: intent.PortraitMatte,
 			Digest: digest, Size: intent.Size,
 		}, nil
 	case CommandDeleteOwned, CommandDeleteUnknown:

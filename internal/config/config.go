@@ -43,6 +43,10 @@ type Config struct {
 	// Use "none" for full-screen, or "style_color" (e.g. "shadowbox_polar").
 	MatteStyle string
 
+	// PortraitMatte is the matte for artwork shown in portrait orientation,
+	// from PORTRAIT_MATTE. Empty uses MatteStyle.
+	PortraitMatte string
+
 	// ClientName is the identity sent to the TV during WebSocket handshake.
 	// A stable name prevents the TV from prompting Allow/Deny on every connect.
 	ClientName string

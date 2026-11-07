@@ -18,13 +18,17 @@ func TestBuildPlanLeavesUnreportedSettingsAlone(t *testing.T) {
 		Slideshow: SlideshowPolicy{
 			Mode: PolicySet, Setting: samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle},
 		},
-		Brightness: SettingPolicy{Mode: PolicySet, Value: 4},
+		Brightness:    SettingPolicy{Mode: PolicySet, Value: 4},
+		PortraitMatte: "shadowbox_black",
 	})
 	if err != nil {
 		t.Fatalf("BuildPlan() error = %v", err)
 	}
 	if len(plan.Commands) != 1 || plan.Commands[0].Kind != CommandUpload {
 		t.Fatalf("commands = %+v, want only the upload", plan.Commands)
+	}
+	if plan.Commands[0].PortraitMatte != "shadowbox_black" {
+		t.Fatalf("upload portrait matte = %q, want the policy value", plan.Commands[0].PortraitMatte)
 	}
 }
 

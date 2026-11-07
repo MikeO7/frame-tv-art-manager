@@ -30,6 +30,7 @@ func convergencePolicy(
 		// recoverable selection postcondition through this adapter.
 		Select:         false,
 		DefaultMatte:   defaultMatte,
+		PortraitMatte:  cfg.PortraitMatte,
 		MatteOverrides: matteOverrides,
 		Rotation:       cfg.RotationInterval(),
 	}

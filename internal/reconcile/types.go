@@ -98,10 +98,13 @@ type RotationStatus struct {
 
 // Policy is immutable input to a plan. Zero values preserve operator state.
 type Policy struct {
-	RemoveUnknown  bool
-	AllowEmpty     bool
-	Select         bool
-	DefaultMatte   string
+	RemoveUnknown bool
+	AllowEmpty    bool
+	Select        bool
+	DefaultMatte  string
+	// PortraitMatte is the matte the TV uses when it shows artwork in portrait
+	// orientation. Empty uses the landscape matte.
+	PortraitMatte  string
 	MatteOverrides MatteOverrides
 	Power          PowerPolicy
 	Slideshow      SlideshowPolicy
@@ -180,6 +183,7 @@ type CommandIntent struct {
 	FileType              collection.FileType       `json:"file_type,omitempty"`
 	Size                  int64                     `json:"size,omitempty"`
 	Matte                 string                    `json:"matte,omitempty"`
+	PortraitMatte         string                    `json:"portrait_matte,omitempty"`
 	PreviousSlideshow     *samsung.SlideshowSetting `json:"previous_slideshow,omitempty"`
 	DesiredSlideshow      *samsung.SlideshowSetting `json:"desired_slideshow,omitempty"`
 	PreviousValue         *int                      `json:"previous_value,omitempty"`

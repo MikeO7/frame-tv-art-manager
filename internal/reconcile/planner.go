@@ -118,6 +118,7 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		return CommandIntent{
 			Kind: CommandUpload, Digest: artwork.digest, Name: artwork.item.Name,
 			Path: artwork.item.Path, FileType: artwork.item.Type, Size: artwork.item.Size, Matte: matte,
+			PortraitMatte: policy.PortraitMatte,
 		}
 	}
 	for _, artwork := range admission.fills {

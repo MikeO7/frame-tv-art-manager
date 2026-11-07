@@ -185,7 +185,8 @@ func validateIntent(intent CommandIntent) error {
 		if !validDigest(intent.Digest) || filepath.IsAbs(intent.Name) || filepath.Base(intent.Name) != intent.Name ||
 			strings.TrimSpace(intent.Name) == "" || !filepath.IsAbs(intent.Path) ||
 			(intent.FileType != collection.FileTypeJPEG && intent.FileType != collection.FileTypePNG) ||
-			intent.Size <= 0 || strings.TrimSpace(intent.Matte) == "" || len(intent.Matte) > 128 {
+			intent.Size <= 0 || strings.TrimSpace(intent.Matte) == "" || len(intent.Matte) > 128 ||
+			intent.PortraitMatte != strings.TrimSpace(intent.PortraitMatte) || len(intent.PortraitMatte) > 128 {
 			return errors.New("upload intent has invalid digest, name, path, or file type")
 		}
 	case CommandDeleteOwned:
