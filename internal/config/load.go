@@ -193,12 +193,16 @@ func validateRanges(cfg *Config) error {
 	return validateBrightnessRanges(cfg)
 }
 
+// maxFrameBrightness is the top of the Art Mode brightness scale that Frame
+// TVs report through get_artmode_settings.
+const maxFrameBrightness = 10
+
 func validateBrightnessRanges(cfg *Config) error {
-	if cfg.ManualBrightness != nil && (*cfg.ManualBrightness < 0 || *cfg.ManualBrightness > 50) {
-		return fmt.Errorf("BRIGHTNESS must be between 0 and 50")
+	if cfg.ManualBrightness != nil && (*cfg.ManualBrightness < 0 || *cfg.ManualBrightness > maxFrameBrightness) {
+		return fmt.Errorf("BRIGHTNESS must be between 0 and %d", maxFrameBrightness)
 	}
-	if cfg.BrightnessMin < 0 || cfg.BrightnessMax > 50 {
-		return fmt.Errorf("BRIGHTNESS_MIN and BRIGHTNESS_MAX must be between 0 and 50")
+	if cfg.BrightnessMin < 0 || cfg.BrightnessMax > maxFrameBrightness {
+		return fmt.Errorf("BRIGHTNESS_MIN and BRIGHTNESS_MAX must be between 0 and %d", maxFrameBrightness)
 	}
 	return nil
 }

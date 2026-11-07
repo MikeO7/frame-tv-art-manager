@@ -153,10 +153,10 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 			}
 		}
 	}
-	if policy.Slideshow.Mode != PolicyPreserve {
-		if !observation.Slideshow.Known || !observation.Slideshow.Setting.Valid() {
-			return Plan{}, fmt.Errorf("slideshow observation is unavailable: %w", ErrUnsupportedIntent)
-		}
+	// A managed setting the TV did not report this cycle is left alone: the
+	// adapter observed it as optional, and artwork convergence must not wait
+	// on it.
+	if policy.Slideshow.Mode != PolicyPreserve && observation.Slideshow.Known && observation.Slideshow.Setting.Valid() {
 		desired := policy.Slideshow.Setting
 		// The category is the TV's playback source, not operator policy: keep it.
 		desired.Category = observation.Slideshow.Setting.Category
@@ -166,17 +166,16 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 				desired.Kind = observation.Slideshow.Setting.Kind
 			}
 		}
-		if observation.Slideshow.Setting != desired {
+		// A disabled slideshow is off whatever playback kind the TV remembers.
+		bothOff := desired.Interval == 0 && observation.Slideshow.Setting.Interval == 0
+		if observation.Slideshow.Setting != desired && !bothOff {
 			previous := observation.Slideshow.Setting
 			plan.Commands = append(plan.Commands, CommandIntent{
 				Kind: CommandSlideshow, PreviousSlideshow: &previous, DesiredSlideshow: &desired,
 			})
 		}
 	}
-	if policy.Brightness.Mode != PolicyPreserve {
-		if !observation.Brightness.Known {
-			return Plan{}, fmt.Errorf("brightness observation is unavailable: %w", ErrUnsupportedIntent)
-		}
+	if policy.Brightness.Mode != PolicyPreserve && observation.Brightness.Known {
 		desired := policy.Brightness.Value
 		if reading := observation.Brightness; reading.Max > reading.Min {
 			// Samsung reports its own scale (0-10 on current Frames); a policy

@@ -101,23 +101,22 @@ func solarDeclination(jc float64) (decl, eqTime float64) {
 // brightness value between minVal and maxVal using the Kasten-Young atmospheric
 // attenuation model.
 //
-// When elevation is at or below 0° (sunset/night), returns minVal.
-// At zenith (90°), returns close to maxVal.
+// When elevation is at or below 0° (sunset/night), returns minVal. Irradiance
+// is normalized to its zenith value, so a sun overhead returns maxVal.
 func brightnessFromElevation(elevation float64, minVal, maxVal int) int {
 	if elevation <= 0 {
 		return minVal
 	}
+	ratio := min(irradianceAt(elevation)/irradianceAt(90), 1)
+	return minVal + int(math.Round(float64(maxVal-minVal)*ratio))
+}
 
+// irradianceAt is the clear-sky relative irradiance for a sun elevation in
+// degrees, using the Kasten-Young air mass and Meinel attenuation.
+func irradianceAt(elevation float64) float64 {
 	elevRad := elevation * math.Pi / 180
-
-	// Kasten-Young air mass formula.
 	airMass := 1.0 / (math.Sin(elevRad) + 0.50572*math.Pow(elevation+6.07995, -1.6364))
-
-	// Atmospheric attenuation: relative irradiance.
-	irradiance := math.Pow(0.7, math.Pow(airMass, 0.678))
-
-	// Map to brightness range.
-	return minVal + int(float64(maxVal-minVal)*irradiance)
+	return math.Pow(0.7, math.Pow(airMass, 0.678))
 }
 
 // CalculateAt returns the solar brightness for an explicit instant.

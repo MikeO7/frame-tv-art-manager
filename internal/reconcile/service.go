@@ -18,6 +18,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	observation, err := request.TV.Observe(ctx, samsung.ObserveRequest{
 		CycleID: request.CycleID, CollectionGeneration: request.Snapshot.Generation,
 		DryRun: request.DryRun, Required: initialObservationCapabilities(policy),
+		Optional: settingCapabilities(policy),
 	})
 	if err != nil {
 		return Result{Observation: observation}, err
@@ -103,7 +104,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		candidate := currentPlan.Commands[0]
 		fresh, observeErr := request.TV.Observe(ctx, samsung.ObserveRequest{
 			CycleID: request.CycleID, CollectionGeneration: request.Snapshot.Generation,
-			Required: requiredCapabilities(candidate),
+			Required: requiredCapabilities(candidate), Optional: settingCapabilities(policy),
 		})
 		if observeErr != nil {
 			return result, observeErr

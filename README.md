@@ -437,10 +437,14 @@ own settings alone.
 - **Slideshow.** Setting any of `SLIDESHOW_ENABLED`, `SLIDESHOW_INTERVAL`
   (3, 15, 60, 720, or 1440 minutes), or `SLIDESHOW_TYPE` (`shuffle` or
   `sequential`) puts the manager in charge of the slideshow.
-- **Brightness.** `BRIGHTNESS` sets a fixed level (0–50). Alternatively,
-  `SOLAR_BRIGHTNESS_ENABLED=true` with `LOCATION_LATITUDE`,
-  `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the sun between
-  `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX`.
+- **Brightness.** `BRIGHTNESS` sets a fixed level on the Frame's Art Mode scale
+  (0–10). Alternatively, `SOLAR_BRIGHTNESS_ENABLED=true` with
+  `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the
+  sun between `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX` (also 0–10), reaching the
+  maximum when the sun is highest. Values outside 0–10 are rejected at startup.
+  If a TV reports a narrower range, the value is pinned to the nearest level
+  it accepts. A TV that doesn't answer brightness or slideshow requests keeps
+  syncing artwork; that setting is left alone and a warning is logged.
 - **Nightly power-off.** `AUTO_OFF_TIME` (for example `22:00`, in
   `LOCATION_TIMEZONE`) turns off TVs that are showing art, and leaves TVs that
   are in use alone. It keeps trying for `AUTO_OFF_GRACE_HOURS` (default 2).

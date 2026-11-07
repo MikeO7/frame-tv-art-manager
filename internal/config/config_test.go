@@ -24,6 +24,8 @@ func TestLoadEnvironRejectsInvalidSettings(t *testing.T) {
 		{name: "inverted brightness range", environ: []string{tv, "BRIGHTNESS_MIN=10", "BRIGHTNESS_MAX=5"}, want: "BRIGHTNESS_MIN (10) must be less than BRIGHTNESS_MAX (5)"},
 		{name: "slideshow type", environ: []string{tv, "SLIDESHOW_TYPE=random"}, want: "SLIDESHOW_TYPE"},
 		{name: "manual brightness", environ: []string{tv, "BRIGHTNESS=not-a-number"}, want: "BRIGHTNESS"},
+		{name: "brightness above the Frame scale", environ: []string{tv, "BRIGHTNESS=11"}, want: "BRIGHTNESS must be between 0 and 10"},
+		{name: "solar maximum above the Frame scale", environ: []string{tv, "BRIGHTNESS_MAX=20"}, want: "BRIGHTNESS_MAX must be between 0 and 10"},
 		{name: "latitude syntax", environ: []string{tv, "LOCATION_LATITUDE=north"}, want: "LOCATION_LATITUDE"},
 		{name: "longitude syntax", environ: []string{tv, "LOCATION_LONGITUDE=west"}, want: "LOCATION_LONGITUDE"},
 		{name: "portrait mode", environ: []string{tv, "PORTRAIT_MODE=stretch"}, want: "PORTRAIT_MODE"},

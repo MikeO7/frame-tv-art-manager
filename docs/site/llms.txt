@@ -57,7 +57,7 @@ Affiliation: independent project; not affiliated with or endorsed by Samsung.
 ## Optional TV controls
 
 - Slideshow: SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), SLIDESHOW_TYPE (shuffle or sequential).
-- Brightness: fixed BRIGHTNESS (0-50), or SOLAR_BRIGHTNESS_ENABLED with latitude, longitude, and timezone.
+- Brightness: fixed BRIGHTNESS (0-10), or SOLAR_BRIGHTNESS_ENABLED with latitude, longitude, and timezone.
 - Nightly power-off for TVs in Art Mode: AUTO_OFF_TIME.
 - Wake-on-LAN: TV_MAC, sent only when the TV is confirmed off; single TV only.
 

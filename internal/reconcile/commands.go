@@ -45,14 +45,22 @@ func initialObservationCapabilities(policy Policy) samsung.CapabilitySet {
 	return convergenceObservationCapabilities(policy)
 }
 
-func convergenceObservationCapabilities(policy Policy) samsung.CapabilitySet {
-	required := baseCapabilities
+// settingCapabilities lists the settings a policy manages. They are observed
+// as optional capabilities: a TV that does not answer one still converges
+// artwork and its other settings.
+func settingCapabilities(policy Policy) samsung.CapabilitySet {
+	var optional samsung.CapabilitySet
 	if policy.Slideshow.Mode != PolicyPreserve {
-		required |= samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite
+		optional |= samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite
 	}
 	if policy.Brightness.Mode != PolicyPreserve {
-		required |= samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite
+		optional |= samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite
 	}
+	return optional
+}
+
+func convergenceObservationCapabilities(policy Policy) samsung.CapabilitySet {
+	required := baseCapabilities
 	if policy.Power == PowerOff {
 		required |= samsung.CapabilityRemotePower
 	}

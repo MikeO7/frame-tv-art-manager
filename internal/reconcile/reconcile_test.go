@@ -143,8 +143,12 @@ func TestRunInitialObservationRequestsPolicyCapabilities(t *testing.T) {
 			if len(adapter.requests) != 1 {
 				t.Fatalf("Observe() requests = %d, want 1", len(adapter.requests))
 			}
-			if got := adapter.requests[0].Required; got != test.want {
-				t.Fatalf("initial capabilities = %09b, want %09b", got, test.want)
+			// Managed settings are observed as optional capabilities.
+			settings := samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite |
+				samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite
+			first := adapter.requests[0]
+			if got := first.Required | first.Optional; got != test.want || first.Required&settings != 0 {
+				t.Fatalf("initial capabilities = %09b + optional %09b, want %09b", first.Required, first.Optional, test.want)
 			}
 		})
 	}
@@ -613,12 +617,6 @@ func TestValidationFailsClosed(t *testing.T) {
 		{"state identity", func() error { return validateState(state, TVIdentity{Address: "other", Model: "model"}) }},
 		{"nil maps", func() error { broken := state; broken.Bindings = nil; return validateState(broken, identity) }},
 		{"invalid policy", func() error { return validatePolicy(Policy{Brightness: SettingPolicy{Mode: PolicySet, Value: 101}}) }},
-		{"unsupported setting", func() error {
-			_, err := BuildPlan(snap, observation, state, Policy{Slideshow: SlideshowPolicy{
-				Mode: PolicySet, Setting: samsung.SlideshowSetting{Interval: 1, Kind: samsung.SlideshowSequential},
-			}})
-			return err
-		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1200,7 +1198,6 @@ func TestBuildPlanRejectsEveryUntrustedInputLayer(t *testing.T) {
 		{"observation", snap, samsung.Observation{}, state, Policy{}},
 		{"identity mismatch", snap, observation, func() State { value := state; value.TV.Model = "other"; return value }(), Policy{}},
 		{"policy", snap, observation, state, Policy{Power: 99}},
-		{"brightness unsupported", snap, observation, state, Policy{Brightness: SettingPolicy{Mode: PolicySet, Value: 1}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1538,7 +1535,7 @@ func TestAppliedReceiptResolutionMatrix(t *testing.T) {
 	}
 }
 
-func TestSlideshowRecoveryThreeWayRule(t *testing.T) {
+func TestSettingRecoveryReleasesOnAnyKnownValue(t *testing.T) {
 	previous := samsung.SlideshowSetting{Interval: 5, Kind: samsung.SlideshowShuffle}
 	desired := samsung.SlideshowSetting{Interval: 10, Kind: samsung.SlideshowSequential}
 	base := State{Bindings: map[string]Binding{}, Tombstones: map[string]Tombstone{}, Pending: &Pending{
@@ -1547,18 +1544,22 @@ func TestSlideshowRecoveryThreeWayRule(t *testing.T) {
 	tests := []struct {
 		name        string
 		observation samsung.SlideshowObservation
+		support     samsung.Support
 		resolved    bool
 	}{
-		{"desired proves applied", samsung.SlideshowObservation{Setting: desired, Known: true}, true},
-		{"previous proves not applied", samsung.SlideshowObservation{Setting: previous, Known: true}, true},
-		{"same interval wrong kind blocks", samsung.SlideshowObservation{
+		{"desired", samsung.SlideshowObservation{Setting: desired, Known: true}, samsung.SupportSupported, true},
+		{"previous", samsung.SlideshowObservation{Setting: previous, Known: true}, samsung.SupportSupported, true},
+		{"some other value", samsung.SlideshowObservation{
 			Setting: samsung.SlideshowSetting{Interval: desired.Interval, Kind: samsung.SlideshowShuffle}, Known: true,
-		}, false},
-		{"unknown blocks", samsung.SlideshowObservation{}, false},
+		}, samsung.SupportSupported, true},
+		{"setting unsupported", samsung.SlideshowObservation{}, samsung.SupportUnsupported, true},
+		{"not observed", samsung.SlideshowObservation{}, samsung.SupportUnknown, false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := resolvePending(base, samsung.Observation{Slideshow: test.observation}, testTime)
+			observation := samsung.Observation{Slideshow: test.observation}
+			observation.Capabilities.SlideshowRead = test.support
+			got, err := resolvePending(base, observation, testTime)
 			if (err == nil) != test.resolved || (got.Pending == nil) != test.resolved {
 				t.Fatalf("state = %#v, error = %v", got, err)
 			}

@@ -138,13 +138,13 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 			return state, ErrRecoveryRequired
 		}
 	case CommandSlideshow:
-		if !settingSettled(observation.Slideshow.Known, observation.Slideshow.Setting,
-			pending.Command.PreviousSlideshow, pending.Command.DesiredSlideshow) {
+		if pending.Command.PreviousSlideshow == nil || pending.Command.DesiredSlideshow == nil ||
+			!settingSettled(observation.Slideshow.Known, observation.Capabilities.SlideshowRead) {
 			return state, ErrRecoveryRequired
 		}
 	case CommandBrightness:
-		if !settingSettled(observation.Brightness.Known, observation.Brightness.Value,
-			pending.Command.PreviousValue, pending.Command.DesiredValue) {
+		if pending.Command.PreviousValue == nil || pending.Command.DesiredValue == nil ||
+			!settingSettled(observation.Brightness.Known, observation.Capabilities.BrightnessRead) {
 			return state, ErrRecoveryRequired
 		}
 	default:
@@ -203,11 +203,13 @@ func uploadBinding(pending *Pending, confirmedAt time.Time) Binding {
 	}
 }
 
-// settingSettled reports whether a known observed setting proves the outcome
-// of a setting command: its desired value or its retained previous value. Any
-// other value is ambiguous.
-func settingSettled[T comparable](known bool, observed T, previous, desired *T) bool {
-	return known && previous != nil && desired != nil && (observed == *desired || observed == *previous)
+// settingSettled reports whether an interrupted setting command can be
+// released. A setting change destroys nothing, so any known value settles it:
+// the next plan compares that value with policy and reconverges. A TV that
+// reports the setting unsupported also settles it, because no later plan
+// touches that setting. Only a setting that was not observed keeps recovery.
+func settingSettled(known bool, support samsung.Support) bool {
+	return known || support == samsung.SupportUnsupported
 }
 
 func receiptSummary(receipt samsung.Receipt) *ReceiptSummary {

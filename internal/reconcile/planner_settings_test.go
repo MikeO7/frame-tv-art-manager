@@ -6,6 +6,28 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
+func TestBuildPlanLeavesUnreportedSettingsAlone(t *testing.T) {
+	t.Parallel()
+	// The TV answered neither setting this cycle; artwork still converges.
+	observation := knownObservation(samsung.PowerStateOn)
+	identity, err := identityFromObservation(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(snapshot(artworkItem("a.jpg", "a")), observation, initialState(identity), Policy{
+		Slideshow: SlideshowPolicy{
+			Mode: PolicySet, Setting: samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle},
+		},
+		Brightness: SettingPolicy{Mode: PolicySet, Value: 4},
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan() error = %v", err)
+	}
+	if len(plan.Commands) != 1 || plan.Commands[0].Kind != CommandUpload {
+		t.Fatalf("commands = %+v, want only the upload", plan.Commands)
+	}
+}
+
 func TestBuildPlanFitsBrightnessToTheTVScale(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
