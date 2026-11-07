@@ -39,10 +39,11 @@ func (s *store) prepare(ctx context.Context, request PrepareRequest) (Snapshot, 
 	return s.commitPrepared(ctx, items, next, changes)
 }
 
+// validatePreparedSnapshot checks an inventoried or staged view. It does not
+// enforce the item limit: files the operator placed in the folder are never
+// rejected or removed for exceeding it. The limit bounds what the manager adds
+// (planImports) and what a Sync Cycle reconciles.
 func (s *store) validatePreparedSnapshot(snapshot Snapshot) error {
-	if s.maxItems > 0 && len(snapshot.Items) > s.maxItems {
-		return fmt.Errorf("collection item limit %d exceeded by prepared inventory of %d items", s.maxItems, len(snapshot.Items))
-	}
 	if err := ValidateSnapshot(s.root, snapshot); err != nil {
 		return fmt.Errorf("validate prepared collection snapshot: %w", err)
 	}

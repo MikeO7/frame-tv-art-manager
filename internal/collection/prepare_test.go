@@ -156,11 +156,6 @@ func TestPrepareRejectsUnsafeProjectedInventoryWithoutCommittingManifest(t *test
 		want     string
 	}{
 		{
-			name: "configured item limit", maxItems: 1,
-			first: encodeImage(t, "png", 2, 2), second: encodeImage(t, "jpeg", 3, 2),
-			want: "item limit 1 exceeded",
-		},
-		{
 			name: "duplicate digest", first: encodeImage(t, "png", 2, 2),
 			want: "repeats digest",
 		},
@@ -191,6 +186,36 @@ func TestPrepareRejectsUnsafeProjectedInventoryWithoutCommittingManifest(t *test
 				t.Fatalf("Prepare() published manifest after rejection: %v", err)
 			}
 		})
+	}
+}
+
+func TestPrepareKeepsOperatorFilesBeyondItemLimit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeArtwork(t, root, "first.png", encodeImage(t, "png", 2, 2))
+	writeArtwork(t, root, "second.jpg", encodeImage(t, "jpeg", 3, 2))
+	store, err := collection.New(collection.Config{Root: root, MaxItems: 1})
+	if err != nil {
+		t.Fatalf("construct store: %v", err)
+	}
+	snapshot, err := store.Prepare(context.Background(), collection.PrepareRequest{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v, want an over-limit folder to be inventoried", err)
+	}
+	if len(snapshot.Items) != 2 {
+		t.Fatalf("Prepare() items = %d, want both operator files", len(snapshot.Items))
+	}
+	_, err = store.Import(context.Background(), collection.ImportRequest{
+		Reader: bytes.NewReader(encodeImage(t, "png", 4, 2)), Hint: "third.png",
+	})
+	if !errors.Is(err, collection.ErrCollectionFull) {
+		t.Fatalf("Import() error = %v, want ErrCollectionFull", err)
+	}
+	for _, name := range []string{"first.png", "second.jpg"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			t.Fatalf("operator file %s was removed: %v", name, err)
+		}
 	}
 }
 

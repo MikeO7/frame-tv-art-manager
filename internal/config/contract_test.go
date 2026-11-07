@@ -30,6 +30,7 @@ func TestLoadDefaultContract(t *testing.T) {
 		ArtworkDir:                     "/data/artwork",
 		MaxArtworkImages:               0,
 		MaxDownloadSizeMB:              20,
+		MaxLocalFileSizeMB:             200,
 		TokenDir:                       "/data/tokens",
 		SyncIntervalMin:                30,
 		ShutdownTimeout:                30 * time.Second,
@@ -138,7 +139,7 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 	clearEnvironmentForContract(t)
 	values := map[string]string{
 		"TV_IPS": "192.0.2.10,192.0.2.11", "ARTWORK_DIR": "/srv/art",
-		"MAX_ARTWORK_IMAGES": "123", "MAX_DOWNLOAD_SIZE_MB": "24",
+		"MAX_ARTWORK_IMAGES": "123", "MAX_DOWNLOAD_SIZE_MB": "24", "MAX_LOCAL_FILE_SIZE_MB": "300",
 		"TOKEN_DIR": "/srv/state", "SYNC_INTERVAL_MINUTES": "9", "SHUTDOWN_TIMEOUT_SECONDS": "13",
 		"MATTE_STYLE": "shadowbox_polar", "CLIENT_NAME": "Contract Client",
 		"DRY_RUN": contractTrue, "LOG_LEVEL": contractWarn,
@@ -188,6 +189,7 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		ArtworkDir:                     "/srv/art",
 		MaxArtworkImages:               123,
 		MaxDownloadSizeMB:              24,
+		MaxLocalFileSizeMB:             300,
 		TokenDir:                       "/srv/state",
 		SyncIntervalMin:                9,
 		ShutdownTimeout:                13 * time.Second,

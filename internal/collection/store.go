@@ -121,7 +121,7 @@ func (s *store) planImports(items []Item, inputs []validatedImage, origins []Ori
 		next, change, duplicate := s.plan(plan.items, input, origins[index])
 		if !duplicate {
 			if s.maxItems > 0 && len(next) > s.maxItems {
-				return batchPlan{}, nil, fmt.Errorf("collection item limit %d exceeded", s.maxItems)
+				return batchPlan{}, nil, fmt.Errorf("%w: collection item limit %d exceeded", ErrCollectionFull, s.maxItems)
 			}
 			added := slices.IndexFunc(next, func(item Item) bool { return item.Name == change.Name })
 			plan.additions = append(plan.additions, next[added])

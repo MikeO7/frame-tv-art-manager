@@ -36,7 +36,7 @@ func NewManagedEngine(
 	store, err := collectionpkg.New(collectionpkg.Config{
 		Root:           cfg.ArtworkDir,
 		MaxItems:       cfg.MaxArtworkImages,
-		MaxImportBytes: int64(cfg.MaxDownloadSizeMB) << 20,
+		MaxImportBytes: int64(cfg.MaxLocalFileSizeMB) << 20,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct authoritative collection: %w", err)

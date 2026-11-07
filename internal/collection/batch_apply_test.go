@@ -625,26 +625,29 @@ func TestPrepareRejectsMalformedBatchTransactionIntents(t *testing.T) {
 	}
 }
 
-func TestApplyValidationFailuresLeaveCollectionUntouched(t *testing.T) {
-	t.Run("projected item limit", func(t *testing.T) {
-		root := t.TempDir()
-		valueStore, err := New(Config{Root: root, MaxItems: 1})
-		if err != nil {
-			t.Fatalf("new store: %v", err)
-		}
-		stage := t.TempDir()
-		if err := os.WriteFile(filepath.Join(stage, "one.png"), encodeInternalImage(t, 2, 2), 0o644); err != nil {
-			t.Fatalf("write first stage: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(stage, "two.png"), encodeInternalImage(t, 3, 2), 0o644); err != nil {
-			t.Fatalf("write second stage: %v", err)
-		}
-		if _, err := valueStore.Apply(context.Background(), ApplyRequest{Directory: stage}); err == nil {
-			t.Fatal("Apply accepted a collection above its item limit")
-		}
-		assertCollectionRootEmpty(t, root)
-	})
+func TestApplyPublishesStagedCollectionBeyondItemLimit(t *testing.T) {
+	root := t.TempDir()
+	valueStore, err := New(Config{Root: root, MaxItems: 1})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	stage := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stage, "one.png"), encodeInternalImage(t, 2, 2), 0o644); err != nil {
+		t.Fatalf("write first stage: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "two.png"), encodeInternalImage(t, 3, 2), 0o644); err != nil {
+		t.Fatalf("write second stage: %v", err)
+	}
+	snapshot, err := valueStore.Apply(context.Background(), ApplyRequest{Directory: stage})
+	if err != nil {
+		t.Fatalf("Apply() error = %v; an optimized over-limit folder must not drop artwork", err)
+	}
+	if len(snapshot.Items) != 2 {
+		t.Fatalf("Apply() items = %d, want 2", len(snapshot.Items))
+	}
+}
 
+func TestApplyValidationFailuresLeaveCollectionUntouched(t *testing.T) {
 	tests := []struct {
 		name    string
 		entry   string

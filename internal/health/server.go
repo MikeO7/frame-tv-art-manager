@@ -30,6 +30,7 @@ const (
 	fieldCurrentStage = "current_stage"
 	fieldSyncCount    = "sync_count"
 	fieldLifecycle    = "lifecycle"
+	fieldRedacted     = "redacted"
 	statusOK          = "ok"
 	statusError       = "error"
 	lifecycleReady    = "ready"
@@ -44,7 +45,7 @@ type Status struct {
 
 // TVStatus tracks per-TV health information.
 type TVStatus struct {
-	IP               string `json:"ip"`
+	IP               string `json:"ip,omitempty"`
 	LastSeen         string `json:"last_seen"`
 	ImageCount       int    `json:"image_count"`
 	ArtMode          bool   `json:"art_mode"`
@@ -136,6 +137,8 @@ type Server struct {
 	now      func() time.Time
 	importer ArtworkImporter
 	imports  chan struct{}
+	// authFailures rate-limits wrong UPLOAD_TOKEN guesses per client address.
+	authFailures *authLimiter
 }
 
 // ArtworkImporter is the only collection authority required by HTTP uploads.
@@ -151,10 +154,12 @@ func NewServer(
 	logger *slog.Logger,
 	importer ArtworkImporter,
 ) *Server {
-	return &Server{
+	server := &Server{
 		cfg: cfg, status: status, logger: logger, now: time.Now,
 		importer: importer, imports: make(chan struct{}, 1),
 	}
+	server.authFailures = newAuthLimiter(func() time.Time { return server.now() })
+	return server
 }
 
 // Bind acquires the HTTP listener before the application is marked ready.

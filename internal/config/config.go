@@ -17,12 +17,18 @@ type Config struct {
 	// ArtworkDir is the local directory containing artwork images.
 	ArtworkDir string
 
-	// MaxArtworkImages is the maximum number of images allowed in ArtworkDir.
-	// 0 means no local limit (fills to the TV's maximum available storage capacity).
+	// MaxArtworkImages caps how many images the manager adds to ArtworkDir
+	// (downloads and uploads) and how many it syncs to each TV. A larger local
+	// folder is never an error: the first MaxArtworkImages images by file name
+	// are synced. 0 means no limit (fill the TV to its capacity).
 	MaxArtworkImages int
 
-	// MaxDownloadSizeMB is the maximum allowed size for a single download.
+	// MaxDownloadSizeMB is the maximum allowed size for a single download or upload.
 	MaxDownloadSizeMB int
+
+	// MaxLocalFileSizeMB is the largest artwork file accepted from the local
+	// folder. Larger files are excluded from the collection.
+	MaxLocalFileSizeMB int
 
 	// TokenDir is the directory for storing TV auth tokens and mappings.
 	TokenDir string

@@ -139,7 +139,12 @@ curl -u "frame:$UPLOAD_TOKEN" -F "file=@photo.jpg" http://<server-address>:8080/
 Each upload is checked as a real image and is limited to
 `MAX_DOWNLOAD_SIZE_MB` (20 MB by default). Uploads are handled one at a time;
 a second upload sent at the same moment gets `429 Too Many Requests` and
-should be retried. The page uses plain HTTP Basic
+should be retried. When the folder already holds `MAX_ARTWORK_IMAGES` images,
+an upload gets `409 Conflict`. An uploaded image reaches the TV on the next
+sync cycle (`SYNC_INTERVAL_MINUTES`), not immediately. After 10 wrong
+passwords in a minute from one address, the server answers `429` with a
+`Retry-After` header for the rest of that minute. Behind a reverse proxy every
+client shares the proxy's address and therefore that budget. The page uses plain HTTP Basic
 authentication, so keep it on your home network or behind a TLS reverse proxy,
 and never expose port 8080 to the internet. The
 [Apple Photos guide](https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html)
@@ -299,7 +304,9 @@ Optional, off by default:
 
 Each transform runs within a memory budget (`IMAGE_MAX_WORKING_MEMORY_MB`,
 default 512 MB). A 24-megapixel camera photo takes about a second and roughly
-250 MB, and 8K images fit within the default budget.
+250 MB. An 8-bit 8K image (33 megapixels) just fits the default budget; a
+16-bit PNG or a smart crop of that size can need a larger one. Images above
+40 megapixels are left out of the collection with a warning in the log.
 
 ### Mattes
 
@@ -352,8 +359,9 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `SMART_CROP_ENABLED` | `false` | Content-aware cropping |
 | `IMAGE_MUSEUM_MODE` | `false` | Canvas texture and warmth |
 | `IMAGE_OPTIMIZE_ENABLED` | `true` | Turn all preparation off with `false` |
-| `MAX_ARTWORK_IMAGES` | `0` | Limit on collection size; `0` means no limit |
-| `MAX_DOWNLOAD_SIZE_MB` | `20` | Largest download or upload accepted |
+| `MAX_ARTWORK_IMAGES` | `0` | Most images synced to each TV and most the manager will add to the folder; `0` means no limit |
+| `MAX_DOWNLOAD_SIZE_MB` | `20` | Largest download or upload accepted (1–100) |
+| `MAX_LOCAL_FILE_SIZE_MB` | `200` | Largest file accepted from the artwork folder (1–512); larger files are skipped with a warning |
 
 **Uploads, safety, and the web server**
 
@@ -368,8 +376,17 @@ The full, annotated list is in [`.env.example`](.env.example).
 
 Invalid values such as an unknown log level, an unsupported slideshow
 interval, or a bad TV address stop the service at startup with a clear error.
-A number or true/false value that can't be read falls back to its default and
-logs a warning.
+A number that can't be read falls back to its default and logs a warning.
+On/off settings accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`, or
+`y`/`n` in any case; anything else stops the service at startup, so a typo
+can't silently turn a setting such as `DRY_RUN` off.
+
+`MAX_ARTWORK_IMAGES` never deletes or rejects files you put in the folder
+yourself. When the folder holds more, each sync sends the first
+`MAX_ARTWORK_IMAGES` images by file name and logs which ones were left out;
+images beyond the limit are treated like images not in the folder, so art the
+manager uploaded earlier for them is removed from the TV. Source downloads and
+uploads stop adding images once the limit is reached.
 
 ## TV controls
 
@@ -405,8 +422,15 @@ The built-in web server (port `HEALTH_PORT`) provides:
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /live` | The process is running. The container healthcheck uses this. |
-| `GET /ready`, `GET /health` | 200 once startup finished and the last sync succeeded, otherwise 503. |
+| `GET /ready`, `GET /health` | 200 once startup finished and the last sync succeeded, otherwise 503. Shows timing and state only, never error text. |
 | `GET /status` | Timing, current stage, last error, and per-TV status, including rotation. |
+
+`/live`, `/ready`, and `/health` need no password. When `UPLOAD_TOKEN` is set,
+`/status` shows the last error and TV addresses only to requests signed in as
+`frame` with that token; without credentials it returns the same fields with
+TVs numbered `tv-1`, `tv-2`, … (in address order), no error text, and
+`"redacted": true`. Wrong credentials get `401`, and count toward the same
+per-address limit as uploads. Without `UPLOAD_TOKEN`, `/status` is open.
 | `GET` / `POST /upload` | The upload page, when uploads are enabled. |
 
 Logs are JSON. Each TV's result includes its address, status, upload and delete
