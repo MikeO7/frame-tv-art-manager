@@ -2,8 +2,10 @@ package samsung
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -33,6 +35,43 @@ func TestObservedProtocolFixtureContract(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("device info identity 2022", func(t *testing.T) {
+		var response deviceInfoResponse
+		readProtocolFixture(t, "device-info-2022.json", &response)
+		if validateFrameTVDevice(response.Device) != nil ||
+			response.Device.stableDeviceID() != "uuid:0f8b7a3e-sanitized" {
+			t.Fatalf("2022 device fixture = %+v", response.Device)
+		}
+	})
+
+	t.Run("mixed category content list", func(t *testing.T) {
+		var response artResponse
+		readProtocolFixture(t, "content-list-mixed-categories.json", &response)
+		content, err := parseUploadedContent(response.ContentListRaw)
+		if err != nil {
+			t.Fatalf("parse mixed-category content list: %v", err)
+		}
+		want := []ArtContent{
+			{ContentID: "MY_F0011", CategoryID: contractCategoryID},
+			{ContentID: "MY_F0010", CategoryID: contractCategoryID},
+		}
+		if !reflect.DeepEqual(content, want) {
+			t.Fatalf("user content = %+v, want %+v", content, want)
+		}
+	})
+
+	t.Run("artmode settings brightness 2022", func(t *testing.T) {
+		var response artResponse
+		readProtocolFixture(t, "artmode-settings-2022.json", &response)
+		reading, err := parseArtModeBrightness(response.DataRaw)
+		if err != nil {
+			t.Fatalf("parse artmode settings: %v", err)
+		}
+		if reading != (BrightnessReading{Value: 0, Min: 0, Max: 10}) {
+			t.Fatalf("brightness reading = %+v", reading)
+		}
+	})
 
 	tests := []struct {
 		name  string
@@ -73,8 +112,31 @@ func TestObservedProtocolFixtureContract(t *testing.T) {
 			name: "storage-error.json",
 			check: func(t *testing.T, response artResponse) {
 				t.Helper()
-				if response.ErrorCode != 507 {
-					t.Fatalf("storage error code = %d", response.ErrorCode)
+				if response.ErrorCode != "507" || !errors.Is(checkArtError(&response), ErrStorageFull) {
+					t.Fatalf("storage error code = %q", response.ErrorCode)
+				}
+			},
+		},
+		{
+			// Captured from a 2022 Frame (QN43LS03B) by samsung-tv-ws-api.
+			name: "send-image-error-2022.json",
+			check: func(t *testing.T, response artResponse) {
+				t.Helper()
+				if response.ID == "" || !errors.Is(checkArtError(&response), ErrArtAPIError) {
+					t.Fatalf("real TV error envelope = %+v", response)
+				}
+			},
+		},
+		{
+			name: "upload-connection-secured-2022.json",
+			check: func(t *testing.T, response artResponse) {
+				t.Helper()
+				var info connInfo
+				if err := json.Unmarshal([]byte(response.ConnInfo()), &info); err != nil {
+					t.Fatalf("decode secured connection info: %v", err)
+				}
+				if info.Port.String() != "51317" || !info.Secured || info.Key != "tmvo5fr7" {
+					t.Fatalf("secured connection fixture = %+v", info)
 				}
 			},
 		},

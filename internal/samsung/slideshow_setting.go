@@ -15,18 +15,27 @@ const (
 )
 
 // SlideshowSetting is a complete observed or desired slideshow value.
-// Interval is zero when the slideshow is disabled.
+// Interval is zero when the slideshow is disabled. Category is the artwork
+// category the TV cycles through (MY-C0002 for uploads, MY-C0004 for
+// favorites); it is empty when the TV did not report one.
 type SlideshowSetting struct {
 	Interval int
 	Kind     SlideshowKind
+	Category string `json:",omitempty"`
 }
 
-func parseSlideshowSetting(value, kind string) (SlideshowSetting, error) {
-	setting := SlideshowSetting{Kind: SlideshowKind(strings.TrimSpace(kind))}
+func parseSlideshowSetting(value, kind, category string) (SlideshowSetting, error) {
+	setting := SlideshowSetting{
+		Kind: SlideshowKind(strings.TrimSpace(kind)), Category: strings.TrimSpace(category),
+	}
+	value = strings.TrimSpace(value)
+	if value == stringOff && setting.Kind == "" {
+		// Some firmware omits the playback kind while the slideshow is off.
+		setting.Kind = SlideshowShuffle
+	}
 	if !setting.Kind.valid() {
 		return SlideshowSetting{}, fmt.Errorf("invalid slideshow kind %q", kind)
 	}
-	value = strings.TrimSpace(value)
 	if value == stringOff {
 		return setting, nil
 	}
@@ -45,4 +54,13 @@ func (kind SlideshowKind) valid() bool {
 // Valid reports whether the setting can be observed from or sent to a TV.
 func (setting SlideshowSetting) Valid() bool {
 	return setting.Interval >= 0 && setting.Kind.valid()
+}
+
+// wireCategory is the category sent with a slideshow write: the observed one,
+// or the uploaded-art category when the TV never reported one.
+func (setting SlideshowSetting) wireCategory() string {
+	if setting.Category != "" {
+		return setting.Category
+	}
+	return userArtCategory
 }

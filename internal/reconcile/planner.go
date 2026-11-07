@@ -158,6 +158,8 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 			return Plan{}, fmt.Errorf("slideshow observation is unavailable: %w", ErrUnsupportedIntent)
 		}
 		desired := policy.Slideshow.Setting
+		// The category is the TV's playback source, not operator policy: keep it.
+		desired.Category = observation.Slideshow.Setting.Category
 		if policy.Slideshow.Mode == PolicyDisable {
 			desired.Interval = 0
 			if !desired.Valid() {
@@ -175,8 +177,14 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		if !observation.Brightness.Known {
 			return Plan{}, fmt.Errorf("brightness observation is unavailable: %w", ErrUnsupportedIntent)
 		}
-		if observation.Brightness.Value != policy.Brightness.Value {
-			previous, desired := observation.Brightness.Value, policy.Brightness.Value
+		desired := policy.Brightness.Value
+		if reading := observation.Brightness; reading.Max > reading.Min {
+			// Samsung reports its own scale (0-10 on current Frames); a policy
+			// value outside it is pinned to the nearest level the TV accepts.
+			desired = min(max(desired, reading.Min), reading.Max)
+		}
+		if observation.Brightness.Value != desired {
+			previous := observation.Brightness.Value
 			plan.Commands = append(plan.Commands, CommandIntent{
 				Kind: CommandBrightness, PreviousValue: &previous, DesiredValue: &desired,
 			})

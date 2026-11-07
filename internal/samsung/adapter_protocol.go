@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"net"
@@ -25,8 +26,9 @@ type protocolTransport struct {
 	gateHTTPClient      *http.Client
 	websocketHTTPClient *http.Client
 
-	mu   sync.Mutex
-	conn *connection
+	mu      sync.Mutex
+	conn    *connection
+	session *artSession
 }
 
 func newProtocolTransport(config Config, dependencies Dependencies) observationTransport {
@@ -65,6 +67,8 @@ func (t *protocolTransport) Connect(ctx context.Context, dryRun bool) error {
 	persistToken := persistAuthenticationToken
 	if dryRun {
 		persistToken = func(context.Context, string, string) error { return nil }
+	} else if err := t.pairOnRemoteControl(ctx); err != nil {
+		return err
 	}
 	t.conn = newConnection(connConfig{
 		host:          host,
@@ -81,6 +85,26 @@ func (t *protocolTransport) Connect(ctx context.Context, dryRun bool) error {
 	if err := t.conn.Open(ctx); err != nil {
 		t.conn = nil
 		return err
+	}
+	return nil
+}
+
+// pairOnRemoteControl obtains the first token on the remote-control channel,
+// as Samsung's own clients do: some models show the "Allow" prompt only for
+// that channel and silently refuse an unpaired art-channel client. An existing
+// token file, valid or not, is left for the art channel to use or reject.
+func (t *protocolTransport) pairOnRemoteControl(ctx context.Context) error {
+	_, err := loadAuthenticationToken(t.config.TokenPath)
+	if err == nil || !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	t.logger.Info("pairing with TV; accept the connection prompt on the TV screen")
+	conn, err := t.openRemoteControl(ctx)
+	if err != nil {
+		return fmt.Errorf("pair on remote control channel: %w", err)
+	}
+	if err := conn.CloseContext(ctx); err != nil {
+		t.logger.Debug("close pairing channel", "error", err)
 	}
 	return nil
 }
@@ -142,11 +166,18 @@ func (t *protocolTransport) ArtMode(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if response.Value == "" {
+		// Art API 5.x reports the mode as status instead of value.
+		return response.Status, nil
+	}
 	return string(response.Value), nil
 }
 
+// Inventory asks for the uploaded-art category the way Samsung's own clients
+// do ("category", not "category_id"); TVs may still return every category, so
+// parseUploadedContent filters the reply.
 func (t *protocolTransport) Inventory(ctx context.Context) (json.RawMessage, error) {
-	response, err := t.send(ctx, keyGetContentList, map[string]any{keyCategoryID: userArtCategory})
+	response, err := t.send(ctx, keyGetContentList, map[string]any{keyCategory: userArtCategory})
 	if err != nil {
 		return nil, err
 	}
@@ -157,6 +188,7 @@ func (t *protocolTransport) Close(ctx context.Context) error {
 	t.mu.Lock()
 	conn := t.conn
 	t.conn = nil
+	t.session = nil
 	t.mu.Unlock()
 	for _, client := range []*http.Client{t.deviceHTTPClient, t.gateHTTPClient, t.websocketHTTPClient} {
 		if client != nil {
@@ -184,17 +216,45 @@ func (t *protocolTransport) sendOnConnection(
 	requestID string,
 	fields map[string]any,
 ) (*artResponse, error) {
+	return t.exchange(ctx, conn, artRequest{name: requestName, id: requestID, fields: fields}, t.config.RequestTimeout)
+}
+
+// sendWithTimeout sends a request with a fresh ID and waits at most timeout
+// for its reply.
+func (t *protocolTransport) sendWithTimeout(
+	ctx context.Context,
+	conn *connection,
+	requestName string,
+	fields map[string]any,
+	timeout time.Duration,
+) (*artResponse, error) {
+	return t.exchange(ctx, conn, artRequest{name: requestName, id: newRequestID(), fields: fields}, timeout)
+}
+
+type artRequest struct {
+	name   string
+	id     string
+	fields map[string]any
+}
+
+func (t *protocolTransport) exchange(
+	ctx context.Context,
+	conn *connection,
+	outgoing artRequest,
+	timeout time.Duration,
+) (*artResponse, error) {
+	requestName, requestID := outgoing.name, outgoing.id
 	request := map[string]any{
 		keyRequest:   requestName,
 		"id":         requestID,
 		keyRequestID: requestID,
 	}
-	maps.Copy(request, fields)
+	maps.Copy(request, outgoing.fields)
 	payload, err := artAppRequest(request)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", requestName, err)
 	}
-	raw, err := conn.SendAndWait(ctx, payload, requestID, t.config.RequestTimeout)
+	raw, err := conn.SendAndWait(ctx, payload, requestID, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", requestName, err)
 	}

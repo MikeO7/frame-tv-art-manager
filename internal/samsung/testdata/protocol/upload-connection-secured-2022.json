@@ -1,0 +1,5 @@
+{
+  "event": "ready_to_use",
+  "request_id": "sanitized-request",
+  "conn_info": "{\"contentInfo\": \"{\\\"d2d_mode\\\": \\\"socket\\\", \\\"connection_id\\\": \\\"\\\", \\\"request_id\\\": \\\"\\\", \\\"id\\\": \\\"sanitized-request\\\", \\\"ConnectData\\\": null}\", \"event\": \"get_d2d_connection\", \"ip\": \"192.0.2.20\", \"port\": \"51317\", \"key\": \"tmvo5fr7\", \"stat\": \"ok\", \"mode\": \"socket\", \"secured\": true}"
+}

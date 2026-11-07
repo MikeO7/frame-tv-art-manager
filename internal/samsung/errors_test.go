@@ -1,6 +1,7 @@
 package samsung
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -71,19 +72,30 @@ func TestSamsungErrorNilSafetyAndWrapping(t *testing.T) {
 
 func TestCheckArtErrorClassifiesResponses(t *testing.T) {
 	tests := []struct {
-		name string
-		code int
-		want error
+		name  string
+		raw   string
+		want  error
+		match string
 	}{
-		{name: "success", code: 0},
-		{name: "forbidden response", code: 403, want: ErrArtAPIError},
-		{name: "insufficient storage", code: 507, want: ErrStorageFull},
-		{name: "Samsung storage code", code: 11001, want: ErrStorageFull},
-		{name: "generic API error", code: 42, want: ErrArtAPIError},
+		{name: "success", raw: `{"event":"get_artmode_status"}`},
+		{name: "explicit zero", raw: `{"error_code":0}`},
+		{name: "forbidden response", raw: `{"error_code":403}`, want: ErrArtAPIError},
+		{name: "insufficient storage", raw: `{"error_code":507}`, want: ErrStorageFull},
+		{name: "Samsung storage code", raw: `{"error_code":11001}`, want: ErrStorageFull},
+		{name: "string storage code", raw: `{"error_code":"507"}`, want: ErrStorageFull},
+		{name: "real TV string code", raw: `{"event":"error","error_code":"-1"}`, want: ErrArtAPIError, match: "code -1"},
+		{name: "error event without code", raw: `{"event":"error"}`, want: ErrArtAPIError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := checkArtError(&artResponse{ErrorCode: tt.code})
+			var response artResponse
+			if err := json.Unmarshal([]byte(tt.raw), &response); err != nil {
+				t.Fatalf("decode %s: %v", tt.raw, err)
+			}
+			err := checkArtError(&response)
+			if tt.match != "" && (err == nil || !strings.Contains(err.Error(), tt.match)) {
+				t.Fatalf("checkArtError() = %v, want message containing %q", err, tt.match)
+			}
 			if tt.want == nil && err != nil {
 				t.Fatalf("checkArtError: %v", err)
 			}

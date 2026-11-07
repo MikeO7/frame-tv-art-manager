@@ -112,6 +112,11 @@ type Config struct {
 	// when TV_MAC is unset or ambiguous because several TVs are configured.
 	TVMAC net.HardwareAddr
 
+	// WakeBroadcast is the IPv4 address Wake-on-LAN packets are sent to, from
+	// TV_WOL_BROADCAST. Empty means the limited broadcast plus the TV's /24
+	// directed broadcast.
+	WakeBroadcast string
+
 	// --- REST Gate ---
 
 	// EnableRESTGate enables the Silent REST Gate (GET http://<ip>:8001/ms/art)

@@ -116,6 +116,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		MaxCropPercent:                 env.integer("IMAGE_MAX_CROP_PERCENT", 25),
 		MaxUpscale:                     env.decimal("IMAGE_MAX_UPSCALE", 3),
 		MatTone:                        strings.ToLower(env.str("IMAGE_MAT_TONE", "auto")),
+		WakeBroadcast:                  strings.TrimSpace(env.str("TV_WOL_BROADCAST", "")),
 	}
 
 	if err := env.parseRequiredValues(cfg); err != nil {

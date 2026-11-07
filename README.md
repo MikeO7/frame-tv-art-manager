@@ -88,8 +88,9 @@ docker compose logs -f frame-tv-art-manager
 
 1. **Approve the connection.** The first time it connects, the TV shows an
    Allow/Deny prompt named after `CLIENT_NAME`. Choose **Allow** with the remote.
-   The pairing token is saved in `./data/tokens`; keep that folder when you
-   upgrade or the TV will ask again.
+   The manager pairs on the TV's remote-control channel first, so one approval
+   covers both artwork and power control. The pairing token is saved in
+   `./data/tokens`; keep that folder when you upgrade or the TV will ask again.
 2. **Add art.** Copy `.jpg`, `.jpeg`, or `.png` files into `./data/artwork`.
    Copy, don't move: each file is replaced by its prepared version, so keep
    your originals somewhere else.
@@ -305,7 +306,9 @@ default 512 MB). A 24-megapixel camera photo takes about a second and roughly
 
 `MATTE_STYLE` sets Samsung's matte for every upload: `none` for full screen, or
 a `style_color` value such as `shadowbox_polar` or `modern_apricot`.
-`.env.example` lists every style and color. To give individual images their own
+`.env.example` lists every style and color. Before each upload the
+manager checks the matte against the list the TV reports; a matte the TV
+doesn't offer is replaced with `none` and logged as a warning. To give individual images their own
 matte, add a `mattes.json` file to the artwork folder:
 
 ```json
@@ -386,9 +389,14 @@ own settings alone.
 - **Nightly power-off.** `AUTO_OFF_TIME` (for example `22:00`, in
   `LOCATION_TIMEZONE`) turns off TVs that are showing art, and leaves TVs that
   are in use alone. It keeps trying for `AUTO_OFF_GRACE_HOURS` (default 2).
-- **Wake-on-LAN.** `TV_MAC` wakes a single TV when it is confirmed off. It is
-  never sent when the TV's state is unknown, and it is turned off when
-  `TV_IPS` lists several TVs.
+- **Wake-on-LAN.** `TV_MAC` wakes a single TV when it is confirmed off, or
+  when the TV has dropped off the network entirely (deep standby). It is never
+  sent when the TV answers with an unknown state, and it is turned off when
+  `TV_IPS` lists several TVs. The magic packet goes to UDP ports 9 and 7 on
+  `255.255.255.255` and on the TV's `/24` broadcast address (for example
+  `192.168.1.255`). Set `TV_WOL_BROADCAST` to send it to one other IPv4
+  broadcast address instead. Broadcasts don't leave a Docker bridge network, so
+  run the container with `network_mode: host` when you use Wake-on-LAN.
 
 Network options for unusual setups:
 

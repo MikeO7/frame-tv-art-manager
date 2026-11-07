@@ -87,32 +87,51 @@ func (c *connection) readEnvelope(ctx context.Context, conn *websocket.Conn, wha
 	return resp, nil
 }
 
+// maxHandshakeEvents bounds the unrelated broadcasts (ed.edenTV.update,
+// ms.voiceApp.hide, ms.channel.clientConnect, ...) a TV may interleave before
+// the event a handshake step waits for.
+const maxHandshakeEvents = 16
+
 func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) error {
-	resp, err := c.readEnvelope(ctx, conn, "handshake")
-	if err != nil {
-		return err
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	for range maxHandshakeEvents {
+		resp, err := c.readEnvelope(ctx, conn, "handshake")
+		if err != nil {
+			return err
+		}
+		switch resp.Event {
+		case EventChannelConnect:
+			return c.extractAndSaveToken(ctx, resp.Data)
+		case "ms.channel.unauthorized":
+			return ErrUnauthorized
+		case "ms.channel.timeOut":
+			return ErrTimeout
+		default:
+			c.logger.Debug("skipping event before channel connect", "event", resp.Event)
+		}
 	}
-	switch resp.Event {
-	case EventChannelConnect:
-		return c.extractAndSaveToken(ctx, resp.Data)
-	case "ms.channel.unauthorized":
-		return ErrUnauthorized
-	case "ms.channel.timeOut":
-		return ErrTimeout
-	default:
-		return fmt.Errorf("unexpected event %q: %w", resp.Event, ErrConnectionFailure)
-	}
+	return fmt.Errorf("no ms.channel.connect after %d events: %w", maxHandshakeEvents, ErrConnectionFailure)
 }
 
 func (c *connection) waitForChannelReady(ctx context.Context, conn *websocket.Conn) error {
-	resp, err := c.readEnvelope(ctx, conn, "channel ready")
-	if err != nil {
-		return err
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	for range maxHandshakeEvents {
+		resp, err := c.readEnvelope(ctx, conn, "channel ready")
+		if err != nil {
+			return err
+		}
+		switch resp.Event {
+		case EventChannelReady:
+			return nil
+		case "ms.channel.unauthorized":
+			return ErrUnauthorized
+		default:
+			c.logger.Debug("skipping event before channel ready", "event", resp.Event)
+		}
 	}
-	if resp.Event != EventChannelReady {
-		return fmt.Errorf("expected ms.channel.ready, got %q: %w", resp.Event, ErrConnectionFailure)
-	}
-	return nil
+	return fmt.Errorf("no ms.channel.ready after %d events: %w", maxHandshakeEvents, ErrConnectionFailure)
 }
 
 func (c *connection) Open(ctx context.Context) error {
@@ -185,14 +204,18 @@ func (c *connection) CloseContext(ctx context.Context) error {
 		}
 	}
 
+	c.failPending()
+	return err
+}
+
+// failPending closes every registered waiter so it observes ErrNotConnected.
+func (c *connection) failPending() {
 	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
 	for id, ch := range c.pending {
 		close(ch)
 		delete(c.pending, id)
 	}
-	c.pendingMu.Unlock()
-
-	return err
 }
 
 // IsAlive returns true if the connection is open and not closed.

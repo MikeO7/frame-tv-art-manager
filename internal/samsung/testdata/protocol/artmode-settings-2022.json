@@ -1,0 +1,5 @@
+{
+  "event": "get_artmode_settings",
+  "request_id": "sanitized-request",
+  "data": "[{\"item\": \"brightness\", \"value\": \"0\", \"min\": \"0\", \"max\": \"10\"}, {\"item\": \"color_temperature\", \"value\": \"3\", \"min\": \"-5\", \"max\": \"5\"}, {\"item\": \"motion_sensitivity\", \"value\": \"2\", \"min\": \"1\", \"max\": \"3\"}, {\"item\": \"motion_timer\", \"value\": \"off\", \"valid_values\": \"[\\\"off\\\", \\\"5\\\", \\\"15\\\", \\\"30\\\", \\\"60\\\", \\\"120\\\", \\\"240\\\"]\"}, {\"item\": \"brightness_sensor_setting\", \"value\": \"off\"}]"
+}

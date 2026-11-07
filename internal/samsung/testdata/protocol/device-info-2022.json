@@ -1,0 +1,21 @@
+{
+  "device": {
+    "FrameTVSupport": "true",
+    "OS": "Tizen",
+    "PowerState": "on",
+    "TokenAuthSupport": "true",
+    "duid": "uuid:0f8b7a3e-sanitized",
+    "firmwareVersion": "Unknown",
+    "id": "uuid:0f8b7a3e-sanitized",
+    "model": "22_PONTUSM_FTV",
+    "modelName": "QN43LS03BAFXZC",
+    "networkType": "wired",
+    "resolution": "3840x2160",
+    "type": "Samsung SmartTV",
+    "wifiMac": "aa:bb:cc:dd:ee:ff"
+  },
+  "isSupport": "{\"FrameTVSupport\": \"true\", \"TokenAuthSupport\": \"true\"}",
+  "remote": "1.0",
+  "type": "Samsung SmartTV",
+  "version": "2.0.25"
+}

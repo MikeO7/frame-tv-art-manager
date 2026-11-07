@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -36,6 +37,12 @@ type scriptedMutationTransport struct {
 	wakeCalls           int
 	powerOffCalls       int
 	deviceInfoCalls     int
+	current             string
+	currentErr          error
+	uploadMattes        [2]string
+	matteErr            error
+	wakeTurnsOn         bool
+	pinnedCurrent       string
 }
 
 func TestSettingOutcomeClassifiesPostconditionEvidence(t *testing.T) {
@@ -121,6 +128,7 @@ func (t *scriptedMutationTransport) Inventory(ctx context.Context) (json.RawMess
 
 func (t *scriptedMutationTransport) Upload(_ context.Context, upload preparedUpload) (string, error) {
 	t.uploadCalls++
+	t.uploadMattes = [2]string{upload.matte, upload.portraitMatte}
 	if upload.file == nil || upload.size <= 0 {
 		return "", errors.New("invalid prepared upload")
 	}
@@ -132,8 +140,14 @@ func (t *scriptedMutationTransport) Delete(context.Context, string) error {
 	return t.deleteErr
 }
 
-func (t *scriptedMutationTransport) Select(context.Context, string) error {
+func (t *scriptedMutationTransport) Select(_ context.Context, contentID string) error {
 	t.selectCalls++
+	if t.selectErr == nil {
+		t.current = contentID
+	}
+	if t.pinnedCurrent != "" {
+		t.current = t.pinnedCurrent
+	}
 	return t.selectErr
 }
 
@@ -152,13 +166,27 @@ func (t *scriptedMutationTransport) ConfigureSlideshow(_ context.Context, settin
 	return t.slideshowWriteErr
 }
 
-func (t *scriptedMutationTransport) Brightness(context.Context) (int, error) {
+func (t *scriptedMutationTransport) Brightness(context.Context) (BrightnessReading, error) {
 	if len(t.brightnessValues) == 0 {
-		return 0, errors.New("brightness script exhausted")
+		return BrightnessReading{}, errors.New("brightness script exhausted")
 	}
 	value := t.brightnessValues[0]
 	t.brightnessValues = t.brightnessValues[1:]
-	return value, nil
+	return BrightnessReading{Value: value, Max: 10}, nil
+}
+
+func (t *scriptedMutationTransport) CurrentArtwork(context.Context) (string, error) {
+	if t.currentErr != nil {
+		return "", t.currentErr
+	}
+	return t.current, nil
+}
+
+func (t *scriptedMutationTransport) MatteCatalog(context.Context) (matteCatalog, error) {
+	if t.matteErr != nil {
+		return matteCatalog{}, t.matteErr
+	}
+	return parseMatteCatalog([]byte(`"[{\"matte_type\":\"shadowbox\"}]"`), []byte(`"[{\"color\":\"polar\"}]"`))
 }
 
 func (t *scriptedMutationTransport) ConfigureBrightness(context.Context, int) error {
@@ -168,6 +196,11 @@ func (t *scriptedMutationTransport) ConfigureBrightness(context.Context, int) er
 
 func (t *scriptedMutationTransport) Wake(context.Context) error {
 	t.wakeCalls++
+	if t.wakeTurnsOn && t.wakeErr == nil {
+		t.deviceErr = nil
+		t.device.PowerState = stringOn
+		t.artMode = stringOn
+	}
 	return t.wakeErr
 }
 
@@ -465,38 +498,52 @@ func TestAdapterAuthorizationIsBoundToObservedCapability(t *testing.T) {
 
 func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 	t.Parallel()
+	unreachable := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
 	tests := []struct {
-		name      string
-		artMode   string
-		desired   PowerState
-		wantMatch bool
+		name       string
+		power      string
+		artMode    string
+		artModeErr error
+		connectErr error
+		deviceErr  error
+		desired    PowerState
+		wantMatch  bool
+		wantErr    bool
 	}{
-		{name: "Art Mode satisfies on", artMode: stringOn, desired: PowerStateOn, wantMatch: true},
-		{name: "Art Mode does not satisfy off", artMode: stringOn, desired: PowerStateOff},
-		{name: "Art Mode off satisfies off", artMode: stringOff, desired: PowerStateOff, wantMatch: true},
-		{name: "Art Mode off does not satisfy on", artMode: stringOff, desired: PowerStateOn},
+		{name: "Art Mode satisfies on", power: stringStandby, artMode: stringOn, desired: PowerStateOn, wantMatch: true},
+		{name: "Art Mode does not satisfy off", power: stringStandby, artMode: stringOn, desired: PowerStateOff},
+		{name: "Art Mode off satisfies off", power: stringStandby, artMode: stringOff, desired: PowerStateOff, wantMatch: true},
+		{name: "Art Mode off does not satisfy on", power: stringStandby, artMode: stringOff, desired: PowerStateOn},
+		{
+			name: "standby with silent art channel is off", power: stringStandby,
+			artModeErr: errors.New("art mode unavailable"), desired: PowerStateOff, wantMatch: true,
+		},
+		{
+			name: "standby refusing the art channel is off", power: stringStandby,
+			connectErr: ErrConnectionFailure, desired: PowerStateOff, wantMatch: true,
+		},
+		{
+			name: "on with silent art channel is unknown", power: stringOn,
+			artModeErr: errors.New("art mode unavailable"), desired: PowerStateOff, wantErr: true,
+		},
+		{name: "dark REST proves power off", deviceErr: unreachable, desired: PowerStateOff, wantMatch: true, wantErr: true},
+		{name: "dark REST does not prove wake", deviceErr: unreachable, desired: PowerStateOn, wantErr: true},
+		{name: "unknown state", power: "sleeping", desired: PowerStateOff, wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			transport := mutationTransportForInventory(`[]`)
-			transport.device.PowerState = stringStandby
+			transport.device.PowerState = test.power
+			transport.deviceErr = test.deviceErr
+			transport.connectErr = test.connectErr
 			transport.artMode = test.artMode
-			reached, err := desiredPowerObserved(context.Background(), transport, test.desired)
-			if err != nil || reached != test.wantMatch {
-				t.Fatalf("desiredPowerObserved(standby, %s, %d) = %v, %v", test.artMode, test.desired, reached, err)
+			transport.artModeErr = test.artModeErr
+			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+			reached, err := adapter.desiredPowerObserved(context.Background(), test.desired)
+			if (err != nil) != test.wantErr || reached != test.wantMatch {
+				t.Fatalf("desiredPowerObserved(%s) = %v, %v", test.name, reached, err)
 			}
 		})
-	}
-	transport := mutationTransportForInventory(`[]`)
-	transport.device.PowerState = stringStandby
-	transport.artModeErr = errors.New("art mode unavailable")
-	if _, err := desiredPowerObserved(context.Background(), transport, PowerStateOff); err == nil {
-		t.Fatal("desiredPowerObserved() accepted standby with an Art Mode error")
-	}
-	transport.artModeErr = nil
-	transport.device.PowerState = "sleeping"
-	if _, err := desiredPowerObserved(context.Background(), transport, PowerStateOff); err == nil {
-		t.Fatal("desiredPowerObserved() accepted an unknown actual state")
 	}
 }
 

@@ -211,6 +211,11 @@ func validateLocations(cfg *Config, mac string) error {
 			return fmt.Errorf("AUTO_OFF_TIME %q: %w", cfg.AutoOffTime, err)
 		}
 	}
+	if cfg.WakeBroadcast != "" {
+		if ip := net.ParseIP(cfg.WakeBroadcast); ip == nil || ip.To4() == nil {
+			return fmt.Errorf("TV_WOL_BROADCAST %q must be an IPv4 address", cfg.WakeBroadcast)
+		}
+	}
 	if mac == "" {
 		return nil
 	}
