@@ -28,8 +28,14 @@ func newStateStore(directory string) stateStore {
 	return stateStore{directory: directory, replace: durablefs.Replace}
 }
 
+// path keys a record by the TV's stable device ID when it is known, so an
+// address change finds the same record. Without one it uses the address and
+// model, which is also how records written before device IDs were keyed.
 func (s stateStore) path(identity TVIdentity) string {
 	key := sha256.Sum256([]byte(identity.Address + "\x00" + identity.Model))
+	if identity.DeviceID != "" {
+		key = sha256.Sum256([]byte("device\x00" + identity.DeviceID + "\x00" + identity.Model))
+	}
 	return filepath.Join(s.directory, "tv_"+hex.EncodeToString(key[:16])+"_reconciliation.json")
 }
 
@@ -44,6 +50,12 @@ func (s stateStore) load(ctx context.Context, identity TVIdentity) (State, bool,
 	data, err := durablefs.ReadStable(ctx, path, durablefs.StableReadOptions{
 		MaxBytes: maxReconciliationStateBytes, RequiredMode: 0o600,
 	})
+	if errors.Is(err, fs.ErrNotExist) && identity.DeviceID != "" {
+		// Migrate a record written before device IDs: same address and model.
+		data, err = durablefs.ReadStable(ctx, s.path(legacyIdentity(identity)), durablefs.StableReadOptions{
+			MaxBytes: maxReconciliationStateBytes, RequiredMode: 0o600,
+		})
+	}
 	if errors.Is(err, fs.ErrNotExist) {
 		return State{}, false, nil
 	}
@@ -74,7 +86,7 @@ func (s stateStore) save(ctx context.Context, state State) error {
 		return writeErr
 	})
 	if err == nil {
-		return nil
+		return s.removeMigratedRecord(state.TV)
 	}
 	if !errors.Is(err, durablefs.ErrOutcomeUnknown) {
 		return fmt.Errorf("persist reconciliation state revision %d: %w", state.Revision, err)
@@ -167,6 +179,23 @@ func ensureJSONEOF(decoder *json.Decoder, subject string) error {
 			return fmt.Errorf("%s contains trailing JSON", subject)
 		}
 		return fmt.Errorf("decode %s trailer: %w", subject, err)
+	}
+	return nil
+}
+
+func legacyIdentity(identity TVIdentity) TVIdentity {
+	identity.DeviceID = ""
+	return identity
+}
+
+// removeMigratedRecord deletes the address-keyed record once its content is
+// durable under the device-keyed path, so it can never be loaded again.
+func (s stateStore) removeMigratedRecord(identity TVIdentity) error {
+	if identity.DeviceID == "" {
+		return nil
+	}
+	if err := os.Remove(s.path(legacyIdentity(identity))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove migrated reconciliation state: %w", err)
 	}
 	return nil
 }

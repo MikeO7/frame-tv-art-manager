@@ -100,6 +100,17 @@ func TestLoadEnvironWarnsAboutDeprecatedUnsplashKeys(t *testing.T) {
 	}
 }
 
+func TestLoadEnvironDisablesScheduledWakeWithoutMAC(t *testing.T) {
+	cfg, warnings, err := LoadEnviron([]string{"TV_IPS=192.0.2.10", "AUTO_ON_TIME=07:00"})
+	if err != nil {
+		t.Fatalf("LoadEnviron() error = %v", err)
+	}
+	if cfg.AutoOnTime != "" {
+		t.Fatalf("AutoOnTime = %q, want disabled without TV_MAC", cfg.AutoOnTime)
+	}
+	assertWarningVariables(t, warnings, "AUTO_ON_TIME")
+}
+
 func TestLoadEnvironCanonicalizesTVAddressAndMAC(t *testing.T) {
 	cfg, _, err := LoadEnviron([]string{
 		"TV_IPS=2001:0db8:0:0:0:0:0:1",
@@ -199,6 +210,8 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "NaN latitude", value: "LOCATION_LATITUDE=NaN", want: "LOCATION_LATITUDE"},
 		{name: "infinite longitude", value: "LOCATION_LONGITUDE=Inf", want: "LOCATION_LONGITUDE"},
 		{name: "invalid auto off", value: "AUTO_OFF_TIME=25:00", want: "AUTO_OFF_TIME"},
+		{name: "invalid auto on", value: "AUTO_ON_TIME=7am", want: "AUTO_ON_TIME"},
+		{name: "oversized auto on grace", value: "AUTO_ON_GRACE_HOURS=25", want: "AUTO_ON_GRACE_HOURS"},
 		{name: "invalid MAC", value: "TV_MAC=not-a-mac", want: "TV_MAC"},
 		{name: "non-six-byte MAC", value: "TV_MAC=00:00:00:00:fe:80:00:00", want: "TV_MAC"},
 		{name: "IPv6 wake broadcast", value: "TV_WOL_BROADCAST=ff02::1", want: "TV_WOL_BROADCAST"},

@@ -79,6 +79,9 @@ type Result struct {
 	Applied         int
 	AppliedCommands []CommandKind
 	Rotation        RotationStatus
+	// powerOffAttempted records that this run already sent the scheduled
+	// power-off, so a failure is never retried in the same cycle.
+	powerOffAttempted bool
 }
 
 // RotationStatus summarizes artwork rotation on a TV whose known storage
@@ -95,10 +98,13 @@ type RotationStatus struct {
 
 // Policy is immutable input to a plan. Zero values preserve operator state.
 type Policy struct {
-	RemoveUnknown  bool
-	AllowEmpty     bool
-	Select         bool
-	DefaultMatte   string
+	RemoveUnknown bool
+	AllowEmpty    bool
+	Select        bool
+	DefaultMatte  string
+	// PortraitMatte is the matte the TV uses when it shows artwork in portrait
+	// orientation. Empty uses the landscape matte.
+	PortraitMatte  string
 	MatteOverrides MatteOverrides
 	Power          PowerPolicy
 	Slideshow      SlideshowPolicy
@@ -106,6 +112,10 @@ type Policy struct {
 	// Rotation is how long owned artwork stays on a full TV before it may be
 	// swapped for artwork that is waiting. Zero disables rotation.
 	Rotation time.Duration
+	// WakeBoundary ties PowerOn to one scheduled power-on time. The TV is
+	// woken at most once per boundary, recorded durably. Zero keeps the
+	// unscheduled PowerOn behavior.
+	WakeBoundary time.Time
 }
 
 type PolicyMode uint8
@@ -114,6 +124,10 @@ const (
 	PolicyPreserve PolicyMode = iota
 	PolicyDisable
 	PolicySet
+	// PolicyAdjust changes a slideshow only while the TV already plays one: a
+	// zero interval or empty kind keeps the value the TV reports. It never
+	// turns a slideshow on or off.
+	PolicyAdjust
 )
 
 type PowerPolicy uint8
@@ -169,6 +183,7 @@ type CommandIntent struct {
 	FileType              collection.FileType       `json:"file_type,omitempty"`
 	Size                  int64                     `json:"size,omitempty"`
 	Matte                 string                    `json:"matte,omitempty"`
+	PortraitMatte         string                    `json:"portrait_matte,omitempty"`
 	PreviousSlideshow     *samsung.SlideshowSetting `json:"previous_slideshow,omitempty"`
 	DesiredSlideshow      *samsung.SlideshowSetting `json:"desired_slideshow,omitempty"`
 	PreviousValue         *int                      `json:"previous_value,omitempty"`
@@ -190,6 +205,10 @@ type TVIdentity struct {
 	Address         string `json:"address"`
 	Model           string `json:"model"`
 	FirmwareVersion string `json:"firmware_version,omitempty"`
+	// DeviceID is the TV's stable identifier (DUID). When both sides know it,
+	// it identifies the TV instead of its address, so an address change keeps
+	// the record. Older state files omit it.
+	DeviceID string `json:"device_id,omitempty"`
 }
 
 type Binding struct {
@@ -237,6 +256,10 @@ type Pending struct {
 	Command           CommandIntent        `json:"command"`
 	Phase             Phase                `json:"phase"`
 	Receipt           *ReceiptSummary      `json:"receipt,omitempty"`
+	// PreparedAt and InventoryBeforeIDs let an upload whose outcome is unknown
+	// be proven from later inventory. Both are absent in older state files.
+	PreparedAt         *time.Time `json:"prepared_at,omitempty"`
+	InventoryBeforeIDs []string   `json:"inventory_before_ids,omitempty"`
 }
 
 type State struct {
@@ -251,7 +274,11 @@ type State struct {
 	LastShown              map[string]time.Time `json:"last_shown,omitempty"`
 	LegacyMigrationPending bool                 `json:"legacy_migration_pending,omitempty"`
 	Pending                *Pending             `json:"pending,omitempty"`
-	LastCompleteCycle      string               `json:"last_complete_cycle_id,omitempty"`
-	LastCollectionGen      string               `json:"last_collection_generation,omitempty"`
-	Checksum               string               `json:"checksum"`
+	// UnresolvedUpload is an upload whose outcome is still unknown. It blocks
+	// artwork changes until inventory proves the outcome, while settings and
+	// power control keep running.
+	UnresolvedUpload  *Pending `json:"unresolved_upload,omitempty"`
+	LastCompleteCycle string   `json:"last_complete_cycle_id,omitempty"`
+	LastCollectionGen string   `json:"last_collection_generation,omitempty"`
+	Checksum          string   `json:"checksum"`
 }

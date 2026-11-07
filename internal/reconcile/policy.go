@@ -9,8 +9,11 @@ import (
 )
 
 func validatePolicy(policy Policy) error {
-	if policy.Power > PowerOn || policy.Slideshow.Mode > PolicySet || policy.Brightness.Mode > PolicySet {
+	if policy.Power > PowerOn || policy.Slideshow.Mode > PolicyAdjust || policy.Brightness.Mode > PolicySet {
 		return errors.New("reconciliation policy contains an invalid mode")
+	}
+	if !policy.WakeBoundary.IsZero() && policy.Power != PowerOn {
+		return errors.New("a wake boundary requires the power-on policy")
 	}
 	if err := validateSlideshowPolicy(policy.Slideshow); err != nil {
 		return err
@@ -21,6 +24,9 @@ func validatePolicy(policy Policy) error {
 	if policy.DefaultMatte != "" &&
 		(policy.DefaultMatte != strings.TrimSpace(policy.DefaultMatte) || len(policy.DefaultMatte) > 128) {
 		return errors.New("default matte must be normalized and no longer than 128 characters")
+	}
+	if policy.PortraitMatte != strings.TrimSpace(policy.PortraitMatte) || len(policy.PortraitMatte) > 128 {
+		return errors.New("portrait matte must be normalized and no longer than 128 characters")
 	}
 	if _, err := policy.MatteOverrides.entries(); err != nil {
 		return fmt.Errorf("invalid matte override policy: %w", err)
@@ -43,6 +49,11 @@ func validateSlideshowPolicy(policy SlideshowPolicy) error {
 	case PolicySet:
 		if !policy.Setting.Valid() || policy.Setting.Interval <= 0 {
 			return errors.New("slideshow policy setting must have a positive interval and valid kind")
+		}
+		return nil
+	case PolicyAdjust:
+		if policy.Setting.Interval < 0 || (policy.Setting.Kind != "" && !policy.Setting.Valid()) {
+			return errors.New("adjusted slideshow policy interval or kind is invalid")
 		}
 		return nil
 	default:

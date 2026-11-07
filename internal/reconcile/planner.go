@@ -23,7 +23,7 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 // planSnapshot is BuildPlan for a snapshot that Run has already validated. The
 // fresh observation and in-memory state are still validated on every call.
 //
-//nolint:funlen,gocognit,nestif // The linear phases deliberately mirror reconciliation ordering.
+//nolint:funlen,gocognit // The linear phases deliberately mirror reconciliation ordering.
 func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
 	policy = normalizePolicy(policy)
 	identity, err := validateObservation(observation)
@@ -118,6 +118,7 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		return CommandIntent{
 			Kind: CommandUpload, Digest: artwork.digest, Name: artwork.item.Name,
 			Path: artwork.item.Path, FileType: artwork.item.Type, Size: artwork.item.Size, Matte: matte,
+			PortraitMatte: policy.PortraitMatte,
 		}
 	}
 	for _, artwork := range admission.fills {
@@ -153,30 +154,33 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 			}
 		}
 	}
-	if policy.Slideshow.Mode != PolicyPreserve {
-		if !observation.Slideshow.Known || !observation.Slideshow.Setting.Valid() {
-			return Plan{}, fmt.Errorf("slideshow observation is unavailable: %w", ErrUnsupportedIntent)
-		}
+	// A managed setting the TV did not report this cycle is left alone: the
+	// adapter observed it as optional, and artwork convergence must not wait
+	// on it.
+	if policy.Slideshow.Mode != PolicyPreserve && observation.Slideshow.Known && observation.Slideshow.Setting.Valid() {
 		desired := policy.Slideshow.Setting
 		// The category is the TV's playback source, not operator policy: keep it.
 		desired.Category = observation.Slideshow.Setting.Category
-		if policy.Slideshow.Mode == PolicyDisable {
+		switch policy.Slideshow.Mode {
+		case PolicyDisable:
 			desired.Interval = 0
 			if !desired.Valid() {
 				desired.Kind = observation.Slideshow.Setting.Kind
 			}
+		case PolicyAdjust:
+			desired = adjustedSlideshow(desired, observation.Slideshow.Setting)
+		case PolicyPreserve, PolicySet:
 		}
-		if observation.Slideshow.Setting != desired {
+		// A disabled slideshow is off whatever playback kind the TV remembers.
+		bothOff := desired.Interval == 0 && observation.Slideshow.Setting.Interval == 0
+		if observation.Slideshow.Setting != desired && !bothOff {
 			previous := observation.Slideshow.Setting
 			plan.Commands = append(plan.Commands, CommandIntent{
 				Kind: CommandSlideshow, PreviousSlideshow: &previous, DesiredSlideshow: &desired,
 			})
 		}
 	}
-	if policy.Brightness.Mode != PolicyPreserve {
-		if !observation.Brightness.Known {
-			return Plan{}, fmt.Errorf("brightness observation is unavailable: %w", ErrUnsupportedIntent)
-		}
+	if policy.Brightness.Mode != PolicyPreserve && observation.Brightness.Known {
 		desired := policy.Brightness.Value
 		if reading := observation.Brightness; reading.Max > reading.Min {
 			// Samsung reports its own scale (0-10 on current Frames); a policy
@@ -213,16 +217,24 @@ func cloneState(state State) State {
 	clone.Tombstones = make(map[string]Tombstone, len(state.Tombstones))
 	maps.Copy(clone.Tombstones, state.Tombstones)
 	clone.LastShown = maps.Clone(state.LastShown)
-	if state.Pending != nil {
-		pending := *state.Pending
-		pending.Command.PreviousSlideshow = clonePointer(pending.Command.PreviousSlideshow)
-		pending.Command.DesiredSlideshow = clonePointer(pending.Command.DesiredSlideshow)
-		pending.Command.PreviousValue = clonePointer(pending.Command.PreviousValue)
-		pending.Command.DesiredValue = clonePointer(pending.Command.DesiredValue)
-		pending.Receipt = clonePointer(pending.Receipt)
-		clone.Pending = &pending
-	}
+	clone.Pending = clonePending(state.Pending)
+	clone.UnresolvedUpload = clonePending(state.UnresolvedUpload)
 	return clone
+}
+
+func clonePending(value *Pending) *Pending {
+	if value == nil {
+		return nil
+	}
+	pending := *value
+	pending.Command.PreviousSlideshow = clonePointer(pending.Command.PreviousSlideshow)
+	pending.Command.DesiredSlideshow = clonePointer(pending.Command.DesiredSlideshow)
+	pending.Command.PreviousValue = clonePointer(pending.Command.PreviousValue)
+	pending.Command.DesiredValue = clonePointer(pending.Command.DesiredValue)
+	pending.Receipt = clonePointer(pending.Receipt)
+	pending.PreparedAt = clonePointer(pending.PreparedAt)
+	pending.InventoryBeforeIDs = slices.Clone(pending.InventoryBeforeIDs)
+	return &pending
 }
 
 func clonePointer[T any](value *T) *T {
@@ -231,4 +243,21 @@ func clonePointer[T any](value *T) *T {
 	}
 	clone := *value
 	return &clone
+}
+
+// adjustedSlideshow applies the configured interval and kind to a slideshow
+// that is already playing. A stopped slideshow stays stopped, and a value the
+// operator did not configure keeps what the TV reports.
+func adjustedSlideshow(configured, observed samsung.SlideshowSetting) samsung.SlideshowSetting {
+	if observed.Interval == 0 {
+		return observed
+	}
+	desired := observed
+	if configured.Interval > 0 {
+		desired.Interval = configured.Interval
+	}
+	if configured.Kind != "" {
+		desired.Kind = configured.Kind
+	}
+	return desired
 }

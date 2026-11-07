@@ -33,6 +33,7 @@ func identityFromObservation(observation samsung.Observation) (TVIdentity, error
 		Address:         strings.TrimSpace(observation.TV.Address),
 		Model:           strings.TrimSpace(observation.TV.Model),
 		FirmwareVersion: strings.TrimSpace(observation.TV.FirmwareVersion),
+		DeviceID:        strings.TrimSpace(observation.TV.DeviceID),
 	}
 	return identity, validateIdentity(identity)
 }
@@ -83,6 +84,14 @@ func validateState(state State, expected TVIdentity) error {
 			return err
 		}
 	}
+	if parked := state.UnresolvedUpload; parked != nil {
+		if err := validatePending(*parked); err != nil {
+			return fmt.Errorf("unresolved upload: %w", err)
+		}
+		if parked.Command.Kind != CommandUpload || parked.Phase == PhaseApplied {
+			return errors.New("unresolved upload must be an upload without a positive receipt")
+		}
+	}
 	if state.LastCollectionGen != "" && !validDigest(state.LastCollectionGen) {
 		return errors.New("last collection generation is invalid")
 	}
@@ -119,6 +128,9 @@ func validateCapacityEvidence(capacity CapacityEvidence) error {
 }
 
 func sameStableTV(left, right TVIdentity) bool {
+	if left.DeviceID != "" && right.DeviceID != "" {
+		return left.DeviceID == right.DeviceID && left.Model == right.Model
+	}
 	return left.Address == right.Address && left.Model == right.Model
 }
 
@@ -177,7 +189,8 @@ func validateIntent(intent CommandIntent) error {
 		if !validDigest(intent.Digest) || filepath.IsAbs(intent.Name) || filepath.Base(intent.Name) != intent.Name ||
 			strings.TrimSpace(intent.Name) == "" || !filepath.IsAbs(intent.Path) ||
 			(intent.FileType != collection.FileTypeJPEG && intent.FileType != collection.FileTypePNG) ||
-			intent.Size <= 0 || strings.TrimSpace(intent.Matte) == "" || len(intent.Matte) > 128 {
+			intent.Size <= 0 || strings.TrimSpace(intent.Matte) == "" || len(intent.Matte) > 128 ||
+			intent.PortraitMatte != strings.TrimSpace(intent.PortraitMatte) || len(intent.PortraitMatte) > 128 {
 			return errors.New("upload intent has invalid digest, name, path, or file type")
 		}
 	case CommandDeleteOwned:

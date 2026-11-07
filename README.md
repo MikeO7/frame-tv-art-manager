@@ -379,9 +379,10 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `SYNC_INTERVAL_MINUTES` | `30` | Time between syncs |
 | `CLIENT_NAME` | `Frame Art Manager` | Name shown in the TV's Allow/Deny prompt |
 | `ARTWORK_DIR` | `/data/artwork` | Your collection |
-| `TOKEN_DIR` | `/data/tokens` | Pairing tokens and per-TV records |
+| `TOKEN_DIR` | `/data/tokens` | Pairing tokens and per-TV records. Records follow the TV's device ID, so a new IP address keeps them |
 | `ROTATION_INTERVAL_DAYS` | `14` | Days each piece stays on a full TV; `0` turns rotation off |
 | `MATTE_STYLE` | `none` | Matte for every upload |
+| `PORTRAIT_MATTE` | same as `MATTE_STYLE` | Matte the TV uses when it shows art in portrait orientation |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 
 **Images**
@@ -434,20 +435,35 @@ uploads stop adding images once the limit is reached.
 All of these are optional. If you don't set them, the manager leaves the TV's
 own settings alone.
 
-- **Slideshow.** Setting any of `SLIDESHOW_ENABLED`, `SLIDESHOW_INTERVAL`
-  (3, 15, 60, 720, or 1440 minutes), or `SLIDESHOW_TYPE` (`shuffle` or
-  `sequential`) puts the manager in charge of the slideshow.
-- **Brightness.** `BRIGHTNESS` sets a fixed level (0–50). Alternatively,
-  `SOLAR_BRIGHTNESS_ENABLED=true` with `LOCATION_LATITUDE`,
-  `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the sun between
-  `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX`.
+- **Slideshow.** `SLIDESHOW_ENABLED=true` or `false` puts the manager in
+  charge of starting and stopping the slideshow, using `SLIDESHOW_INTERVAL`
+  (3, 15, 60, 720, or 1440 minutes) and `SLIDESHOW_TYPE` (`shuffle` or
+  `sequential`). If you set only `SLIDESHOW_INTERVAL` or `SLIDESHOW_TYPE`, the
+  manager adjusts a slideshow that is already running and never turns one on
+  or off. The TV keeps playing the category it was already playing.
+- **Brightness.** `BRIGHTNESS` sets a fixed level on the Frame's Art Mode scale
+  (0–10). Alternatively, `SOLAR_BRIGHTNESS_ENABLED=true` with
+  `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the
+  sun between `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX` (also 0–10), reaching the
+  maximum when the sun is highest. Values from 11 to 50, from the 0–50 scale
+  earlier releases documented, are converted (30 becomes 6) and logged as a
+  warning; anything else outside 0–10 stops startup.
+  If a TV reports a narrower range, the value is pinned to the nearest level
+  it accepts. A TV that doesn't answer brightness or slideshow requests keeps
+  syncing artwork; that setting is left alone and a warning is logged.
 - **Nightly power-off.** `AUTO_OFF_TIME` (for example `22:00`, in
   `LOCATION_TIMEZONE`) turns off TVs that are showing art, and leaves TVs that
   are in use alone. It keeps trying for `AUTO_OFF_GRACE_HOURS` (default 2).
-- **Wake-on-LAN.** `TV_MAC` wakes a single TV when it is confirmed off, or
-  when the TV has dropped off the network entirely (deep standby). It is never
-  sent when the TV answers with an unknown state, and it is turned off when
-  `TV_IPS` lists several TVs. The magic packet goes to UDP ports 9 and 7 on
+- **Morning power-on.** `AUTO_ON_TIME` (for example `07:00`, in
+  `LOCATION_TIMEZONE`) together with `TV_MAC` wakes a single TV once a day.
+  The wake is sent on the first sync in the window that starts at
+  `AUTO_ON_TIME` and lasts `AUTO_ON_GRACE_HOURS` (default 2). It is sent only
+  if the TV is confirmed off, or has dropped off the network entirely (deep
+  standby). If the TV is already on, or you turn it off again, it isn't woken
+  again until the next day. Each day's wake is recorded in a `tv_*_wake.json`
+  file in the tokens folder. `TV_MAC` on its own no longer wakes the TV.
+  Wake-on-LAN is never sent when the TV answers with an unknown state, and it
+  is turned off when `TV_IPS` lists several TVs. The magic packet goes to UDP ports 9 and 7 on
   `255.255.255.255` and on the TV's `/24` broadcast address (for example
   `192.168.1.255`). Set `TV_WOL_BROADCAST` to send it to one other IPv4
   broadcast address instead. Broadcasts don't leave a Docker bridge network, so
@@ -469,7 +485,7 @@ The built-in web server (port `HEALTH_PORT`) provides:
 | --- | --- |
 | `GET /live` | The process is running. The container healthcheck uses this. |
 | `GET /ready`, `GET /health` | 200 once startup finished and the last sync succeeded, otherwise 503. Shows timing and state only, never error text. |
-| `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. |
+| `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. `source_warning` appears when an artwork source failed; TVs still sync the art already on disk. |
 | `GET` / `POST /upload` | The upload page, when uploads are enabled. |
 
 `/live`, `/ready`, and `/health` need no password. When `UPLOAD_TOKEN` is set,
@@ -495,7 +511,8 @@ the entry under the TV's device connection settings and restart the container.
 
 **Status says `skipped (not art mode)` or `skipped (powered off)`.** The TV is
 off or showing other content. The manager waits and tries again at the next
-sync. With `TV_MAC` set, it can wake a TV that is off.
+sync. With `TV_MAC` and `AUTO_ON_TIME` set, it wakes a TV that is off once a
+day.
 
 **Status says `backoff` or `unreachable`.** The TV didn't answer. Repeated
 failures wait progressively longer between attempts, up to an hour. Check the

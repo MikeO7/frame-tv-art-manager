@@ -22,5 +22,9 @@ type service struct {
 func (s *service) Run(ctx context.Context, request Request) (Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.run(ctx, request)
+	result, err := s.run(ctx, request)
+	if err == nil || ctx.Err() != nil {
+		return result, err
+	}
+	return s.powerOffAfterFailure(ctx, request, result, err)
 }

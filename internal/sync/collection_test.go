@@ -15,6 +15,7 @@ import (
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
+	"github.com/MikeO7/frame-tv-art-manager/internal/health"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
@@ -383,20 +384,56 @@ func createJPEG(t *testing.T, width, height int) []byte {
 	return buffer.Bytes()
 }
 
-func TestLocalCollectionPreparePropagatesSourceFailure(t *testing.T) {
+func TestLocalCollectionPrepareKeepsLastKnownGoodArtWhenSourcesFail(t *testing.T) {
 	t.Parallel()
 
-	wantErr := errors.New("provider offline")
-	artworkDir := t.TempDir()
-	collection := &localCollection{
-		cfg: &config.Config{ArtworkDir: artworkDir}, logger: slog.Default(),
-		loader: fixedSourceLoader{err: wantErr},
-		store:  newTestCollectionStore(t, artworkDir),
+	providerErr := errors.New("provider offline")
+	tests := []struct {
+		name     string
+		canceled bool
+		wantErr  error
+	}{
+		{name: "provider outage degrades"},
+		{name: "cancellation stops the cycle", canceled: true, wantErr: context.Canceled},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			artworkDir := t.TempDir()
+			store := newTestCollectionStore(t, artworkDir)
+			if _, err := store.Import(context.Background(), collectionpkg.ImportRequest{
+				Reader: bytes.NewReader(createJPEG(t, 12, 8)), Hint: "kept.jpg",
+				Origin: collectionpkg.Origin{Key: "source:direct__kept", Class: collectionpkg.OriginSource},
+			}); err != nil {
+				t.Fatalf("seed artwork: %v", err)
+			}
+			status := health.NewStatus()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			loaderErr := providerErr
+			if test.canceled {
+				cancel()
+				loaderErr = context.Canceled
+			}
+			collection := &localCollection{
+				cfg: &config.Config{ArtworkDir: artworkDir}, logger: slog.New(slog.DiscardHandler), health: status,
+				loader: fixedSourceLoader{err: loaderErr}, store: store,
+			}
 
-	_, err := collection.prepareCycle(context.Background())
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("prepare collection error = %v, want %v", err, wantErr)
+			prepared, err := collection.prepareCycle(ctx)
+			if test.wantErr != nil {
+				if !errors.Is(err, test.wantErr) {
+					t.Fatalf("prepare collection error = %v, want %v", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil || len(prepared.snapshot.Items) != 1 || len(prepared.warnings) != 1 {
+				t.Fatalf("prepare collection = %+v, %v; want the kept artwork and one warning", prepared, err)
+			}
+			if status.SourceWarning == "" {
+				t.Fatal("source failure was not reported to health")
+			}
+		})
 	}
 }
 

@@ -58,6 +58,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		SyncIntervalMin:                env.integer("SYNC_INTERVAL_MINUTES", 30),
 		ShutdownTimeout:                safeDuration(env.integer("SHUTDOWN_TIMEOUT_SECONDS", 30), time.Second),
 		MatteStyle:                     env.str("MATTE_STYLE", "none"),
+		PortraitMatte:                  strings.TrimSpace(env.str("PORTRAIT_MATTE", "")),
 		ClientName:                     env.str("CLIENT_NAME", "Frame Art Manager"),
 		DryRun:                         env.boolean("DRY_RUN", false),
 		LogLevel:                       strings.ToLower(env.str("LOG_LEVEL", "info")),
@@ -65,6 +66,9 @@ func (env *environment) loadConfig() (*Config, error) {
 		SlideshowInterval:              env.integer("SLIDESHOW_INTERVAL", 15),
 		SlideshowType:                  strings.ToLower(env.str("SLIDESHOW_TYPE", "shuffle")),
 		SlideshowOverride:              env.present("SLIDESHOW_ENABLED") || env.present("SLIDESHOW_INTERVAL") || env.present("SLIDESHOW_TYPE"),
+		SlideshowEnabledSet:            env.present("SLIDESHOW_ENABLED"),
+		SlideshowIntervalSet:           env.present("SLIDESHOW_INTERVAL"),
+		SlideshowTypeSet:               env.present("SLIDESHOW_TYPE"),
 		SolarEnabled:                   env.boolean("SOLAR_BRIGHTNESS_ENABLED", false),
 		Timezone:                       env.str("LOCATION_TIMEZONE", "UTC"),
 		BrightnessMin:                  env.integer("BRIGHTNESS_MIN", 2),
@@ -73,6 +77,8 @@ func (env *environment) loadConfig() (*Config, error) {
 		RotationIntervalDays:           env.decimal("ROTATION_INTERVAL_DAYS", 14),
 		AutoOffTime:                    env.str("AUTO_OFF_TIME", ""),
 		AutoOffGraceHours:              env.decimal("AUTO_OFF_GRACE_HOURS", 2),
+		AutoOnTime:                     env.str("AUTO_ON_TIME", ""),
+		AutoOnGraceHours:               env.decimal("AUTO_ON_GRACE_HOURS", 2),
 		EnableRESTGate:                 env.boolean("ENABLE_REST_GATE", false),
 		VerifyTLS:                      env.boolean("VERIFY_TLS", false) && !skipTLSVerify,
 		SourcesFile:                    env.str("ARTWORK_SOURCES_FILE", ""),
@@ -146,6 +152,10 @@ func (env *environment) loadConfig() (*Config, error) {
 	if err := validate(cfg, mac); err != nil {
 		return nil, err
 	}
+	if cfg.AutoOnTime != "" && cfg.TVMAC == nil {
+		env.warn("AUTO_ON_TIME", "disabled", "AUTO_ON_TIME needs TV_MAC for a single TV; scheduled wake is disabled")
+		cfg.AutoOnTime = ""
+	}
 	return cfg, nil
 }
 
@@ -180,6 +190,11 @@ func (env *environment) parseRequiredValues(cfg *Config) error {
 		}
 		cfg.ManualBrightness = &brightness
 	}
+	if cfg.ManualBrightness != nil {
+		env.rescaleLegacyBrightness("BRIGHTNESS", cfg.ManualBrightness)
+	}
+	env.rescaleLegacyBrightness("BRIGHTNESS_MIN", &cfg.BrightnessMin)
+	env.rescaleLegacyBrightness("BRIGHTNESS_MAX", &cfg.BrightnessMax)
 	latitude, hasLatitude, err := env.optionalDecimal("LOCATION_LATITUDE")
 	if err != nil {
 		return err
@@ -263,6 +278,22 @@ func (env *environment) optionalDecimal(key string) (float64, bool, error) {
 func (env *environment) present(key string) bool {
 	_, ok := env.values[key]
 	return ok
+}
+
+// legacyMaxBrightness is the top of the 0-50 scale earlier releases
+// documented. Values above the Frame's 0-10 Art Mode scale but within it are
+// converted proportionally, so an existing setup keeps starting.
+const legacyMaxBrightness = 50
+
+func (env *environment) rescaleLegacyBrightness(variable string, value *int) {
+	if *value <= maxFrameBrightness || *value > legacyMaxBrightness {
+		return
+	}
+	scaled := (*value*maxFrameBrightness + legacyMaxBrightness/2) / legacyMaxBrightness
+	env.warn(variable, strconv.Itoa(scaled), fmt.Sprintf(
+		"%s=%d is on the old 0-%d scale; Frame TVs use 0-%d, so %d is used. Set %s=%d to silence this warning",
+		variable, *value, legacyMaxBrightness, maxFrameBrightness, scaled, variable, scaled))
+	*value = scaled
 }
 
 func (env *environment) warn(variable, fallback, message string) {

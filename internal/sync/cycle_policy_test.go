@@ -50,22 +50,54 @@ func TestConvergencePolicyPreservesCurrentSelection(t *testing.T) {
 	}
 }
 
-func TestConvergencePolicyWakesOnlyWithConfiguredMAC(t *testing.T) {
+func TestConvergencePolicyWakesOnceAtTheScheduledTime(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
-	logger := slog.New(slog.DiscardHandler)
-
-	wake, err := convergencePolicy(&config.Config{
-		TVIPs: []string{"192.0.2.10"}, TVMAC: net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, Timezone: "UTC",
-	}, nil, now, logger)
-	if err != nil || wake.Power != reconcile.WakeWhenKnownOff {
-		t.Fatalf("configured-MAC policy = %+v, %v", wake, err)
+	mac := net.HardwareAddr{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
+	boundary := time.Date(2026, time.July, 14, 7, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name         string
+		cfg          config.Config
+		now          time.Time
+		wantPower    reconcile.PowerPolicy
+		wantBoundary time.Time
+	}{
+		{name: "MAC alone never wakes", cfg: config.Config{TVMAC: mac}, now: boundary.Add(time.Hour)},
+		{
+			name: "inside the wake window", cfg: config.Config{TVMAC: mac, AutoOnTime: "07:00", AutoOnGraceHours: 2},
+			now: boundary.Add(90 * time.Minute), wantPower: reconcile.PowerOn, wantBoundary: boundary,
+		},
+		{
+			name: "before the wake window", cfg: config.Config{TVMAC: mac, AutoOnTime: "07:00", AutoOnGraceHours: 2},
+			now: boundary.Add(-time.Minute),
+		},
+		{
+			name: "after the wake window", cfg: config.Config{TVMAC: mac, AutoOnTime: "07:00", AutoOnGraceHours: 2},
+			now: boundary.Add(2 * time.Hour),
+		},
+		{
+			name: "window crossing midnight", cfg: config.Config{TVMAC: mac, AutoOnTime: "23:30", AutoOnGraceHours: 2},
+			now: time.Date(2026, time.July, 15, 0, 30, 0, 0, time.UTC), wantPower: reconcile.PowerOn,
+			wantBoundary: time.Date(2026, time.July, 14, 23, 30, 0, 0, time.UTC),
+		},
+		{name: "no MAC", cfg: config.Config{AutoOnTime: "07:00", AutoOnGraceHours: 2}, now: boundary.Add(time.Minute)},
+		{
+			name: "auto-off wins", now: boundary.Add(time.Minute), wantPower: reconcile.PowerOff,
+			cfg: config.Config{
+				TVMAC: mac, AutoOnTime: "07:00", AutoOnGraceHours: 2, AutoOffTime: "06:30", AutoOffGraceHours: 2,
+			},
+		},
 	}
-	preserve, err := convergencePolicy(&config.Config{
-		TVIPs: []string{"192.0.2.10", "192.0.2.11"}, Timezone: "UTC",
-	}, nil, now, logger)
-	if err != nil || preserve.Power != reconcile.PowerPreserve {
-		t.Fatalf("no-MAC policy = %+v, %v", preserve, err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := test.cfg
+			cfg.TVIPs, cfg.Timezone = []string{"192.0.2.10"}, "UTC"
+			policy, err := convergencePolicy(&cfg, nil, test.now, slog.New(slog.DiscardHandler))
+			if err != nil || policy.Power != test.wantPower || !policy.WakeBoundary.Equal(test.wantBoundary) {
+				t.Fatalf("policy power %v boundary %v, %v; want %v at %v",
+					policy.Power, policy.WakeBoundary, err, test.wantPower, test.wantBoundary)
+			}
+		})
 	}
 }
 
@@ -81,7 +113,7 @@ func TestConvergencePolicyPreservesUnsetSettingsAndDisablesExplicitSlideshow(t *
 	}
 
 	disable, err := convergencePolicy(&config.Config{
-		Timezone: "UTC", SlideshowOverride: true, SlideshowType: "sequential",
+		Timezone: "UTC", SlideshowOverride: true, SlideshowEnabledSet: true, SlideshowType: "sequential",
 	}, nil, now, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("disable convergencePolicy() error = %v", err)
@@ -89,6 +121,17 @@ func TestConvergencePolicyPreservesUnsetSettingsAndDisablesExplicitSlideshow(t *
 	if disable.Slideshow.Mode != reconcile.PolicyDisable ||
 		disable.Slideshow.Setting != (samsung.SlideshowSetting{Kind: samsung.SlideshowSequential}) {
 		t.Fatalf("disable slideshow policy = %+v", disable.Slideshow)
+	}
+
+	// Only SLIDESHOW_INTERVAL: tune a running slideshow, never stop one.
+	adjust, err := convergencePolicy(&config.Config{
+		Timezone: "UTC", SlideshowOverride: true, SlideshowIntervalSet: true, SlideshowInterval: 60,
+		SlideshowType: "shuffle",
+	}, nil, now, slog.New(slog.DiscardHandler))
+	if err != nil || adjust.Slideshow != (reconcile.SlideshowPolicy{
+		Mode: reconcile.PolicyAdjust, Setting: samsung.SlideshowSetting{Interval: 60},
+	}) {
+		t.Fatalf("adjust slideshow policy = %+v, %v", adjust.Slideshow, err)
 	}
 }
 
