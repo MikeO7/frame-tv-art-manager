@@ -16,7 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "docs" / "site"
 BASE_URL = "https://mikeo7.github.io/frame-tv-art-manager/"
 PROJECT_PATH = "/frame-tv-art-manager/"
-ALLOWED_SUFFIXES = {".html", ".css", ".txt", ".xml", ".png", ".svg"}
+ALLOWED_SUFFIXES = {".html", ".css", ".txt", ".xml", ".png", ".svg", ".webp"}
+MAX_TITLE = 60
+MAX_DESCRIPTION = 155
+MAX_IMAGE_BYTES = 150_000
+LLMS_FILES = ("llms.txt", "llms-full.txt")
 REQUIRED_META = {
     "og:type",
     "og:site_name",
@@ -53,6 +57,9 @@ class PageParser(HTMLParser):
         self.json_errors: list[str] = []
         self.has_nav = False
         self.has_footer = False
+        self.has_main = False
+        self.times: list[str] = []
+        self.images: list[dict[str, str]] = []
 
     @staticmethod
     def attrs_dict(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
@@ -74,6 +81,12 @@ class PageParser(HTMLParser):
             self.has_nav = True
         if tag == "footer":
             self.has_footer = True
+        if tag == "main":
+            self.has_main = True
+        if tag == "time" and attributes.get("datetime"):
+            self.times.append(attributes["datetime"])
+        if tag == "img":
+            self.images.append({key: value or "" for key, value in attrs if key in {"src", "alt", "width", "height"}})
         if tag == "meta":
             key = attributes.get("name") or attributes.get("property")
             if key:
@@ -176,18 +189,30 @@ def png_dimensions(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", signature[16:24])
 
 
-def find_faq_questions(value: object) -> list[str]:
-    found: list[str] = []
+def json_ld_nodes(value: object) -> list[dict[str, object]]:
+    """Flatten JSON-LD blocks and @graph arrays into a list of typed nodes."""
+    found: list[dict[str, object]] = []
     if isinstance(value, dict):
-        if value.get("@type") == "FAQPage":
-            for question in value.get("mainEntity", []):
-                if isinstance(question, dict) and isinstance(question.get("name"), str):
-                    found.append(question["name"])
+        if "@type" in value:
+            found.append(value)
         for nested in value.values():
-            found.extend(find_faq_questions(nested))
+            found.extend(json_ld_nodes(nested))
     elif isinstance(value, list):
         for nested in value:
-            found.extend(find_faq_questions(nested))
+            found.extend(json_ld_nodes(nested))
+    return found
+
+
+def nodes_of_type(parser: PageParser, *types: str) -> list[dict[str, object]]:
+    return [node for block in parser.json_ld for node in json_ld_nodes(block) if node.get("@type") in types]
+
+
+def find_faq_questions(parser: PageParser) -> list[str]:
+    found: list[str] = []
+    for faq in nodes_of_type(parser, "FAQPage"):
+        for question in faq.get("mainEntity", []):  # type: ignore[union-attr]
+            if isinstance(question, dict) and isinstance(question.get("name"), str):
+                found.append(question["name"])
     return found
 
 
@@ -214,10 +239,80 @@ def validate_public_tree(errors: list[str]) -> None:
             continue
         if path.name.startswith(".") or path.suffix.lower() not in ALLOWED_SUFFIXES:
             errors.append(f"{path.relative_to(ROOT)}: unexpected public artifact file")
+        elif path.suffix.lower() == ".webp" and path.stat().st_size > MAX_IMAGE_BYTES:
+            errors.append(f"{path.relative_to(ROOT)}: content image exceeds {MAX_IMAGE_BYTES} bytes")
 
 
-def validate_pages(pages: dict[Path, PageParser], errors: list[str]) -> set[str]:
-    indexable_urls: set[str] = set()
+def validate_images(display: Path, parser: PageParser, errors: list[str]) -> None:
+    for image in parser.images:
+        source = image.get("src", "?")
+        if "alt" not in image:
+            errors.append(f"{display}: image {source} has no alt attribute")
+        if not image.get("width") or not image.get("height"):
+            errors.append(f"{display}: image {source} needs width and height to avoid layout shift")
+
+
+def validate_structured_data(path: Path, display: Path, parser: PageParser, errors: list[str]) -> str | None:
+    """Check page-type schema rules and return the page's dateModified, if any."""
+    visible_faq = parser.summaries
+    structured_faq = find_faq_questions(parser)
+    if visible_faq != structured_faq:
+        errors.append(f"{display}: visible FAQ questions do not match FAQPage JSON-LD")
+
+    if path == (SITE / "index.html").resolve():
+        if not structured_faq:
+            errors.append(f"{display}: home page requires FAQPage JSON-LD")
+        apps = nodes_of_type(parser, "SoftwareApplication")
+        offers = [app.get("offers") for app in apps]
+        if not apps or not all(isinstance(offer, dict) and offer.get("price") == "0" for offer in offers):
+            errors.append(f"{display}: home page requires SoftwareApplication with a free Offer")
+        pages = nodes_of_type(parser, "WebPage")
+        return str(pages[0].get("dateModified")) if pages and pages[0].get("dateModified") else None
+
+    if path.parent.name != "guides":
+        return None
+    if not nodes_of_type(parser, "BreadcrumbList"):
+        errors.append(f"{display}: guide requires BreadcrumbList JSON-LD")
+    articles = nodes_of_type(parser, "TechArticle", "Article")
+    if len(articles) != 1:
+        errors.append(f"{display}: guide requires exactly one Article or TechArticle")
+        return None
+    modified = articles[0].get("dateModified")
+    if not isinstance(modified, str) or modified not in parser.times:
+        errors.append(f"{display}: article dateModified must match a visible <time datetime>")
+        return None
+    return modified
+
+
+def validate_metadata_lengths(display: Path, parser: PageParser, errors: list[str]) -> None:
+    if len(parser.title) > MAX_TITLE:
+        errors.append(f"{display}: title is {len(parser.title)} characters (max {MAX_TITLE})")
+    description = parser.meta.get("description", "")
+    if len(description) > MAX_DESCRIPTION:
+        errors.append(f"{display}: meta description is {len(description)} characters (max {MAX_DESCRIPTION})")
+
+
+def validate_links(path: Path, display: Path, parser: PageParser, pages: dict[Path, PageParser], errors: list[str]) -> None:
+    for attribute, raw_url in parser.links:
+        if "index.html" in raw_url and not raw_url.startswith(("http://", "https://")):
+            errors.append(f"{display}: internal {attribute} promotes index.html: {raw_url}")
+        target, fragment = local_target(path, raw_url)
+        if target is None:
+            continue
+        if not target.exists():
+            errors.append(f"{display}: broken local reference {raw_url!r}")
+            continue
+        if fragment and target.suffix.lower() == ".html":
+            target_parser = pages.get(target)
+            if target_parser is None or fragment not in target_parser.ids:
+                errors.append(f"{display}: missing fragment #{fragment} in {target.relative_to(ROOT)}")
+
+
+def validate_pages(pages: dict[Path, PageParser], errors: list[str]) -> dict[str, str | None]:
+    """Validate every page and return indexable canonical URLs mapped to their dateModified."""
+    indexable: dict[str, str | None] = {}
+    titles: dict[str, Path] = {}
+    descriptions: dict[str, Path] = {}
     for path, parser in pages.items():
         display = path.relative_to(ROOT)
         if not parser.title:
@@ -231,20 +326,29 @@ def validate_pages(pages: dict[Path, PageParser], errors: list[str]) -> set[str]
             errors.append(f"{display}: invalid JSON-LD: {'; '.join(parser.json_errors)}")
         if not parser.has_nav:
             errors.append(f"{display}: missing navigation landmark")
+        if not parser.has_main:
+            errors.append(f"{display}: missing main landmark")
         if not parser.has_footer:
             errors.append(f"{display}: missing footer landmark")
+        validate_metadata_lengths(display, parser, errors)
+        validate_images(display, parser, errors)
+        modified = validate_structured_data(path, display, parser, errors)
 
-        indexable = is_indexable(parser)
-        if indexable:
-            if not parser.meta.get("description"):
+        if is_indexable(parser):
+            description = parser.meta.get("description", "")
+            if not description:
                 errors.append(f"{display}: missing meta description")
+            for value, seen, label in ((parser.title, titles, "title"), (description, descriptions, "meta description")):
+                if value in seen:
+                    errors.append(f"{display}: {label} duplicates {seen[value].relative_to(ROOT)}")
+                seen[value] = path
             if len(parser.canonical) != 1:
                 errors.append(f"{display}: expected one canonical URL, found {len(parser.canonical)}")
             else:
                 expected = expected_canonical(path)
                 if parser.canonical[0] != expected:
                     errors.append(f"{display}: canonical is {parser.canonical[0]!r}, expected {expected!r}")
-                indexable_urls.add(parser.canonical[0])
+                indexable[parser.canonical[0]] = modified
             missing = sorted(key for key in REQUIRED_META if not parser.meta.get(key))
             if missing:
                 errors.append(f"{display}: missing social metadata: {', '.join(missing)}")
@@ -253,32 +357,12 @@ def validate_pages(pages: dict[Path, PageParser], errors: list[str]) -> set[str]
                 if missing_heading_ids:
                     errors.append(f"{display}: article headings missing ids: {', '.join(missing_heading_ids)}")
 
-        if path.name == "index.html":
-            visible = parser.summaries
-            structured = []
-            for block in parser.json_ld:
-                structured.extend(find_faq_questions(block))
-            if visible != structured:
-                errors.append(f"{display}: visible FAQ questions do not match FAQPage JSON-LD")
+        validate_links(path, display, parser, pages, errors)
 
-        for attribute, raw_url in parser.links:
-            if "index.html" in raw_url and not raw_url.startswith(("http://", "https://")):
-                errors.append(f"{display}: internal {attribute} promotes index.html: {raw_url}")
-            target, fragment = local_target(path, raw_url)
-            if target is None:
-                continue
-            if not target.exists():
-                errors.append(f"{display}: broken local reference {raw_url!r}")
-                continue
-            if fragment and target.suffix.lower() == ".html":
-                target_parser = pages.get(target)
-                if target_parser is None or fragment not in target_parser.ids:
-                    errors.append(f"{display}: missing fragment #{fragment} in {target.relative_to(ROOT)}")
-
-    return indexable_urls
+    return indexable
 
 
-def validate_sitemap(indexable_urls: set[str], errors: list[str]) -> None:
+def validate_sitemap(indexable: dict[str, str | None], errors: list[str]) -> None:
     sitemap = SITE / "sitemap.xml"
     try:
         tree = ElementTree.parse(sitemap)
@@ -289,40 +373,63 @@ def validate_sitemap(indexable_urls: set[str], errors: list[str]) -> None:
     urls = [element.text or "" for element in tree.findall("sm:url/sm:loc", namespace)]
     if len(urls) != len(set(urls)):
         errors.append("docs/site/sitemap.xml: duplicate URLs")
-    if set(urls) != indexable_urls:
-        missing = sorted(indexable_urls - set(urls))
-        extra = sorted(set(urls) - indexable_urls)
+    if set(urls) != set(indexable):
+        missing = sorted(set(indexable) - set(urls))
+        extra = sorted(set(urls) - set(indexable))
         if missing:
             errors.append(f"docs/site/sitemap.xml: missing indexable URLs: {', '.join(missing)}")
         if extra:
             errors.append(f"docs/site/sitemap.xml: URLs without indexable pages: {', '.join(extra)}")
     for entry in tree.findall("sm:url", namespace):
-        if entry.find("sm:lastmod", namespace) is None:
-            errors.append("docs/site/sitemap.xml: every URL requires lastmod")
+        loc = entry.findtext("sm:loc", default="", namespaces=namespace)
+        lastmod = entry.findtext("sm:lastmod", default="", namespaces=namespace)
+        if not lastmod:
+            errors.append(f"docs/site/sitemap.xml: {loc} requires lastmod")
+        elif indexable.get(loc) and indexable[loc] != lastmod:
+            errors.append(f"docs/site/sitemap.xml: lastmod for {loc} is {lastmod}, page dateModified is {indexable[loc]}")
+
+    robots = (SITE / "robots.txt").read_text(encoding="utf-8")
+    if f"Sitemap: {BASE_URL}sitemap.xml" not in robots:
+        errors.append("docs/site/robots.txt: must reference the sitemap")
 
 
-def validate_llms(indexable_urls: set[str], errors: list[str]) -> None:
-    text = (SITE / "llms.txt").read_text(encoding="utf-8")
-    public_urls = set(re.findall(r"https://mikeo7\.github\.io/frame-tv-art-manager/[^\s)]*", text))
-    unknown = sorted(url.rstrip(".,") for url in public_urls if url.rstrip(".,") not in indexable_urls)
-    if unknown:
-        errors.append(f"docs/site/llms.txt: unknown public URLs: {', '.join(unknown)}")
+def validate_llms(indexable: dict[str, str | None], errors: list[str]) -> None:
+    for name in LLMS_FILES:
+        path = SITE / name
+        if not path.is_file():
+            errors.append(f"docs/site/{name}: missing")
+            continue
+        text = path.read_text(encoding="utf-8")
+        public_urls = {url.rstrip(".,") for url in re.findall(r"https://mikeo7\.github\.io/frame-tv-art-manager/[^\s)|]*", text)}
+        unknown = sorted(
+            url for url in public_urls
+            if url not in indexable and not (SITE / url.removeprefix(BASE_URL)).is_file()
+        )
+        if unknown:
+            errors.append(f"docs/site/{name}: unknown public URLs: {', '.join(unknown)}")
 
 
 def validate_social_image(pages: dict[Path, PageParser], errors: list[str]) -> None:
-    image = SITE / "assets" / "frame-tv-art-manager-social.png"
-    try:
-        width, height = png_dimensions(image)
-    except (OSError, ValueError) as error:
-        errors.append(f"{image.relative_to(ROOT)}: {error}")
-        return
-    if image.stat().st_size > 2_200_000:
-        errors.append(f"{image.relative_to(ROOT)}: social image exceeds 2.2 MB")
     for path, parser in pages.items():
         if not is_indexable(parser):
             continue
+        display = path.relative_to(ROOT)
+        image_url = parser.meta.get("og:image", "")
+        if not image_url.startswith(BASE_URL):
+            errors.append(f"{display}: og:image must be hosted on the site")
+            continue
+        image = SITE / image_url.removeprefix(BASE_URL)
+        try:
+            width, height = png_dimensions(image)
+        except (OSError, ValueError) as error:
+            errors.append(f"{display}: og:image {image_url}: {error}")
+            continue
+        if image.stat().st_size > 1_000_000:
+            errors.append(f"{image.relative_to(ROOT)}: social image exceeds 1 MB")
+        if (width, height) != (1200, 630):
+            errors.append(f"{image.relative_to(ROOT)}: social image should be 1200x630, found {width}x{height}")
         if parser.meta.get("og:image:width") != str(width) or parser.meta.get("og:image:height") != str(height):
-            errors.append(f"{path.relative_to(ROOT)}: social image metadata does not match {width}x{height}")
+            errors.append(f"{display}: social image metadata does not match {width}x{height}")
 
 
 def main() -> int:
@@ -331,9 +438,9 @@ def main() -> int:
     pages = parse_pages(errors)
     if not pages:
         errors.append("no public HTML pages found")
-    indexable_urls = validate_pages(pages, errors)
-    validate_sitemap(indexable_urls, errors)
-    validate_llms(indexable_urls, errors)
+    indexable = validate_pages(pages, errors)
+    validate_sitemap(indexable, errors)
+    validate_llms(indexable, errors)
     validate_social_image(pages, errors)
 
     if errors:
@@ -341,7 +448,7 @@ def main() -> int:
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
-    print(f"Validated {len(pages)} HTML pages and {len(indexable_urls)} sitemap URLs.")
+    print(f"Validated {len(pages)} HTML pages and {len(indexable)} sitemap URLs.")
     return 0
 
 

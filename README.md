@@ -20,6 +20,14 @@ noncommercial use.
 [Apple Photos guide](https://mikeo7.github.io/frame-tv-art-manager/guides/apple-photos-to-samsung-frame-tv.html) ·
 [All settings](.env.example)
 
+Guides:
+[Synology, Unraid, and TrueNAS](https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html) ·
+[Portraits and gallery mats](https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-portrait-photos-mat.html) ·
+[Free public-domain art](https://mikeo7.github.io/frame-tv-art-manager/guides/free-public-domain-art-samsung-frame-tv.html) ·
+[Art size (3840×2160)](https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-art-size.html) ·
+[Home Assistant](https://mikeo7.github.io/frame-tv-art-manager/guides/home-assistant-samsung-frame-tv-art.html) ·
+[Troubleshooting](https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-art-mode-troubleshooting.html)
+
 > [!IMPORTANT]
 > This is source-available software under the
 > [PolyForm Noncommercial License 1.0.0](LICENSE), not an open-source license.
