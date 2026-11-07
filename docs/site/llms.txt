@@ -28,7 +28,7 @@ Affiliation: independent project; not affiliated with or endorsed by Samsung.
 
 ## Image preparation (on by default)
 
-- EXIF orientation, portrait handling (PORTRAIT_MODE: crop by default, pad, or collage), resize to exactly 3840x2160 (configurable with IMAGE_MAX_WIDTH and IMAGE_MAX_HEIGHT), color-profile conversion to sRGB, HDR PNG tone mapping, light sharpening, JPEG quality 95.
+- EXIF orientation, portrait handling (PORTRAIT_MODE: crop by default, pad, or collage), resize to exactly 3840x2160 (configurable with IMAGE_MAX_WIDTH and IMAGE_MAX_HEIGHT), color-profile conversion to sRGB, HDR PNG tone mapping, light sharpening, JPEG quality 95 with full-resolution 4:4:4 chroma (IMAGE_JPEG_SUBSAMPLING=420 for smaller files).
 - The prepared version replaces the original file in the artwork folder, so users should copy pictures in and keep originals elsewhere.
 - Memory budget per picture: IMAGE_MAX_WORKING_MEMORY_MB (default 512). A 24-megapixel photo takes about 1-2 seconds and about 250 MiB. 8K photos fit.
 - Optional and off by default: smart (saliency) crop, an external HTTP crop service, and a "museum mode" canvas and warmth effect.

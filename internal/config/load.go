@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
 const (
@@ -101,6 +103,10 @@ func validateEnums(cfg *Config) error {
 	case "auto", "light", "dark":
 	default:
 		return fmt.Errorf("IMAGE_MAT_TONE must be auto, light, or dark; got %q", cfg.MatTone)
+	}
+
+	if _, err := jpegenc.ParseSubsampling(cfg.JPEGSubsampling); err != nil {
+		return fmt.Errorf("IMAGE_JPEG_SUBSAMPLING must be 444 or 420: %w", err)
 	}
 
 	return nil

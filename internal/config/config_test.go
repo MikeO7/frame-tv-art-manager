@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
@@ -54,6 +55,7 @@ func TestOptimizeOptionsMapsEveryImageSetting(t *testing.T) {
 		OptimizeMaxPixels:              12_000_000,
 		OptimizeMemoryMB:               512,
 		OptimizeJPEGQuality:            90,
+		JPEGSubsampling:                "420",
 		OptimizePNG:                    true,
 		LinearLightResize:              true,
 		SharpenAmount:                  0.3,
@@ -91,6 +93,7 @@ func TestOptimizeOptionsMapsEveryImageSetting(t *testing.T) {
 		HDRTargetPeakNits:              100,
 		MuseumModeEnabled:              true,
 		MuseumModeIntensity:            7,
+		JPEGSubsampling:                jpegenc.Subsampling420,
 	}
 	if opts != want {
 		t.Errorf("OptimizeOptions() = %+v, want %+v", opts, want)

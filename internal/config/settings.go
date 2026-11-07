@@ -90,6 +90,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		OptimizeMaxPixels:              env.integer("IMAGE_MAX_OUTPUT_PIXELS", 12_000_000),
 		OptimizeMemoryMB:               env.integer("IMAGE_MAX_WORKING_MEMORY_MB", 512),
 		OptimizeJPEGQuality:            env.integer("IMAGE_JPEG_QUALITY", 95),
+		JPEGSubsampling:                env.str("IMAGE_JPEG_SUBSAMPLING", "444"),
 		OptimizePNG:                    env.boolean("IMAGE_OPTIMIZE_PNG", true),
 		LinearLightResize:              env.boolean("IMAGE_LINEAR_LIGHT_RESIZE", true),
 		SharpenAmount:                  env.decimal("IMAGE_SHARPEN_AMOUNT", 0.25),

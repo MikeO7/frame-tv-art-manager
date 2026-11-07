@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/jpeg"
 	"image/png"
 	"log/slog"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
 // rewriteImage decodes f, applies the configured transforms for its EXIF
@@ -90,7 +90,7 @@ func writeValidatedOutput(ctx context.Context, out *os.File, extension string, i
 		format = formatPNG
 		err = png.Encode(writer, img)
 	} else {
-		err = jpeg.Encode(writer, img, &jpeg.Options{Quality: cfg.OptimizeJPEGQuality})
+		err = jpegenc.Encode(writer, img, &jpegenc.Options{Quality: cfg.OptimizeJPEGQuality, Subsampling: cfg.JPEGSubsampling})
 	}
 	if err != nil {
 		_ = out.Close()

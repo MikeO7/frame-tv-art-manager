@@ -14,15 +14,21 @@ import (
 	"testing"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
 func TestTransformKeyTracksCurrentImageAlgorithmRevision(t *testing.T) {
 	t.Parallel()
-	if transformRevision != "frame-image-v9" {
-		t.Fatalf("transformRevision = %q, want frame-image-v9", transformRevision)
+	if transformRevision != "frame-image-v10" {
+		t.Fatalf("transformRevision = %q, want frame-image-v10", transformRevision)
 	}
 	if got := TransformKey(DefaultConfig()); len(got) != 64 {
 		t.Fatalf("TransformKey() length = %d, want SHA-256 hex digest", len(got))
+	}
+	subsampled := DefaultConfig()
+	subsampled.JPEGSubsampling = jpegenc.Subsampling420
+	if TransformKey(subsampled) == TransformKey(DefaultConfig()) {
+		t.Fatal("TransformKey() ignores JPEG chroma subsampling")
 	}
 }
 

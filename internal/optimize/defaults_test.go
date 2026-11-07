@@ -1,6 +1,10 @@
 package optimize
 
-import "time"
+import (
+	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
+)
 
 // DefaultConfig is the transform fixture used across package tests. It must
 // match the production defaults derived by config.OptimizeOptions; see
@@ -35,5 +39,6 @@ func DefaultConfig() Config {
 		MaxCropPercent:                 25,
 		MaxUpscale:                     3,
 		MatTone:                        matToneAuto,
+		JPEGSubsampling:                jpegenc.Subsampling444,
 	}
 }
