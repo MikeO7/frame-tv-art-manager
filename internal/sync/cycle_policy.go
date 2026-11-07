@@ -26,8 +26,8 @@ func convergencePolicy(
 	}
 	policy := reconcile.Policy{
 		RemoveUnknown: cfg.RemoveUnknownImages,
-		// Current artwork is preserved until Samsung exposes an observable,
-		// recoverable selection postcondition through this adapter.
+		// Selection is verifiable through get_current_artwork, but which piece
+		// is on screen stays with the TV's own slideshow and the owner.
 		Select:         false,
 		DefaultMatte:   defaultMatte,
 		PortraitMatte:  cfg.PortraitMatte,
