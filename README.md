@@ -393,7 +393,9 @@ Each sync picks the pictures to show as follows:
   art.
 - A picture that belongs only to inactive collections is hidden. Its copy is
   removed from the TV like any picture that left the folder.
-- With no collections, or none active, everything is shown as before.
+- With no collections, everything is shown as before. When no collection is
+  active, the everyday art is shown and pictures that belong only to inactive
+  collections stay hidden, so Christmas art stays off the TV in July.
 
 Rotation and `MAX_ARTWORK_IMAGES` then apply to the chosen pictures. Hiding a
 picture never deletes its file, and art you uploaded to the TV yourself is never
@@ -405,7 +407,9 @@ artwork folder. The file must be readable only by the service user (mode
 re-preparing a picture keeps it in its collection. One limitation: two
 portraits that are joined into a side-by-side collage become a new picture
 that belongs to no collection. The easiest way to manage collections is an AI
-assistant over [MCP](#ai-assistants-mcp). You can also edit the file by hand:
+assistant over [MCP](#ai-assistants-mcp). You can also edit the file by hand.
+Use each picture's key as the `list_artwork` tool reports it; for prepared
+pictures that is the current filename, which includes a short content hash:
 
 ```json
 {
@@ -417,7 +421,7 @@ assistant over [MCP](#ai-assistants-mcp). You can also edit the file by hand:
       "exclusive": true,
       "activation": { "mode": "window", "start": "12-01", "end": "01-06" },
       "members": [
-        { "key": "snowy-canal.jpg", "added_at": "2026-11-07T00:00:00Z" }
+        { "key": "snowy-canal--3f9a1c2b7d4e.jpg", "added_at": "2026-11-07T00:00:00Z" }
       ]
     }
   ]
@@ -492,7 +496,7 @@ The assistant is given these tools:
 | --- | --- |
 | `get_display_spec` | The target size (3840×2160 by default), aspect ratio, formats, size limit, and how pictures that don't fit are cropped or matted, with prompt tips |
 | `search_public_domain_art` | Searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works |
-| `add_artwork` | Stores one JPEG or PNG (an `https` link or base64 data) in a collection, creating the collection if needed, and records its title, artist, license, and link |
+| `add_artwork` | Stores one JPEG or PNG (an `https` link or base64 data) in a collection, creating the collection if needed (a new collection starts off and exclusive, so nothing changes on the TV until you schedule it), and records its title, artist, license, and link |
 | `preview_artwork` | Shows a 960×540 preview of a picture exactly as it will be prepared for the TV; nothing is saved |
 | `list_artwork` | Lists stored pictures with their collections, whether today's rules show them, and which TVs hold them |
 | `list_collections`, `create_collection`, `update_collection`, `delete_collection` | Manage collections and their schedules |
