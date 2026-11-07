@@ -14,7 +14,6 @@ func TestLoadEnvironIsPresenceAwareAndPure(t *testing.T) {
 		"TV_IPS=192.0.2.10, 192.0.2.11",
 		"SLIDESHOW_ENABLED=",
 		"MAX_DOWNLOAD_SIZE_MB=invalid",
-		"DRY_RUN=perhaps",
 		"AUTO_OFF_GRACE_HOURS=unknown",
 	})
 	if err != nil {
@@ -29,13 +28,10 @@ func TestLoadEnvironIsPresenceAwareAndPure(t *testing.T) {
 	if cfg.MaxDownloadSizeMB != 20 {
 		t.Fatalf("MaxDownloadSizeMB = %d, want 20", cfg.MaxDownloadSizeMB)
 	}
-	if cfg.DryRun {
-		t.Fatal("malformed DRY_RUN must retain the compatibility fallback")
-	}
 	if cfg.AutoOffGraceHours != 2 {
 		t.Fatalf("AutoOffGraceHours = %v, want 2", cfg.AutoOffGraceHours)
 	}
-	assertWarningVariables(t, warnings, "AUTO_OFF_GRACE_HOURS", "DRY_RUN", "MAX_DOWNLOAD_SIZE_MB")
+	assertWarningVariables(t, warnings, "AUTO_OFF_GRACE_HOURS", "MAX_DOWNLOAD_SIZE_MB")
 }
 
 func TestLoadEnvironBuildsCanonicalConfig(t *testing.T) {
@@ -120,6 +116,66 @@ func TestLoadEnvironCanonicalizesTVAddressAndMAC(t *testing.T) {
 	}
 }
 
+func TestLoadEnvironBooleanSpellings(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{"true", true},
+		{"TRUE", true},
+		{"1", true},
+		{"yes", true},
+		{"on", true},
+		{"Y", true},
+		{" true ", true},
+		{"false", false},
+		{"0", false},
+		{"No", false},
+		{"off", false},
+		{"n", false},
+		{"", false},
+	}
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			cfg, _, err := LoadEnviron([]string{"TV_IPS=192.0.2.10", "DRY_RUN=" + test.value})
+			if err != nil {
+				t.Fatalf("LoadEnviron() error = %v", err)
+			}
+			if cfg.DryRun != test.want {
+				t.Fatalf("DryRun = %v, want %v", cfg.DryRun, test.want)
+			}
+		})
+	}
+}
+
+func TestLoadEnvironRejectsMalformedBooleans(t *testing.T) {
+	tests := []struct {
+		name    string
+		environ []string
+		want    []string
+	}{
+		{name: "dry run", environ: []string{"DRY_RUN=perhaps"}, want: []string{"DRY_RUN"}},
+		{name: "skip tls even when verification is off", environ: []string{"SKIP_TLS_VERIFY=sure"}, want: []string{"SKIP_TLS_VERIFY"}},
+		{name: "every malformed switch is reported", environ: []string{"UPLOAD_ENABLED=enable", "SLIDESHOW_ENABLED=2"}, want: []string{"UPLOAD_ENABLED", "SLIDESHOW_ENABLED"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := LoadEnviron(append([]string{"TV_IPS=192.0.2.10"}, test.environ...))
+			if err == nil {
+				t.Fatal("LoadEnviron() error = nil, want malformed boolean error")
+			}
+			for _, variable := range test.want {
+				if !strings.Contains(err.Error(), variable) {
+					t.Fatalf("LoadEnviron() error = %v, want it to name %s", err, variable)
+				}
+			}
+			if strings.Contains(err.Error(), "perhaps") || strings.Contains(err.Error(), "sure") {
+				t.Fatalf("LoadEnviron() error = %v must not echo the supplied value", err)
+			}
+		})
+	}
+}
+
 func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -149,6 +205,8 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "named wake broadcast", value: "TV_WOL_BROADCAST=broadcast.lan", want: "TV_WOL_BROADCAST"},
 		{name: "unsupported slideshow interval", value: "SLIDESHOW_INTERVAL=30", want: "SLIDESHOW_INTERVAL"},
 		{name: "oversized import", value: "MAX_DOWNLOAD_SIZE_MB=1025", want: "MAX_DOWNLOAD_SIZE_MB"},
+		{name: "zero local file size", value: "MAX_LOCAL_FILE_SIZE_MB=0", want: "MAX_LOCAL_FILE_SIZE_MB"},
+		{name: "oversized local file size", value: "MAX_LOCAL_FILE_SIZE_MB=513", want: "MAX_LOCAL_FILE_SIZE_MB"},
 		{name: "unsafe import allocation", value: "MAX_DOWNLOAD_SIZE_MB=101", want: "MAX_DOWNLOAD_SIZE_MB"},
 		{name: "artwork-shaped control file", value: "ARTWORK_SOURCES_FILE=/srv/sources.jpg", want: "ARTWORK_SOURCES_FILE"},
 		{name: "oversized timeout", value: "API_TIMEOUT_SECONDS=9223372036854775807", want: "API_TIMEOUT_SECONDS"},

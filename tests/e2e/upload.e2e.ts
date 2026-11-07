@@ -19,9 +19,15 @@ test('liveness stays healthy while unreachable TV prevents readiness', async ({ 
     expect(response.status).toBe(503);
     const status = await response.json();
     expect(status.last_sync_ok).toBe(false);
-    expect(status.last_error).not.toBe('');
+    expect('last_error' in status).toBe(false);
   }
-  const status = await (await fetch(new URL('/status', app.baseUrl))).json();
+  const anonymous = await (await fetch(new URL('/status', app.baseUrl))).json();
+  expect(anonymous.redacted).toBe(true);
+  expect('last_error' in anonymous).toBe(false);
+  expect(anonymous.tvs['tv-1'].status).not.toBe('ok');
+  expect(JSON.stringify(anonymous).includes('127.0.0.1')).toBe(false);
+  const status = await (await fetch(new URL('/status', app.baseUrl), { headers: { Authorization: auth } })).json();
+  expect(status.last_error).not.toBe('');
   expect(status.tvs['127.0.0.1'].status).not.toBe('ok');
   expect((await fetch(new URL('/does-not-exist', app.baseUrl))).status).toBe(404);
   for (const [argument, code] of [['-livenesscheck', 0], ['-healthcheck', 1]] as const) {

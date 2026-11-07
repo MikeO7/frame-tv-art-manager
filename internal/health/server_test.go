@@ -137,19 +137,18 @@ func TestHealthEndpointRequiresReadySuccessfulSync(t *testing.T) {
 	t.Parallel()
 	syncErr := errors.New("sync failed")
 	tests := []struct {
-		name          string
-		lifecycle     string
-		syncs         []error
-		wantCode      int
-		wantState     string
-		wantLastError string
+		name      string
+		lifecycle string
+		syncs     []error
+		wantCode  int
+		wantState string
 	}{
 		{name: "ready after successful sync", lifecycle: "ready", syncs: []error{nil}, wantCode: http.StatusOK, wantState: statusOK},
 		{name: "ready before first sync", lifecycle: "ready", wantCode: http.StatusServiceUnavailable, wantState: statusError},
 		{name: "starting after successful sync", lifecycle: "starting", syncs: []error{nil}, wantCode: http.StatusServiceUnavailable, wantState: statusError},
 		{
 			name: "latest sync failed", lifecycle: "ready", syncs: []error{nil, syncErr},
-			wantCode: http.StatusServiceUnavailable, wantState: statusError, wantLastError: syncErr.Error(),
+			wantCode: http.StatusServiceUnavailable, wantState: statusError,
 		},
 	}
 	for _, test := range tests {
@@ -167,7 +166,10 @@ func TestHealthEndpointRequiresReadySuccessfulSync(t *testing.T) {
 				t.Fatalf("status code = %d, want %d", response.Code, test.wantCode)
 			}
 			payload := decodeJSONResponse(t, response)
-			if payload[fieldStatus] != test.wantState || payload[fieldLastError] != test.wantLastError ||
+			if _, leaked := payload[fieldLastError]; leaked {
+				t.Fatalf("unauthenticated health response exposes error text: %#v", payload)
+			}
+			if payload[fieldStatus] != test.wantState ||
 				payload[fieldSyncCount] != float64(len(test.syncs)) || payload[fieldLifecycle] != test.lifecycle {
 				t.Fatalf("health response = %#v", payload)
 			}

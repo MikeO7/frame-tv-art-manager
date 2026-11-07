@@ -121,7 +121,19 @@ func (c *localCollection) prepareCycle(ctx context.Context) (preparedCollection,
 		return preparedCollection{}, err
 	}
 	defer c.release()
-	return c.prepareLocked(ctx)
+	result, err := c.prepareLocked(ctx)
+	if err != nil {
+		return result, err
+	}
+	localImages := len(result.snapshot.Items)
+	var warning string
+	result.snapshot, warning = limitSnapshot(result.snapshot, c.cfg.MaxArtworkImages)
+	if warning != "" {
+		c.logger.Warn("artwork folder exceeds image limit; syncing a subset",
+			"local_images", localImages, "limit", c.cfg.MaxArtworkImages)
+		result.warnings = append(result.warnings, warning)
+	}
+	return result, nil
 }
 
 func (c *localCollection) acquire(ctx context.Context) error {
