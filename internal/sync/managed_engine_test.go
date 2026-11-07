@@ -76,7 +76,7 @@ func TestManagedEngineDerivesCollectionRootAndLimitsFromEngineConfiguration(t *t
 	secondImage := append(append([]byte(nil), createSmallJPEG(t)...), 0x01)
 	if _, err := managed.Import(context.Background(), collectionpkg.ImportRequest{
 		Hint: "second.jpg", Reader: bytes.NewReader(secondImage),
-	}); err == nil || !strings.Contains(err.Error(), "item limit 1 exceeded") {
+	}); !errors.Is(err, collectionpkg.ErrCollectionFull) || !strings.Contains(err.Error(), "item limit 1 exceeded") {
 		t.Fatalf("second Import() error = %v, want configured item limit", err)
 	}
 }

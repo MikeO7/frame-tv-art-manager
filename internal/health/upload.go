@@ -2,11 +2,12 @@ package health
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
@@ -19,6 +20,9 @@ const defaultMaxUploadBytes = 20 << 20 // 20 MiB
 const (
 	fieldMessage  = "message"
 	fieldFilename = "filename"
+	// uploadSpoolPattern names the private temporary file that holds an upload
+	// while it is validated and imported.
+	uploadSpoolPattern = ".frame-tv-upload-*.tmp"
 )
 
 // HandleUpload routes artwork upload requests: GET serves the upload UI and
@@ -38,10 +42,11 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusForbidden, "Upload endpoint is unavailable during dry-run")
 		return
 	}
-	if s.cfg.UploadToken != "" && !validUploadCredentials(r, s.cfg.UploadToken) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Frame TV artwork upload", charset="UTF-8"`)
-		writeJSONError(w, http.StatusUnauthorized, "Authentication required")
-		return
+	if s.cfg.UploadToken != "" {
+		if result, wait := s.authenticate(r); result != authValid {
+			writeAuthChallenge(w, result, wait)
+			return
+		}
 	}
 
 	switch r.Method {
@@ -78,13 +83,9 @@ func validUploadOrigin(request *http.Request) bool {
 	return strings.EqualFold(parsed.Host, request.Host)
 }
 
-func validUploadCredentials(request *http.Request, token string) bool {
-	username, password, ok := request.BasicAuth()
-	return ok && username == "frame" && subtle.ConstantTimeCompare([]byte(password), []byte(token)) == 1
-}
-
-// processUpload reads, validates, and persists a single POSTed image, bounding
-// the request body to mitigate denial-of-service via oversized payloads.
+// processUpload spools a single POSTed image to a private temporary file and
+// then imports it. Spooling keeps peak memory near one copy of the image and
+// keeps a slow client from holding the collection mutation while it sends.
 func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
 	select {
 	case s.imports <- struct{}{}:
@@ -93,21 +94,31 @@ func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusTooManyRequests, "Another artwork import is in progress")
 		return
 	}
-	maxSize := s.maxUploadBytes()
-	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
-
-	fileData, err := parseUploadedFile(r, maxSize)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	defer func() { _ = fileData.Close() }()
 	if s.importer == nil {
 		s.logger.Error("artwork import rejected without authoritative collection")
 		writeJSONError(w, http.StatusServiceUnavailable, "Artwork collection is unavailable")
 		return
 	}
-	s.persistWithImporter(r.Context(), w, fileData)
+	maxSize := s.maxUploadBytes()
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
+
+	spooled, err := spoolUpload(r)
+	if err != nil {
+		var rejected uploadError
+		if errors.As(err, &rejected) {
+			writeJSONError(w, http.StatusBadRequest, rejected.message)
+			return
+		}
+		s.logger.Error("artwork upload spooling failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "Failed to receive uploaded file")
+		return
+	}
+	defer func() {
+		if err := spooled.discard(); err != nil {
+			s.logger.Warn("remove spooled upload", "error", err)
+		}
+	}()
+	s.persistWithImporter(r.Context(), w, spooled.file)
 }
 
 // maxUploadBytes resolves the configured per-upload limit, falling back to a
@@ -124,13 +135,12 @@ func (s *Server) persistWithImporter(ctx context.Context, w http.ResponseWriter,
 		Reader: reader, Hint: "upload", MaxBytes: s.maxUploadBytes(),
 	})
 	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			writeJSONError(w, http.StatusBadRequest, "file too large (exceeds upload size limit)")
-			return
-		}
 		if errors.Is(err, collection.ErrInvalidImport) {
 			writeJSONError(w, http.StatusBadRequest, "Invalid or unsafe image")
+			return
+		}
+		if errors.Is(err, collection.ErrCollectionFull) {
+			writeJSONError(w, http.StatusConflict, "Artwork folder is full (MAX_ARTWORK_IMAGES reached)")
 			return
 		}
 		s.logger.Error("artwork import failed", "error", err)
@@ -151,22 +161,69 @@ func (s *Server) persistWithImporter(ctx context.Context, w http.ResponseWriter,
 	writeJSONError(w, http.StatusInternalServerError, "Failed to verify uploaded file")
 }
 
-// parseUploadedFile extracts the uploaded file payload from either a multipart form or raw request body.
-func parseUploadedFile(r *http.Request, maxSize int64) (io.ReadCloser, error) {
-	contentTypeHeader := r.Header.Get("Content-Type")
-	if strings.Contains(contentTypeHeader, "multipart/form-data") {
-		// r.Body is already wrapped with http.MaxBytesReader(maxSize) by the
-		// caller, so form parsing is bounded despite gosec's G120 heuristic.
-		err := r.ParseMultipartForm(maxSize) //nolint:gosec // body bounded upstream by MaxBytesReader
-		if err != nil {
-			return nil, errors.New("file too large or invalid request")
-		}
+// uploadError is a client-caused rejection whose message is safe to return.
+type uploadError struct{ message string }
 
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			return nil, errors.New("missing 'file' parameter")
-		}
-		return file, nil
+func (e uploadError) Error() string { return e.message }
+
+// spooledUpload is a received upload held in a private temporary file.
+type spooledUpload struct{ file *os.File }
+
+func (u spooledUpload) discard() error {
+	return errors.Join(u.file.Close(), os.Remove(u.file.Name()))
+}
+
+// spoolUpload copies the image from a multipart "file" field or a raw body
+// into a 0600 temporary file positioned at its start.
+func spoolUpload(r *http.Request) (spooledUpload, error) {
+	source, err := uploadPayload(r)
+	if err != nil {
+		return spooledUpload{}, err
 	}
-	return r.Body, nil
+	file, err := os.CreateTemp("", uploadSpoolPattern)
+	if err != nil {
+		return spooledUpload{}, fmt.Errorf("create upload spool: %w", err)
+	}
+	spooled := spooledUpload{file: file}
+	if _, err := io.Copy(file, source); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			err = uploadError{message: "file too large (exceeds upload size limit)"}
+		} else {
+			err = uploadError{message: "upload interrupted or malformed"}
+		}
+		return spooledUpload{}, errors.Join(err, spooled.discard())
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return spooledUpload{}, errors.Join(fmt.Errorf("rewind upload spool: %w", err), spooled.discard())
+	}
+	return spooled, nil
+}
+
+// uploadPayload returns a stream of the uploaded image without buffering it.
+// For multipart requests it reads parts in order and stops at "file".
+func uploadPayload(r *http.Request) (io.Reader, error) {
+	if !strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") {
+		return r.Body, nil
+	}
+	reader, err := r.MultipartReader()
+	if err != nil {
+		return nil, uploadError{message: "file too large or invalid request"}
+	}
+	for parts := 0; ; parts++ {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) && parts > 0 {
+			return nil, uploadError{message: "missing 'file' parameter"}
+		}
+		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				return nil, uploadError{message: "file too large (exceeds upload size limit)"}
+			}
+			return nil, uploadError{message: "file too large or invalid request"}
+		}
+		if part.FormName() == "file" {
+			return part, nil
+		}
+	}
 }

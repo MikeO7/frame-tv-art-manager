@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -12,6 +13,7 @@ import (
 type environment struct {
 	values   map[string]string
 	warnings []Warning
+	errs     []error
 }
 
 // Warning reports a compatibility fallback without echoing the supplied value.
@@ -44,10 +46,14 @@ func LoadEnviron(environ []string) (*Config, []Warning, error) {
 
 //nolint:funlen // keeping the complete environment schema together makes defaults auditable
 func (env *environment) loadConfig() (*Config, error) {
+	// Parsed before the literal so a malformed value is reported even when
+	// VERIFY_TLS is false.
+	skipTLSVerify := env.boolean("SKIP_TLS_VERIFY", false)
 	cfg := &Config{
 		ArtworkDir:                     env.str("ARTWORK_DIR", "/data/artwork"),
 		MaxArtworkImages:               env.integer("MAX_ARTWORK_IMAGES", 0),
 		MaxDownloadSizeMB:              env.integer("MAX_DOWNLOAD_SIZE_MB", 20),
+		MaxLocalFileSizeMB:             env.integer("MAX_LOCAL_FILE_SIZE_MB", 200),
 		TokenDir:                       env.str("TOKEN_DIR", "/data/tokens"),
 		SyncIntervalMin:                env.integer("SYNC_INTERVAL_MINUTES", 30),
 		ShutdownTimeout:                safeDuration(env.integer("SHUTDOWN_TIMEOUT_SECONDS", 30), time.Second),
@@ -68,7 +74,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		AutoOffTime:                    env.str("AUTO_OFF_TIME", ""),
 		AutoOffGraceHours:              env.decimal("AUTO_OFF_GRACE_HOURS", 2),
 		EnableRESTGate:                 env.boolean("ENABLE_REST_GATE", false),
-		VerifyTLS:                      env.boolean("VERIFY_TLS", false) && !env.boolean("SKIP_TLS_VERIFY", false),
+		VerifyTLS:                      env.boolean("VERIFY_TLS", false) && !skipTLSVerify,
 		SourcesFile:                    env.str("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAccessKey:              env.str("UNSPLASH_ACCESS_KEY", ""),
 		NasaAPIKey:                     env.str("NASA_API_KEY", "DEMO_KEY"),
@@ -118,6 +124,9 @@ func (env *environment) loadConfig() (*Config, error) {
 		WakeBroadcast:                  strings.TrimSpace(env.str("TV_WOL_BROADCAST", "")),
 	}
 
+	if err := errors.Join(env.errs...); err != nil {
+		return nil, err
+	}
 	if err := env.parseRequiredValues(cfg); err != nil {
 		return nil, err
 	}
@@ -208,18 +217,20 @@ func (env *environment) integer(key string, fallback int) int {
 	return parsed
 }
 
+// boolean accepts the common spellings of a switch. Anything else is a
+// configuration error rather than a silent fallback, so a typo such as
+// DRY_RUN=on-ish cannot quietly disable a safety setting.
 func (env *environment) boolean(key string, fallback bool) bool {
-	value := strings.ToLower(env.values[key])
-	if value == "" {
-		return fallback
-	}
+	value := strings.ToLower(strings.TrimSpace(env.values[key]))
 	switch value {
-	case "true", "1", "yes":
+	case "":
+		return fallback
+	case "true", "1", "yes", "on", "y":
 		return true
-	case "false", "0", "no":
+	case "false", "0", "no", "off", "n":
 		return false
 	default:
-		env.warn(key, strconv.FormatBool(fallback), fmt.Sprintf("%s is malformed; using the compatibility fallback", key))
+		env.errs = append(env.errs, fmt.Errorf("%s must be true or false (also accepted: 1/0, yes/no, on/off, y/n)", key))
 		return fallback
 	}
 }

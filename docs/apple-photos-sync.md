@@ -268,7 +268,9 @@ sync removes the copy it uploaded from the TV.
 | `400` file too large | Over `MAX_DOWNLOAD_SIZE_MB` (20 MB by default). Raise the limit or send a smaller export. |
 | `400` Invalid or unsafe image | Not a complete JPEG or PNG. HEIC photos end up here; convert to JPEG first. |
 | `400` missing 'file' parameter | The form field isn't named `file`. |
+| `409` Artwork folder is full | The folder already holds `MAX_ARTWORK_IMAGES` images. Delete some or raise the limit. |
 | `429` Another artwork import is in progress | Two uploads arrived at once. Send them one after another. |
+| `429` Too many failed sign-in attempts | Ten wrong passwords came from this address within a minute. Fix the password and wait for the `Retry-After` seconds. |
 
 ## Settings
 

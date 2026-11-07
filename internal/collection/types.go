@@ -10,6 +10,10 @@ import (
 // ErrInvalidImport classifies bytes rejected before any Collection mutation.
 var ErrInvalidImport = errors.New("invalid artwork import")
 
+// ErrCollectionFull reports an import refused because the collection already
+// holds the configured maximum number of items. Nothing was published.
+var ErrCollectionFull = errors.New("artwork collection is full")
+
 const (
 	FileTypeJPEG FileType = "jpg"
 	FileTypePNG  FileType = "png"
