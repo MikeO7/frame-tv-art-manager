@@ -30,6 +30,10 @@ func DefaultConfig() Config {
 		HDRTargetPeakNits:              100,
 		MuseumModeEnabled:              false,
 		MuseumModeIntensity:            5,
-		PortraitMode:                   "crop",
+		PortraitMode:                   "pad",
+		PadStyle:                       padStyleMat,
+		MaxCropPercent:                 25,
+		MaxUpscale:                     3,
+		MatTone:                        matToneAuto,
 	}
 }

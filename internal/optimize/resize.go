@@ -38,7 +38,7 @@ const (
 	pngICCMetadata        = "PNG iCCP"
 	pngCICPMetadata       = "PNG cICP"
 	portraitModeCollage   = "collage"
-	transformRevision     = "frame-image-v7"
+	transformRevision     = "frame-image-v8"
 )
 
 type Config struct {
@@ -67,6 +67,10 @@ type Config struct {
 	MuseumModeEnabled              bool
 	MuseumModeIntensity            int
 	PortraitMode                   string
+	PadStyle                       string
+	MaxCropPercent                 int
+	MaxUpscale                     float64
+	MatTone                        string
 }
 
 //nolint:revive // explicit transaction inputs avoid hidden optimizer state
@@ -183,7 +187,7 @@ func validateOptimizedPixels(ctx context.Context, file *os.File, expectedWidth, 
 func TransformKey(cfg Config) string {
 	description := fmt.Sprintf(
 		transformRevision+"|%dx%d|q=%d|png=%t|linear=%t|smart=%t|gain=%.6g|protect=%t/%.6g|"+
-			"provider=%s/%s/%.6g/%s|sharp=%.6g/%d|hdr=%t/%.6g/%.6g|museum=%t/%d|portrait=%s|profile=%s",
+			"provider=%s/%s/%.6g/%s|sharp=%.6g/%d|hdr=%t/%.6g/%.6g|museum=%t/%d|portrait=%s|profile=%s|pad=%s|maxcrop=%d|maxup=%.6g|mattone=%s",
 		cfg.MaxWidth, cfg.MaxHeight, cfg.OptimizeJPEGQuality, cfg.OptimizePNG, cfg.LinearLightResize,
 		cfg.SmartCropEnabled, cfg.SmartCropMinGain, cfg.SmartCropProtection, cfg.SmartCropProtectionStrength,
 		cfg.SmartCropProvider, cfg.SmartCropProviderURL, cfg.SmartCropProviderMinConfidence, cfg.SmartCropProviderTimeout,
@@ -191,6 +195,7 @@ func TransformKey(cfg Config) string {
 		cfg.HDRToneMap, cfg.HDRSourcePeakNits, cfg.HDRTargetPeakNits,
 		cfg.MuseumModeEnabled, cfg.MuseumModeIntensity,
 		cfg.PortraitMode, cfg.ColorProfilePolicy,
+		cfg.PadStyle, cfg.MaxCropPercent, cfg.MaxUpscale, cfg.MatTone,
 	)
 	digest := sha256.Sum256([]byte(description))
 	return hex.EncodeToString(digest[:])

@@ -111,7 +111,11 @@ func (env *environment) loadConfig() (*Config, error) {
 		GateTimeout:                    safeDuration(env.integer("GATE_TIMEOUT_MS", 10000), time.Millisecond),
 		PUID:                           env.integer("PUID", 0),
 		PGID:                           env.integer("PGID", 0),
-		PortraitMode:                   strings.ToLower(env.str("PORTRAIT_MODE", "crop")),
+		PortraitMode:                   strings.ToLower(env.str("PORTRAIT_MODE", "pad")),
+		PadStyle:                       strings.ToLower(env.str("IMAGE_PAD_STYLE", "mat")),
+		MaxCropPercent:                 env.integer("IMAGE_MAX_CROP_PERCENT", 25),
+		MaxUpscale:                     env.decimal("IMAGE_MAX_UPSCALE", 3),
+		MatTone:                        strings.ToLower(env.str("IMAGE_MAT_TONE", "auto")),
 	}
 
 	if err := env.parseRequiredValues(cfg); err != nil {

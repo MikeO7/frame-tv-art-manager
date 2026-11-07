@@ -255,7 +255,7 @@ done</code></pre>
         <p>The form field must be named <code>file</code>. You can also send the image as the raw request body instead of a form. Send files one at a time; the server handles one upload at a time and answers <code>429</code> to a second one sent in parallel.</p>
 
         <h2 id="processing">What happens to a photo after it’s uploaded?</h2>
-        <p>On the next sync, Frame TV Art Manager prepares it like any other picture: turns it upright, applies your portrait setting (crop by default, or pad or collage), converts color to sRGB, sharpens lightly, and resizes it to exactly 3840×2160. Then it uploads it to every TV in <code>TV_IPS</code>, with your <code>MATTE_STYLE</code> if you set one.</p>
+        <p>On the next sync, Frame TV Art Manager prepares it like any other picture: turns it upright, applies your portrait setting (shown whole on a gallery mat by default, or collage or crop), converts color to sRGB, sharpens lightly, and resizes it to exactly 3840×2160. Then it uploads it to every TV in <code>TV_IPS</code>, with your <code>MATTE_STYLE</code> if you set one.</p>
         <p>Uploaded photos stay in the artwork folder until you delete them. To take one off the TV, delete its file from the folder (the upload response tells you its name); the next sync removes it from the TV. If the TV is full, uploaded photos join the <a href="./samsung-frame-tv-storage-full-art-rotation.html">rotation</a> like everything else.</p>
 
         <h2 id="troubleshooting">What do the upload errors mean?</h2>

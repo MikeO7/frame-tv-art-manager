@@ -243,6 +243,17 @@ type Config struct {
 	PGID int
 
 	// --- Portrait Mode Handling ---
-	// PortraitMode controls how vertical photos are resized: "collage", "pad", "crop" (default "crop").
+	// PortraitMode controls how vertical photos are resized: "collage", "pad", "crop" (default "pad").
 	PortraitMode string
+	// PadStyle is how padded images are presented: "mat" (gallery mat, default) or "blur".
+	PadStyle string
+	// MaxCropPercent is the largest share of a landscape image that may be
+	// cropped away to fill the frame before it is padded instead (default 25).
+	MaxCropPercent int
+	// MaxUpscale caps how far a small image is enlarged; images needing more
+	// to fill the frame are padded at this scale (default 3).
+	MaxUpscale float64
+	// MatTone selects the mat tone: "auto" (follows the art, default),
+	// "light", or "dark" (calmest at night).
+	MatTone string
 }

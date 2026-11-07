@@ -18,8 +18,8 @@ import (
 
 func TestTransformKeyTracksCurrentImageAlgorithmRevision(t *testing.T) {
 	t.Parallel()
-	if transformRevision != "frame-image-v7" {
-		t.Fatalf("transformRevision = %q, want frame-image-v7", transformRevision)
+	if transformRevision != "frame-image-v8" {
+		t.Fatalf("transformRevision = %q, want frame-image-v8", transformRevision)
 	}
 	if got := TransformKey(DefaultConfig()); len(got) != 64 {
 		t.Fatalf("TransformKey() length = %d, want SHA-256 hex digest", len(got))

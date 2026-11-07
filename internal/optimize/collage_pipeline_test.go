@@ -197,6 +197,7 @@ func TestCreateCollageAppliesSharpenPerPanel(t *testing.T) {
 	cfg.MaxWidth, cfg.MaxHeight = 16, 8
 	cfg.SmartCropEnabled = false
 	cfg.SharpenThreshold = 0
+	cfg.PadStyle = padStyleBlur
 	output := renderCollage(input, input, collageRenderRequest{
 		ctx: context.Background(), cfg: cfg, logger: slog.New(slog.DiscardHandler),
 		rightSharpen: 1,
