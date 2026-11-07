@@ -37,6 +37,8 @@ type addArtworkInput struct {
 	Title       string `json:"title,omitempty" jsonschema:"title of the artwork, also used in the filename"`
 	Artist      string `json:"artist,omitempty" jsonschema:"artist or model credit"`
 	Description string `json:"description,omitempty" jsonschema:"short description or the prompt used"`
+	License     string `json:"license,omitempty" jsonschema:"license of a found work, for example from search_public_domain_art"`
+	Link        string `json:"link,omitempty" jsonschema:"http or https page about the work, for example its museum page"`
 }
 
 type fitReport struct {
@@ -101,6 +103,10 @@ func (svc *service) addArtwork(
 	if err != nil {
 		return nil, addArtworkOutput{}, err
 	}
+	link := strings.TrimSpace(input.Link)
+	if err := themes.ValidateLink(link); err != nil {
+		return nil, addArtworkOutput{}, err
+	}
 	data, err := svc.imageBytes(ctx, input)
 	if err != nil {
 		return nil, addArtworkOutput{}, err
@@ -109,7 +115,8 @@ func (svc *service) addArtwork(
 	member := themes.Member{
 		Origin: uploadOriginPrefix + hex.EncodeToString(digest[:]), Digest: hex.EncodeToString(digest[:]),
 		Title: strings.TrimSpace(input.Title), Artist: strings.TrimSpace(input.Artist),
-		Description: strings.TrimSpace(input.Description), AddedAt: svc.now().UTC(),
+		Description: strings.TrimSpace(input.Description), License: strings.TrimSpace(input.License), Link: link,
+		AddedAt: svc.now().UTC(),
 	}
 	// Membership is recorded before the bytes are published so a crash
 	// between the two can never leave themed art in the everyday rotation.

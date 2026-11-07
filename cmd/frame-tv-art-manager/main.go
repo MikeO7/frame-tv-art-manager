@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/app"
 	"github.com/MikeO7/frame-tv-art-manager/internal/assistant"
@@ -16,6 +18,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
+	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sync"
 )
 
@@ -29,6 +32,8 @@ var (
 const (
 	directoryArtwork = "artwork"
 	directoryTokens  = "tokens"
+
+	museumSearchTimeout = 30 * time.Second
 )
 
 func main() {
@@ -100,6 +105,7 @@ func buildApplication(
 	if cfg.MCPEnabled {
 		handler, err := assistant.NewHandler(assistant.Options{
 			Config: cfg, Logger: logger, Artwork: engine, Themes: engine.Themes(), Status: healthStatus, Version: Version,
+			Searcher: sources.NewArtSearcher(&http.Client{Timeout: museumSearchTimeout}, logger),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("construct MCP endpoint: %w", err)

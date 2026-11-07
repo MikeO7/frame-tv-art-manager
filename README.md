@@ -51,6 +51,11 @@ Guides:
   Pictures, Unsplash, NASA, Pexels, Pixabay, and direct image links.
 - **Careful by default.** It only removes art it uploaded, leaves your own TV
   uploads alone, and makes no changes when it can't be sure of the TV's state.
+- **Themed collections.** Show your Christmas art from Dec 1 to Jan 6, then
+  go back to the everyday rotation automatically.
+- **Works with AI assistants.** An optional MCP endpoint lets Claude or another
+  assistant create or find art, preview how it will look, and schedule it. The
+  manager needs no AI keys.
 - **Optional TV controls.** Slideshow settings, fixed or sun-following
   brightness, a nightly power-off time, and Wake-on-LAN.
 
@@ -358,6 +363,156 @@ a day, or immediately once something on the TV is removed. Rotation needs at
 least two pieces the manager uploaded on the TV, so it can't help when the TV
 is full of your own art; that reports `storage full` too.
 
+## Themed collections
+
+A themed collection is a named group of pictures, such as "Christmas", that is
+shown only on the dates you choose. Without collections nothing changes: every
+picture in the folder is part of the normal rotation.
+
+Each collection has a schedule:
+
+- `always`: always active.
+- `off`: never active (new collections start here).
+- `window`: active every year from a start date to an end date, written as
+  `MM-DD` and including both days. A window can run across New Year, such as
+  `12-01` to `01-06`. `02-29` is allowed and simply doesn't occur in other
+  years.
+
+Dates follow `LOCATION_TIMEZONE` (the same clock as `AUTO_OFF_TIME`; UTC by
+default), so a window opens at midnight where the TV is.
+
+Each sync picks the pictures to show as follows:
+
+- Pictures in no collection are the **everyday** art.
+- While an **exclusive** collection (the default) is active and holds at least
+  one picture, only pictures from active collections are shown. Your Christmas
+  art replaces the everyday art.
+- An active **non-exclusive** collection is shown together with the everyday
+  art.
+- A picture that belongs only to inactive collections is hidden. Its copy is
+  removed from the TV like any picture that left the folder.
+- With no collections, or none active, everything is shown as before.
+
+Rotation and `MAX_ARTWORK_IMAGES` then apply to the chosen pictures. Hiding a
+picture never deletes its file, and art you uploaded to the TV yourself is never
+touched.
+
+Collections are stored in `.frame-tv-art-manager/collections.json` inside the
+artwork folder. The file must be readable only by the service user (mode
+`600`). Membership follows each picture's stable identity, so renaming or
+re-preparing a picture keeps it in its collection. One limitation: two
+portraits that are joined into a side-by-side collage become a new picture
+that belongs to no collection. The easiest way to manage collections is an AI
+assistant over [MCP](#ai-assistants-mcp). You can also edit the file by hand:
+
+```json
+{
+  "version": 1,
+  "collections": [
+    {
+      "slug": "christmas",
+      "name": "Christmas",
+      "exclusive": true,
+      "activation": { "mode": "window", "start": "12-01", "end": "01-06" },
+      "members": [
+        { "key": "snowy-canal.jpg", "added_at": "2026-11-07T00:00:00Z" }
+      ]
+    }
+  ]
+}
+```
+
+If the file can't be read, for example after a typo, the manager never shows
+or removes art based on a guess. It keeps the last collections it read
+successfully since it started and reports the sync as failed in `/status` and
+`/health` until you fix the file. If it has never read the file, it skips the
+TV work for that sync and reports the error. Tools that change collections
+refuse to overwrite a file they can't read. With `DRY_RUN`, collections are
+evaluated but never saved.
+
+## AI assistants (MCP)
+
+The manager can act as a [Model Context Protocol](https://modelcontextprotocol.io)
+server, so an AI assistant can build collections for you: *"Make me 12
+Christmas paintings in the style of Dutch winter landscapes and show them Dec 1
+to Jan 6."* The assistant generates the images with its own tools. The manager
+holds no AI keys and calls no AI service. It tells the assistant the TV's size
+and format, stores and checks the images, shows previews of how each one will
+be fitted, and puts the collection on the TV on schedule. It can also search
+public-domain museum collections, if you'd rather show real paintings.
+
+Turn it on with a long random token (at least 24 characters):
+
+```yaml
+    environment:
+      MCP_ENABLED: "true"
+      MCP_TOKEN: "paste-the-output-of: openssl rand -hex 24"
+```
+
+The endpoint is `http://<server-address>:8080/mcp` (port `HEALTH_PORT`), and
+every request must send `Authorization: Bearer <MCP_TOKEN>`. It is meant for
+your home network. If you expose it beyond that, put it behind a reverse proxy
+with TLS. Wrong tokens count toward the same per-address limit as upload
+passwords, and browser requests from other websites are refused.
+
+**Claude Code**:
+
+```sh
+claude mcp add --transport http frame-tv http://<server-address>:8080/mcp \
+  --header "Authorization: Bearer <MCP_TOKEN>"
+```
+
+**Claude Desktop** connects through the
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge (it needs
+Node.js). Add this to `claude_desktop_config.json` and restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "frame-tv": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://<server-address>:8080/mcp", "--allow-http",
+               "--header", "Authorization:${FRAME_TV_AUTH}"],
+      "env": { "FRAME_TV_AUTH": "Bearer <MCP_TOKEN>" }
+    }
+  }
+}
+```
+
+Use `https://` and drop `--allow-http` when the manager is behind a TLS proxy.
+
+**Other MCP clients**: use the streamable HTTP transport with the URL and
+header above.
+
+The assistant is given these tools:
+
+| Tool | What it does |
+| --- | --- |
+| `get_display_spec` | The target size (3840×2160 by default), aspect ratio, formats, size limit, and how pictures that don't fit are cropped or matted, with prompt tips |
+| `search_public_domain_art` | Searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works |
+| `add_artwork` | Stores one JPEG or PNG (an `https` link or base64 data) in a collection, creating the collection if needed, and records its title, artist, license, and link |
+| `preview_artwork` | Shows a 960×540 preview of a picture exactly as it will be prepared for the TV; nothing is saved |
+| `list_artwork` | Lists stored pictures with their collections, whether today's rules show them, and which TVs hold them |
+| `list_collections`, `create_collection`, `update_collection`, `delete_collection` | Manage collections and their schedules |
+| `remove_from_collection` | Takes a picture out of a collection |
+| `sync_now` | Starts a sync now instead of waiting for the next one |
+| `get_status` | The last sync's result and each TV's state |
+
+No tool deletes image files: removing a picture from a collection or deleting a
+collection leaves the files in the folder. There is no "show this picture now"
+tool. The TV changes only through the normal sync, with all of its safety
+checks.
+
+Images sent through `add_artwork` follow the same rules as the web uploader:
+JPEG or PNG only, up to `MAX_DOWNLOAD_SIZE_MB`, checked and deduplicated before
+they are kept. Links must be `https` and must point to the public internet.
+Addresses on your home network and other private addresses are refused, even
+after redirects. Most assistants hand over generated images as links, so
+`image_url` is usually the practical choice; base64 works for smaller images.
+New collections start `off`. The assistant then schedules them with
+`update_collection` and calls `sync_now`. With `DRY_RUN`, the read-only tools
+still work and tools that would change anything are refused.
+
 ## Image preparation
 
 Preparation is on by default (`IMAGE_OPTIMIZE_ENABLED`). Images that need it
@@ -518,6 +673,8 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `DRY_RUN` | `false` | Plan without changing anything |
 | `HEALTH_PORT` | `8080` | Port for status and uploads; `0` turns the server off |
 | `HEALTH_BIND_ADDRESS` | `0.0.0.0` | Address to listen on, e.g. `127.0.0.1` behind a local proxy |
+| `MCP_ENABLED` | `false` | Turn on the `/mcp` endpoint for AI assistants; needs `HEALTH_PORT` |
+| `MCP_TOKEN` | — | Bearer token for `/mcp`, at least 24 characters with no spaces |
 
 Invalid values such as an unknown log level, an unsupported slideshow
 interval, or a bad TV address stop the service at startup with a clear error.
@@ -590,6 +747,7 @@ The built-in web server (port `HEALTH_PORT`) provides:
 | `GET /ready`, `GET /health` | 200 once startup finished and the last sync succeeded, otherwise 503. Shows timing and state only, never error text. |
 | `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. `source_warning` appears when an artwork source failed; TVs still sync the art already on disk. |
 | `GET` / `POST /upload` | The upload page, when uploads are enabled. |
+| `POST /mcp` | The [MCP endpoint](#ai-assistants-mcp) for AI assistants, when `MCP_ENABLED` is on. Requires `Authorization: Bearer <MCP_TOKEN>`; returns `404` when off. |
 
 `/live`, `/ready`, and `/health` need no password. When `UPLOAD_TOKEN` is set,
 `/status` shows the last error and TV addresses only to requests signed in as
@@ -698,6 +856,19 @@ Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK at once,
 and only returns public-domain works. Wikimedia Commons' Picture of the Day and
 Featured Pictures also need no key; their credit and license are shown in
 `/status`.
+
+**Can I show holiday art only during the holidays?**
+Yes. Put the pictures in a [themed collection](#themed-collections) with a
+yearly date window such as Dec 1 to Jan 6. While it's active, it replaces the
+everyday art, or it can be shown alongside it. Afterwards the everyday art
+returns by itself.
+
+**Can an AI make art for my Frame TV?**
+Yes, through your own AI assistant. Turn on the [MCP endpoint](#ai-assistants-mcp),
+connect Claude Desktop, Claude Code, or another MCP client, and ask for a
+collection. The assistant generates the images. The manager sizes and checks
+them, previews them, and puts them on the TV on schedule. The manager needs no
+AI account or API key.
 
 **Which Frame TVs does it support?**
 Samsung Frame TVs running Tizen 8.0 or newer. Older firmware may work, but

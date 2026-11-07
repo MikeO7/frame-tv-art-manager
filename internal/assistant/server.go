@@ -38,9 +38,11 @@ const Instructions = "This server manages the artwork shown on Samsung Frame TVs
 	"create them with your own image tools, then use these tools to put them on the TV.\n\n" +
 	"Workflow:\n" +
 	"1. Call get_display_spec first. Generate images to that spec: landscape 16:9 at the largest size your " +
-	"image model supports, JPEG or PNG.\n" +
+	"image model supports, JPEG or PNG. To use real paintings instead, call search_public_domain_art (when " +
+	"offered) and keep the candidates you like.\n" +
 	"2. Call add_artwork once per image, naming a themed collection (for example \"Christmas\"). The collection " +
-	"is created when missing. Pass the image as an https image_url or as image_base64.\n" +
+	"is created when missing. Pass the image as an https image_url or as image_base64. For a search candidate, " +
+	"pass its image_url, title, artist, license, and link so the credit is kept.\n" +
 	"3. Call preview_artwork to see how a picture will look on the TV with the current crop or gallery-mat " +
 	"settings. Regenerate any image add_artwork warns is too small or will be heavily cropped.\n" +
 	"4. Call update_collection to schedule it: mode \"window\" with start and end dates as MM-DD (for example " +
@@ -75,6 +77,8 @@ type Options struct {
 	Status  StatusSource
 	// Fetcher downloads image links. Nil uses a public-internet-only Fetcher.
 	Fetcher *Fetcher
+	// Searcher finds public-domain museum art. Nil omits the search tool.
+	Searcher ArtSearch
 	// Now is the clock used for activation rules. Nil uses time.Now.
 	Now func() time.Time
 	// Version is reported to clients during initialization.
@@ -88,6 +92,7 @@ type service struct {
 	themes   *themes.Store
 	status   StatusSource
 	fetcher  *Fetcher
+	searcher ArtSearch
 	now      func() time.Time
 	location *time.Location
 }
@@ -104,7 +109,7 @@ func NewHandler(options Options) (http.Handler, error) {
 	}
 	svc := &service{
 		cfg: options.Config, logger: options.Logger, artwork: options.Artwork, themes: options.Themes,
-		status: options.Status, fetcher: options.Fetcher, now: options.Now, location: location,
+		status: options.Status, fetcher: options.Fetcher, searcher: options.Searcher, now: options.Now, location: location,
 	}
 	if svc.logger == nil {
 		svc.logger = slog.Default()
@@ -137,6 +142,7 @@ func NewHandler(options Options) (http.Handler, error) {
 func (svc *service) register(server *mcp.Server) {
 	svc.registerSpecTools(server)
 	svc.registerArtworkTools(server)
+	svc.registerSearchTools(server)
 	svc.registerCollectionTools(server)
 	svc.registerStatusTools(server)
 }

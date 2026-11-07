@@ -191,12 +191,18 @@ func TestListArtworkPagesAndFiltersByCollection(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t, fixtureOptions{})
 	var tree, snow, everyday addArtworkOutput
-	fixture.call(t, "add_artwork", map[string]any{"collection": "Christmas", "title": "Tree", "artist": "Model",
-		"image_base64": base64Of(paintedJPEG(t, 64, 36, 10))}, &tree)
-	fixture.call(t, "add_artwork", map[string]any{"collection": "Christmas", "title": "Snow",
-		"image_base64": base64Of(paintedJPEG(t, 64, 36, 20))}, &snow)
-	fixture.call(t, "add_artwork", map[string]any{"collection": "Holding", "title": "Everyday",
-		"image_base64": base64Of(paintedJPEG(t, 64, 36, 30))}, &everyday)
+	fixture.call(t, "add_artwork", map[string]any{
+		"collection": "Christmas", "title": "Tree", "artist": "Model",
+		"image_base64": base64Of(paintedJPEG(t, 64, 36, 10)),
+	}, &tree)
+	fixture.call(t, "add_artwork", map[string]any{
+		"collection": "Christmas", "title": "Snow",
+		"image_base64": base64Of(paintedJPEG(t, 64, 36, 20)),
+	}, &snow)
+	fixture.call(t, "add_artwork", map[string]any{
+		"collection": "Holding", "title": "Everyday",
+		"image_base64": base64Of(paintedJPEG(t, 64, 36, 30)),
+	}, &everyday)
 	fixture.call(t, "delete_collection", map[string]any{"collection": "Holding"}, nil)
 	fixture.call(t, "update_collection", map[string]any{
 		"collection": "Christmas", "activation": map[string]any{"mode": "window", "start": "12-01", "end": "01-06"},

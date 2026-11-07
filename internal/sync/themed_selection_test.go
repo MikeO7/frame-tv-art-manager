@@ -44,8 +44,8 @@ func newThemedEngineFixture(t *testing.T, timezone string) themedEngineFixture {
 		cfg:    &config.Config{ArtworkDir: root, SyncIntervalMin: 60, MatteStyle: "none", Timezone: timezone, DryRun: true},
 		logger: slog.New(slog.DiscardHandler), health: health.NewStatus(),
 		collection: &staticArtworkCollection{snapshot: snapshot}, cycleGate: make(chan struct{}, 1),
-		runtimes:   []*convergenceRuntime{{address: "192.0.2.10", adapter: &recordingConvergenceAdapter{}, reconciler: service}},
-		themes:     store, wake: make(chan struct{}, 1),
+		runtimes: []*convergenceRuntime{{address: "192.0.2.10", adapter: &recordingConvergenceAdapter{}, reconciler: service}},
+		themes:   store, wake: make(chan struct{}, 1),
 	}
 	return themedEngineFixture{engine: engine, service: service, store: store, snapshot: snapshot}
 }

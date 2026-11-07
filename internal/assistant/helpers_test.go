@@ -26,7 +26,7 @@ import (
 )
 
 // christmasEve is the fixed clock used by every MCP test.
-var christmasEve = time.Date(2026, time.December, 24, 18, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // immutable test clock
+var christmasEve = time.Date(2026, time.December, 24, 18, 0, 0, 0, time.UTC)
 
 type testArtwork struct {
 	collection.Store
@@ -67,8 +67,11 @@ type fixture struct {
 }
 
 type fixtureOptions struct {
-	environ []string
-	fetcher *Fetcher
+	environ  []string
+	fetcher  *Fetcher
+	searcher ArtSearch
+	// noSearcher builds the handler without a museum searcher.
+	noSearcher bool
 }
 
 func newFixture(t *testing.T, options fixtureOptions) *fixture {
@@ -90,9 +93,13 @@ func newFixture(t *testing.T, options fixtureOptions) *fixture {
 	}
 	artwork := &testArtwork{Store: dryRunStore{Store: store, dryRun: cfg.DryRun}, cfg: cfg, placements: map[string][]string{}}
 	status := health.NewStatus()
+	searcher := options.searcher
+	if searcher == nil && !options.noSearcher {
+		searcher = &fakeSearcher{}
+	}
 	handler, err := NewHandler(Options{
 		Config: cfg, Logger: slog.New(slog.DiscardHandler), Artwork: artwork, Themes: themeStore, Status: status,
-		Fetcher: options.fetcher, Now: func() time.Time { return christmasEve }, Version: "test",
+		Fetcher: options.fetcher, Searcher: searcher, Now: func() time.Time { return christmasEve }, Version: "test",
 	})
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)

@@ -196,10 +196,10 @@ func TestCollectionMembershipEditing(t *testing.T) {
 func TestSlug(t *testing.T) {
 	t.Parallel()
 	for name, want := range map[string]string{
-		"Christmas":                "christmas",
+		"Christmas":                  "christmas",
 		"  Dutch Winter Landscapes ": "dutch-winter-landscapes",
-		"Spring/Easter 2027!":      "spring-easter-2027",
-		"Noël":                     "nol",
+		"Spring/Easter 2027!":        "spring-easter-2027",
+		"Noël":                       "nol",
 	} {
 		got, err := Slug(name)
 		if err != nil || got != want {

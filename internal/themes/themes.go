@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -58,14 +59,18 @@ type Activation struct {
 // identifying an item makes that item a member, so engine-owned renames and
 // re-encodes never break membership.
 type Member struct {
-	Key         string    `json:"key,omitempty"`
-	Origin      string    `json:"origin,omitempty"`
-	Digest      string    `json:"digest,omitempty"`
-	Name        string    `json:"name,omitempty"`
-	Title       string    `json:"title,omitempty"`
-	Artist      string    `json:"artist,omitempty"`
-	Description string    `json:"description,omitempty"`
-	AddedAt     time.Time `json:"added_at"`
+	Key         string `json:"key,omitempty"`
+	Origin      string `json:"origin,omitempty"`
+	Digest      string `json:"digest,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Artist      string `json:"artist,omitempty"`
+	Description string `json:"description,omitempty"`
+	// License and Link credit a public-domain or licensed work, for example
+	// one found by a museum search.
+	License string    `json:"license,omitempty"`
+	Link    string    `json:"link,omitempty"`
+	AddedAt time.Time `json:"added_at"`
 }
 
 // Collection is one named, scheduled group of artwork.
@@ -221,6 +226,8 @@ func (member Member) merge(update Member) Member {
 	member.Title = firstNonEmpty(update.Title, member.Title)
 	member.Artist = firstNonEmpty(update.Artist, member.Artist)
 	member.Description = firstNonEmpty(update.Description, member.Description)
+	member.License = firstNonEmpty(update.License, member.License)
+	member.Link = firstNonEmpty(update.Link, member.Link)
 	return member
 }
 
@@ -298,10 +305,15 @@ func (member Member) validate() error {
 		{"member title", member.Title, maxAttributionBytes},
 		{"member artist", member.Artist, maxAttributionBytes},
 		{"member description", member.Description, maxDescriptionBytes},
+		{"member license", member.License, maxAttributionBytes},
+		{"member link", member.Link, maxIdentityBytes},
 	} {
 		if err := checkText(field.label, field.value, field.limit); err != nil {
 			return err
 		}
+	}
+	if err := ValidateLink(member.Link); err != nil {
+		return err
 	}
 	if member.Key != "" && strings.ContainsAny(member.Key, `/\`) {
 		return fmt.Errorf("member key %q must be a single filename", member.Key)
@@ -326,6 +338,19 @@ func checkText(label, value string, limit int) error {
 		return unicode.IsControl(character) && character != '\n'
 	}) {
 		return fmt.Errorf("%s contains control characters", label)
+	}
+	return nil
+}
+
+// ValidateLink accepts an empty link or an absolute http or https URL. Links
+// are attribution only; the manager never fetches them.
+func ValidateLink(link string) error {
+	if link == "" {
+		return nil
+	}
+	parsed, err := url.Parse(link)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("member link %q must be an http or https web address", link)
 	}
 	return nil
 }

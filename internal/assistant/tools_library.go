@@ -49,6 +49,8 @@ type artworkSummary struct {
 	OnTV          []string `json:"on_tv" jsonschema:"addresses of TVs whose last observed inventory held it"`
 	Title         string   `json:"title,omitempty"`
 	Artist        string   `json:"artist,omitempty"`
+	License       string   `json:"license,omitempty"`
+	Link          string   `json:"link,omitempty"`
 }
 
 type listArtworkOutput struct {
@@ -177,19 +179,22 @@ func (svc *service) summarize(file themes.File, items []collection.Item, filter 
 			Collections: memberships[index], SelectedToday: selected[item.Name],
 			OnTV: append([]string{}, placements[digest]...),
 		}
-		summary.Title, summary.Artist = attribution(file, themes.IdentityOf(item))
+		if credit, found := attribution(file, themes.IdentityOf(item)); found {
+			summary.Title, summary.Artist, summary.License, summary.Link = credit.Title, credit.Artist, credit.License, credit.Link
+		}
 		summaries = append(summaries, summary)
 	}
 	return summaries
 }
 
-func attribution(file themes.File, identity themes.Identity) (string, string) {
+// attribution returns the first credited membership of an artwork.
+func attribution(file themes.File, identity themes.Identity) (themes.Member, bool) {
 	for _, themed := range file.Collections {
 		for _, member := range themed.Members {
-			if member.Matches(identity) && (member.Title != "" || member.Artist != "") {
-				return member.Title, member.Artist
+			if member.Matches(identity) && (member.Title != "" || member.Artist != "" || member.License != "" || member.Link != "") {
+				return member, true
 			}
 		}
 	}
-	return "", ""
+	return themes.Member{}, false
 }

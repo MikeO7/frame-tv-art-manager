@@ -33,7 +33,8 @@ func TestInitializeAdvertisesWorkflowAndTools(t *testing.T) {
 	slices.Sort(names)
 	want := []string{
 		"add_artwork", "create_collection", "delete_collection", "get_display_spec", "get_status", "list_artwork",
-		"list_collections", "preview_artwork", "remove_from_collection", "sync_now", "update_collection",
+		"list_collections", "preview_artwork", "remove_from_collection", "search_public_domain_art", "sync_now",
+		"update_collection",
 	}
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools = %v, want %v", names, want)
@@ -83,9 +84,9 @@ func TestCollectionLifecycle(t *testing.T) {
 		t.Fatalf("updated = %+v, want a non-exclusive window active on Christmas Eve", updated)
 	}
 	for name, arguments := range map[string]map[string]any{
-		"bad date":     {"collection": "dutch-winter", "activation": map[string]any{"mode": "window", "start": "12-32", "end": "01-06"}},
-		"bad mode":     {"collection": "dutch-winter", "activation": map[string]any{"mode": "weekly"}},
-		"missing":      {"collection": "Easter", "exclusive": true},
+		"bad date":      {"collection": "dutch-winter", "activation": map[string]any{"mode": "window", "start": "12-32", "end": "01-06"}},
+		"bad mode":      {"collection": "dutch-winter", "activation": map[string]any{"mode": "weekly"}},
+		"missing":       {"collection": "Easter", "exclusive": true},
 		"nothing to do": {"collection": "dutch-winter"},
 	} {
 		if text := fixture.callError(t, "update_collection", arguments); text == "" {
@@ -204,6 +205,7 @@ func TestToolsHaveSafetyAnnotations(t *testing.T) {
 	}
 	readOnly := map[string]bool{
 		"get_display_spec": true, "preview_artwork": true, "list_artwork": true, "list_collections": true, "get_status": true,
+		"search_public_domain_art": true,
 	}
 	for _, tool := range listed.Tools {
 		annotations := tool.Annotations
