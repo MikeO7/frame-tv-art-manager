@@ -110,7 +110,8 @@
         "Online sources with a free API key: Unsplash, Pexels, Pixabay, and NASA (or its shared DEMO_KEY); plus direct image URLs",
         "Themed collections shown on a yearly date window, such as Christmas art from December 1 to January 6",
         "Optional MCP endpoint so your own AI assistant can add, preview, and schedule art; the app holds no AI keys",
-        "Samsung mattes, slideshow, brightness on the Art Mode 0-10 scale or following the sun, nightly power-off, and morning Wake-on-LAN"
+        "Changes the picture on screen every 15 minutes by default, in shuffle or name order, without an Art Store subscription",
+        "Samsung mattes, brightness on the Art Mode 0-10 scale or following the sun, nightly power-off, and morning Wake-on-LAN"
       ],
       "softwareRequirements": "Samsung Frame TV running Tizen 8.0 or newer on the same local network; Docker or a Go build"
     },
@@ -149,7 +150,7 @@
           "name": "Do I need a Samsung Art Store subscription?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog."
+            "text": "No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog. Your art also keeps changing on screen without one: the manager picks the next picture itself instead of relying on the TV's slideshow, which some owners report needs a subscription."
           }
         },
         {
@@ -311,7 +312,7 @@
 <ol class="steps">
 <li><h3>Add pictures</h3><p>Copy JPEG or PNG files into the artwork folder, send them from your iPhone, let it fetch art from NASA and museum collections, or ask your AI assistant.</p></li>
 <li><h3>It prepares each one</h3><p>Upright, color-corrected, sharpened, and fitted to 3840×2160: cropped only when little is lost, otherwise shown whole on a gallery mat.</p></li>
-<li><h3>Every TV stays in sync</h3><p>New pictures are uploaded once, deleted ones are removed, and a full TV takes turns. Your own uploads are never touched.</p></li>
+<li><h3>Every TV stays in sync</h3><p>New pictures are uploaded once, deleted ones are removed, a full TV takes turns, and the picture on screen changes every 15 minutes. Your own uploads are never touched.</p></li>
 </ol>
 </div>
 </section>
@@ -374,8 +375,8 @@
 <p>Set one matte for everything with <code>MATTE_STYLE</code>, or per picture in <code>mattes.json</code>. The default is full screen.</p>
 </article>
 <article class="card">
-<h3>TV controls, if you want them</h3>
-<p>Slideshow timing, brightness on the Frame's 0–10 scale or following the sun, a nightly power-off, and a morning wake. Each stays off until you set it.</p>
+<h3>Art that changes by itself</h3>
+<p>Every 15 minutes by default, another piece it uploaded goes on screen, in shuffle or name order, only while the TV is in Art Mode. No Art Store subscription is needed. Brightness on the Frame's 0–10 scale or following the sun, a nightly power-off, and a morning wake each stay off until you set them.</p>
 </article>
 <article class="card">
 <h3>Holiday art on a schedule</h3>
@@ -397,7 +398,7 @@
 <div class="wrap">
 <h2 id="why-title">Why Frame owners look for something else</h2>
 <div class="grid">
-<article class="card"><h3>Subscriptions</h3><p>Samsung's Art Store costs US$4.99 a month in the US (October 2026), and some owners report being asked to subscribe for a slideshow of their own photos. Your own art and public-domain paintings need neither. <a href="guides/frame-tv-art-without-subscription.html">Art without a subscription</a></p></article>
+<article class="card"><h3>Subscriptions</h3><p>Samsung's Art Store costs US$4.99 a month in the US (October 2026), and some owners report being asked to subscribe for a slideshow of their own photos. Your own art and public-domain paintings need neither, and the manager changes the picture itself, so your art still rotates. <a href="guides/frame-tv-art-without-subscription.html">Art without a subscription</a></p></article>
 <article class="card"><h3>One photo at a time</h3><p>Phone uploads are fine for a few pictures, but tedious for a collection or several TVs. A folder sync does it for you. <a href="guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></p></article>
 <article class="card"><h3>Duplicates and full storage</h3><p>Scripts that re-upload everything fill the TV with copies until it refuses more. This never sends a picture twice and rotates when full. <a href="guides/samsung-frame-tv-storage-full-art-rotation.html">Storage full guide</a></p></article>
 <article class="card"><h3>Cloud dependence</h3><p>Samsung announced paid SmartThings API access in June 2026. Frame TV Art Manager works entirely on your local network. <a href="guides/frame-tv-art-manager-vs-smartthings.html">Compare the options</a></p></article>
@@ -416,6 +417,7 @@
 <li>Upload new pictures on the next sync.</li>
 <li>Remove a piece it uploaded once you delete it from the folder.</li>
 <li>Swap its own pieces on a full TV, every 14 days by default.</li>
+<li>Change the picture on screen every 15 minutes, using only art it uploaded and only while the TV is in Art Mode. <code>SLIDESHOW_ENABLED=false</code> turns this off.</li>
 <li>Replace each picture in the folder with its prepared version and keep the untouched original in a hidden folder, so a settings change never costs quality.</li>
 </ul>
 </article>
@@ -425,7 +427,7 @@
 <li>Delete art you added yourself, unless you set <code>REMOVE_UNKNOWN_IMAGES=true</code>.</li>
 <li>Change anything on a TV whose state it can't confirm.</li>
 <li>Empty the TV if the folder is emptied, or drop art because a website is down.</li>
-<li>Choose which piece is on screen, or change anything at all with <code>DRY_RUN=true</code>.</li>
+<li>Change the picture while someone is watching TV, or change anything at all with <code>DRY_RUN=true</code>.</li>
 <li>Delete image files when a picture leaves a collection, or let an AI assistant change the TV outside the normal, checked sync.</li>
 </ul>
 </article>
@@ -557,7 +559,7 @@
 </details>
 <details>
 <summary>Do I need a Samsung Art Store subscription?</summary>
-<p>No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog.</p>
+<p>No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog. Your art also keeps changing on screen without one: the manager picks the next picture itself instead of relying on the TV's slideshow, which some owners report needs a subscription.</p>
 </details>
 <details>
 <summary>Do I need SmartThings or a Samsung account?</summary>

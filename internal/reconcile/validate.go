@@ -102,6 +102,9 @@ func validateStateEvidence(state State) error {
 	if err := validateCapacityEvidence(state.Capacity); err != nil {
 		return err
 	}
+	if err := validateDisplay(state.Display); err != nil {
+		return err
+	}
 	for digest, at := range state.LastShown {
 		if !validDigest(digest) || at.IsZero() {
 			return fmt.Errorf("rotation history entry %q is invalid", digest)
@@ -202,8 +205,8 @@ func validateIntent(intent CommandIntent) error {
 			return errors.New("unknown deletion requires content ID and explicit approval")
 		}
 	case CommandSelect:
-		if strings.TrimSpace(intent.ContentID) == "" {
-			return errors.New("selection requires content ID")
+		if err := validateSelectIntent(intent); err != nil {
+			return err
 		}
 	case CommandSlideshow:
 		if intent.PreviousSlideshow == nil || intent.DesiredSlideshow == nil ||
@@ -283,4 +286,11 @@ func validateObservation(observation samsung.Observation) (TVIdentity, error) {
 func validDigest(value string) bool {
 	decoded, err := hex.DecodeString(value)
 	return err == nil && len(decoded) == sha256.Size && value == strings.ToLower(value)
+}
+
+func validateSelectIntent(intent CommandIntent) error {
+	if strings.TrimSpace(intent.ContentID) == "" || (intent.Digest != "" && !validDigest(intent.Digest)) || intent.Round < 0 {
+		return errors.New("selection requires content ID and a valid digest and round")
+	}
+	return nil
 }

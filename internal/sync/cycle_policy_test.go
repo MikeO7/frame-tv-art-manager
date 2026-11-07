@@ -16,7 +16,7 @@ func TestConvergencePolicyMapsDynamicOperatorSettings(t *testing.T) {
 	now := time.Date(2026, time.July, 14, 22, 30, 0, 0, time.UTC)
 	policy, err := convergencePolicy(&config.Config{
 		RemoveUnknownImages: true, MatteStyle: "shadowbox_warm",
-		SlideshowOverride: true, SlideshowEnabled: true,
+		SlideshowMode: config.SlideshowModeTV, SlideshowOverride: true, SlideshowEnabled: true,
 		SlideshowInterval: 60, SlideshowType: "shuffle",
 		ManualBrightness: &brightness, BrightnessMin: 2, BrightnessMax: 10,
 		AutoOffTime: "22:00", AutoOffGraceHours: 1, Timezone: "UTC",
@@ -25,7 +25,7 @@ func TestConvergencePolicyMapsDynamicOperatorSettings(t *testing.T) {
 		t.Fatalf("convergencePolicy() error = %v", err)
 	}
 
-	if !policy.RemoveUnknown || policy.Select || policy.AllowEmpty || policy.DefaultMatte != "shadowbox_warm" ||
+	if !policy.RemoveUnknown || policy.Show != (reconcile.ShowPolicy{}) || policy.AllowEmpty || policy.DefaultMatte != "shadowbox_warm" ||
 		policy.Power != reconcile.PowerOff ||
 		policy.Slideshow.Mode != reconcile.PolicySet ||
 		policy.Slideshow.Setting != (samsung.SlideshowSetting{Interval: 60, Kind: samsung.SlideshowShuffle}) ||
@@ -34,19 +34,60 @@ func TestConvergencePolicyMapsDynamicOperatorSettings(t *testing.T) {
 	}
 }
 
-func TestConvergencePolicyPreservesCurrentSelection(t *testing.T) {
+func TestConvergencePolicyShowsArtByDefault(t *testing.T) {
 	t.Parallel()
-
-	policy, err := convergencePolicy(
-		&config.Config{Timezone: "UTC"}, nil,
-		time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC),
-		slog.New(slog.DiscardHandler),
-	)
-	if err != nil {
-		t.Fatalf("convergencePolicy() error = %v", err)
+	tests := []struct {
+		name string
+		cfg  config.Config
+		want reconcile.ShowPolicy
+	}{
+		{
+			name: "default shuffles every interval",
+			cfg:  config.Config{SlideshowMode: config.SlideshowModeApp, SlideshowInterval: 15, SlideshowType: "shuffle"},
+			want: reconcile.ShowPolicy{Interval: 15 * time.Minute, Order: reconcile.ShowShuffle},
+		},
+		{
+			name: "sequential order",
+			cfg:  config.Config{SlideshowMode: config.SlideshowModeApp, SlideshowInterval: 3, SlideshowType: "sequential"},
+			want: reconcile.ShowPolicy{Interval: 3 * time.Minute, Order: reconcile.ShowSequential},
+		},
+		{
+			name: "explicitly enabled",
+			cfg: config.Config{
+				SlideshowMode: config.SlideshowModeApp, SlideshowInterval: 60, SlideshowType: "shuffle",
+				SlideshowEnabled: true, SlideshowEnabledSet: true, SlideshowOverride: true,
+			},
+			want: reconcile.ShowPolicy{Interval: time.Hour},
+		},
+		{
+			name: "disabled leaves the picture to the TV",
+			cfg: config.Config{
+				SlideshowMode: config.SlideshowModeApp, SlideshowInterval: 15, SlideshowType: "shuffle",
+				SlideshowEnabledSet: true, SlideshowOverride: true,
+			},
+		},
+		{
+			name: "tv mode manages only the TV slideshow",
+			cfg:  config.Config{SlideshowMode: config.SlideshowModeTV, SlideshowInterval: 15, SlideshowType: "shuffle"},
+		},
 	}
-	if policy.Select {
-		t.Fatal("cached convergence policy would change the operator's current artwork selection")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := test.cfg
+			cfg.Timezone = "UTC"
+			policy, err := convergencePolicy(&cfg, nil, time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC),
+				slog.New(slog.DiscardHandler))
+			if err != nil {
+				t.Fatalf("convergencePolicy() error = %v", err)
+			}
+			if policy.Show != test.want {
+				t.Fatalf("show policy = %+v, want %+v", policy.Show, test.want)
+			}
+			if policy.Show.Interval > 0 && policy.Slideshow.Mode != reconcile.PolicyPreserve {
+				t.Fatalf("app rotation also managed the TV slideshow: %+v", policy.Slideshow)
+			}
+		})
 	}
 }
 
@@ -113,7 +154,8 @@ func TestConvergencePolicyPreservesUnsetSettingsAndDisablesExplicitSlideshow(t *
 	}
 
 	disable, err := convergencePolicy(&config.Config{
-		Timezone: "UTC", SlideshowOverride: true, SlideshowEnabledSet: true, SlideshowType: "sequential",
+		Timezone: "UTC", SlideshowMode: config.SlideshowModeTV, SlideshowOverride: true, SlideshowEnabledSet: true,
+		SlideshowType: "sequential",
 	}, nil, now, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("disable convergencePolicy() error = %v", err)
@@ -125,8 +167,9 @@ func TestConvergencePolicyPreservesUnsetSettingsAndDisablesExplicitSlideshow(t *
 
 	// Only SLIDESHOW_INTERVAL: tune a running slideshow, never stop one.
 	adjust, err := convergencePolicy(&config.Config{
-		Timezone: "UTC", SlideshowOverride: true, SlideshowIntervalSet: true, SlideshowInterval: 60,
-		SlideshowType: "shuffle",
+		Timezone: "UTC", SlideshowMode: config.SlideshowModeTV, SlideshowOverride: true, SlideshowIntervalSet: true,
+		SlideshowInterval: 60,
+		SlideshowType:     "shuffle",
 	}, nil, now, slog.New(slog.DiscardHandler))
 	if err != nil || adjust.Slideshow != (reconcile.SlideshowPolicy{
 		Mode: reconcile.PolicyAdjust, Setting: samsung.SlideshowSetting{Interval: 60},

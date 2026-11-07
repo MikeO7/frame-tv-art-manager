@@ -141,6 +141,9 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 			observation.Power != samsung.PowerStateOn && observation.Power != samsung.PowerStateOff {
 			return state, ErrRecoveryRequired
 		}
+	case CommandSelect:
+		// A picture change only affects what is on screen. When its outcome
+		// is unknown, the next due change picks again.
 	case CommandSlideshow:
 		if pending.Command.PreviousSlideshow == nil || pending.Command.DesiredSlideshow == nil ||
 			!settingSettled(observation.Slideshow.Known, observation.Capabilities.SlideshowRead) {
@@ -172,7 +175,11 @@ func resolveAppliedReceipt(state State, observation samsung.Observation, now tim
 		recordShown(&state, pending.Command.Digest, now)
 	case CommandDeleteUnknown:
 		delete(state.Tombstones, pending.Command.ContentID)
-	case CommandSelect, CommandSlideshow, CommandBrightness, CommandPowerOff, CommandWake:
+	case CommandSelect:
+		// The applied receipt is issued only after get_current_artwork
+		// confirmed the picture.
+		recordDisplay(&state, pending.Command, now)
+	case CommandSlideshow, CommandBrightness, CommandPowerOff, CommandWake:
 		// The Samsung applied receipt is issued only after command-specific
 		// postcondition verification.
 	default:

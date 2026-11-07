@@ -166,17 +166,19 @@ type Authorization struct {
 // Observation is an immutable, normalized view of the facts successfully
 // received during one read-only observation.
 type Observation struct {
-	TV            TVIdentity
-	Connection    ConnectionState
-	Power         PowerState
-	ArtMode       ArtModeState
-	Inventory     Inventory
-	Slideshow     SlideshowObservation
-	Brightness    SettingObservation
-	Capabilities  Capabilities
-	ObservedAt    time.Time
-	Disposition   Disposition
-	Authorization Authorization
+	TV         TVIdentity
+	Connection ConnectionState
+	Power      PowerState
+	ArtMode    ArtModeState
+	Inventory  Inventory
+	Slideshow  SlideshowObservation
+	Brightness SettingObservation
+	// CurrentArtwork is the content ID on screen, when the TV reported it.
+	CurrentArtwork string
+	Capabilities   Capabilities
+	ObservedAt     time.Time
+	Disposition    Disposition
+	Authorization  Authorization
 	// PresumedStandby reports that REST did not answer a wake observation.
 	// Power stays unknown; only a Wake is authorized.
 	PresumedStandby bool

@@ -238,7 +238,7 @@
 <li><a href="#install-steps">Install in six steps</a></li>
 <li><a href="#folders">Folders and permissions</a></li>
 <li><a href="#useful-settings">Settings you'll likely want</a></li>
-<li><a href="#tv-controls">Optional TV controls</a></li>
+<li><a href="#tv-controls">Picture changes and TV controls</a></li>
 <li><a href="#monitoring">Monitoring and upgrades</a></li>
 <li><a href="#no-docker">Running without Docker</a></li>
 </ol>
@@ -312,14 +312,14 @@ On/off settings accept <code>true</code>/<code>false</code>, <code>1</code>/<cod
 Anything else, an unknown log level, or a bad TV address stops the service at startup with a clear error, so a typo can't silently turn a setting such as <code>DRY_RUN</code> off.</p>
 </section>
 <section aria-labelledby="tv-controls">
-<h2 id="tv-controls">Optional TV controls</h2>
+<h2 id="tv-controls">Picture changes and TV controls</h2>
 <ul>
-<li><strong>Slideshow:</strong> <code>SLIDESHOW_ENABLED</code>, <code>SLIDESHOW_INTERVAL</code> (3, 15, 60, 720, or 1440 minutes), <code>SLIDESHOW_TYPE</code> (<code>shuffle</code> or <code>sequential</code>).</li>
+<li><strong>Picture changes (on by default):</strong> every <code>SLIDESHOW_INTERVAL</code> minutes (default 15, any value from 1 to 1440) the manager puts another piece it uploaded on screen, in <code>SLIDESHOW_TYPE</code> order: <code>shuffle</code> (the default) shows every picture once, in a new random order each round, before any repeats; <code>sequential</code> goes in name order and wraps around. It changes the picture only while the TV is in Art Mode and can confirm what's on screen, never while someone is watching TV. It runs between syncs, so the interval isn't limited by <code>SYNC_INTERVAL_MINUTES</code>. <code>SLIDESHOW_ENABLED=false</code> turns it off and leaves the choice to the TV. <code>SLIDESHOW_MODE=tv</code> sets the TV's own slideshow instead, which on current firmware may need an Art Store subscription; <code>SLIDESHOW_INTERVAL</code> must then be 3, 15, 60, 720, or 1440.</li>
 <li><strong>Brightness:</strong> a fixed <code>BRIGHTNESS</code> on the Frame's Art Mode scale of 0 to 10, or <code>SOLAR_BRIGHTNESS_ENABLED=true</code> with your latitude, longitude, and time zone to follow the sun between <code>BRIGHTNESS_MIN</code> and <code>BRIGHTNESS_MAX</code> (also 0 to 10). Values from 11 to 50, from the 0 to 50 scale earlier releases documented, are converted (30 becomes 6) with a warning; anything else outside 0 to 10 stops startup.</li>
 <li><strong>Nightly power-off:</strong> <code>AUTO_OFF_TIME=22:00</code> turns off TVs showing art and leaves TVs in use alone.</li>
 <li><strong>Morning power-on:</strong> <code>AUTO_ON_TIME</code> (for example <code>07:00</code>) together with <code>TV_MAC</code> wakes a single TV once a day, on the first sync in the <code>AUTO_ON_GRACE_HOURS</code> window (default 2), only if the TV is confirmed off or has dropped off the network; never when its state is unknown. <code>TV_MAC</code> on its own no longer wakes the TV. The magic packet goes to <code>255.255.255.255</code> and the TV's <code>/24</code> broadcast address; set <code>TV_WOL_BROADCAST</code> to use one other broadcast address instead. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it needs <code>network_mode: host</code>.</li>
 </ul>
-<p>If you leave these unset, the manager doesn't touch the TV's own settings.</p>
+<p>Leave the brightness and power settings unset and the manager doesn't touch them.</p>
 </section>
 <section aria-labelledby="monitoring">
 <h2 id="monitoring">Monitoring and upgrades</h2>
@@ -329,7 +329,7 @@ Anything else, an unknown log level, or a bad TV address stops the service at st
 <li><code>GET /status</code>: per-TV status, last error, rotation details, and credits for downloaded artwork as JSON. <code>source_warning</code> appears when an artwork source failed; the TVs still sync the art already on disk.</li>
 </ul>
 <p>When <code>UPLOAD_TOKEN</code> is set, <code>/status</code> shows the last error and TV addresses only to requests signed in as <code>frame</code> with that token. Without credentials it returns the same fields with TVs numbered <code>tv-1</code>, <code>tv-2</code>, …, no error text, and <code>"redacted": true</code>.</p>
-<p>Logs are structured JSON. To upgrade, run <code>docker compose pull</code> and <code>docker compose up -d</code>; your <code>data</code> folder carries over.
+<p>Logs are structured JSON. To upgrade, run <code>docker compose pull</code> and <code>docker compose up -d</code>; your <code>data</code> folder carries over. Upgrading from a release before picture changes: the picture now changes every 15 minutes unless you set <code>SLIDESHOW_ENABLED=false</code> or <code>SLIDESHOW_MODE=tv</code>.
 Never expose port 8080 to the internet; keep it on your home network or behind a TLS reverse proxy.</p>
 </section>
 <section aria-labelledby="no-docker">

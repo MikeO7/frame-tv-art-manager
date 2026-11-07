@@ -228,7 +228,7 @@ so its art sync doesn't depend on SmartThings at all.</p>
 <tr><td>Keeping a folder of art on one or more Frames</td><td>Frame TV Art Manager</td></tr>
 <tr><td>Preparing pictures for 4K, portraits on a gallery mat</td><td>Frame TV Art Manager</td></tr>
 <tr><td>Rotating art when the TV is full</td><td>Frame TV Art Manager</td></tr>
-<tr><td>Slideshow, brightness, nightly power-off</td><td>Either, but only one of them</td></tr>
+<tr><td>Changing the picture on screen, brightness, nightly power-off</td><td>Either, but only one of them</td></tr>
 </tbody></table></div>
 </section>
 <section aria-labelledby="install">
@@ -275,8 +275,9 @@ upload sent at the same moment gets HTTP 429 and should be retried.</p>
 <section aria-labelledby="avoid-conflicts">
 <h2 id="avoid-conflicts">Avoid two tools fighting over the TV</h2>
 <ul>
-<li>Frame TV Art Manager leaves the slideshow, brightness, and power settings alone unless you set them. If Home Assistant already manages them, leave the matching settings unset.</li>
-<li>It never picks which piece is on screen and never deletes art it didn't upload, so pictures you push another way stay put.</li>
+<li>Frame TV Art Manager changes the picture on screen every 15 minutes by default. If a Home Assistant automation picks the art, set <code>SLIDESHOW_ENABLED=false</code>, or the two will keep replacing each other's choice.</li>
+<li>Brightness and power settings are left alone unless you set them. If Home Assistant already manages them, leave the matching settings unset.</li>
+<li>It never deletes art it didn't upload, so pictures you push another way stay on the TV.</li>
 <li>Each tool that connects to the TV may need its own one-time Allow on the TV. Use a clear <code>CLIENT_NAME</code> so you know which prompt is which.</li>
 </ul>
 </section>

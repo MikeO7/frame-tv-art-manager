@@ -151,7 +151,7 @@
           "name": "Why don't new pictures show on the TV?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "They are added to My Photos on the next sync, but the TV decides which piece is on screen. Turn on the slideshow to cycle through new art."
+            "text": "They are added to My Photos on the next sync and come up in turn: the manager changes the picture every 15 minutes by default while the TV is in Art Mode. With SLIDESHOW_ENABLED=false or SLIDESHOW_MODE=tv, the TV decides what is shown."
           }
         },
         {
@@ -244,7 +244,7 @@
 <li>Wait for the next sync (30 minutes by default), or restart the container to sync now.</li>
 <li>Only <code>.jpg</code>, <code>.jpeg</code>, and <code>.png</code> are used. Hidden files, temporary files, JSON, YAML, and symlinks are ignored.</li>
 <li>Look in Art Mode under My Photos; uploaded pictures appear there, not in the Art Store.</li>
-<li>The manager doesn't choose what's on screen. Turn on the TV's slideshow, or set <code>SLIDESHOW_ENABLED</code>, to cycle through new art.</li>
+<li>The manager changes the picture every 15 minutes by default, so a new picture comes up in its turn, and only while the TV is in Art Mode. With <code>SLIDESHOW_ENABLED=false</code> or <code>SLIDESHOW_MODE=tv</code>, the TV decides what is shown.</li>
 </ul>
 </section>
 <section aria-labelledby="recovery">
@@ -261,6 +261,7 @@ existing art stays on the TV as if you'd added it yourself, and your collection 
 <li><strong>Brightness uses the Frame's 0–10 scale.</strong> Values from 11 to 50, from the 0–50 scale earlier releases documented, are converted (30 becomes 6) and logged as a warning; anything else outside 0–10 stops startup.</li>
 </ul>
 <p>Also note that <code>TV_MAC</code> on its own no longer wakes the TV; add <code>AUTO_ON_TIME</code>, for example <code>07:00</code>.</p>
+<p>The picture now changes every 15 minutes by default. Set <code>SLIDESHOW_ENABLED=false</code> to stop that, or <code>SLIDESHOW_MODE=tv</code> to go back to the TV's own slideshow; with <code>SLIDESHOW_MODE=tv</code>, a <code>SLIDESHOW_INTERVAL</code> other than 3, 15, 60, 720, or 1440 stops startup.</p>
 </section>
 <section aria-labelledby="status-fields">
 <h2 id="status-fields">/status shows redacted or source_warning</h2>
@@ -315,7 +316,7 @@ Logs are JSON; errors from the TV include <code>error_kind</code>, <code>operati
 </details>
 <details>
 <summary>Why don't new pictures show on the TV?</summary>
-<p>They are added to My Photos on the next sync, but the TV decides which piece is on screen. Turn on the slideshow to cycle through new art.</p>
+<p>They are added to My Photos on the next sync and come up in turn: the manager changes the picture every 15 minutes by default while the TV is in Art Mode. With SLIDESHOW_ENABLED=false or SLIDESHOW_MODE=tv, the TV decides what is shown.</p>
 </details>
 <details>
 <summary>Why did my everyday art disappear from the Frame TV?</summary>

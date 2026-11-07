@@ -56,6 +56,9 @@ func settingCapabilities(policy Policy) samsung.CapabilitySet {
 	if policy.Brightness.Mode != PolicyPreserve {
 		optional |= samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite
 	}
+	if policy.Show.Interval > 0 {
+		optional |= samsung.CapabilityImageSelection
+	}
 	return optional
 }
 

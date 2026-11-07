@@ -62,6 +62,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		ClientName:                     env.str("CLIENT_NAME", "Frame Art Manager"),
 		DryRun:                         env.boolean("DRY_RUN", false),
 		LogLevel:                       strings.ToLower(env.str("LOG_LEVEL", "info")),
+		SlideshowMode:                  strings.ToLower(env.str("SLIDESHOW_MODE", SlideshowModeApp)),
 		SlideshowEnabled:               env.boolean("SLIDESHOW_ENABLED", false),
 		SlideshowInterval:              env.integer("SLIDESHOW_INTERVAL", 15),
 		SlideshowType:                  strings.ToLower(env.str("SLIDESHOW_TYPE", "shuffle")),

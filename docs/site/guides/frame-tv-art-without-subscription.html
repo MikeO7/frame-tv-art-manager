@@ -142,6 +142,14 @@
         },
         {
           "@type": "Question",
+          "name": "Can The Frame cycle through my own photos without a subscription?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Frame TV Art Manager changes the picture itself, every 15 minutes by default, choosing among the art it uploaded while the TV is in Art Mode. It doesn't rely on the TV's own slideshow, which some owners report needs an Art Store subscription."
+          }
+        },
+        {
+          "@type": "Question",
           "name": "How much is the Samsung Art Store?",
           "acceptedAnswer": {
             "@type": "Answer",
@@ -204,7 +212,7 @@
 <header>
 <p class="eyebrow">No subscription</p>
 <h1>Samsung Frame TV art without a subscription</h1>
-<p class="answer"><strong>Short answer:</strong> you don't need Samsung's Art Store to enjoy The Frame. Your own photos in My Photos are free to display, and museums publish thousands of public-domain paintings you can use at no cost. Frame TV Art Manager, a free self-hosted service, keeps a folder of that art on the TV for you: it prepares each picture for the 4K screen, uploads it over your home network, and swaps art in and out when the TV is full.</p>
+<p class="answer"><strong>Short answer:</strong> you don't need Samsung's Art Store to enjoy The Frame. Your own photos in My Photos are free to display, and museums publish thousands of public-domain paintings you can use at no cost. Frame TV Art Manager, a free self-hosted service, keeps a folder of that art on the TV for you: it prepares each picture for the 4K screen, uploads it over your home network, changes the picture on screen every 15 minutes, and swaps art in and out when the TV is full.</p>
 <p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <p>This guide is for Frame owners who like Art Mode but don't want another monthly bill. It covers what Samsung charges for, what stays free, and how to get a steady supply of good-looking art onto the TV without paying for a subscription.</p>
@@ -230,8 +238,9 @@ app, a USB stick, or a tool like Frame TV Art Manager, don't need a subscription
 <p><strong>About the slideshow reports.</strong> Since about July 2025, some owners have reported on
 <a href="https://us.community.samsung.com/t5/QLED-and-The-Frame-TVs/Frame-TV-ART-Mode-Why-can-t-I-display-a-Slideshow-of-my-own-art/td-p/3307361">Samsung's community forum</a> that the "Display All" slideshow of My Photos asked them for an
 Art Store subscription. Samsung's help pages still describe it as free, and the behavior seems to vary by model and
-firmware. If your TV shows the prompt, the options below still work: they change which art is stored on the TV, and the
-TV can show any stored piece.</p>
+firmware. On a 2024 Frame we tested, the TV accepted the slideshow setting but never changed the picture. Choosing a
+picture directly still works without a subscription, so Frame TV Art Manager <a href="#keep-it-changing">changes the picture itself</a>
+instead of relying on the TV's slideshow. The options below work either way.</p>
 </div>
 </section>
 <section aria-labelledby="free-art-options">
@@ -256,12 +265,12 @@ licenses. Frame TV Art Manager can download from all of them on a schedule; Wiki
 <ul class="check">
 <li><strong>New art arrives on its own.</strong> Pictures you add to the folder, and art from online sources, are uploaded on the next sync (every 30 minutes by default).</li>
 <li><strong>A large collection takes turns.</strong> When the TV is full, each piece the manager uploaded stays for 14 days (<code>ROTATION_INTERVAL_DAYS</code>) and is then swapped for art that hasn't been shown yet.</li>
-<li><strong>The slideshow can be set for you.</strong> <code>SLIDESHOW_ENABLED</code>, <code>SLIDESHOW_INTERVAL</code> (3, 15, 60, 720, or 1440 minutes), and <code>SLIDESHOW_TYPE</code> (<code>shuffle</code> or <code>sequential</code>) set the TV's slideshow for your uploaded photos over the local network. What the TV then allows is up to Samsung's firmware.</li>
+<li><strong>The picture changes on its own.</strong> Every 15 minutes by default, the manager puts a different piece it uploaded on screen; no Art Store subscription is needed. <code>SLIDESHOW_INTERVAL</code> sets the minutes, from 1 to 1440, and <code>SLIDESHOW_TYPE</code> the order: <code>shuffle</code> (the default) shows every picture once, in a new random order each round, before any repeats, and <code>sequential</code> goes in name order. It changes the picture only while the TV is in Art Mode and can confirm what's on screen, never while someone is watching TV.</li>
 <li><strong>Nothing is uploaded twice.</strong> Pictures are recognized by their content, so re-adding the same file doesn't create duplicates on the TV.</li>
 <li><strong>Holiday art on its own schedule.</strong> A <a href="seasonal-art-collections-samsung-frame-tv.html">themed collection</a> shows Christmas or Halloween art only on the dates you choose, then your everyday art returns.</li>
 <li><strong>Your AI assistant can help.</strong> With the optional MCP endpoint, an assistant such as Claude can make or find art and schedule it; see the <a href="ai-art-samsung-frame-tv-mcp.html">AI art guide</a>. The manager itself needs no AI subscription or key.</li>
 </ul>
-<p>The manager never picks which piece is on screen; the TV and its slideshow do that. It also never deletes art you put on the TV yourself.</p>
+<p>The manager changes the picture itself because choosing a picture directly works without a subscription, while the TV's own slideshow of My Photos may not. Set <code>SLIDESHOW_ENABLED=false</code> to leave the choice to the TV. If you subscribe to the Art Store and prefer the TV's own slideshow, set <code>SLIDESHOW_MODE=tv</code>; <code>SLIDESHOW_INTERVAL</code> must then be 3, 15, 60, 720, or 1440, and the manager never picks the picture. Either way, it never deletes art you put on the TV yourself.</p>
 </section>
 <section aria-labelledby="what-you-need">
 <h2 id="what-you-need">What you need</h2>
@@ -282,6 +291,10 @@ It is an independent project and is not affiliated with or endorsed by Samsung.<
 <details>
 <summary>Do I need a subscription to show my own photos on The Frame?</summary>
 <p>No. Photos in My Photos can be displayed without the Art Store subscription. Some owners have reported since July 2025 that the Display All slideshow of My Photos asked for a subscription on their TVs; Samsung's help pages still describe it as free.</p>
+</details>
+<details>
+<summary>Can The Frame cycle through my own photos without a subscription?</summary>
+<p>Yes. Frame TV Art Manager changes the picture itself, every 15 minutes by default, choosing among the art it uploaded while the TV is in Art Mode. It doesn't rely on the TV's own slideshow, which some owners report needs an Art Store subscription.</p>
 </details>
 <details>
 <summary>How much is the Samsung Art Store?</summary>

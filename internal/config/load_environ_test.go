@@ -216,7 +216,8 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "non-six-byte MAC", value: "TV_MAC=00:00:00:00:fe:80:00:00", want: "TV_MAC"},
 		{name: "IPv6 wake broadcast", value: "TV_WOL_BROADCAST=ff02::1", want: "TV_WOL_BROADCAST"},
 		{name: "named wake broadcast", value: "TV_WOL_BROADCAST=broadcast.lan", want: "TV_WOL_BROADCAST"},
-		{name: "unsupported slideshow interval", value: "SLIDESHOW_INTERVAL=30", want: "SLIDESHOW_INTERVAL"},
+		{name: "unknown slideshow mode", value: "SLIDESHOW_MODE=both", want: "SLIDESHOW_MODE"},
+		{name: "oversized slideshow interval", value: "SLIDESHOW_INTERVAL=1441", want: "SLIDESHOW_INTERVAL"},
 		{name: "oversized import", value: "MAX_DOWNLOAD_SIZE_MB=1025", want: "MAX_DOWNLOAD_SIZE_MB"},
 		{name: "zero local file size", value: "MAX_LOCAL_FILE_SIZE_MB=0", want: "MAX_LOCAL_FILE_SIZE_MB"},
 		{name: "oversized local file size", value: "MAX_LOCAL_FILE_SIZE_MB=513", want: "MAX_LOCAL_FILE_SIZE_MB"},
@@ -301,6 +302,38 @@ func TestLoadEnvironRotationInterval(t *testing.T) {
 			}
 			if got := cfg.RotationInterval(); got != test.want {
 				t.Fatalf("RotationInterval() = %s, want %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestLoadEnvironSlideshowIntervalDependsOnMode(t *testing.T) {
+	tests := []struct {
+		name    string
+		environ []string
+		valid   bool
+		show    time.Duration
+	}{
+		{name: "app mode accepts any minute count", environ: []string{"SLIDESHOW_INTERVAL=30"}, valid: true, show: 30 * time.Minute},
+		{name: "app mode is the default", environ: nil, valid: true, show: 15 * time.Minute},
+		{name: "app mode off", environ: []string{"SLIDESHOW_ENABLED=false"}, valid: true},
+		{name: "tv mode needs a TV interval", environ: []string{"SLIDESHOW_MODE=tv", "SLIDESHOW_INTERVAL=30"}},
+		{name: "tv mode never rotates itself", environ: []string{"SLIDESHOW_MODE=TV", "SLIDESHOW_INTERVAL=60"}, valid: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg, _, err := LoadEnviron(append([]string{"TV_IPS=192.0.2.10"}, test.environ...))
+			if (err == nil) != test.valid {
+				t.Fatalf("LoadEnviron() error = %v, want valid %t", err, test.valid)
+			}
+			if err != nil {
+				if !strings.Contains(err.Error(), "SLIDESHOW_INTERVAL") {
+					t.Fatalf("LoadEnviron() error = %v, want SLIDESHOW_INTERVAL", err)
+				}
+				return
+			}
+			if got := cfg.ShowInterval(); got != test.show {
+				t.Fatalf("ShowInterval() = %s, want %s", got, test.show)
 			}
 		})
 	}

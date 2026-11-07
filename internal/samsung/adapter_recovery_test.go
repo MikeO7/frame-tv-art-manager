@@ -156,6 +156,9 @@ func TestAdapterSelectIsVerifiedByCurrentArtwork(t *testing.T) {
 			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 			adapter.config.RequestTimeout = 50 * time.Millisecond
 			observation := observeForCommand(t, adapter, CapabilityImageSelection)
+			if observation.CurrentArtwork != "id-2" {
+				t.Fatalf("observed current artwork = %q, want id-2", observation.CurrentArtwork)
+			}
 			if test.pinCurrent != "" {
 				transport.pinnedCurrent = test.pinCurrent
 			}

@@ -205,7 +205,7 @@
 <li><a href="#how-rotation-works">How automatic rotation works</a></li>
 <li><a href="#example">A worked example</a></li>
 <li><a href="#never-touched">What rotation never touches</a></li>
-<li><a href="#rotation-vs-slideshow">Rotation and the slideshow work together</a></li>
+<li><a href="#rotation-vs-slideshow">Rotation and picture changes work together</a></li>
 <li><a href="#seasonal-collections">Rotation and seasonal collections</a></li>
 <li><a href="#check">Checking on rotation</a></li>
 <li><a href="#faq-title">Questions people ask</a></li>
@@ -253,15 +253,16 @@ capacity. If your collection is bigger, rotation starts on its own, and a full T
 <ul class="cross">
 <li>Art you added yourself through SmartThings, USB, or any other way.</li>
 <li>Files in your artwork folder. Rotation only removes copies from the TV.</li>
-<li>The TV's choice of what's on screen. If the displayed piece rotates out, the TV moves on to another.</li>
+<li>The picture on screen, except that a piece that rotates out can't stay there; another stored piece takes its place.</li>
 </ul>
 <p>If the TV is full mostly of your own pieces, rotation can't free room and the TV reports <code>storage full</code>. Remove some of those
 pieces yourself. <code>REMOVE_UNKNOWN_IMAGES=true</code> would also free space, but it deletes every piece the manager didn't upload, so treat it as a last resort.</p>
 </section>
 <section aria-labelledby="rotation-vs-slideshow">
-<h2 id="rotation-vs-slideshow">Rotation and the slideshow work together</h2>
-<p>The slideshow changes which stored piece is on screen, from every 3 minutes to once a day. Rotation changes which pieces
-are stored, every 14 days by default. Together, a large collection keeps moving through the TV.</p>
+<h2 id="rotation-vs-slideshow">Rotation and picture changes work together</h2>
+<p>The manager's picture changes choose which stored piece is on screen, every 15 minutes by default (<code>SLIDESHOW_INTERVAL</code>, from 1 minute to a day). Rotation changes which pieces
+are stored on a full TV, every 14 days by default. Together, a large collection keeps moving through the TV.
+With <code>SLIDESHOW_MODE=tv</code>, the TV's own slideshow chooses among the stored pieces instead.</p>
 </section>
 <section aria-labelledby="seasonal-collections">
 <h2 id="seasonal-collections">Rotation and seasonal collections</h2>

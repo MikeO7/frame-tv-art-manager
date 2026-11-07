@@ -100,8 +100,10 @@ type RotationStatus struct {
 type Policy struct {
 	RemoveUnknown bool
 	AllowEmpty    bool
-	Select        bool
-	DefaultMatte  string
+	// Show has the manager change the picture on screen itself. The zero
+	// value leaves what is shown to the TV.
+	Show         ShowPolicy
+	DefaultMatte string
 	// PortraitMatte is the matte the TV uses when it shows artwork in portrait
 	// orientation. Empty uses the landscape matte.
 	PortraitMatte  string
@@ -116,6 +118,24 @@ type Policy struct {
 	// woken at most once per boundary, recorded durably. Zero keeps the
 	// unscheduled PowerOn behavior.
 	WakeBoundary time.Time
+}
+
+// ShowOrder is the order in which the manager changes the picture on screen.
+type ShowOrder uint8
+
+const (
+	// ShowShuffle shows every picture once, in a new random order each round.
+	ShowShuffle ShowOrder = iota
+	// ShowSequential shows pictures in name order and wraps around.
+	ShowSequential
+)
+
+// ShowPolicy changes the picture on screen every Interval. Samsung's own
+// slideshow of uploaded art needs an Art Store subscription on current
+// firmware, so the manager selects each picture itself.
+type ShowPolicy struct {
+	Interval time.Duration
+	Order    ShowOrder
 }
 
 type PolicyMode uint8
@@ -189,6 +209,8 @@ type CommandIntent struct {
 	PreviousValue         *int                      `json:"previous_value,omitempty"`
 	DesiredValue          *int                      `json:"desired_value,omitempty"`
 	RemoveUnknownApproved bool                      `json:"remove_unknown_approved,omitempty"`
+	// Round is the shuffle round a select command belongs to.
+	Round int `json:"round,omitempty"`
 }
 
 type Plan struct {
@@ -277,8 +299,10 @@ type State struct {
 	// UnresolvedUpload is an upload whose outcome is still unknown. It blocks
 	// artwork changes until inventory proves the outcome, while settings and
 	// power control keep running.
-	UnresolvedUpload  *Pending `json:"unresolved_upload,omitempty"`
-	LastCompleteCycle string   `json:"last_complete_cycle_id,omitempty"`
-	LastCollectionGen string   `json:"last_collection_generation,omitempty"`
-	Checksum          string   `json:"checksum"`
+	UnresolvedUpload *Pending `json:"unresolved_upload,omitempty"`
+	// Display records the pictures the manager has put on screen.
+	Display           *DisplayState `json:"display,omitempty"`
+	LastCompleteCycle string        `json:"last_complete_cycle_id,omitempty"`
+	LastCollectionGen string        `json:"last_collection_generation,omitempty"`
+	Checksum          string        `json:"checksum"`
 }

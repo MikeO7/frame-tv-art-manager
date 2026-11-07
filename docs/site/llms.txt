@@ -1,6 +1,6 @@
 # Frame TV Art Manager
 
-> Frame TV Art Manager is a free, self-hosted service that keeps the Art Mode of one or more Samsung Frame TVs (The Frame) in sync with a folder of JPEG and PNG pictures on a NAS or home server. It prepares each picture for the TV's 3840x2160 screen, shows portraits and square art whole on a tinted charcoal gallery mat instead of cropping them, uploads over the local network, never uploads the same picture twice, rotates art automatically when the TV's storage is full, and can show themed collections (such as Christmas art) only on yearly dates. An optional MCP endpoint lets the user's own AI assistant add, preview, and schedule art. No Samsung account, SmartThings account, Art Store subscription, or AI API key is needed.
+> Frame TV Art Manager is a free, self-hosted service that keeps the Art Mode of one or more Samsung Frame TVs (The Frame) in sync with a folder of JPEG and PNG pictures on a NAS or home server. It prepares each picture for the TV's 3840x2160 screen, shows portraits and square art whole on a tinted charcoal gallery mat instead of cropping them, uploads over the local network, never uploads the same picture twice, rotates art automatically when the TV's storage is full, changes the picture on screen every 15 minutes by default without an Art Store subscription, and can show themed collections (such as Christmas art) only on yearly dates. An optional MCP endpoint lets the user's own AI assistant add, preview, and schedule art. No Samsung account, SmartThings account, Art Store subscription, or AI API key is needed.
 
 Last substantive update: 2026-11-07
 Maintainer: MikeO7 (https://github.com/MikeO7)
@@ -63,22 +63,29 @@ Affiliation: independent project; not affiliated with or endorsed by Samsung.
 - The manager holds no AI keys and calls no AI service. The user's own assistant makes the images; the manager tells it the display spec, stores and checks images, previews them, puts them in a themed collection, schedules it, and syncs.
 - Clients: Claude Code (claude mcp add --transport http ...), Claude Desktop through the mcp-remote bridge, or any MCP client using streamable HTTP with that header that can reach the server.
 - Tools: get_display_spec, search_public_domain_art (Art Institute of Chicago, The Met, Cleveland, SMK), add_artwork, preview_artwork (960x540), list_artwork, list_collections, create_collection, update_collection, remove_from_collection, delete_collection, sync_now, get_status.
-- No tool deletes image files and there is no "show this picture now" tool; the TV changes only through the normal sync. add_artwork accepts JPEG or PNG up to MAX_DOWNLOAD_SIZE_MB from https links on the public internet (private addresses refused, even after redirects) or base64. With DRY_RUN, tools that would change anything are refused.
+- No tool deletes image files and there is no "show this picture now" tool; the TV changes only through the normal sync and the scheduled picture changes. add_artwork accepts JPEG or PNG up to MAX_DOWNLOAD_SIZE_MB from https links on the public internet (private addresses refused, even after redirects) or base64. With DRY_RUN, tools that would change anything are refused.
 - Meant for the home network; if exposed, put it behind a TLS reverse proxy. Wrong tokens count toward the same per-address limit as upload passwords.
 
 ## Safety rules
 
 - Never deletes TV art it did not upload unless REMOVE_UNKNOWN_IMAGES=true.
-- Does not choose which artwork is displayed.
+- Puts only art it uploaded on screen, only while the TV is in Art Mode, and only when the TV can confirm what is showing; never while someone is watching TV.
 - Keeps the last piece it uploaded if the folder becomes empty.
 - A failed source download never deletes previously downloaded art, and a failing source doesn't stop the sync.
 - Each picture's untouched original is kept; prepared versions are always made from it.
 - Makes no changes to a TV whose state it cannot confirm.
 - DRY_RUN=true plans without uploading, deleting, saving state, or waking the TV.
 
+## Picture on screen
+
+- On by default (SLIDESHOW_MODE=app): every SLIDESHOW_INTERVAL minutes (default 15, any value from 1 to 1440) the manager puts another piece it uploaded (My Photos) on screen, in SLIDESHOW_TYPE order: shuffle (default; every picture once, in a new random order each round, before any repeats) or sequential (name order, wrapping around). It runs between syncs, so the interval isn't limited by SYNC_INTERVAL_MINUTES.
+- Why: on current Samsung firmware the TV's own slideshow of My Photos is gated behind an Art Store subscription (owners report it since July 2025), and on a 2024 Frame the project tested, the TV accepted the slideshow setting but never changed the picture. Choosing a picture directly still works without a subscription.
+- SLIDESHOW_ENABLED=false turns the manager's picture changes off; the TV then decides what is shown.
+- SLIDESHOW_MODE=tv, for Art Store subscribers who want the TV's own slideshow: SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (must be 3, 15, 60, 720, or 1440), and SLIDESHOW_TYPE set the TV's slideshow, and the manager never picks the picture.
+- Upgrading from earlier releases: the picture now changes every 15 minutes unless SLIDESHOW_ENABLED=false or SLIDESHOW_MODE=tv is set.
+
 ## Optional TV controls
 
-- Slideshow: SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), SLIDESHOW_TYPE (shuffle or sequential).
 - Brightness: fixed BRIGHTNESS on the Frame's Art Mode scale (0-10), or SOLAR_BRIGHTNESS_ENABLED with latitude, longitude, and timezone between BRIGHTNESS_MIN and BRIGHTNESS_MAX (also 0-10). Values 11-50 from the old 0-50 scale are converted (30 becomes 6) with a warning; anything else outside 0-10 stops startup.
 - Nightly power-off for TVs in Art Mode: AUTO_OFF_TIME.
 - Morning power-on: AUTO_ON_TIME together with TV_MAC wakes a single TV once a day, only if it is confirmed off or has dropped off the network; never when its state is unknown, and never when TV_IPS lists several TVs. TV_MAC alone no longer wakes the TV. The packet goes to 255.255.255.255 and the TV's /24 broadcast address, or to TV_WOL_BROADCAST. Needs network_mode: host in Docker.

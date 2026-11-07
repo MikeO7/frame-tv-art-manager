@@ -13,7 +13,7 @@ Q: What is Frame TV Art Manager?
 A: Frame TV Art Manager is a free, self-hosted service for Samsung The Frame owners. It runs in Docker on a NAS or home server and keeps the TV's Art Mode in sync with a folder of JPEG and PNG pictures, preparing each one for the 3840×2160 screen and uploading it over your home network.
 
 Q: Do I need a Samsung Art Store subscription?
-A: No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog.
+A: No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog. Your art also keeps changing on screen without one: the manager picks the next picture itself instead of relying on the TV's slideshow, which some owners report needs a subscription.
 
 Q: Do I need SmartThings or a Samsung account?
 A: No. It talks to the TV directly on your local network. Only optional online sources such as museums or NASA, and images an AI assistant asks it to fetch, contact the internet, and only when you turn them on.
@@ -52,7 +52,7 @@ A: It is free for personal and other noncommercial use under the PolyForm Noncom
 
 URL: https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-without-subscription.html
 
-Short answer: you don't need Samsung's Art Store to enjoy The Frame. Your own photos in My Photos are free to display, and museums publish thousands of public-domain paintings you can use at no cost. Frame TV Art Manager, a free self-hosted service, keeps a folder of that art on the TV for you: it prepares each picture for the 4K screen, uploads it over your home network, and swaps art in and out when the TV is full.
+Short answer: you don't need Samsung's Art Store to enjoy The Frame. Your own photos in My Photos are free to display, and museums publish thousands of public-domain paintings you can use at no cost. Frame TV Art Manager, a free self-hosted service, keeps a folder of that art on the TV for you: it prepares each picture for the 4K screen, uploads it over your home network, changes the picture on screen every 15 minutes, and swaps art in and out when the TV is full.
 
 ### What costs money on The Frame, and what doesn't
 The Samsung Art Store is a paid subscription: US$4.99 a month or US$49.99 a year
@@ -63,8 +63,9 @@ Art Mode page describes showing all of My Photos as free for personal photo coll
 About the slideshow reports. Since about July 2025, some owners have reported on
 Samsung's community forum that the "Display All" slideshow of My Photos asked them for an
 Art Store subscription. Samsung's help pages still describe it as free, and the behavior seems to vary by model and
-firmware. If your TV shows the prompt, the options below still work: they change which art is stored on the TV, and the
-TV can show any stored piece.
+firmware. On a 2024 Frame we tested, the TV accepted the slideshow setting but never changed the picture. Choosing a
+picture directly still works without a subscription, so Frame TV Art Manager changes the picture itself
+instead of relying on the TV's slideshow. The options below work either way.
 
 ### Three ways to fill Art Mode for free
 1. Your own photos
@@ -85,11 +86,11 @@ licenses. Frame TV Art Manager can download from all of them on a schedule; Wiki
 A Frame looks best when the art changes now and then. Frame TV Art Manager handles the parts that are tedious by hand:
 - New art arrives on its own. Pictures you add to the folder, and art from online sources, are uploaded on the next sync (every 30 minutes by default).
 - A large collection takes turns. When the TV is full, each piece the manager uploaded stays for 14 days (ROTATION_INTERVAL_DAYS) and is then swapped for art that hasn't been shown yet.
-- The slideshow can be set for you. SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), and SLIDESHOW_TYPE (shuffle or sequential) set the TV's slideshow for your uploaded photos over the local network. What the TV then allows is up to Samsung's firmware.
+- The picture changes on its own. Every 15 minutes by default, the manager puts a different piece it uploaded on screen; no Art Store subscription is needed. SLIDESHOW_INTERVAL sets the minutes, from 1 to 1440, and SLIDESHOW_TYPE the order: shuffle (the default) shows every picture once, in a new random order each round, before any repeats, and sequential goes in name order. It changes the picture only while the TV is in Art Mode and can confirm what's on screen, never while someone is watching TV.
 - Nothing is uploaded twice. Pictures are recognized by their content, so re-adding the same file doesn't create duplicates on the TV.
 - Holiday art on its own schedule. A themed collection shows Christmas or Halloween art only on the dates you choose, then your everyday art returns.
 - Your AI assistant can help. With the optional MCP endpoint, an assistant such as Claude can make or find art and schedule it; see the AI art guide. The manager itself needs no AI subscription or key.
-The manager never picks which piece is on screen; the TV and its slideshow do that. It also never deletes art you put on the TV yourself.
+The manager changes the picture itself because choosing a picture directly works without a subscription, while the TV's own slideshow of My Photos may not. Set SLIDESHOW_ENABLED=false to leave the choice to the TV. If you subscribe to the Art Store and prefer the TV's own slideshow, set SLIDESHOW_MODE=tv; SLIDESHOW_INTERVAL must then be 3, 15, 60, 720, or 1440, and the manager never picks the picture. Either way, it never deletes art you put on the TV yourself.
 
 ### What you need
 - A Samsung Frame TV running Tizen 8.0 or newer. Older firmware may work, but Samsung's private Art Mode protocol changes between models and releases.
@@ -103,6 +104,9 @@ It is an independent project and is not affiliated with or endorsed by Samsung.
 
 Q: Do I need a subscription to show my own photos on The Frame?
 A: No. Photos in My Photos can be displayed without the Art Store subscription. Some owners have reported since July 2025 that the Display All slideshow of My Photos asked for a subscription on their TVs; Samsung's help pages still describe it as free.
+
+Q: Can The Frame cycle through my own photos without a subscription?
+A: Yes. Frame TV Art Manager changes the picture itself, every 15 minutes by default, choosing among the art it uploaded while the TV is in Art Mode. It doesn't rely on the TV's own slideshow, which some owners report needs an Art Store subscription.
 
 Q: How much is the Samsung Art Store?
 A: As reported in October 2026, US$4.99 per month or US$49.99 per year in the US. Prices vary by country, so check the Art Store on your TV.
@@ -147,7 +151,8 @@ The Docker guide walks through installation. The only required setting is TV_IPS
 - Check the folder and prepare pictures that need it: turned upright, fitted to the 16:9 screen, converted to sRGB, and resized to 3840×2160.
 - Read each TV to see what's stored on it.
 - Upload what's missing and remove pieces you deleted from the folder.
-- Apply TV settings such as slideshow, brightness, or power-off, only if you configured them.
+- Apply TV settings such as brightness, power-off, or the TV's own slideshow, only if you configured them.
+Between syncs, the manager also changes the picture on screen every 15 minutes by default, choosing only art it uploaded and only while the TV is in Art Mode. Set SLIDESHOW_ENABLED=false to leave that to the TV.
 If you use themed collections, each sync also picks which pictures are wanted today, for example only the Christmas art from December 1 to January 6. Pictures that aren't wanted today are removed from the TV but stay in the folder.
 The prepared version of each picture replaces it in the artwork folder, and the untouched original is kept in the folder's hidden .frame-tv-art-manager/originals directory. Prepared versions are always re-made from the original, so changing an image setting later never costs quality.
 
@@ -173,7 +178,7 @@ Each TV gets the same collection and is tracked separately, so a TV that's off d
 
 ### What it won't do
 - Delete art you added yourself, unless REMOVE_UNKNOWN_IMAGES=true.
-- Choose which piece is on screen. The TV and its slideshow decide.
+- Change the picture while someone is watching TV, or put art it didn't upload on screen.
 - Change anything on a TV whose state it can't confirm. That TV is skipped until the next sync.
 - Treat a failed folder scan or a website that's down as "delete everything". A failing source keeps its last good results, and the rest of the sync goes ahead.
 - Change anything at all in a dry run (DRY_RUN=true).
@@ -417,7 +422,7 @@ Pictures that belong to no collection are your everyday art. Each sync picks wha
 - Exclusive (the default): while an exclusive collection is active and holds at least one picture, only pictures from active collections are shown. Your Christmas art replaces the everyday art.
 - Not exclusive: an active collection is shown together with the everyday art. Good for a light seasonal touch, such as spring flowers mixed into your usual photos.
 - Out of season: a picture that belongs only to inactive collections is hidden, and its copy is removed from the TV like any picture that left the folder. A picture in several collections is shown while any of them is active.
-Hiding a picture never deletes its file. The manager's other rules still apply: it never removes art you put on the TV yourself, and it never chooses which stored piece is on screen; the TV and its slideshow do that.
+Hiding a picture never deletes its file. The manager's other rules still apply: it never removes art you put on the TV yourself, and its picture changes only choose among the pieces it keeps on the TV, so hidden pictures don't come up.
 
 ### A year of art: Christmas, Halloween, and spring
 Three collections cover most of a year: Christmas, exclusive, from 12-01 to 01-06; Halloween, exclusive, from 10-01 to 10-31; and Spring, not exclusive, from 03-20 to 06-20. Here is what the TV shows on a few dates:
@@ -603,7 +608,7 @@ art size guide for the details.
 
 ### What the assistant can't do
 - Delete image files. Removing a picture from a collection, or deleting a collection, leaves the files in the folder.
-- Put a picture on screen right now. There is no "show this picture now" tool; the TV changes only through the normal sync, with all of its safety checks.
+- Put a picture on screen right now. There is no "show this picture now" tool; the TV changes only through the normal sync and the scheduled picture changes, with all of their safety checks.
 - Fetch from your home network. Links must be https and point to the public internet; private addresses are refused, even after redirects.
 - Get around the upload rules. Images must be JPEG or PNG, no larger than MAX_DOWNLOAD_SIZE_MB (20 MB by default), and are checked and deduplicated before they are kept.
 - Change anything during a dry run. With DRY_RUN=true the read-only tools still work, and tools that would change anything are refused.
@@ -622,7 +627,7 @@ Q: Which AI assistants work with Frame TV Art Manager?
 A: Claude Code, Claude Desktop through the mcp-remote bridge, and other MCP clients that support streamable HTTP with an Authorization header and can reach your server. An assistant that connects from its own cloud servers needs the endpoint exposed behind a TLS reverse proxy.
 
 Q: Can the AI assistant delete my photos or change what's on screen?
-A: No. No tool deletes image files, and there is no tool to show a picture right away. The TV changes only through the normal sync and its safety checks.
+A: No. No tool deletes image files, and there is no tool to show a picture right away. The TV changes only through the normal sync and the scheduled picture changes, with their safety checks.
 
 Q: What size should AI-generated art be for The Frame?
 A: A 16:9 landscape, ideally exactly 3840×2160 pixels, as JPEG or PNG. Anything smaller than about 2560×1440 is visibly enlarged on the 4K screen.
@@ -770,19 +775,19 @@ Every setting, with comments, is in .env.example.
 On/off settings accept true/false, 1/0, yes/no, on/off, or y/n in any case.
 Anything else, an unknown log level, or a bad TV address stops the service at startup with a clear error, so a typo can't silently turn a setting such as DRY_RUN off.
 
-### Optional TV controls
-- Slideshow: SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), SLIDESHOW_TYPE (shuffle or sequential).
+### Picture changes and TV controls
+- Picture changes (on by default): every SLIDESHOW_INTERVAL minutes (default 15, any value from 1 to 1440) the manager puts another piece it uploaded on screen, in SLIDESHOW_TYPE order: shuffle (the default) shows every picture once, in a new random order each round, before any repeats; sequential goes in name order and wraps around. It changes the picture only while the TV is in Art Mode and can confirm what's on screen, never while someone is watching TV. It runs between syncs, so the interval isn't limited by SYNC_INTERVAL_MINUTES. SLIDESHOW_ENABLED=false turns it off and leaves the choice to the TV. SLIDESHOW_MODE=tv sets the TV's own slideshow instead, which on current firmware may need an Art Store subscription; SLIDESHOW_INTERVAL must then be 3, 15, 60, 720, or 1440.
 - Brightness: a fixed BRIGHTNESS on the Frame's Art Mode scale of 0 to 10, or SOLAR_BRIGHTNESS_ENABLED=true with your latitude, longitude, and time zone to follow the sun between BRIGHTNESS_MIN and BRIGHTNESS_MAX (also 0 to 10). Values from 11 to 50, from the 0 to 50 scale earlier releases documented, are converted (30 becomes 6) with a warning; anything else outside 0 to 10 stops startup.
 - Nightly power-off: AUTO_OFF_TIME=22:00 turns off TVs showing art and leaves TVs in use alone.
 - Morning power-on: AUTO_ON_TIME (for example 07:00) together with TV_MAC wakes a single TV once a day, on the first sync in the AUTO_ON_GRACE_HOURS window (default 2), only if the TV is confirmed off or has dropped off the network; never when its state is unknown. TV_MAC on its own no longer wakes the TV. The magic packet goes to 255.255.255.255 and the TV's /24 broadcast address; set TV_WOL_BROADCAST to use one other broadcast address instead. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it needs network_mode: host.
-If you leave these unset, the manager doesn't touch the TV's own settings.
+Leave the brightness and power settings unset and the manager doesn't touch them.
 
 ### Monitoring and upgrades
 - GET /live: the process is running (used by the container healthcheck).
 - GET /ready and /health: 200 once the last sync succeeded, otherwise 503.
 - GET /status: per-TV status, last error, rotation details, and credits for downloaded artwork as JSON. source_warning appears when an artwork source failed; the TVs still sync the art already on disk.
 When UPLOAD_TOKEN is set, /status shows the last error and TV addresses only to requests signed in as frame with that token. Without credentials it returns the same fields with TVs numbered tv-1, tv-2, …, no error text, and "redacted": true.
-Logs are structured JSON. To upgrade, run docker compose pull and docker compose up -d; your data folder carries over.
+Logs are structured JSON. To upgrade, run docker compose pull and docker compose up -d; your data folder carries over. Upgrading from a release before picture changes: the picture now changes every 15 minutes unless you set SLIDESHOW_ENABLED=false or SLIDESHOW_MODE=tv.
 Never expose port 8080 to the internet; keep it on your home network or behind a TLS reverse proxy.
 
 ### Running without Docker
@@ -872,7 +877,7 @@ Splitting the work between Home Assistant and Frame TV Art Manager
 - Keeping a folder of art on one or more Frames | Frame TV Art Manager
 - Preparing pictures for 4K, portraits on a gallery mat | Frame TV Art Manager
 - Rotating art when the TV is full | Frame TV Art Manager
-- Slideshow, brightness, nightly power-off | Either, but only one of them
+- Changing the picture on screen, brightness, nightly power-off | Either, but only one of them
 
 ### Install it next to Home Assistant
 If Home Assistant runs in Docker, add Frame TV Art Manager to the same host with the compose file from the
@@ -913,8 +918,9 @@ Keep the token out of configuration.yaml, and only pass simple file names you co
 upload sent at the same moment gets HTTP 429 and should be retried.
 
 ### Avoid two tools fighting over the TV
-- Frame TV Art Manager leaves the slideshow, brightness, and power settings alone unless you set them. If Home Assistant already manages them, leave the matching settings unset.
-- It never picks which piece is on screen and never deletes art it didn't upload, so pictures you push another way stay put.
+- Frame TV Art Manager changes the picture on screen every 15 minutes by default. If a Home Assistant automation picks the art, set SLIDESHOW_ENABLED=false, or the two will keep replacing each other's choice.
+- Brightness and power settings are left alone unless you set them. If Home Assistant already manages them, leave the matching settings unset.
+- It never deletes art it didn't upload, so pictures you push another way stay on the TV.
 - Each tool that connects to the TV may need its own one-time Allow on the TV. Use a clear CLIENT_NAME so you know which prompt is which.
 
 Q: Can Home Assistant control Samsung Frame TV Art Mode?
@@ -1056,13 +1062,14 @@ The numbers are made up for illustration. A shorter interval cycles faster.
 ### What rotation never touches
 - Art you added yourself through SmartThings, USB, or any other way.
 - Files in your artwork folder. Rotation only removes copies from the TV.
-- The TV's choice of what's on screen. If the displayed piece rotates out, the TV moves on to another.
+- The picture on screen, except that a piece that rotates out can't stay there; another stored piece takes its place.
 If the TV is full mostly of your own pieces, rotation can't free room and the TV reports storage full. Remove some of those
 pieces yourself. REMOVE_UNKNOWN_IMAGES=true would also free space, but it deletes every piece the manager didn't upload, so treat it as a last resort.
 
-### Rotation and the slideshow work together
-The slideshow changes which stored piece is on screen, from every 3 minutes to once a day. Rotation changes which pieces
-are stored, every 14 days by default. Together, a large collection keeps moving through the TV.
+### Rotation and picture changes work together
+The manager's picture changes choose which stored piece is on screen, every 15 minutes by default (SLIDESHOW_INTERVAL, from 1 minute to a day). Rotation changes which pieces
+are stored on a full TV, every 14 days by default. Together, a large collection keeps moving through the TV.
+With SLIDESHOW_MODE=tv, the TV's own slideshow chooses among the stored pieces instead.
 
 ### Rotation and seasonal collections
 With themed collections, rotation works on the pictures wanted today. When an exclusive
@@ -1113,7 +1120,7 @@ Per-TV status values in /status
 - Wait for the next sync (30 minutes by default), or restart the container to sync now.
 - Only .jpg, .jpeg, and .png are used. Hidden files, temporary files, JSON, YAML, and symlinks are ignored.
 - Look in Art Mode under My Photos; uploaded pictures appear there, not in the Art Store.
-- The manager doesn't choose what's on screen. Turn on the TV's slideshow, or set SLIDESHOW_ENABLED, to cycle through new art.
+- The manager changes the picture every 15 minutes by default, so a new picture comes up in its turn, and only while the TV is in Art Mode. With SLIDESHOW_ENABLED=false or SLIDESHOW_MODE=tv, the TV decides what is shown.
 
 ### "Recovery required" won't clear
 To avoid duplicates or wrong deletions, that TV is paused until the result can be confirmed. If it doesn't clear on later syncs,
@@ -1125,6 +1132,7 @@ Invalid settings stop the service at startup with a clear error in the log, so a
 - On/off values are strict. They accept true/false, 1/0, yes/no, on/off, or y/n in any case. Anything else, such as enabled, stops startup.
 - Brightness uses the Frame's 0–10 scale. Values from 11 to 50, from the 0–50 scale earlier releases documented, are converted (30 becomes 6) and logged as a warning; anything else outside 0–10 stops startup.
 Also note that TV_MAC on its own no longer wakes the TV; add AUTO_ON_TIME, for example 07:00.
+The picture now changes every 15 minutes by default. Set SLIDESHOW_ENABLED=false to stop that, or SLIDESHOW_MODE=tv to go back to the TV's own slideshow; with SLIDESHOW_MODE=tv, a SLIDESHOW_INTERVAL other than 3, 15, 60, 720, or 1440 stops startup.
 
 ### /status shows redacted or source_warning
 - "redacted": true, TVs named tv-1, no error text: UPLOAD_TOKEN is set, and the request didn't sign in. Open /status signed in as frame with that token to see addresses and errors. Wrong credentials get 401.
@@ -1162,7 +1170,7 @@ Q: Why is my Frame TV skipped during sync?
 A: It was off or showing other content. Frame TV Art Manager never changes a TV whose state it can't confirm, and tries again on the next sync.
 
 Q: Why don't new pictures show on the TV?
-A: They are added to My Photos on the next sync, but the TV decides which piece is on screen. Turn on the slideshow to cycle through new art.
+A: They are added to My Photos on the next sync and come up in turn: the manager changes the picture every 15 minutes by default while the TV is in Art Mode. With SLIDESHOW_ENABLED=false or SLIDESHOW_MODE=tv, the TV decides what is shown.
 
 Q: Why did my everyday art disappear from the Frame TV?
 A: An exclusive themed collection, such as Christmas, is probably active. While it is, only its pictures are shown; the everyday art returns when its date window ends. Your files are never deleted.
@@ -1192,7 +1200,8 @@ The SmartThings phone app stays free. Separately, in June 2026 Samsung announced
 SmartThings API, which tools and smart-home integrations use: a US$4.99-a-month personal plan, with free access through the
 third quarter of 2026. Frame TV Art Manager doesn't use SmartThings or its API; it talks to the TV on your local network.
 Some owners have also reported since July 2025 that the "Display All" slideshow of My Photos asked for an Art Store subscription
-(forum thread); Samsung's help pages still describe it as free. See
+(forum thread); Samsung's help pages still describe it as free. Frame TV Art Manager doesn't need that slideshow: it changes the picture on screen itself,
+every 15 minutes by default, without a subscription. See
 Frame TV art without a subscription.
 
 ### Other community tools

@@ -50,7 +50,7 @@ func TestConvergenceEngineRunsCommittedSnapshotThroughCachedRuntime(t *testing.T
 	}
 	request := service.lastRequest()
 	if request.CycleID != "cycle-1-192.0.2.10" || request.Snapshot.Generation != snapshot.Generation ||
-		!request.DryRun || !request.Policy.RemoveUnknown || request.Policy.Select {
+		!request.DryRun || !request.Policy.RemoveUnknown || request.Policy.Show != (reconcile.ShowPolicy{}) {
 		t.Fatalf("reconciliation request = %+v", request)
 	}
 	if engine.cycleNum != 1 {
@@ -303,4 +303,38 @@ func preparedSnapshot(t *testing.T, root string, files map[string][]byte) collec
 		t.Fatalf("prepare collection: %v", err)
 	}
 	return snapshot
+}
+
+func TestRunDisplayChangesPicturesFromTheLastSyncedCollection(t *testing.T) {
+	root := t.TempDir()
+	snapshot := preparedSnapshot(t, root, nil)
+	collection := &staticArtworkCollection{snapshot: snapshot}
+	service := &countingConvergenceService{result: reconcile.Result{Status: reconcile.StatusComplete}}
+	engine := &convergenceEngine{
+		cfg: &config.Config{
+			ArtworkDir: root, SyncIntervalMin: 30, MatteStyle: "none", Timezone: "UTC",
+			SlideshowMode: config.SlideshowModeApp, SlideshowInterval: 15, SlideshowType: "shuffle",
+		},
+		logger: slog.New(slog.DiscardHandler), health: health.NewStatus(),
+		collection: collection, cycleGate: make(chan struct{}, 1), wake: make(chan struct{}, 1),
+		runtimes: []*convergenceRuntime{{address: "192.0.2.10", adapter: &recordingConvergenceAdapter{}, reconciler: service}},
+	}
+
+	if err := engine.RunDisplay(context.Background()); err != nil || service.calls() != 0 {
+		t.Fatalf("RunDisplay() before any sync = %v with %d reconciler calls, want a no-op", err, service.calls())
+	}
+	if err := engine.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	// A later failure to prepare the collection must not stop picture changes.
+	collection.err = errors.New("source offline")
+	if err := engine.RunDisplay(context.Background()); err != nil {
+		t.Fatalf("RunDisplay() error = %v", err)
+	}
+	request := service.lastRequest()
+	if service.calls() != 2 || request.CycleID != "display-1-192.0.2.10" ||
+		request.Snapshot.Generation != snapshot.Generation ||
+		request.Policy.Show != (reconcile.ShowPolicy{Interval: 15 * time.Minute, Order: reconcile.ShowShuffle}) {
+		t.Fatalf("display request = %+v after %d calls", request, service.calls())
+	}
 }
