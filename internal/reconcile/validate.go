@@ -83,6 +83,14 @@ func validateState(state State, expected TVIdentity) error {
 			return err
 		}
 	}
+	if parked := state.UnresolvedUpload; parked != nil {
+		if err := validatePending(*parked); err != nil {
+			return fmt.Errorf("unresolved upload: %w", err)
+		}
+		if parked.Command.Kind != CommandUpload || parked.Phase == PhaseApplied {
+			return errors.New("unresolved upload must be an upload without a positive receipt")
+		}
+	}
 	if state.LastCollectionGen != "" && !validDigest(state.LastCollectionGen) {
 		return errors.New("last collection generation is invalid")
 	}

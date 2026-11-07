@@ -23,7 +23,7 @@ func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, st
 // planSnapshot is BuildPlan for a snapshot that Run has already validated. The
 // fresh observation and in-memory state are still validated on every call.
 //
-//nolint:funlen,gocognit,nestif // The linear phases deliberately mirror reconciliation ordering.
+//nolint:funlen,gocognit // The linear phases deliberately mirror reconciliation ordering.
 func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
 	policy = normalizePolicy(policy)
 	identity, err := validateObservation(observation)
@@ -212,16 +212,24 @@ func cloneState(state State) State {
 	clone.Tombstones = make(map[string]Tombstone, len(state.Tombstones))
 	maps.Copy(clone.Tombstones, state.Tombstones)
 	clone.LastShown = maps.Clone(state.LastShown)
-	if state.Pending != nil {
-		pending := *state.Pending
-		pending.Command.PreviousSlideshow = clonePointer(pending.Command.PreviousSlideshow)
-		pending.Command.DesiredSlideshow = clonePointer(pending.Command.DesiredSlideshow)
-		pending.Command.PreviousValue = clonePointer(pending.Command.PreviousValue)
-		pending.Command.DesiredValue = clonePointer(pending.Command.DesiredValue)
-		pending.Receipt = clonePointer(pending.Receipt)
-		clone.Pending = &pending
-	}
+	clone.Pending = clonePending(state.Pending)
+	clone.UnresolvedUpload = clonePending(state.UnresolvedUpload)
 	return clone
+}
+
+func clonePending(value *Pending) *Pending {
+	if value == nil {
+		return nil
+	}
+	pending := *value
+	pending.Command.PreviousSlideshow = clonePointer(pending.Command.PreviousSlideshow)
+	pending.Command.DesiredSlideshow = clonePointer(pending.Command.DesiredSlideshow)
+	pending.Command.PreviousValue = clonePointer(pending.Command.PreviousValue)
+	pending.Command.DesiredValue = clonePointer(pending.Command.DesiredValue)
+	pending.Receipt = clonePointer(pending.Receipt)
+	pending.PreparedAt = clonePointer(pending.PreparedAt)
+	pending.InventoryBeforeIDs = slices.Clone(pending.InventoryBeforeIDs)
+	return &pending
 }
 
 func clonePointer[T any](value *T) *T {

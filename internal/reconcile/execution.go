@@ -34,10 +34,14 @@ func (s *service) execute(ctx context.Context, input executionInput) (State, sam
 	}
 	prepared := cloneState(state)
 	prepared.Revision++
+	preparedAt := s.clock.Now()
 	prepared.Pending = &Pending{
 		OperationID: operationID, CycleID: input.request.CycleID, CollectionGen: input.request.Snapshot.Generation,
 		PolicyFingerprint: policyFingerprint, InventoryBefore: InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-		Command: input.intent, Phase: PhasePrepared,
+		Command: input.intent, Phase: PhasePrepared, PreparedAt: &preparedAt,
+	}
+	if input.intent.Kind == CommandUpload {
+		prepared.Pending.InventoryBeforeIDs = slices.Clone(observation.Inventory.ContentIDs)
 	}
 	if err := s.store.save(ctx, prepared); err != nil {
 		return prepared, observation, err

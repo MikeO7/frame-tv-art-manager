@@ -1094,11 +1094,22 @@ func TestRunExistingNoPendingAndBlockedPending(t *testing.T) {
 	if err := store.save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
+	// New, unbound artwork could be the upload, so it stays parked.
+	changed := knownObservation(samsung.PowerStateOn, "unexplained")
+	adapter = &fakeAdapter{observations: []samsung.Observation{changed}}
+	service = newTestService(t, directory, Policy{})
+	recovery, err = service.Run(context.Background(), Request{CycleID: "recover", TV: adapter, Snapshot: snapshot()})
+	if !errors.Is(err, ErrRecoveryRequired) || recovery.Status != StatusRecoveryRequired ||
+		recovery.State.Pending != nil || recovery.State.UnresolvedUpload == nil {
+		t.Fatalf("blocked recovery = %#v, error = %v", recovery, err)
+	}
+	// The legacy record has only a fingerprint: an unchanged inventory proves
+	// the upload never landed.
 	adapter = &fakeAdapter{observations: []samsung.Observation{observation}}
 	service = newTestService(t, directory, Policy{})
 	recovery, err = service.Run(context.Background(), Request{CycleID: "recover", TV: adapter, Snapshot: snapshot()})
-	if !errors.Is(err, ErrRecoveryRequired) || recovery.Status != StatusRecoveryRequired {
-		t.Fatalf("blocked recovery = %#v, error = %v", recovery, err)
+	if err != nil || recovery.State.UnresolvedUpload != nil || recovery.State.Pending != nil {
+		t.Fatalf("settled recovery = %#v, error = %v", recovery, err)
 	}
 }
 

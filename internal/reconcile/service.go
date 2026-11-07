@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 
@@ -38,12 +39,11 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	if err != nil {
 		return Result{Observation: observation}, err
 	}
-	if state.Pending != nil {
-		state, err = s.resolveRecovery(ctx, request.CycleID, request.DryRun, observation, state)
-		if err != nil {
-			return Result{Status: statusForError(err), State: state, Observation: observation}, err
-		}
+	state, err = s.recover(ctx, request, observation, state)
+	if err != nil {
+		return Result{Status: statusForError(err), State: state, Observation: observation}, err
 	}
+	uploadUnresolved := state.UnresolvedUpload != nil
 	wake := wakePreparation{state: state, observation: observation}
 	if policy.Power == PowerOn {
 		wake, err = s.preparePowerOn(ctx, request, policy, state, observation)
@@ -71,6 +71,10 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		plan, planned, err := s.buildPlan(request.Snapshot, observation, state, policy)
 		if err == nil && selectedThisCycle {
 			plan.Commands = withoutCommand(plan.Commands, CommandSelect)
+		}
+		if err == nil && uploadUnresolved {
+			plan.Commands = artworkCommandsBlocked(plan.Commands)
+			plan.PruneBindings = nil
 		}
 		return plan, planned, err
 	}
@@ -184,6 +188,14 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	}
 	state.Pending = nil
 	result.Rotation = currentPlan.Rotation
+	if uploadUnresolved {
+		// Settings and power converged; artwork waits for inventory to prove
+		// the parked upload, so the cycle is not complete.
+		result.Status = StatusRecoveryRequired
+		result.State = cloneState(state)
+		return result, fmt.Errorf("upload %q outcome is unproven: %w",
+			state.UnresolvedUpload.Command.Name, ErrRecoveryRequired)
+	}
 	if currentPlan.CapacityLimited {
 		result.Status = StatusStorageFull
 		result.State = cloneState(state)
@@ -236,6 +248,27 @@ func (s *service) logMutationRetry(
 		)
 	}
 	s.logger.LogAttrs(ctx, slog.LevelWarn, "Samsung mutation failed; retrying", attrs...)
+}
+
+// recover settles pending work and any parked upload before planning. An
+// upload whose outcome stays unproven is parked instead of stopping the run.
+func (s *service) recover(
+	ctx context.Context,
+	request Request,
+	observation samsung.Observation,
+	state State,
+) (State, error) {
+	if state.Pending != nil {
+		resolved, err := s.resolveRecovery(ctx, request.CycleID, request.DryRun, observation, state)
+		if parkableUpload(resolved, err) {
+			resolved, err = s.parkUpload(ctx, request.CycleID, request.DryRun, resolved)
+		}
+		if err != nil {
+			return resolved, err
+		}
+		state = resolved
+	}
+	return s.settleUnresolvedUpload(ctx, request.CycleID, request.DryRun, observation, state)
 }
 
 // resolveRecovery settles outstanding pending work before any new planning.

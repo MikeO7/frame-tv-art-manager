@@ -237,6 +237,10 @@ type Pending struct {
 	Command           CommandIntent        `json:"command"`
 	Phase             Phase                `json:"phase"`
 	Receipt           *ReceiptSummary      `json:"receipt,omitempty"`
+	// PreparedAt and InventoryBeforeIDs let an upload whose outcome is unknown
+	// be proven from later inventory. Both are absent in older state files.
+	PreparedAt         *time.Time `json:"prepared_at,omitempty"`
+	InventoryBeforeIDs []string   `json:"inventory_before_ids,omitempty"`
 }
 
 type State struct {
@@ -251,7 +255,11 @@ type State struct {
 	LastShown              map[string]time.Time `json:"last_shown,omitempty"`
 	LegacyMigrationPending bool                 `json:"legacy_migration_pending,omitempty"`
 	Pending                *Pending             `json:"pending,omitempty"`
-	LastCompleteCycle      string               `json:"last_complete_cycle_id,omitempty"`
-	LastCollectionGen      string               `json:"last_collection_generation,omitempty"`
-	Checksum               string               `json:"checksum"`
+	// UnresolvedUpload is an upload whose outcome is still unknown. It blocks
+	// artwork changes until inventory proves the outcome, while settings and
+	// power control keep running.
+	UnresolvedUpload  *Pending `json:"unresolved_upload,omitempty"`
+	LastCompleteCycle string   `json:"last_complete_cycle_id,omitempty"`
+	LastCollectionGen string   `json:"last_collection_generation,omitempty"`
+	Checksum          string   `json:"checksum"`
 }
