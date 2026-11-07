@@ -91,19 +91,6 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		waiting = append(waiting, waitingArtwork{item: item, digest: digest, lastShown: state.LastShown[digest]})
 	}
 
-	// Never remove the final known-good owned item unless a successor is already
-	// bound, or policy explicitly permits an empty managed collection.
-	boundDesired := len(owned)
-	ownedRemaining := len(state.Bindings) - len(plan.PruneBindings)
-	for _, binding := range obsolete {
-		if !policy.AllowEmpty && boundDesired == 0 && ownedRemaining <= 1 {
-			continue
-		}
-		plan.Commands = append(plan.Commands, CommandIntent{
-			Kind: CommandDeleteOwned, Digest: binding.Digest, ContentID: binding.ContentID,
-		})
-		ownedRemaining--
-	}
 	admission := planCapacity(capacityInput{
 		waiting: waiting, owned: owned, state: state, inventory: len(observation.Inventory.ContentIDs),
 		policy: policy, now: observation.Inventory.ObservedAt,
@@ -121,8 +108,25 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 			PortraitMatte: policy.PortraitMatte,
 		}
 	}
+	// Replacements upload before outdated art is removed, so a failed or slow
+	// upload never leaves the TV with less art than it had. The service runs
+	// one command and replans, so on a full TV this interleaves: one removal
+	// frees a slot, the next plan fills it.
 	for _, artwork := range admission.fills {
 		plan.Commands = append(plan.Commands, upload(artwork))
+	}
+	// Never remove the final known-good owned item unless a successor is already
+	// bound, or policy explicitly permits an empty managed collection.
+	boundDesired := len(owned)
+	ownedRemaining := len(state.Bindings) - len(plan.PruneBindings)
+	for _, binding := range obsolete {
+		if !policy.AllowEmpty && boundDesired == 0 && ownedRemaining <= 1 {
+			continue
+		}
+		plan.Commands = append(plan.Commands, CommandIntent{
+			Kind: CommandDeleteOwned, Digest: binding.Digest, ContentID: binding.ContentID,
+		})
+		ownedRemaining--
 	}
 	for _, swap := range admission.swaps {
 		plan.Commands = append(plan.Commands,
