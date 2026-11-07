@@ -9,6 +9,23 @@ import (
 
 // RotationInterval returns how long each artwork stays on a full TV before
 // rotation may replace it. Zero disables rotation.
+// Slideshow modes: the manager changes the picture itself, or the TV's own
+// slideshow setting is managed.
+const (
+	SlideshowModeApp = "app"
+	SlideshowModeTV  = "tv"
+)
+
+// ShowInterval is how long the manager leaves each picture on screen before
+// selecting the next one. It is zero when the TV decides what is shown:
+// SLIDESHOW_MODE=tv, or SLIDESHOW_ENABLED=false.
+func (c *Config) ShowInterval() time.Duration {
+	if c.SlideshowMode != SlideshowModeApp || (c.SlideshowEnabledSet && !c.SlideshowEnabled) {
+		return 0
+	}
+	return time.Duration(c.SlideshowInterval) * time.Minute
+}
+
 func (c *Config) RotationInterval() time.Duration {
 	return time.Duration(c.RotationIntervalDays * float64(24*time.Hour)).Round(time.Second)
 }

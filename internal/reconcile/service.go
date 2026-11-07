@@ -226,6 +226,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		}
 	}
 	retainShownHistory(&state, desired)
+	retainDisplayHistory(&state, desired)
 	state.LastCompleteCycle = request.CycleID
 	state.LastCollectionGen = request.Snapshot.Generation
 	state.Revision++

@@ -255,8 +255,9 @@ missing, and removes pieces it uploaded that you have since deleted from the fol
 <li><strong>Check the folder</strong> and prepare pictures that need it: turned upright, fitted to the 16:9 screen, converted to sRGB, and resized to 3840×2160.</li>
 <li><strong>Read each TV</strong> to see what's stored on it.</li>
 <li><strong>Upload what's missing</strong> and remove pieces you deleted from the folder.</li>
-<li><strong>Apply TV settings</strong> such as slideshow, brightness, or power-off, only if you configured them.</li>
+<li><strong>Apply TV settings</strong> such as brightness, power-off, or the TV's own slideshow, only if you configured them.</li>
 </ol>
+<p>Between syncs, the manager also changes the picture on screen every 15 minutes by default, choosing only art it uploaded and only while the TV is in Art Mode. Set <code>SLIDESHOW_ENABLED=false</code> to leave that to the TV.</p>
 <p>If you use <a href="seasonal-art-collections-samsung-frame-tv.html">themed collections</a>, each sync also picks which pictures are wanted today, for example only the Christmas art from December 1 to January 6. Pictures that aren't wanted today are removed from the TV but stay in the folder.</p>
 <p>The prepared version of each picture replaces it in the artwork folder, and the untouched original is kept in the folder's hidden <code>.frame-tv-art-manager/originals</code> directory. Prepared versions are always re-made from the original, so changing an image setting later never costs quality.</p>
 </section>
@@ -290,7 +291,7 @@ Each TV gets the same collection and is tracked separately, so a TV that's off d
 <h2 id="safety">What it won't do</h2>
 <ul class="cross">
 <li>Delete art you added yourself, unless <code>REMOVE_UNKNOWN_IMAGES=true</code>.</li>
-<li>Choose which piece is on screen. The TV and its slideshow decide.</li>
+<li>Change the picture while someone is watching TV, or put art it didn't upload on screen.</li>
 <li>Change anything on a TV whose state it can't confirm. That TV is skipped until the next sync.</li>
 <li>Treat a failed folder scan or a website that's down as "delete everything". A failing source keeps its last good results, and the rest of the sync goes ahead.</li>
 <li>Change anything at all in a dry run (<code>DRY_RUN=true</code>).</li>

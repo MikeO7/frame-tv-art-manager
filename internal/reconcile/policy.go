@@ -18,6 +18,9 @@ func validatePolicy(policy Policy) error {
 	if err := validateSlideshowPolicy(policy.Slideshow); err != nil {
 		return err
 	}
+	if err := validateShowPolicy(policy.Show); err != nil {
+		return err
+	}
 	if err := validateValuePolicies(policy); err != nil {
 		return err
 	}

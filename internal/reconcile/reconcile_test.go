@@ -795,7 +795,7 @@ func TestResolvePendingRemainingCommands(t *testing.T) {
 		{"power unknown off", CommandIntent{Kind: CommandPowerOff}, PhaseOutcomeUnknown, off, true},
 		{"wake prepared off", CommandIntent{Kind: CommandWake}, PhasePrepared, off, true},
 		{"wake unknown on", CommandIntent{Kind: CommandWake}, PhaseOutcomeUnknown, on, true},
-		{"select blocked", CommandIntent{Kind: CommandSelect, ContentID: "content"}, PhaseOutcomeUnknown, on, false},
+		{"select unknown clears", CommandIntent{Kind: CommandSelect, ContentID: "content"}, PhaseOutcomeUnknown, on, true},
 		{"slideshow blocked", CommandIntent{Kind: CommandSlideshow}, PhaseOutcomeUnknown, on, false},
 		{"brightness blocked", CommandIntent{Kind: CommandBrightness}, PhaseOutcomeUnknown, on, false},
 		{"invalid blocked", CommandIntent{Kind: "invalid"}, PhaseOutcomeUnknown, on, false},
@@ -1440,6 +1440,7 @@ func TestRunMultiCommandUsesFreshAuthorizationAndConverges(t *testing.T) {
 		value := knownObservation(samsung.PowerStateOn, ids...)
 		value.Slideshow = samsung.SlideshowObservation{Setting: slideshow, Known: true, ObservedAt: testTime}
 		value.Brightness = samsung.SettingObservation{Value: brightness, Known: true, ObservedAt: testTime}
+		value.Capabilities.ImageSelection = samsung.SupportSupported
 		return value
 	}
 	shuffleFive := samsung.SlideshowSetting{Interval: 5, Kind: samsung.SlideshowShuffle}
@@ -1459,7 +1460,7 @@ func TestRunMultiCommandUsesFreshAuthorizationAndConverges(t *testing.T) {
 		},
 	}
 	policy := Policy{
-		Select: true, Power: PowerOff,
+		Show: ShowPolicy{Interval: 15 * time.Minute}, Power: PowerOff,
 		Slideshow:  SlideshowPolicy{Mode: PolicySet, Setting: sequentialTen},
 		Brightness: SettingPolicy{Mode: PolicySet, Value: 50},
 	}

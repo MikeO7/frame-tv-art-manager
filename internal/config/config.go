@@ -59,6 +59,11 @@ type Config struct {
 
 	// --- Slideshow ---
 
+	// SlideshowMode is "app" (the manager changes the picture itself every
+	// SlideshowInterval minutes) or "tv" (the TV's own slideshow setting is
+	// managed instead).
+	SlideshowMode string
+
 	// SlideshowEnabled turns on slideshow override when true.
 	SlideshowEnabled bool
 

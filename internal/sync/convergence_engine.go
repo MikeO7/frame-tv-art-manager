@@ -36,11 +36,15 @@ type convergenceEngine struct {
 	// selected. lastThemes is touched only by RunOnce under cycleGate.
 	themes     *themes.Store
 	lastThemes *themes.File
+	// lastDesired is the collection the last sync cycle sent to the TVs.
+	// RunDisplay reuses it between cycles; it is touched only under cycleGate.
+	lastDesired *collectionpkg.Snapshot
 	// wake coalesces early Sync Cycle requests into one pending cycle.
 	wake chan struct{}
 
 	mu         sync.Mutex
 	cycleNum   int
+	displayNum int
 	placements map[string][]string
 	closeOnce  sync.Once
 	closeErr   error
@@ -92,11 +96,21 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 	if ctx.Err() == nil {
 		ticker := time.NewTicker(engineSyncInterval(engine.cfg))
 		defer ticker.Stop()
+		// Pictures change more often than the collection syncs, so a lighter
+		// timer changes them in between.
+		var display <-chan time.Time
+		if interval := engine.cfg.ShowInterval(); interval > 0 && interval < engineSyncInterval(engine.cfg) {
+			displayTicker := time.NewTicker(interval)
+			defer displayTicker.Stop()
+			display = displayTicker.C
+		}
 		for ctx.Err() == nil {
 			select {
 			case <-ctx.Done():
 			case <-ticker.C:
 				_ = engine.RunOnce(ctx)
+			case <-display:
+				_ = engine.RunDisplay(ctx)
 			case <-engine.wake:
 				engine.logger.Info("starting requested sync cycle")
 				_ = engine.RunOnce(ctx)
@@ -145,7 +159,8 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	if engine.health != nil {
 		engine.health.SetStage("syncing TVs")
 	}
-	summaries, tvErrors := engine.syncAll(ctx, cycleNum, desired.snapshot, policy)
+	engine.lastDesired = &desired.snapshot
+	summaries, tvErrors := engine.syncAll(ctx, fmt.Sprintf("cycle-%d", cycleNum), desired.snapshot, policy)
 	failedTVs = countFailedTVs(summaries)
 	if len(tvErrors) == 1 && errors.Is(tvErrors[0], ctx.Err()) {
 		return ctx.Err()
@@ -161,6 +176,41 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	return desired.degraded
 }
 
+// RunDisplay changes the picture on every TV between sync cycles. It reuses
+// the collection the last cycle synced, so it never downloads or prepares
+// art; the TV's reconciler decides whether a change is due.
+func (engine *convergenceEngine) RunDisplay(ctx context.Context) error {
+	if err := acquireGate(ctx, engine.cycleGate); err != nil {
+		return fmt.Errorf("wait for sync cycle: %w", err)
+	}
+	defer func() { <-engine.cycleGate }()
+	if engine.lastDesired == nil {
+		return nil
+	}
+	snapshot := *engine.lastDesired
+	engine.mu.Lock()
+	engine.displayNum++
+	label := fmt.Sprintf("display-%d", engine.displayNum)
+	engine.mu.Unlock()
+
+	mattes, err := config.ReadMatteConfig(ctx, engine.cfg.ArtworkDir)
+	if err != nil {
+		engine.logger.Warn("picture change skipped", "cycle", label, "error", err)
+		return fmt.Errorf("read artwork matte policy: %w", err)
+	}
+	logger := engine.logger.With("cycle", label)
+	policy, err := convergencePolicy(engine.cfg, resolveMatteKeys(snapshot, mattes), time.Now(), logger)
+	if err != nil {
+		logger.Warn("picture change skipped", "error", err)
+		return fmt.Errorf("build reconciliation policy: %w", err)
+	}
+	_, tvErrors := engine.syncAll(ctx, label, snapshot, policy)
+	if len(tvErrors) > 0 {
+		return fmt.Errorf("change pictures: %w", errors.Join(tvErrors...))
+	}
+	return nil
+}
+
 func (engine *convergenceEngine) nextCycle() int {
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
@@ -170,7 +220,7 @@ func (engine *convergenceEngine) nextCycle() int {
 
 func (engine *convergenceEngine) syncAll(
 	ctx context.Context,
-	cycleNum int,
+	label string,
 	snapshot collectionpkg.Snapshot,
 	policy reconcile.Policy,
 ) ([]TVSyncResult, []error) {
@@ -188,7 +238,7 @@ func (engine *convergenceEngine) syncAll(
 		launched++
 		go func(tv *convergenceRuntime) {
 			defer func() { <-workers }()
-			cycleID := fmt.Sprintf("cycle-%d-%s", cycleNum, tv.address)
+			cycleID := label + "-" + tv.address
 			summary, runErr := tv.run(ctx, cycleID, snapshot, policy, engine.cfg.DryRun)
 			results <- outcome{summary: summary, err: runErr}
 		}(runtime)
@@ -200,7 +250,7 @@ func (engine *convergenceEngine) syncAll(
 		summaries = append(summaries, result.summary)
 		engine.publishTVHealth(result.summary)
 		engine.recordPlacements(result.summary)
-		logTVOutcome(ctx, engine.logger.With("cycle", cycleNum), result.summary, result.err)
+		logTVOutcome(ctx, engine.logger.With("cycle", label), result.summary, result.err)
 		if result.err != nil {
 			errs = append(errs, fmt.Errorf("tv %s: %w", result.summary.IP, result.err))
 		}

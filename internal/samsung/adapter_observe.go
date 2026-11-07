@@ -179,9 +179,13 @@ func capabilityProbes() []capabilityProbe {
 			// Selection is authorized only when get_current_artwork answers,
 			// so its postcondition can be verified.
 			name: "current artwork", capability: CapabilityImageSelection,
-			read: func(ctx context.Context, transport mutationTransport, _ *Observation) error {
-				_, err := transport.CurrentArtwork(ctx)
-				return err
+			read: func(ctx context.Context, transport mutationTransport, observation *Observation) error {
+				contentID, err := transport.CurrentArtwork(ctx)
+				if err != nil {
+					return err
+				}
+				observation.CurrentArtwork = contentID
+				return nil
 			},
 			support: func(capabilities *Capabilities, support Support) { capabilities.ImageSelection = support },
 		},

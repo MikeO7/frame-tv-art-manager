@@ -25,10 +25,7 @@ func convergencePolicy(
 		return reconcile.Policy{}, err
 	}
 	policy := reconcile.Policy{
-		RemoveUnknown: cfg.RemoveUnknownImages,
-		// Selection is verifiable through get_current_artwork, but which piece
-		// is on screen stays with the TV's own slideshow and the owner.
-		Select:         false,
+		RemoveUnknown:  cfg.RemoveUnknownImages,
 		DefaultMatte:   defaultMatte,
 		PortraitMatte:  cfg.PortraitMatte,
 		MatteOverrides: matteOverrides,
@@ -42,33 +39,7 @@ func convergencePolicy(
 	if isWithinAutoOffWindowAt(cfg.AutoOffTime, cfg.AutoOffGraceHours, cfg.Timezone, now) {
 		policy.Power, policy.WakeBoundary = reconcile.PowerOff, time.Time{}
 	}
-	if cfg.SlideshowOverride {
-		kind := samsung.SlideshowShuffle
-		if cfg.SlideshowType == slideshowSequentialConfig {
-			kind = samsung.SlideshowSequential
-		}
-		policy.Slideshow = reconcile.SlideshowPolicy{
-			Mode: reconcile.PolicyDisable,
-			Setting: samsung.SlideshowSetting{
-				Kind: kind,
-			},
-		}
-		switch {
-		case cfg.SlideshowEnabled:
-			policy.Slideshow.Mode = reconcile.PolicySet
-			policy.Slideshow.Setting.Interval = cfg.SlideshowInterval
-		case !cfg.SlideshowEnabledSet:
-			// Only the interval or type was configured: tune a slideshow the
-			// owner already runs, and never switch one on or off.
-			policy.Slideshow = reconcile.SlideshowPolicy{Mode: reconcile.PolicyAdjust}
-			if cfg.SlideshowIntervalSet {
-				policy.Slideshow.Setting.Interval = cfg.SlideshowInterval
-			}
-			if cfg.SlideshowTypeSet {
-				policy.Slideshow.Setting.Kind = kind
-			}
-		}
-	}
+	policy.Show, policy.Slideshow = pictureChangePolicy(cfg)
 	location := (*brightness.SolarLocation)(nil)
 	if cfg.SolarEnabled {
 		location = &brightness.SolarLocation{
@@ -104,4 +75,46 @@ func convergenceMattes(global string, mattes *config.MatteConfig) (reconcile.Mat
 		return reconcile.MatteOverrides{}, "", fmt.Errorf("configure default artwork matte: value is invalid")
 	}
 	return overrides, defaultMatte, nil
+}
+
+// pictureChangePolicy decides who changes the picture on screen. In app mode
+// the manager picks each picture and leaves the TV's slideshow setting alone,
+// since selecting a picture stops it anyway. In tv mode the TV's own
+// slideshow is managed as configured.
+func pictureChangePolicy(cfg *config.Config) (reconcile.ShowPolicy, reconcile.SlideshowPolicy) {
+	sequential := cfg.SlideshowType == slideshowSequentialConfig
+	if interval := cfg.ShowInterval(); interval > 0 {
+		show := reconcile.ShowPolicy{Interval: interval, Order: reconcile.ShowShuffle}
+		if sequential {
+			show.Order = reconcile.ShowSequential
+		}
+		return show, reconcile.SlideshowPolicy{}
+	}
+	if !cfg.SlideshowOverride || cfg.SlideshowMode != config.SlideshowModeTV {
+		return reconcile.ShowPolicy{}, reconcile.SlideshowPolicy{}
+	}
+	kind := samsung.SlideshowShuffle
+	if sequential {
+		kind = samsung.SlideshowSequential
+	}
+	switch {
+	case cfg.SlideshowEnabled:
+		return reconcile.ShowPolicy{}, reconcile.SlideshowPolicy{
+			Mode: reconcile.PolicySet, Setting: samsung.SlideshowSetting{Interval: cfg.SlideshowInterval, Kind: kind},
+		}
+	case cfg.SlideshowEnabledSet:
+		return reconcile.ShowPolicy{}, reconcile.SlideshowPolicy{
+			Mode: reconcile.PolicyDisable, Setting: samsung.SlideshowSetting{Kind: kind},
+		}
+	}
+	// Only the interval or type was configured: tune a slideshow the owner
+	// already runs, and never switch one on or off.
+	adjust := reconcile.SlideshowPolicy{Mode: reconcile.PolicyAdjust}
+	if cfg.SlideshowIntervalSet {
+		adjust.Setting.Interval = cfg.SlideshowInterval
+	}
+	if cfg.SlideshowTypeSet {
+		adjust.Setting.Kind = kind
+	}
+	return reconcile.ShowPolicy{}, adjust
 }

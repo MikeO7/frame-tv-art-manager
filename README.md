@@ -58,8 +58,12 @@ Guides:
 - **Works with AI assistants.** An optional MCP endpoint lets Claude or another
   assistant create or find art, preview how it will look, and schedule it. The
   manager needs no AI keys.
-- **Optional TV controls.** Slideshow settings, fixed or sun-following
-  brightness, a nightly power-off time, and Wake-on-LAN.
+- **Your art rotates without a subscription.** The manager changes the picture
+  itself every 15 minutes by default, shuffling through everything before
+  repeating. Samsung's own slideshow of your photos now asks for an Art Store
+  subscription on current firmware.
+- **Optional TV controls.** Fixed or sun-following brightness, a nightly
+  power-off time, and Wake-on-LAN.
 
 ## Is it right for you?
 
@@ -316,7 +320,8 @@ Every sync does the same thing:
 2. Check the collection and prepare any images that need it.
 3. Connect to each TV and read what's on it.
 4. Upload what's missing and remove art you've deleted from the folder.
-5. Apply any slideshow, brightness, or power settings you've configured.
+5. Change the picture on screen when it is due, and apply any brightness or
+   power settings you've configured.
 
 The manager keeps a private record, per TV, of which art it uploaded. That
 record decides what it is allowed to remove:
@@ -698,15 +703,27 @@ uploads stop adding images once the limit is reached.
 
 ## TV controls
 
-All of these are optional. If you don't set them, the manager leaves the TV's
-own settings alone.
+Apart from the picture changes, all of these are optional. If you don't set
+them, the manager leaves the TV's own settings alone.
 
-- **Slideshow.** `SLIDESHOW_ENABLED=true` or `false` puts the manager in
-  charge of starting and stopping the slideshow, using `SLIDESHOW_INTERVAL`
-  (3, 15, 60, 720, or 1440 minutes) and `SLIDESHOW_TYPE` (`shuffle` or
-  `sequential`). If you set only `SLIDESHOW_INTERVAL` or `SLIDESHOW_TYPE`, the
-  manager adjusts a slideshow that is already running and never turns one on
-  or off. The TV keeps playing the category it was already playing.
+- **Picture changes (on by default).** The manager shows a new picture every
+  `SLIDESHOW_INTERVAL` minutes (default `15`, any value from 1 to 1440).
+  `SLIDESHOW_TYPE=shuffle` (the default) shows every picture once, in a new
+  random order each round, before any repeats; `sequential` goes in file-name
+  order and wraps around. It picks only art the manager uploaded, only while
+  the TV is in Art Mode, and only when the TV can confirm what's on screen.
+  It runs between syncs, so it doesn't wait for `SYNC_INTERVAL_MINUTES`.
+  `SLIDESHOW_ENABLED=false` turns it off and leaves the picture to the TV.
+  The manager does this itself because, on current firmware, the TV's own
+  slideshow of My Photos asks for an Art Store subscription: the TV accepts
+  the setting but never changes the picture.
+- **TV slideshow instead.** If you subscribe to the Art Store and want the
+  TV's own slideshow, set `SLIDESHOW_MODE=tv`. The manager then never picks
+  the picture. `SLIDESHOW_ENABLED=true` or `false` starts or stops the TV's
+  slideshow, using `SLIDESHOW_INTERVAL` (3, 15, 60, 720, or 1440 minutes) and
+  `SLIDESHOW_TYPE`. If you set only `SLIDESHOW_INTERVAL` or `SLIDESHOW_TYPE`,
+  the manager adjusts a slideshow that is already running and never turns one
+  on or off. The TV keeps playing the category it was already playing.
 - **Brightness.** `BRIGHTNESS` sets a fixed level on the Frame's Art Mode scale
   (0–10). Alternatively, `SOLAR_BRIGHTNESS_ENABLED=true` with
   `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the

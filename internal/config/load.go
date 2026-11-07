@@ -95,8 +95,14 @@ func validateMCPSettings(cfg *Config) error {
 }
 
 func validateEnums(cfg *Config) error {
-	if !supportedSlideshowInterval(cfg.SlideshowInterval) {
-		return fmt.Errorf("SLIDESHOW_INTERVAL must be one of 3, 15, 60, 720, or 1440; got %d", cfg.SlideshowInterval)
+	switch cfg.SlideshowMode {
+	case SlideshowModeApp:
+	case SlideshowModeTV:
+		if !supportedSlideshowInterval(cfg.SlideshowInterval) {
+			return fmt.Errorf("SLIDESHOW_INTERVAL must be one of 3, 15, 60, 720, or 1440 when SLIDESHOW_MODE=tv; got %d", cfg.SlideshowInterval)
+		}
+	default:
+		return fmt.Errorf("SLIDESHOW_MODE must be app or tv; got %q", cfg.SlideshowMode)
 	}
 	switch cfg.SlideshowType {
 	case "shuffle", "sequential":

@@ -15,7 +15,7 @@ test('CLI help/version and invalid configuration exit without creating state', a
     for (const override of [
       { TV_IPS: '' }, { TV_IPS: 'not-an-ip' }, { TV_IPS: '127.0.0.1,127.0.0.1' },
       { UPLOAD_TOKEN: 'short' }, { HEALTH_PORT: '70000' }, { PORTRAIT_MODE: 'unknown' },
-      { SLIDESHOW_INTERVAL: '30' }, { IMAGE_JPEG_QUALITY: '101' }, { AUTO_OFF_TIME: '25:00' },
+      { SLIDESHOW_INTERVAL: '1441' }, { IMAGE_JPEG_QUALITY: '101' }, { AUTO_OFF_TIME: '25:00' },
     ]) {
       const process = launch(paths, override);
       expect((await process.exited)[0]).toBe(1);

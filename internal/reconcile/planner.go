@@ -144,19 +144,8 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 			})
 		}
 	}
-	if policy.Select {
-		digests := make([]string, 0, len(desired))
-		for digest := range desired {
-			digests = append(digests, digest)
-		}
-		slices.Sort(digests)
-		for _, digest := range digests {
-			binding, bound := state.Bindings[digest]
-			if _, present := inventory[binding.ContentID]; bound && present {
-				plan.Commands = append(plan.Commands, CommandIntent{Kind: CommandSelect, ContentID: binding.ContentID})
-				break
-			}
-		}
+	if intent, due := planShow(desired, state, inventory, observation, policy.Show); due {
+		plan.Commands = append(plan.Commands, intent)
 	}
 	// A managed setting the TV did not report this cycle is left alone: the
 	// adapter observed it as optional, and artwork convergence must not wait
@@ -223,6 +212,7 @@ func cloneState(state State) State {
 	clone.LastShown = maps.Clone(state.LastShown)
 	clone.Pending = clonePending(state.Pending)
 	clone.UnresolvedUpload = clonePending(state.UnresolvedUpload)
+	clone.Display = cloneDisplay(state.Display)
 	return clone
 }
 
