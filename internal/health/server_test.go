@@ -307,3 +307,28 @@ func TestHTTPStatusWireContract(t *testing.T) {
 		t.Fatalf("TV wire state = %#v; an update without LastSeen must keep the last known time", tv)
 	}
 }
+
+func TestStatusReportsSourceWarningWithoutFailingReadiness(t *testing.T) {
+	t.Parallel()
+	const detail = "artwork sources failed: provider offline"
+	server, _ := authTestServer(t, testUploadToken)
+	for _, test := range []struct {
+		name     string
+		warning  string
+		request  *http.Request
+		wantText string
+	}{
+		{name: "signed in sees detail", warning: detail, request: statusRequest("192.0.2.5", "frame", testUploadToken), wantText: detail},
+		{name: "anonymous sees no detail", warning: detail, request: statusRequest("192.0.2.5", "", ""), wantText: redactedSourceWarning},
+		{name: "source recovered", request: statusRequest("192.0.2.5", "frame", testUploadToken)},
+	} {
+		server.status.SetSourceWarning(test.warning)
+		response := httptest.NewRecorder()
+		server.handleStatus(response, test.request)
+		payload := decodeJSONResponse(t, response)
+		got, present := payload[fieldSourceWarning]
+		if response.Code != http.StatusOK || present != (test.wantText != "") || (present && got != test.wantText) {
+			t.Fatalf("%s: status %d, source warning %v (present %t)", test.name, response.Code, got, present)
+		}
+	}
+}

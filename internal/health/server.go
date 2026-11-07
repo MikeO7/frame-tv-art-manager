@@ -21,20 +21,23 @@ import (
 // JSON field names and status values shared across the health endpoints.
 // Centralizing them keeps the wire contract consistent in one place.
 const (
-	fieldStatus       = "status"
-	fieldError        = "error"
-	fieldUptime       = "uptime"
-	fieldLastSync     = "last_sync"
-	fieldLastSyncOK   = "last_sync_ok"
-	fieldLastError    = "last_error"
-	fieldCurrentStage = "current_stage"
-	fieldSyncCount    = "sync_count"
-	fieldLifecycle    = "lifecycle"
-	fieldRedacted     = "redacted"
-	statusOK          = "ok"
-	statusError       = "error"
-	lifecycleReady    = "ready"
-	lifecycleFailed   = "failed"
+	fieldStatus        = "status"
+	fieldError         = "error"
+	fieldUptime        = "uptime"
+	fieldLastSync      = "last_sync"
+	fieldLastSyncOK    = "last_sync_ok"
+	fieldLastError     = "last_error"
+	fieldCurrentStage  = "current_stage"
+	fieldSyncCount     = "sync_count"
+	fieldLifecycle     = "lifecycle"
+	fieldRedacted      = "redacted"
+	fieldSourceWarning = "source_warning"
+	// redactedSourceWarning replaces source failure detail for anonymous callers.
+	redactedSourceWarning = "artwork sources failed"
+	statusOK              = "ok"
+	statusError           = "error"
+	lifecycleReady        = "ready"
+	lifecycleFailed       = "failed"
 )
 
 // Status holds the current service health state.
@@ -65,6 +68,7 @@ type statusSnapshot struct {
 	SyncCount        int
 	CurrentStage     string
 	Lifecycle        string
+	SourceWarning    string
 	TVStatuses       map[string]TVStatus
 }
 
@@ -98,6 +102,15 @@ func (s *Status) RecordSync(ok bool, err error) {
 	} else {
 		s.LastErrorMessage = ""
 	}
+}
+
+// SetSourceWarning records why the last source sync failed, or clears it with
+// an empty message. Source failures degrade status without failing a cycle
+// that synced TVs from the existing collection.
+func (s *Status) SetSourceWarning(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.SourceWarning = message
 }
 
 // SetStage updates the current operation stage.

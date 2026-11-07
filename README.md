@@ -473,7 +473,7 @@ The built-in web server (port `HEALTH_PORT`) provides:
 | --- | --- |
 | `GET /live` | The process is running. The container healthcheck uses this. |
 | `GET /ready`, `GET /health` | 200 once startup finished and the last sync succeeded, otherwise 503. Shows timing and state only, never error text. |
-| `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. |
+| `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. `source_warning` appears when an artwork source failed; TVs still sync the art already on disk. |
 | `GET` / `POST /upload` | The upload page, when uploads are enabled. |
 
 `/live`, `/ready`, and `/health` need no password. When `UPLOAD_TOKEN` is set,
