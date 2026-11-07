@@ -9,7 +9,7 @@ import (
 )
 
 func validateManifestItems(value manifest) (map[string]Item, error) {
-	if value.Version != 1 && value.Version != 2 && value.Version != 3 {
+	if value.Version < 1 || value.Version > manifestVersion {
 		return nil, fmt.Errorf("unsupported collection manifest version %d", value.Version)
 	}
 	records := make(map[string]Item, len(value.Items))
@@ -49,10 +49,14 @@ func validateManifestItem(
 	if err != nil {
 		return Item{}, err
 	}
+	originals, err := parseOriginalNames(entry.Name, entry.Originals)
+	if err != nil {
+		return Item{}, err
+	}
 	item := Item{
 		Name: entry.Name, Key: entry.Key, Digest: digest, Type: entry.Type, Width: entry.Width, Height: entry.Height,
 		Origin: Origin{Key: entry.OriginKey, Class: entry.Class}, SourceKeys: append([]string(nil), entry.SourceKeys...),
-		TransformKey: entry.TransformKey, Derivative: entry.Derivative,
+		TransformKey: entry.TransformKey, Derivative: entry.Derivative, Originals: originals,
 	}
 	if version == 1 {
 		item.Key = item.Name

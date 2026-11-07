@@ -184,8 +184,20 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 		c.health.SetStage("downloading sources")
 	}
 	result.downloaded, err = c.loader.Sync(ctx, baseline)
-	if err != nil {
+	if err != nil && ctx.Err() != nil {
 		return result, fmt.Errorf("synchronize artwork sources: %w", err)
+	}
+	// A provider or network outage must not stop TVs from syncing the art
+	// already committed: the failure is reported and the last-known-good
+	// collection is used.
+	sourceWarning := ""
+	if err != nil {
+		c.logger.Warn("artwork sources failed; syncing the existing collection", "error", err)
+		sourceWarning = "artwork sources failed: " + err.Error()
+		result.warnings = append(result.warnings, sourceWarning)
+	}
+	if c.health != nil {
+		c.health.SetSourceWarning(sourceWarning)
 	}
 	if result.downloaded > 0 {
 		baseline, err = c.prepareAuthoritativeSnapshot(ctx)
@@ -195,7 +207,7 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 	}
 	metadata := newMetadataProjection(baseline)
 	stageRequest := optimize.StageRequest{
-		Inputs: stageInputs(baseline), Config: c.cfg.OptimizeOptions(), Logger: c.logger,
+		Inputs: stageInputs(c.cfg.ArtworkDir, baseline), Config: c.cfg.OptimizeOptions(), Logger: c.logger,
 	}
 	requiresStage, err := optimize.RequiresStage(ctx, stageRequest)
 	if err != nil {

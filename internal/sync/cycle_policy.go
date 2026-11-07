@@ -26,18 +26,21 @@ func convergencePolicy(
 	}
 	policy := reconcile.Policy{
 		RemoveUnknown: cfg.RemoveUnknownImages,
-		// Current artwork is preserved until Samsung exposes an observable,
-		// recoverable selection postcondition through this adapter.
+		// Selection is verifiable through get_current_artwork, but which piece
+		// is on screen stays with the TV's own slideshow and the owner.
 		Select:         false,
 		DefaultMatte:   defaultMatte,
+		PortraitMatte:  cfg.PortraitMatte,
 		MatteOverrides: matteOverrides,
 		Rotation:       cfg.RotationInterval(),
 	}
 	if cfg.TVMAC != nil {
-		policy.Power = reconcile.WakeWhenKnownOff
+		if boundary, due := autoOnBoundaryAt(cfg.AutoOnTime, cfg.AutoOnGraceHours, cfg.Timezone, now); due {
+			policy.Power, policy.WakeBoundary = reconcile.PowerOn, boundary
+		}
 	}
 	if isWithinAutoOffWindowAt(cfg.AutoOffTime, cfg.AutoOffGraceHours, cfg.Timezone, now) {
-		policy.Power = reconcile.PowerOff
+		policy.Power, policy.WakeBoundary = reconcile.PowerOff, time.Time{}
 	}
 	if cfg.SlideshowOverride {
 		kind := samsung.SlideshowShuffle
@@ -50,9 +53,20 @@ func convergencePolicy(
 				Kind: kind,
 			},
 		}
-		if cfg.SlideshowEnabled {
+		switch {
+		case cfg.SlideshowEnabled:
 			policy.Slideshow.Mode = reconcile.PolicySet
 			policy.Slideshow.Setting.Interval = cfg.SlideshowInterval
+		case !cfg.SlideshowEnabledSet:
+			// Only the interval or type was configured: tune a slideshow the
+			// owner already runs, and never switch one on or off.
+			policy.Slideshow = reconcile.SlideshowPolicy{Mode: reconcile.PolicyAdjust}
+			if cfg.SlideshowIntervalSet {
+				policy.Slideshow.Setting.Interval = cfg.SlideshowInterval
+			}
+			if cfg.SlideshowTypeSet {
+				policy.Slideshow.Setting.Kind = kind
+			}
 		}
 	}
 	location := (*brightness.SolarLocation)(nil)

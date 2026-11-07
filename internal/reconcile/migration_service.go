@@ -73,7 +73,7 @@ func (s *service) completeDeferredLegacyMigration(
 	observation samsung.Observation,
 	dryRun bool,
 ) (State, error) {
-	if state.Pending != nil || len(state.Bindings) != 0 {
+	if state.Pending != nil || state.UnresolvedUpload != nil || len(state.Bindings) != 0 {
 		return state, errors.New("deferred legacy migration requires idle empty reconciliation state")
 	}
 	mapping, exists, err := s.legacy.load(ctx, state.TV.Address)

@@ -43,6 +43,10 @@ type Config struct {
 	// Use "none" for full-screen, or "style_color" (e.g. "shadowbox_polar").
 	MatteStyle string
 
+	// PortraitMatte is the matte for artwork shown in portrait orientation,
+	// from PORTRAIT_MATTE. Empty uses MatteStyle.
+	PortraitMatte string
+
 	// ClientName is the identity sent to the TV during WebSocket handshake.
 	// A stable name prevents the TV from prompting Allow/Deny on every connect.
 	ClientName string
@@ -67,6 +71,13 @@ type Config struct {
 	// SlideshowOverride is true if any slideshow env var was explicitly set.
 	// When false, the TV's current slideshow settings are preserved.
 	SlideshowOverride bool
+
+	// SlideshowEnabledSet, SlideshowIntervalSet, and SlideshowTypeSet record
+	// which slideshow variables were set. Without SLIDESHOW_ENABLED the
+	// manager only adjusts a slideshow that is already playing.
+	SlideshowEnabledSet  bool
+	SlideshowIntervalSet bool
+	SlideshowTypeSet     bool
 
 	// --- Brightness ---
 
@@ -111,6 +122,14 @@ type Config struct {
 
 	// AutoOffGraceHours is how long after AutoOffTime to keep trying.
 	AutoOffGraceHours float64
+
+	// AutoOnTime is a 24-hour time string at which a TV that is off is woken
+	// with Wake-on-LAN, once per day. Empty disables scheduled wake. It needs
+	// TVMAC.
+	AutoOnTime string
+
+	// AutoOnGraceHours is how long after AutoOnTime a wake may still be sent.
+	AutoOnGraceHours float64
 
 	// --- Wake-on-LAN ---
 

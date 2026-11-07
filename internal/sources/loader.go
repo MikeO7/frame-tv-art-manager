@@ -80,10 +80,18 @@ func NewLoader(
 	logger *slog.Logger,
 	importer CollectionImporter,
 ) *Loader {
+	// The museum search line shares the museum providers, so their request
+	// pacing, rate-limit windows, and object caches apply to both.
+	artic, met, cleveland, smk := newArticProvider(logger), newMetProvider(logger), newClevelandProvider(logger), newSMKProvider(logger)
 	providers := []SourceProvider{
 		newUnsplashProvider(cfg.UnsplashAccessKey, logger),
 		newNasaProvider(cfg.NasaAPIKey, logger),
-		newArticProvider(logger),
+		artic,
+		met,
+		cleveland,
+		smk,
+		newMuseumProvider(newArtSearcher(logger, artic, met, cleveland, smk), logger),
+		newCommonsProvider(logger),
 		newPexelsProvider(cfg.PexelsAPIKey, logger),
 		newPixabayProvider(cfg.PixabayAPIKey, logger),
 		newDirectProvider(),

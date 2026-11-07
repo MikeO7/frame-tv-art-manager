@@ -93,6 +93,7 @@ func (s *service) observeForConvergence(
 	observation, err := request.TV.Observe(ctx, samsung.ObserveRequest{
 		CycleID: request.CycleID, CollectionGeneration: request.Snapshot.Generation,
 		DryRun: request.DryRun, Required: convergenceObservationCapabilities(policy),
+		Optional: settingCapabilities(policy),
 	})
 	prepared.observation = observation
 	return prepared, err

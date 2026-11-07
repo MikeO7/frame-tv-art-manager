@@ -45,8 +45,10 @@ Guides:
 - **Automatic rotation when the TV is full.** Each piece stays up for two weeks
   (configurable), then makes room for art that hasn't been shown yet.
 - **Many ways to add art.** A local folder, a password-protected web uploader
-  (works with iPhone Shortcuts), or online sources: Unsplash, NASA, the Art
-  Institute of Chicago, Pexels, Pixabay, and direct image links.
+  (works with iPhone Shortcuts), or online sources: public-domain paintings
+  from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and
+  SMK (no API keys needed), Wikimedia Commons' Picture of the Day and Featured
+  Pictures, Unsplash, NASA, Pexels, Pixabay, and direct image links.
 - **Careful by default.** It only removes art it uploaded, leaves your own TV
   uploads alone, and makes no changes when it can't be sure of the TV's state.
 - **Optional TV controls.** Slideshow settings, fixed or sun-following
@@ -100,8 +102,8 @@ docker compose logs -f frame-tv-art-manager
    covers both artwork and power control. The pairing token is saved in
    `./data/tokens`; keep that folder when you upgrade or the TV will ask again.
 2. **Add art.** Copy `.jpg`, `.jpeg`, or `.png` files into `./data/artwork`.
-   Copy, don't move: each file is replaced by its prepared version, so keep
-   your originals somewhere else.
+   Each file is replaced by its prepared version, and the untouched original
+   is kept in the hidden `.frame-tv-art-manager` folder beside it.
 3. **Wait for a sync.** The first sync runs at startup, then every 30 minutes
    (`SYNC_INTERVAL_MINUTES`).
 
@@ -123,8 +125,11 @@ YAML, hidden and temporary files, symlinks) are ignored.
 With image preparation on (the default), each file that needs work is
 **replaced in place** by its prepared 3840×2160 version and renamed to a
 readable name plus a short content hash, for example
-`summer-vacation--8f14e45fceea167a.jpg`. Treat the folder as the TV's copy of
-your art and keep your originals elsewhere.
+`summer-vacation--8f14e45fceea167a.jpg`. The untouched original is kept in
+`.frame-tv-art-manager/originals` inside the folder (see
+[Kept originals](#kept-originals)). Rename or delete the prepared file as you
+would any other; adding a file with the same name replaces it and its
+original.
 
 ### The web uploader
 
@@ -177,6 +182,22 @@ providers:
   art_institute_of_chicago:
     - search:monet
     - photo:20684
+  met:
+    - search:sunflowers
+    - search:?isHighlight=true&departmentId=11
+    - object:436524
+  cleveland:
+    - search:snow?type=Painting
+    - object:1997.111
+  smk:
+    - search:hammershøi
+    - object:KMS1
+  museum:
+    - search:christmas
+  commons:
+    - potd
+    - featured
+    - search:northern lights
   pexels:
     - curated
     - search:architecture
@@ -192,9 +213,39 @@ providers:
 | Unsplash | `collection`, `photo` | up to 990 photos per collection | `UNSPLASH_ACCESS_KEY` |
 | NASA | `apod`, `search` | today's picture (skipped on video days); the first 10 library results | `NASA_API_KEY` (defaults to `DEMO_KEY`) |
 | Art Institute of Chicago | `search`, `photo` | public-domain works only; the first 10 search results | none |
+| The Met (`met`) | `search`, `object` | public-domain works only; the first 10 search results with an open-access image | none |
+| Cleveland Museum of Art (`cleveland`) | `search`, `object` | CC0 works only; the first 10 search results | none |
+| SMK, National Gallery of Denmark (`smk`) | `search`, `object` | public-domain works only; the first 10 search results | none |
+| All four museums (`museum`) | `search` | up to 20 public-domain works for a theme, mixed across the museums above | none |
+| Wikimedia Commons (`commons`) | `potd`, `featured`, `search` | today's Picture of the Day; the 10 newest Featured Pictures; 10 Featured Pictures matching a query | none |
 | Pexels | `search`, `curated`, `collection`, `photo` | 10 search or curated results; up to 800 per collection | `PEXELS_API_KEY` |
 | Pixabay | `search`, `editors_choice`, `photo` | up to 500 photos at least 3840 pixels wide | `PIXABAY_API_KEY` |
 | Direct link | any HTTP or HTTPS image URL | that image | none |
+
+Museum searches can be narrowed with filters after a `?`, written as
+`name=value` pairs joined by `&`. The query before the `?` may be empty when a
+filter is given:
+
+- **The Met:** `departmentId`, `isHighlight`, `isOnView`, `artistOrCulture`,
+  `title`, `tags`, `medium`, `geoLocation`, `dateBegin`, `dateEnd` (the Met's
+  [search parameters](https://metmuseum.github.io/#search-v11); department IDs
+  come from its `/departments` endpoint).
+- **Cleveland:** `type` (such as `Painting` or `Print`), `department`,
+  `highlight`, `artists`, `title`, `created_after`, `created_before`,
+  `currently_on_view`.
+- **SMK** takes no filters.
+
+Unknown filters are rejected, so a typo can't widen a search, and the
+public-domain and has-image filters are always applied. IDs come from each
+work's page: `metmuseum.org/art/collection/search/436524` → `436524`;
+`clevelandart.org/art/1997.111` → `1997.111` (the numeric ID works too);
+`open.smk.dk/artwork/image/KMS1` → `KMS1`.
+
+`museum:search:<theme>` searches all four museums at once and mixes their
+results, dropping the same title by the same artist when two museums hold
+copies (common for prints). If one museum is down, the others' works are still
+used. The Picture of the Day changes at midnight UTC, so `commons:potd` adds one
+picture a day; `commons:search` only searches Featured Pictures.
 
 A plain list, a top-level `sources:` list, or a text file with one source per
 line (`#` for comments) also works. The sources file may be a symlink, so a
@@ -207,7 +258,8 @@ longer want them.
 Each provider has its own rate limits and terms, so the manager asks each one
 as little as possible:
 
-- **Results are cached for 24 hours** (APOD until the next day) in
+- **Results are cached for 24 hours** (APOD and the Commons Picture of the Day
+  until the next day) in
   `.frame-tv-art-manager/source-state.json` inside the artwork folder. Pixabay
   requires this. Restarts reuse the cache.
 - **Rate limits are respected.** When a provider answers `429` or reports no
@@ -218,11 +270,31 @@ as little as possible:
 - **Images are requested at 4K**, not as multi-hundred-megapixel originals:
   just large enough to cover 3840×2160, with a smaller version as a fallback
   when the large one exceeds `MAX_DOWNLOAD_SIZE_MB` or 40 megapixels. With a
-  standard Pixabay key the API only offers 1280-pixel images.
-- **Credit is recorded.** Unsplash and Pexels require photographer credit, so
-  the title, artist, provider, source page, and license of each downloaded
-  image appear under `attributions` in `/status`. Unsplash downloads are also
-  reported to Unsplash as its API guidelines require.
+  standard Pixabay key the API only offers 1280-pixel images. SMK and
+  Wikimedia images are requested at 3840 pixels; Cleveland's 3400-pixel print
+  JPEG is used because its full-size file is a TIFF of several hundred
+  megabytes; the Met publishes only full-size originals. Cleveland, SMK, and
+  Commons images smaller than 1920 pixels on the long edge are skipped.
+- **Museums are asked gently.** A Met search costs one request per work it
+  checks, so Met requests are spaced at most 8 per second (a tenth of its
+  published limit), works it has read are remembered for a day, and a search
+  checks at most 64 works. SMK and Wikimedia requests are spaced as well.
+- **Credit is recorded.** Unsplash and Pexels require photographer credit, and
+  Wikimedia Commons files are often CC BY or CC BY-SA, which require crediting
+  the author and license. So the title, artist, provider, source page, and
+  license of each downloaded image appear under `attributions` in `/status`.
+  Museum images are public domain (CC0 or the Public Domain Mark), and their
+  credit is recorded too. Unsplash downloads are also reported to Unsplash as
+  its API guidelines require. Commons files without license information are
+  skipped.
+
+For developers, `sources.NewArtSearcher(client, logger)` exposes the same
+four-museum search as a Go API: `Search(ctx, sources.SearchQuery{Text:
+"christmas", Limit: 20})` returns candidates with provider, ID, title, artist,
+date, a panel-sized image URL, pixel size when known, license, museum link, and
+the `source_line` (such as `met:object:436524`) that adds that one work. Each
+museum has its own timeout (30 seconds by default), and a museum that fails is
+listed under `failures` while the others' results are still returned.
 
 `pixabay:user:<id>` is no longer supported because the Pixabay API can't filter
 by user; it now fails with an explanation. `UNSPLASH_APP_ID` and
@@ -346,6 +418,37 @@ default 512 MB). A 24-megapixel camera photo takes about a second and roughly
 16-bit PNG or a smart crop of that size can need a larger one. Images above
 40 megapixels are left out of the collection with a warning in the log.
 
+### Kept originals
+
+Before a picture's prepared version replaces it, its untouched bytes are
+saved in the artwork folder's hidden control directory,
+`.frame-tv-art-manager/originals`, named by their SHA-256 hash. A collage
+keeps both of its portraits. Every prepared version is made from its
+original, never from an earlier prepared version, so changing any setting
+above (crop or mat, mat tone, sharpening, museum mode, JPEG subsampling,
+resolution) re-prepares the art from scratch on the next sync: nothing
+compounds, and switching from crop to mat brings back the whole picture.
+Restarting with the same settings changes nothing.
+
+- **Disk space.** Originals take about as much space as the pictures you
+  added (camera photos and full-size downloads included), on top of the
+  prepared copies.
+- **Deleting art.** Delete the prepared file from the folder; its original is
+  removed once that deletion is recorded. An original is never removed
+  because a file could not be read for a moment.
+- **Replacing art.** A new file, or new bytes under an existing name, becomes
+  the new original. Renaming a prepared file keeps its original.
+- **Dry run** (`DRY_RUN=true`) saves no originals.
+- **Upgrading.** Pictures prepared by earlier versions, which replaced
+  originals outright, have none. The current prepared file is kept as their
+  original the next time they need work, so they stop losing quality from
+  then on, but what an earlier version cropped away cannot be recovered. To
+  start over from a real original, delete the prepared file and add the
+  original again.
+- The control directory is private (`0700`, files `0600`) and is never shown
+  on the TV. Back it up with the artwork folder if you want to keep the
+  originals.
+
 ### Mattes
 
 `MATTE_STYLE` sets Samsung's matte for every upload: `none` for full screen, or
@@ -379,9 +482,10 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `SYNC_INTERVAL_MINUTES` | `30` | Time between syncs |
 | `CLIENT_NAME` | `Frame Art Manager` | Name shown in the TV's Allow/Deny prompt |
 | `ARTWORK_DIR` | `/data/artwork` | Your collection |
-| `TOKEN_DIR` | `/data/tokens` | Pairing tokens and per-TV records |
+| `TOKEN_DIR` | `/data/tokens` | Pairing tokens and per-TV records. Records follow the TV's device ID, so a new IP address keeps them |
 | `ROTATION_INTERVAL_DAYS` | `14` | Days each piece stays on a full TV; `0` turns rotation off |
 | `MATTE_STYLE` | `none` | Matte for every upload |
+| `PORTRAIT_MATTE` | same as `MATTE_STYLE` | Matte the TV uses when it shows art in portrait orientation |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 
 **Images**
@@ -434,20 +538,35 @@ uploads stop adding images once the limit is reached.
 All of these are optional. If you don't set them, the manager leaves the TV's
 own settings alone.
 
-- **Slideshow.** Setting any of `SLIDESHOW_ENABLED`, `SLIDESHOW_INTERVAL`
-  (3, 15, 60, 720, or 1440 minutes), or `SLIDESHOW_TYPE` (`shuffle` or
-  `sequential`) puts the manager in charge of the slideshow.
-- **Brightness.** `BRIGHTNESS` sets a fixed level (0–50). Alternatively,
-  `SOLAR_BRIGHTNESS_ENABLED=true` with `LOCATION_LATITUDE`,
-  `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the sun between
-  `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX`.
+- **Slideshow.** `SLIDESHOW_ENABLED=true` or `false` puts the manager in
+  charge of starting and stopping the slideshow, using `SLIDESHOW_INTERVAL`
+  (3, 15, 60, 720, or 1440 minutes) and `SLIDESHOW_TYPE` (`shuffle` or
+  `sequential`). If you set only `SLIDESHOW_INTERVAL` or `SLIDESHOW_TYPE`, the
+  manager adjusts a slideshow that is already running and never turns one on
+  or off. The TV keeps playing the category it was already playing.
+- **Brightness.** `BRIGHTNESS` sets a fixed level on the Frame's Art Mode scale
+  (0–10). Alternatively, `SOLAR_BRIGHTNESS_ENABLED=true` with
+  `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the
+  sun between `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX` (also 0–10), reaching the
+  maximum when the sun is highest. Values from 11 to 50, from the 0–50 scale
+  earlier releases documented, are converted (30 becomes 6) and logged as a
+  warning; anything else outside 0–10 stops startup.
+  If a TV reports a narrower range, the value is pinned to the nearest level
+  it accepts. A TV that doesn't answer brightness or slideshow requests keeps
+  syncing artwork; that setting is left alone and a warning is logged.
 - **Nightly power-off.** `AUTO_OFF_TIME` (for example `22:00`, in
   `LOCATION_TIMEZONE`) turns off TVs that are showing art, and leaves TVs that
   are in use alone. It keeps trying for `AUTO_OFF_GRACE_HOURS` (default 2).
-- **Wake-on-LAN.** `TV_MAC` wakes a single TV when it is confirmed off, or
-  when the TV has dropped off the network entirely (deep standby). It is never
-  sent when the TV answers with an unknown state, and it is turned off when
-  `TV_IPS` lists several TVs. The magic packet goes to UDP ports 9 and 7 on
+- **Morning power-on.** `AUTO_ON_TIME` (for example `07:00`, in
+  `LOCATION_TIMEZONE`) together with `TV_MAC` wakes a single TV once a day.
+  The wake is sent on the first sync in the window that starts at
+  `AUTO_ON_TIME` and lasts `AUTO_ON_GRACE_HOURS` (default 2). It is sent only
+  if the TV is confirmed off, or has dropped off the network entirely (deep
+  standby). If the TV is already on, or you turn it off again, it isn't woken
+  again until the next day. Each day's wake is recorded in a `tv_*_wake.json`
+  file in the tokens folder. `TV_MAC` on its own no longer wakes the TV.
+  Wake-on-LAN is never sent when the TV answers with an unknown state, and it
+  is turned off when `TV_IPS` lists several TVs. The magic packet goes to UDP ports 9 and 7 on
   `255.255.255.255` and on the TV's `/24` broadcast address (for example
   `192.168.1.255`). Set `TV_WOL_BROADCAST` to send it to one other IPv4
   broadcast address instead. Broadcasts don't leave a Docker bridge network, so
@@ -469,7 +588,7 @@ The built-in web server (port `HEALTH_PORT`) provides:
 | --- | --- |
 | `GET /live` | The process is running. The container healthcheck uses this. |
 | `GET /ready`, `GET /health` | 200 once startup finished and the last sync succeeded, otherwise 503. Shows timing and state only, never error text. |
-| `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. |
+| `GET /status` | Timing, current stage, last error, per-TV status including rotation, and credits for downloaded artwork. `source_warning` appears when an artwork source failed; TVs still sync the art already on disk. |
 | `GET` / `POST /upload` | The upload page, when uploads are enabled. |
 
 `/live`, `/ready`, and `/health` need no password. When `UPLOAD_TOKEN` is set,
@@ -495,7 +614,8 @@ the entry under the TV's device connection settings and restart the container.
 
 **Status says `skipped (not art mode)` or `skipped (powered off)`.** The TV is
 off or showing other content. The manager waits and tries again at the next
-sync. With `TV_MAC` set, it can wake a TV that is off.
+sync. With `TV_MAC` and `AUTO_ON_TIME` set, it wakes a TV that is off once a
+day.
 
 **Status says `backoff` or `unreachable`.** The TV didn't answer. Repeated
 failures wait progressively longer between attempts, up to an hour. Check the
@@ -572,6 +692,13 @@ new images to every configured Frame TV over your local network.
 No. It talks directly to the TV on your network. Only optional online sources
 such as Unsplash or NASA contact the internet.
 
+**Where can I get free famous paintings without signing up for anything?**
+The museum sources need no API key: `museum:search:<theme>` searches the Art
+Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK at once,
+and only returns public-domain works. Wikimedia Commons' Picture of the Day and
+Featured Pictures also need no key; their credit and license are shown in
+`/status`.
+
 **Which Frame TVs does it support?**
 Samsung Frame TVs running Tizen 8.0 or newer. Older firmware may work, but
 Samsung's private Art Mode protocol varies between models and releases.
@@ -584,6 +711,13 @@ Your own TV uploads and your local files are never deleted.
 **Will it delete art I uploaded to the TV myself?**
 No. It only removes art it uploaded, unless you turn on
 `REMOVE_UNKNOWN_IMAGES`.
+
+**Does it keep my original files?**
+Yes. Each picture's untouched original is kept in the artwork folder's hidden
+`.frame-tv-art-manager/originals` directory, and prepared versions are always
+made from it, so you can change any image setting later without losing
+quality. Pictures prepared by versions before this feature keep their current
+file as the original. See [Kept originals](#kept-originals).
 
 **Does it work with portrait photos?**
 Yes. By default they are shown whole on a charcoal gallery mat tinted toward

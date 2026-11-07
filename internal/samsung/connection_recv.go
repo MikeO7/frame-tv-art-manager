@@ -80,6 +80,7 @@ func (c *connection) routeD2DEvent(dataRaw json.RawMessage) {
 			select {
 			case ch <- dataToParse:
 			default:
+				c.logger.Warn("d2d event dropped: listener is full", "key", key)
 			}
 			return
 		}

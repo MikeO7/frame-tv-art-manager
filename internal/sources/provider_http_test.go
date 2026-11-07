@@ -22,6 +22,11 @@ func TestSourceProviderResolutionContract(t *testing.T) {
 		newArticProvider(slog.Default()),
 		newPexelsProvider("", slog.Default()),
 		newPixabayProvider("", slog.Default()),
+		newMetProvider(slog.Default()),
+		newClevelandProvider(slog.Default()),
+		newSMKProvider(slog.Default()),
+		newCommonsProvider(slog.Default()),
+		newMuseumProvider(newArtSearcher(slog.Default()), slog.Default()),
 	}
 	for _, provider := range providers {
 		t.Run(provider.Name(), func(t *testing.T) {

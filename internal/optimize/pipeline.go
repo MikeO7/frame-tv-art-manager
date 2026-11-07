@@ -3,21 +3,32 @@ package optimize
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
 // catalogPass carries the dependencies and outcome of one optimization pass
-// over the artwork files named by inputs inside artworkDir.
+// over the artwork files named by inputs inside artworkDir. Kept originals are
+// copied into originalsDir only when a derivative must be rendered again.
 type catalogPass struct {
-	artworkDir string
-	cfg        Config
-	logger     *slog.Logger
-	inputs     map[string]StageInput
-	optimized  int
-	renames    []Rename
+	artworkDir   string
+	originalsDir string
+	cfg          Config
+	logger       *slog.Logger
+	inputs       map[string]StageInput
+	optimized    int
+	renames      []Rename
+	// lineage records, by output name, the digests of the originals each
+	// output was rendered from, in render order.
+	lineage map[string][][sha256.Size]byte
+	staged  map[[sha256.Size]byte]string
 }
 
 // run pairs portrait collages, then transforms every remaining file. It
@@ -46,8 +57,10 @@ func (p *catalogPass) run(ctx context.Context) error {
 	return errors.Join(ctx.Err(), collageErr)
 }
 
-// optimizeFile transforms one file in place, recording its rename. Files that
-// fail are logged and skipped.
+// optimizeFile transforms one file in place, recording its rename. A
+// derivative is always rendered again from its originals, never from its own
+// transformed bytes, so settings changes never stack. Files that fail are
+// logged and skipped.
 func (p *catalogPass) optimizeFile(ctx context.Context, filename string) {
 	path := filepath.Join(p.artworkDir, filename)
 	if !p.cfg.Enabled {
@@ -63,8 +76,21 @@ func (p *catalogPass) optimizeFile(ctx context.Context, filename string) {
 		input.Width == p.cfg.MaxWidth && input.Height == p.cfg.MaxHeight {
 		return
 	}
-	force := input.Derivative != "" && input.TransformKey != transformKey
-	newFilename, modified, err := optimizeFileWithPolicy(ctx, path, cmp.Or(input.Key, filename), force, p.cfg, p.logger)
+	sources, lineage, err := p.renderSources(ctx, filename, input)
+	if err != nil {
+		p.logger.Warn("skipping artwork whose original cannot be read", "file", filename, "error", err)
+		return
+	}
+	label := cmp.Or(input.Key, filename)
+	var newFilename string
+	modified := true
+	if len(sources) == 2 {
+		newFilename, err = p.rerenderCollage(ctx, filename, sources, label)
+	} else {
+		newFilename, modified, err = optimizeFileWithPolicy(ctx, fileTransform{
+			source: sources[0], path: path, label: label, force: input.Derivative != "",
+		}, p.cfg, p.logger)
+	}
 	if err != nil {
 		p.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)
 		return
@@ -73,6 +99,73 @@ func (p *catalogPass) optimizeFile(ctx context.Context, filename string) {
 		p.optimized++
 		if newFilename != filename {
 			p.renames = append(p.renames, Rename{OldName: filename, NewName: newFilename})
+			p.recordLineage(newFilename, lineage...)
 		}
 	}
+}
+
+// renderSources returns the files filename is rendered from and their
+// digests. Raw artwork, and derivatives made before originals were kept,
+// render from their own staged bytes, which become their original. A kept
+// original that is gone or no longer matches its digest cannot be recovered,
+// so the current bytes are the best available original; any other failure
+// skips the file this pass instead of silently giving up its lineage.
+func (p *catalogPass) renderSources(
+	ctx context.Context,
+	filename string,
+	input StageInput,
+) ([]string, [][sha256.Size]byte, error) {
+	own := []string{filepath.Join(p.artworkDir, filename)}
+	ownLineage := [][sha256.Size]byte{input.Digest}
+	if input.Derivative == "" || len(input.Originals) == 0 {
+		return own, ownLineage, nil
+	}
+	sources := make([]string, 0, len(input.Originals))
+	lineage := make([][sha256.Size]byte, 0, len(input.Originals))
+	for _, original := range input.Originals {
+		path, err := p.stageOriginal(ctx, original)
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errStageDigestMismatch) {
+			p.logger.Warn("kept original is unusable; keeping the current file as its original",
+				"file", filename, "error", err)
+			return own, ownLineage, nil
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		sources = append(sources, path)
+		lineage = append(lineage, original.Digest)
+	}
+	return sources, lineage, nil
+}
+
+// stageOriginal copies one kept original into the private workspace, verifying
+// its digest, so the transform never reads the collection's control files.
+func (p *catalogPass) stageOriginal(ctx context.Context, original StageOriginal) (string, error) {
+	if path, staged := p.staged[original.Digest]; staged {
+		return path, nil
+	}
+	if p.originalsDir == "" {
+		return "", errors.New("optimization pass has no originals workspace")
+	}
+	name := hex.EncodeToString(original.Digest[:]) + strings.ToLower(filepath.Ext(original.Path))
+	input := StageInput{Name: name, Path: original.Path, Digest: original.Digest}
+	if err := copyStageInput(ctx, p.originalsDir, input); err != nil {
+		path := filepath.Join(p.originalsDir, name)
+		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+			return "", errors.Join(err, fmt.Errorf("remove partial staged original: %w", removeErr))
+		}
+		return "", err
+	}
+	if p.staged == nil {
+		p.staged = make(map[[sha256.Size]byte]string)
+	}
+	p.staged[original.Digest] = filepath.Join(p.originalsDir, name)
+	return p.staged[original.Digest], nil
+}
+
+func (p *catalogPass) recordLineage(name string, digests ...[sha256.Size]byte) {
+	if p.lineage == nil {
+		p.lineage = make(map[string][][sha256.Size]byte)
+	}
+	p.lineage[name] = digests
 }

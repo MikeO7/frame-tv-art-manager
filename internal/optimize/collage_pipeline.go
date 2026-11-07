@@ -16,16 +16,53 @@ import (
 )
 
 // processCollagePair fuses two portrait files into one landscape collage,
-// publishes it, and removes both sources.
+// publishes it, and removes both sources. Their bytes become the collage's
+// originals, left then right.
 func (p *catalogPass) processCollagePair(ctx context.Context, f1, f2 string) (string, error) {
-	cfg := p.cfg
 	p1 := filepath.Join(p.artworkDir, f1)
 	p2 := filepath.Join(p.artworkDir, f2)
+	collageName, err := p.renderCollageFile(ctx, p1, p2, "collage-"+f1+"-"+f2, collageOutputExtension(f1, f2))
+	if err != nil {
+		return "", err
+	}
 
+	// The durable collage is published before either input is removed, so a
+	// crash or deletion failure always leaves at least one complete artwork.
+	if err := durablefs.Remove(ctx, p1); err != nil {
+		return collageName, fmt.Errorf("remove first collage source: %w", err)
+	}
+	if err := durablefs.Remove(ctx, p2); err != nil {
+		return collageName, fmt.Errorf("remove second collage source: %w", err)
+	}
+
+	p.renames = append(p.renames, Rename{OldName: f1, NewName: collageName}, Rename{OldName: f2, NewName: collageName})
+	p.recordLineage(collageName, p.inputs[f1].Digest, p.inputs[f2].Digest)
+	return collageName, nil
+}
+
+// rerenderCollage renders an existing collage again from its two kept
+// originals and replaces it, so collage settings changes never stack.
+func (p *catalogPass) rerenderCollage(ctx context.Context, filename string, originals []string, label string) (string, error) {
+	path := filepath.Join(p.artworkDir, filename)
+	collageName, err := p.renderCollageFile(ctx, originals[0], originals[1], label, filepath.Ext(filename))
+	if err != nil || collageName == filename {
+		return collageName, err
+	}
+	if err := durablefs.Remove(ctx, path); err != nil {
+		removeErr := os.Remove(filepath.Join(p.artworkDir, collageName))
+		return "", errors.Join(fmt.Errorf("replace collage %s: %w", filename, err), removeErr)
+	}
+	return collageName, nil
+}
+
+// renderCollageFile renders the portraits at first and second side by side
+// and publishes the result in the workspace under its content name.
+func (p *catalogPass) renderCollageFile(ctx context.Context, first, second, label, ext string) (string, error) {
+	cfg := p.cfg
 	if err := validateOutputDimensions(cfg.MaxWidth, cfg.MaxHeight, cfg.MaxOutputPixels); err != nil {
 		return "", err
 	}
-	inputs, err := inspectCollageInputs(ctx, p1, p2)
+	inputs, err := inspectCollageInputs(ctx, first, second)
 	if err != nil {
 		return "", err
 	}
@@ -33,13 +70,13 @@ func (p *catalogPass) processCollagePair(ctx context.Context, f1, f2 string) (st
 		return "", err
 	}
 
-	img1, err := loadAndRotateImageWithConfig(ctx, p1, cfg, p.logger)
+	img1, err := loadAndRotateImageWithConfig(ctx, first, cfg, p.logger)
 	if err != nil {
-		return "", fmt.Errorf("load/rotate %s: %w", f1, err)
+		return "", fmt.Errorf("load/rotate %s: %w", filepath.Base(first), err)
 	}
-	img2, err := loadAndRotateImageWithConfig(ctx, p2, cfg, p.logger)
+	img2, err := loadAndRotateImageWithConfig(ctx, second, cfg, p.logger)
 	if err != nil {
-		return "", fmt.Errorf("load/rotate %s: %w", f2, err)
+		return "", fmt.Errorf("load/rotate %s: %w", filepath.Base(second), err)
 	}
 
 	leftWidth := cfg.MaxWidth / 2
@@ -56,7 +93,6 @@ func (p *catalogPass) processCollagePair(ctx context.Context, f1, f2 string) (st
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
 	}
 
-	ext := collageOutputExtension(f1, f2)
 	out, err := os.CreateTemp(p.artworkDir, ".collage-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("create collage output: %w", err)
@@ -66,22 +102,11 @@ func (p *catalogPass) processCollagePair(ctx context.Context, f1, f2 string) (st
 		return "", fmt.Errorf("write collage: %w", err)
 	}
 	collageName, err := moveToContentName(ctx, out.Name(), contentNameRequest{
-		directory: p.artworkDir, label: "collage-" + f1 + "-" + f2, extension: ext,
+		directory: p.artworkDir, label: label, extension: ext,
 	})
 	if err != nil {
 		return "", fmt.Errorf("commit collage: %w", err)
 	}
-
-	// The durable collage is published before either input is removed, so a
-	// crash or deletion failure always leaves at least one complete artwork.
-	if err := durablefs.Remove(ctx, p1); err != nil {
-		return collageName, fmt.Errorf("remove first collage source: %w", err)
-	}
-	if err := durablefs.Remove(ctx, p2); err != nil {
-		return collageName, fmt.Errorf("remove second collage source: %w", err)
-	}
-
-	p.renames = append(p.renames, Rename{OldName: f1, NewName: collageName}, Rename{OldName: f2, NewName: collageName})
 	return collageName, nil
 }
 

@@ -32,6 +32,9 @@ const (
 	// apodRefreshHourUTC is safely after APOD publishes a new picture at
 	// midnight US Eastern time.
 	apodRefreshHourUTC = 6
+	// commonsPOTDRefreshHourUTC follows the Commons Picture of the Day, which
+	// changes at midnight UTC.
+	commonsPOTDRefreshHourUTC = 0
 	// minFailureBackoff is the first retry delay after a failed resolution; it
 	// doubles with each consecutive failure up to sourceResolutionTTL.
 	minFailureBackoff   = 15 * time.Minute
@@ -226,14 +229,22 @@ func resolutionExpiry(provider, line string, now time.Time) time.Time {
 		return time.Time{}
 	}
 	if provider == providerNASA && strings.HasPrefix(line, "nasa:"+apodCommand) {
-		utc := now.UTC()
-		refresh := time.Date(utc.Year(), utc.Month(), utc.Day(), apodRefreshHourUTC, 0, 0, 0, time.UTC)
-		if !refresh.After(utc) {
-			refresh = refresh.AddDate(0, 0, 1)
-		}
-		return refresh
+		return nextDailyRefresh(now, apodRefreshHourUTC)
+	}
+	if provider == providerCommons && strings.HasPrefix(line, providerCommons+":"+commonsPOTDCommand) {
+		return nextDailyRefresh(now, commonsPOTDRefreshHourUTC)
 	}
 	return now.Add(sourceResolutionTTL)
+}
+
+// nextDailyRefresh returns the first time after now at hourUTC o'clock UTC.
+func nextDailyRefresh(now time.Time, hourUTC int) time.Time {
+	utc := now.UTC()
+	refresh := time.Date(utc.Year(), utc.Month(), utc.Day(), hourUTC, 0, 0, 0, time.UTC)
+	if !refresh.After(utc) {
+		refresh = refresh.AddDate(0, 0, 1)
+	}
+	return refresh
 }
 
 // failureRetryAt schedules the next attempt after consecutive failures,

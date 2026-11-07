@@ -58,32 +58,32 @@ func TestBrightnessFromElevation(t *testing.T) {
 			want:      2,
 		},
 		{
-			name:      "near zenith returns near max",
+			name:      "near zenith reaches max",
 			elevation: 89,
 			min:       2,
 			max:       10,
-			want:      7, // ~0.7^(1.0^0.678) = 0.7 → 2+int(8*0.7) = 7
+			want:      10,
 		},
 		{
 			name:      "low elevation returns low brightness",
 			elevation: 5,
 			min:       2,
 			max:       10,
-			want:      3, // low sun = high air mass = low irradiance
+			want:      4, // low sun = high air mass = low irradiance
 		},
 		{
 			name:      "mid elevation returns mid brightness",
 			elevation: 45,
 			min:       2,
 			max:       10,
-			want:      7, // moderate sun
+			want:      9, // moderate sun
 		},
 		{
 			name:      "custom range 0-50",
 			elevation: 60,
 			min:       0,
 			max:       50,
-			want:      33, // approximately 0.7^(airmass^0.678) * 50
+			want:      48, // 96% of zenith irradiance
 		},
 	}
 
@@ -92,9 +92,8 @@ func TestBrightnessFromElevation(t *testing.T) {
 			t.Parallel()
 			got := brightnessFromElevation(tc.elevation, tc.min, tc.max)
 
-			// Allow ±1 for floating-point rounding in brightness mapping.
-			if got < tc.want-1 || got > tc.want+1 {
-				t.Errorf("BrightnessFromElevation(%v, %d, %d) = %d, want ~%d (±1)",
+			if got != tc.want {
+				t.Errorf("BrightnessFromElevation(%v, %d, %d) = %d, want %d",
 					tc.elevation, tc.min, tc.max, got, tc.want)
 			}
 		})

@@ -418,3 +418,33 @@ func TestConnectionDeadSocketFailsWaitersAndReportsDead(t *testing.T) {
 		t.Fatalf("registerPending() after death error = %v, want ErrNotConnected", err)
 	}
 }
+
+// TestRouteD2DEventKeepsEventsQueuedBeforeTheWaiterReads covers a foreign
+// image_added arriving just before ours while the upload is still sending
+// bytes: both must reach the waiter so ours is not dropped.
+func TestRouteD2DEventKeepsEventsQueuedBeforeTheWaiterReads(t *testing.T) {
+	t.Parallel()
+	conn := &connection{connConfig: connConfig{logger: slog.New(slog.DiscardHandler)}}
+	events, cleanup, err := conn.registerPending(eventImageAdded)
+	if err != nil {
+		t.Fatalf("registerPending() error = %v", err)
+	}
+	defer cleanup()
+	for _, contentID := range []string{"MY_F9999", "MY_F0020"} {
+		data, err := json.Marshal(map[string]string{"event": eventImageAdded, "content_id": contentID})
+		if err != nil {
+			t.Fatalf("Marshal() error = %v", err)
+		}
+		conn.routeD2DEvent(data)
+	}
+	for _, want := range []string{"MY_F9999", "MY_F0020"} {
+		select {
+		case data := <-events:
+			if !strings.Contains(string(data), want) {
+				t.Fatalf("event = %s, want content ID %s", data, want)
+			}
+		default:
+			t.Fatalf("event for %s was dropped", want)
+		}
+	}
+}

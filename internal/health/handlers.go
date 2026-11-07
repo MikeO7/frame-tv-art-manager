@@ -82,6 +82,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		fields[fieldLastError] = snapshot.LastErrorMessage
 		fields["tvs"] = snapshot.TVStatuses
 	}
+	if snapshot.SourceWarning != "" {
+		// The detail can name a source, so anonymous callers see only that
+		// a source failed.
+		fields[fieldSourceWarning] = snapshot.SourceWarning
+		if redact {
+			fields[fieldSourceWarning] = redactedSourceWarning
+		}
+	}
 	if s.cfg != nil && s.cfg.SourcesFile != "" {
 		attributions, err := sources.ReadAttributions(r.Context(), s.cfg.ArtworkDir)
 		if err != nil {

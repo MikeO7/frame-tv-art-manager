@@ -6,6 +6,32 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
+func TestBuildPlanLeavesUnreportedSettingsAlone(t *testing.T) {
+	t.Parallel()
+	// The TV answered neither setting this cycle; artwork still converges.
+	observation := knownObservation(samsung.PowerStateOn)
+	identity, err := identityFromObservation(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(snapshot(artworkItem("a.jpg", "a")), observation, initialState(identity), Policy{
+		Slideshow: SlideshowPolicy{
+			Mode: PolicySet, Setting: samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle},
+		},
+		Brightness:    SettingPolicy{Mode: PolicySet, Value: 4},
+		PortraitMatte: "shadowbox_black",
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan() error = %v", err)
+	}
+	if len(plan.Commands) != 1 || plan.Commands[0].Kind != CommandUpload {
+		t.Fatalf("commands = %+v, want only the upload", plan.Commands)
+	}
+	if plan.Commands[0].PortraitMatte != "shadowbox_black" {
+		t.Fatalf("upload portrait matte = %q, want the policy value", plan.Commands[0].PortraitMatte)
+	}
+}
+
 func TestBuildPlanFitsBrightnessToTheTVScale(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -84,5 +110,63 @@ func TestBuildPlanKeepsTheSlideshowCategoryTheTVPlays(t *testing.T) {
 		if test.wantPlan && plan.Commands[0].DesiredSlideshow.Category != "MY-C0004" {
 			t.Fatalf("%s: desired = %+v, want the observed category kept", test.name, plan.Commands[0].DesiredSlideshow)
 		}
+	}
+}
+
+func TestBuildPlanSlideshowModes(t *testing.T) {
+	t.Parallel()
+	running := samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowSequential, Category: "MY-C0002"}
+	stopped := samsung.SlideshowSetting{Interval: 0, Kind: samsung.SlideshowShuffle, Category: "MY-C0002"}
+	tests := []struct {
+		name     string
+		observed samsung.SlideshowSetting
+		policy   SlideshowPolicy
+		want     *samsung.SlideshowSetting
+	}{
+		{
+			name: "adjust interval of a running slideshow", observed: running,
+			policy: SlideshowPolicy{Mode: PolicyAdjust, Setting: samsung.SlideshowSetting{Interval: 60}},
+			want:   &samsung.SlideshowSetting{Interval: 60, Kind: samsung.SlideshowSequential, Category: "MY-C0002"},
+		},
+		{
+			name: "adjust kind of a running slideshow", observed: running,
+			policy: SlideshowPolicy{Mode: PolicyAdjust, Setting: samsung.SlideshowSetting{Kind: samsung.SlideshowShuffle}},
+			want:   &samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle, Category: "MY-C0002"},
+		},
+		{
+			name: "adjust never starts a stopped slideshow", observed: stopped,
+			policy: SlideshowPolicy{Mode: PolicyAdjust, Setting: samsung.SlideshowSetting{Interval: 60}},
+		},
+		{
+			name: "disable ignores the remembered kind", observed: stopped,
+			policy: SlideshowPolicy{Mode: PolicyDisable, Setting: samsung.SlideshowSetting{Kind: samsung.SlideshowSequential}},
+		},
+		{
+			name: "disable stops a running slideshow", observed: running,
+			policy: SlideshowPolicy{Mode: PolicyDisable},
+			want:   &samsung.SlideshowSetting{Interval: 0, Kind: samsung.SlideshowSequential, Category: "MY-C0002"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			observation := knownObservation(samsung.PowerStateOn)
+			observation.Slideshow = samsung.SlideshowObservation{Setting: test.observed, Known: true, ObservedAt: testTime}
+			identity, err := identityFromObservation(observation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := BuildPlan(snapshot(), observation, initialState(identity), Policy{Slideshow: test.policy})
+			if err != nil {
+				t.Fatalf("BuildPlan() error = %v", err)
+			}
+			var got *samsung.SlideshowSetting
+			if len(plan.Commands) == 1 {
+				got = plan.Commands[0].DesiredSlideshow
+			}
+			if (got == nil) != (test.want == nil) || (got != nil && *got != *test.want) {
+				t.Fatalf("desired slideshow = %+v, want %+v (commands %+v)", got, test.want, plan.Commands)
+			}
+		})
 	}
 }
