@@ -257,7 +257,8 @@ are:
 - converted to sRGB when they carry an ICC color profile; HDR PNGs are
   tone-mapped to standard range;
 - resized in linear light to exactly 3840×2160 (`IMAGE_MAX_WIDTH`,
-  `IMAGE_MAX_HEIGHT`) and lightly sharpened;
+  `IMAGE_MAX_HEIGHT`) and given halo-free contrast-adaptive sharpening
+  (none for images enlarged more than 1.5×, which have no detail to recover);
 - saved as JPEG quality 95. PNGs stay PNG, alpha included.
 
 ### Crop or mat
@@ -274,7 +275,7 @@ Portrait images follow `PORTRAIT_MODE`:
 | Mode | Result |
 | --- | --- |
 | `pad` (default) | Shows the whole image, padded to the screen. |
-| `collage` | Pairs two portraits side by side; an unpaired one is padded. |
+| `collage` | Pairs portraits side by side, matching them by color, lightness, and shape; an unpaired one waits for a partner. |
 | `crop` | Crops to fill the screen. |
 
 `IMAGE_PAD_STYLE` sets how padded images look:
@@ -294,7 +295,7 @@ Optional, off by default:
   at most 512 pixels, to a crop service you run. Low-confidence or failed
   answers fall back to the local crop.
 - **Museum mode** (`IMAGE_MUSEUM_MODE=true`) adds a subtle canvas texture and
-  warmth. `IMAGE_MUSEUM_INTENSITY` runs from 1 to 10 (default 5).
+  warmth, and rolls bright highlights off smoothly to a paper white. `IMAGE_MUSEUM_INTENSITY` runs from 1 to 10 (default 5).
 
 Each transform runs within a memory budget (`IMAGE_MAX_WORKING_MEMORY_MB`,
 default 512 MB). A 24-megapixel camera photo takes about a second and roughly

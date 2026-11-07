@@ -58,9 +58,13 @@ func cropRectForAspectWithProtection(
 	return image.Rect(0, bestY, srcW, bestY+cropH)
 }
 
-// sharpen applies a bounded luminance unsharp mask. The threshold suppresses
-// amplification of low-level JPEG noise and the shared luminance delta avoids
-// creating colored edge halos.
+// sharpen applies contrast-adaptive sharpening (after AMD FidelityFX CAS) to
+// luminance. Each pixel's strength adapts to the headroom left by its local
+// minimum and maximum, and the result is clamped to that local range, so
+// edges gain contrast without halos and flat areas such as mats are untouched.
+// amount 0 disables it and values of 1 or more are full strength. threshold
+// skips neighborhoods whose 8-bit luminance range is smaller than it, which
+// keeps JPEG noise from being amplified. Only opaque pixels change.
 func sharpen(src *image.RGBA, amount float64, threshold int) *image.RGBA {
 	if amount <= 0 {
 		return src
@@ -70,23 +74,25 @@ func sharpen(src *image.RGBA, amount float64, threshold int) *image.RGBA {
 	if width < 3 || height < 3 {
 		return src
 	}
+	luma := lumaPlane(src)
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
-	rgbLuma := func(offset int) int {
-		return int(src.Pix[offset])*299 + int(src.Pix[offset+1])*587 + int(src.Pix[offset+2])*114
-	}
+	peak := float32(-1 / (8 - 3*min(amount, 1)))
+	minimumRange := float32(threshold) / 255
 	runPixelRows(1, height-1, func(_, startY, endY int) {
 		for y := startY; y < endY; y++ {
 			for x := 1; x < width-1; x++ {
-				center := y*src.Stride + x*4
-				neighborLuma := (rgbLuma(center-src.Stride) + rgbLuma(center+src.Stride) +
-					rgbLuma(center-4) + rgbLuma(center+4)) / 4
-				delta := float64(rgbLuma(center)-neighborLuma) / 1000
-				if math.Abs(delta) < float64(threshold) {
+				offset := y*src.Stride + x*4
+				if src.Pix[offset+3] != 255 {
+					continue
+				}
+				index := y*width + x
+				delta := casDelta(luma[index], luma[index-width], luma[index+width], luma[index-1], luma[index+1], peak, minimumRange)
+				if delta == 0 {
 					continue
 				}
 				for channel := range 3 {
-					dst.Pix[center+channel] = clampByte(float64(src.Pix[center+channel]) + amount*delta)
+					dst.Pix[offset+channel] = clampByte(float64(src.Pix[offset+channel]) + delta)
 				}
 			}
 		}
@@ -94,10 +100,41 @@ func sharpen(src *image.RGBA, amount float64, threshold int) *image.RGBA {
 	return dst
 }
 
+// lumaPlane returns encoded Rec. 709 luminance in 0..1 for every pixel.
+func lumaPlane(src *image.RGBA) []float32 {
+	width, height := src.Bounds().Dx(), src.Bounds().Dy()
+	luma := make([]float32, width*height)
+	for y := range height {
+		row := src.Pix[y*src.Stride:]
+		for x := range width {
+			luma[y*width+x] = (0.2126*float32(row[x*4]) + 0.7152*float32(row[x*4+1]) + 0.0722*float32(row[x*4+2])) / 255
+		}
+	}
+	return luma
+}
+
+// casDelta returns the 8-bit luminance change contrast-adaptive sharpening
+// makes to center given its four neighbors, or zero when the neighborhood's
+// range is below minimumRange.
+//
+//nolint:revive // per-pixel hot path: the cross neighborhood is passed flat
+func casDelta(center, north, south, west, east, peak, minimumRange float32) float64 {
+	low := min(center, north, south, west, east)
+	high := max(center, north, south, west, east)
+	if high-low < minimumRange || high <= 0 {
+		return 0
+	}
+	headroom := min(low, 1-high) / high
+	weight := float32(math.Sqrt(float64(min(max(headroom, 0), 1)))) * peak
+	sharpened := (weight*(north+south+west+east) + center) / (1 + 4*weight)
+	return float64(min(max(sharpened, low), high)-center) * 255
+}
+
 // scaleAwareSharpenAmount treats the configured amount as the 1:1 baseline.
 // Downscales receive a modest bounded lift to restore detail lost in
-// resampling; upscales receive less sharpening because they contain no new
-// source detail and are more prone to halos.
+// resampling. Mild upscales receive less, and upscales beyond 1.5x none:
+// they contain no new detail, so sharpening only exaggerates interpolation
+// and compression artifacts.
 func scaleAwareSharpenAmount(amount float64, sourceWidth, sourceHeight, targetWidth, targetHeight int) float64 {
 	if amount <= 0 || sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0 {
 		return 0
@@ -107,10 +144,13 @@ func scaleAwareSharpenAmount(amount float64, sourceWidth, sourceHeight, targetWi
 		float64(targetHeight)/float64(sourceHeight),
 	)
 	factor := 1.0
-	if scale < 1 {
+	switch {
+	case scale < 1:
 		factor = min(1.5, 1+0.25*math.Log2(1/scale))
-	} else if scale > 1 {
-		factor = max(0.5, 1/math.Sqrt(scale))
+	case scale > 1.5:
+		return 0
+	case scale > 1:
+		factor = 1 / math.Sqrt(scale)
 	}
 	return min(amount*factor, 2)
 }
