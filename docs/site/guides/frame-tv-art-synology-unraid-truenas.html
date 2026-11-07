@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame TV Art on Synology, Unraid, or TrueNAS</title>
+<meta name="description" content="Run Samsung Frame TV art sync on a Synology, Unraid, or TrueNAS NAS with Docker: where to click, which folders to map, and which user IDs to use.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html">
+<link rel="stylesheet" href="../styles.css">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="alternate" href="../llms.txt" type="text/plain" title="Frame TV Art Manager fact sheet">
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="Frame TV Art Manager">
+<meta property="og:title" content="Samsung Frame TV art from a Synology, Unraid, or TrueNAS NAS">
+<meta property="og:description" content="Container Manager, Unraid&#x27;s Docker tab, and TrueNAS custom apps: setting up Frame TV Art Manager on each NAS.">
+<meta property="og:url" content="https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html">
+<meta property="og:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
+<meta property="article:published_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:section" content="Synology, Unraid, TrueNAS">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Samsung Frame TV art from a Synology, Unraid, or TrueNAS NAS">
+<meta name="twitter:description" content="Container Manager, Unraid&#x27;s Docker tab, and TrueNAS custom apps: setting up Frame TV Art Manager on each NAS.">
+<meta name="twitter:image" content="https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png">
+<meta name="twitter:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#webpage",
+      "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html",
+      "name": "Frame TV Art on Synology, Unraid, or TrueNAS",
+      "description": "Run Samsung Frame TV art sync on a Synology, Unraid, or TrueNAS NAS with Docker: where to click, which folders to map, and which user IDs to use.",
+      "datePublished": "2026-11-06",
+      "dateModified": "2026-11-06",
+      "isPartOf": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
+      },
+      "breadcrumb": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#breadcrumbs"
+      },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "TechArticle",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#article",
+      "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html",
+      "headline": "Samsung Frame TV art from a Synology, Unraid, or TrueNAS NAS",
+      "description": "Run Samsung Frame TV art sync on a Synology, Unraid, or TrueNAS NAS with Docker: where to click, which folders to map, and which user IDs to use.",
+      "inLanguage": "en",
+      "datePublished": "2026-11-06",
+      "dateModified": "2026-11-06",
+      "author": {
+        "@id": "https://github.com/MikeO7#person"
+      },
+      "publisher": {
+        "@id": "https://github.com/MikeO7#person"
+      },
+      "isPartOf": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
+      },
+      "mainEntityOfPage": {
+        "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#webpage"
+      },
+      "about": [
+        {
+          "@id": "https://mikeo7.github.io/frame-tv-art-manager/#software"
+        },
+        "Samsung The Frame",
+        "Synology",
+        "Unraid",
+        "TrueNAS",
+        "Docker"
+      ],
+      "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+      "citation": [
+        "https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose"
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#breadcrumbs",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Frame TV Art Manager",
+          "item": "https://mikeo7.github.io/frame-tv-art-manager/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Guides",
+          "item": "https://mikeo7.github.io/frame-tv-art-manager/#guides"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Synology, Unraid, TrueNAS",
+          "item": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html"
+        }
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website",
+      "url": "https://mikeo7.github.io/frame-tv-art-manager/",
+      "name": "Frame TV Art Manager"
+    },
+    {
+      "@type": "Person",
+      "@id": "https://github.com/MikeO7#person",
+      "name": "MikeO7",
+      "url": "https://github.com/MikeO7"
+    },
+    {
+      "@type": "HowTo",
+      "@id": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#howto",
+      "name": "Install Frame TV Art Manager on a Synology NAS",
+      "description": "Set up Samsung Frame TV art sync on Synology DSM with Container Manager.",
+      "inLanguage": "en",
+      "image": "https://mikeo7.github.io/frame-tv-art-manager/assets/frame-tv-art-manager-social.png",
+      "step": [
+        {
+          "@type": "HowToStep",
+          "position": 1,
+          "name": "Install Container Manager",
+          "text": "Install Container Manager from Package Center.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#synology"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 2,
+          "name": "Create folders",
+          "text": "Create docker/frame-tv-art-manager with data/artwork and data/tokens inside it.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#synology"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 3,
+          "name": "Create a project",
+          "text": "In Container Manager, open Project, choose Create, pick the folder, and paste the compose file with your TV's address and PUID/PGID.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#synology"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 4,
+          "name": "Start and approve",
+          "text": "Finish the wizard to start the project, then choose Allow on the TV's prompt.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#synology"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 5,
+          "name": "Add art",
+          "text": "Copy pictures into data/artwork from File Station or over SMB.",
+          "url": "https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html#synology"
+        }
+      ],
+      "supply": [
+        {
+          "@type": "HowToSupply",
+          "name": "Samsung Frame TV running Tizen 8.0 or newer"
+        }
+      ],
+      "tool": [
+        {
+          "@type": "HowToTool",
+          "name": "Synology NAS with DSM 7.2 or later"
+        },
+        {
+          "@type": "HowToTool",
+          "name": "Container Manager package"
+        }
+      ],
+      "totalTime": "PT20M"
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+<div class="wrap">
+<a class="brand" href="../"><img src="../assets/favicon.svg" width="28" height="28" alt=""><span>Frame TV Art Manager</span></a>
+<nav class="site-nav" aria-label="Main">
+<ul>
+<li><a href="../#how-it-works">How it works</a></li>
+<li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits</a></li>
+<li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free art</a></li>
+<li><a href="../guides/samsung-frame-tv-docker.html">Install</a></li>
+<li><a href="../#guides">Guides</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager">GitHub</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="main" class="article">
+<div class="wrap">
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+<ol><li><a href="../">Home</a></li><li><a href="../#guides">Guides</a></li><li aria-current="page">Synology, Unraid, TrueNAS</li></ol>
+</nav>
+<article>
+<header>
+<p class="eyebrow">Synology, Unraid, TrueNAS</p>
+<h1>Samsung Frame TV art from a Synology, Unraid, or TrueNAS NAS</h1>
+<p class="answer"><strong>Short answer:</strong> Frame TV Art Manager is a small Docker container, so any NAS that runs containers can keep your Frame in sync. On Synology use Container Manager's Projects, on Unraid add a container from the Docker tab, and on TrueNAS install a custom app from YAML. In each case you set <code>TV_IPS</code>, map a folder to <code>/data</code>, and approve the connection once on the TV.</p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+</header>
+<p>Menu names change between NAS software versions; if a label doesn't match, look for the same idea. The <a href="samsung-frame-tv-docker.html">Docker guide</a> explains each setting in more depth.</p>
+<nav class="toc" aria-labelledby="toc-title">
+<h2 id="toc-title">On this page</h2>
+<ol>
+<li><a href="#common-steps">The same three things on every NAS</a></li>
+<li><a href="#synology">Synology DSM (Container Manager)</a></li>
+<li><a href="#unraid">Unraid (Docker tab)</a></li>
+<li><a href="#truenas">TrueNAS SCALE / Community Edition</a></li>
+<li><a href="#compose">Compose file for any NAS</a></li>
+<li><a href="#other-hardware">Raspberry Pi, mini PC, or Mac</a></li>
+<li><a href="#network">Network checklist</a></li>
+</ol>
+</nav>
+<section aria-labelledby="common-steps">
+<h2 id="common-steps">The same three things on every NAS</h2>
+<ol>
+<li><strong>A fixed IP for the TV</strong>, using a DHCP reservation in your router.</li>
+<li><strong>A persistent folder mapped to <code>/data</code></strong>. It holds <code>artwork</code> (your collection) and <code>tokens</code> (the pairing token and upload records). You can map your art share straight to <code>/data/artwork</code> instead.</li>
+<li><strong>The right owner for files</strong>, set with <code>PUID</code> and <code>PGID</code> so you can still edit the artwork share over SMB.</li>
+</ol>
+<div class="note"><p><strong>Copy, don't move.</strong> Each picture in the artwork folder is replaced by its prepared 3840×2160 version. Keep originals in another share.</p></div>
+</section>
+<section aria-labelledby="synology">
+<h2 id="synology">Synology DSM (Container Manager)</h2>
+<ol>
+<li>Install <strong>Container Manager</strong> from Package Center (DSM 7.2 or later).</li>
+<li>In File Station, create <code>docker/frame-tv-art-manager</code> with <code>data/artwork</code> and <code>data/tokens</code> inside it.</li>
+<li>Open Container Manager, go to <strong>Project</strong>, choose <strong>Create</strong>, pick that folder as the path, and choose to create a <code>docker-compose.yml</code>.</li>
+<li>Paste the compose file below, set your TV's address, and add <code>PUID</code>/<code>PGID</code> for the DSM user who owns the share. Running <code>id yourname</code> over SSH shows them; DSM users usually belong to group <code>100</code> (users).</li>
+<li>Finish the wizard to build and start the project, then approve the prompt on the TV.</li>
+<li>Copy pictures into <code>docker/frame-tv-art-manager/data/artwork</code> from File Station or over SMB.</li>
+</ol>
+</section>
+<section aria-labelledby="unraid">
+<h2 id="unraid">Unraid (Docker tab)</h2>
+<ol>
+<li>Open the <strong>Docker</strong> tab and choose <strong>Add Container</strong>.</li>
+<li>Set <strong>Repository</strong> to <code>ghcr.io/mikeo7/frame-tv-art-manager:latest</code> and a name such as <code>frame-tv-art-manager</code>.</li>
+<li>Add a <strong>Path</strong>: container path <code>/data</code>, host path <code>/mnt/user/appdata/frame-tv-art-manager</code>. To use an existing share for art, add another path from <code>/mnt/user/your-art-share</code> to <code>/data/artwork</code>.</li>
+<li>Add a <strong>Variable</strong> <code>TV_IPS</code> with your TV's address, plus <code>PUID=99</code> and <code>PGID=100</code>, Unraid's usual <code>nobody:users</code> owner for shares.</li>
+<li>Add a <strong>Port</strong> mapping 8080 to 8080 if you want the status page or uploader.</li>
+<li>Apply, then approve the prompt on the TV.</li>
+</ol>
+<p>If you prefer compose files, the Compose Manager plugin accepts the same file as the Docker guide.</p>
+</section>
+<section aria-labelledby="truenas">
+<h2 id="truenas">TrueNAS SCALE / Community Edition</h2>
+<ol>
+<li>Create a dataset, for example <code>apps/frame-tv-art-manager</code>, with <code>data/artwork</code> and <code>data/tokens</code> folders.</li>
+<li>Go to <strong>Apps</strong>, then <strong>Discover Apps</strong>, and choose <strong>Install via YAML</strong> from the menu (TrueNAS 24.10 and later use Docker for apps).</li>
+<li>Paste the compose file below with the host path changed to your dataset, such as <code>/mnt/tank/apps/frame-tv-art-manager/data:/data</code>.</li>
+<li>Set <code>PUID</code>/<code>PGID</code> to the user that owns the dataset; TrueNAS's built-in <code>apps</code> user is <code>568</code>.</li>
+<li>Save, then approve the prompt on the TV.</li>
+</ol>
+</section>
+<section aria-labelledby="compose">
+<h2 id="compose">Compose file for any NAS</h2>
+<pre><code>services:
+  frame-tv-art-manager:
+    image: ghcr.io/mikeo7/frame-tv-art-manager:latest
+    container_name: frame-tv-art-manager
+    restart: unless-stopped
+    environment:
+      TV_IPS: "192.168.1.150"        # your TV's address; comma-separate several
+      CLIENT_NAME: "Frame Art Manager"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data</code></pre>
+<p>Add <code>PUID</code> and <code>PGID</code> under <code>environment</code> for your NAS. QNAP Container Station, OpenMediaVault, Portainer, and
+anything else that accepts a compose file work the same way.</p>
+</section>
+<section aria-labelledby="other-hardware">
+<h2 id="other-hardware">Raspberry Pi, mini PC, or Mac</h2>
+<p>The image is built for <code>amd64</code>, <code>arm64</code>, and <code>armv7</code>, so a Raspberry Pi-class board, an Intel or AMD mini PC, or a Mac
+running Docker all work. Preparing a 24-megapixel photo uses roughly 250 MB of memory, and each picture stays within a
+512 MB budget by default (<code>IMAGE_MAX_WORKING_MEMORY_MB</code>).</p>
+</section>
+<section aria-labelledby="network">
+<h2 id="network">Network checklist</h2>
+<ul>
+<li>The NAS and the TV must reach each other: same network, or routing between VLANs.</li>
+<li>Nothing needs to be opened to the internet. Keep port 8080 on your home network.</li>
+<li>Wake-on-LAN (<code>TV_MAC</code>) is a broadcast that Docker's default bridge network doesn't forward, so it usually needs host networking.</li>
+</ul>
+</section>
+</article>
+<section class="related" aria-labelledby="related-title">
+<h2 id="related-title">Related guides</h2>
+<div class="grid">
+<a class="card" href="samsung-frame-tv-docker.html">
+<h3 id="related-samsung-frame-tv-docker">Install Frame TV Art Manager with Docker</h3>
+<p>Compose file, one-time pairing, folders, upgrades, and health checks, step by step.</p>
+<span class="more">Read: Docker setup <span aria-hidden="true">→</span></span>
+</a>
+<a class="card" href="home-assistant-samsung-frame-tv-art.html">
+<h3 id="related-home-assistant-samsung-frame-tv-art">Home Assistant and Samsung Frame TV art</h3>
+<p>Run the art sync next to Home Assistant, watch it with a REST sensor, and avoid two automations fighting.</p>
+<span class="more">Read: Home Assistant <span aria-hidden="true">→</span></span>
+</a>
+<a class="card" href="samsung-frame-tv-art-mode-troubleshooting.html">
+<h3 id="related-samsung-frame-tv-art-mode-troubleshooting">Samsung Frame TV art troubleshooting</h3>
+<p>No pairing prompt, art not appearing, storage full, and every status message explained.</p>
+<span class="more">Read: Troubleshooting <span aria-hidden="true">→</span></span>
+</a>
+</div>
+</section>
+</div>
+</main>
+<footer class="site-footer">
+<div class="wrap">
+<section aria-labelledby="footer-about">
+<h2 id="footer-about">Frame TV Art Manager</h2>
+<p>A self-hosted service that keeps Samsung The Frame's Art Mode in sync with a folder on your home network.</p>
+<p>Free for personal and other noncommercial use under the <a rel="license" href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/LICENSE">PolyForm Noncommercial License 1.0.0</a>. Source-available, not open source.</p>
+<p>Independent project; not affiliated with or endorsed by Samsung. Samsung, The Frame, and SmartThings are trademarks of Samsung Electronics.</p>
+</section>
+<section aria-labelledby="footer-guides">
+<h2 id="footer-guides">Guides</h2>
+<ul>
+<li><a href="../guides/frame-tv-art-without-subscription.html">No subscription</a></li>
+<li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
+<li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
+<li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
+<li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
+<li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>
+<li><a href="../guides/home-assistant-samsung-frame-tv-art.html">Home Assistant</a></li>
+<li><a href="../guides/apple-photos-to-samsung-frame-tv.html">iPhone and Apple Photos</a></li>
+<li><a href="../guides/samsung-frame-tv-storage-full-art-rotation.html">Storage full</a></li>
+<li><a href="../guides/samsung-frame-tv-art-mode-troubleshooting.html">Troubleshooting</a></li>
+<li><a href="../guides/frame-tv-art-manager-vs-smartthings.html">Comparison</a></li>
+</ul>
+</section>
+<section aria-labelledby="footer-project">
+<h2 id="footer-project">Project</h2>
+<ul>
+<li><a href="../">Home</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager">Source on GitHub</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager#quick-start-with-docker-compose">Quick start</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">Every setting</a></li>
+<li><a href="https://github.com/MikeO7/frame-tv-art-manager/issues">Report an issue</a></li>
+<li><a href="../llms.txt">Fact sheet (llms.txt)</a></li>
+</ul>
+</section>
+</div>
+</footer>
+</body>
+</html>
