@@ -3,6 +3,9 @@ services:
     image: ghcr.io/mikeo7/frame-tv-art-manager:latest
     build: .
     restart: unless-stopped
+    # Wake-on-LAN broadcasts do not leave a bridge network. To use TV_MAC,
+    # uncomment the next line (the ports list is then ignored).
+    # network_mode: host
     ports:
       - "8080:8080" # Exposed for LAN uploads and external health checks
     environment:
@@ -21,6 +24,8 @@ services:
 
       # --- Optional: Wake-on-LAN ---
       # TV_MAC: "AA:BB:CC:DD:EE:FF"
+      # TV_WOL_BROADCAST: "192.168.1.255"
+      # Wake-on-LAN needs host networking: see network_mode above.
 
       # --- Optional: REST Gate (art mode detection before connecting) ---
       # Not all firmware supports this. If your TV returns 404 on

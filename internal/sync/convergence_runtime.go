@@ -190,8 +190,9 @@ func samsungConfigForTV(cfg *config.Config, address string) samsung.Config {
 	safeAddress := strings.NewReplacer(".", "_", ":", "_").Replace(address)
 	return samsung.Config{
 		Address: address, MAC: cfg.TVMAC, ClientName: cfg.ClientName,
-		TokenPath: filepath.Join(cfg.TokenDir, "tv_"+safeAddress+".txt"),
-		VerifyTLS: cfg.VerifyTLS, QuietGate: cfg.EnableRESTGate,
+		WakeBroadcast: cfg.WakeBroadcast,
+		TokenPath:     filepath.Join(cfg.TokenDir, "tv_"+safeAddress+".txt"),
+		VerifyTLS:     cfg.VerifyTLS, QuietGate: cfg.EnableRESTGate,
 		ConnectTimeout: cfg.ConnectionTimeout, RequestTimeout: cfg.APITimeout,
 		GateTimeout: cfg.GateTimeout, BackoffBase: min(time.Duration(cfg.SyncIntervalMin)*time.Minute, time.Hour),
 		BackoffMaximum: time.Hour,

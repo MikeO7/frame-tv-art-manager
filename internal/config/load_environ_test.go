@@ -123,6 +123,8 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "invalid auto off", value: "AUTO_OFF_TIME=25:00", want: "AUTO_OFF_TIME"},
 		{name: "invalid MAC", value: "TV_MAC=not-a-mac", want: "TV_MAC"},
 		{name: "non-six-byte MAC", value: "TV_MAC=00:00:00:00:fe:80:00:00", want: "TV_MAC"},
+		{name: "IPv6 wake broadcast", value: "TV_WOL_BROADCAST=ff02::1", want: "TV_WOL_BROADCAST"},
+		{name: "named wake broadcast", value: "TV_WOL_BROADCAST=broadcast.lan", want: "TV_WOL_BROADCAST"},
 		{name: "unsupported slideshow interval", value: "SLIDESHOW_INTERVAL=30", want: "SLIDESHOW_INTERVAL"},
 		{name: "oversized import", value: "MAX_DOWNLOAD_SIZE_MB=1025", want: "MAX_DOWNLOAD_SIZE_MB"},
 		{name: "unsafe import allocation", value: "MAX_DOWNLOAD_SIZE_MB=101", want: "MAX_DOWNLOAD_SIZE_MB"},

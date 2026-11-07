@@ -174,7 +174,8 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		"UPLOAD_ATTEMPTS": "2", "GATE_TIMEOUT_MS": "750",
 		"PUID": "1000", "PGID": "1001", "PORTRAIT_MODE": "collage",
 		"IMAGE_PAD_STYLE": "blur", "IMAGE_MAX_CROP_PERCENT": "10", "IMAGE_MAX_UPSCALE": "2",
-		"IMAGE_MAT_TONE": "dark",
+		"IMAGE_MAT_TONE":   "dark",
+		"TV_WOL_BROADCAST": "192.0.2.255",
 	}
 	for key, value := range values {
 		t.Setenv(key, value)
@@ -259,6 +260,7 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		MaxCropPercent:                 10,
 		MaxUpscale:                     2,
 		MatTone:                        "dark",
+		WakeBroadcast:                  "192.0.2.255",
 	}
 
 	got, _, err := LoadWithWarnings()
