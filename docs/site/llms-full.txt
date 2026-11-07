@@ -2,7 +2,7 @@
 
 > Plain-text digest of every guide on https://mikeo7.github.io/frame-tv-art-manager/ for AI search and answer engines. The short fact sheet is at https://mikeo7.github.io/frame-tv-art-manager/llms.txt.
 
-Last substantive update: 2026-11-06
+Last substantive update: 2026-11-07
 Source: https://github.com/MikeO7/frame-tv-art-manager
 License: PolyForm Noncommercial License 1.0.0. Free for personal and other noncommercial use. Source-available, not open source.
 Affiliation: independent project; not affiliated with or endorsed by Samsung.
@@ -16,7 +16,7 @@ Q: Do I need a Samsung Art Store subscription?
 A: No. Frame TV Art Manager uploads your own pictures and free art you choose, which don't need the Art Store. It doesn't unlock or touch Samsung's paid catalog.
 
 Q: Do I need SmartThings or a Samsung account?
-A: No. It talks to the TV directly on your local network. Only optional online sources such as NASA or Unsplash contact the internet, and only when you turn them on.
+A: No. It talks to the TV directly on your local network. Only optional online sources such as museums or NASA, and images an AI assistant asks it to fetch, contact the internet, and only when you turn them on.
 
 Q: How does it handle portrait photos?
 A: By default portraits are shown whole on a deep charcoal gallery mat, faintly tinted toward the picture's colors, instead of being cropped. You can also pair two portraits side by side, matched by color, or crop to fill the screen.
@@ -29,6 +29,15 @@ A: It rotates the art it uploaded: each piece stays at least 14 days by default,
 
 Q: Will it upload the same photo twice?
 A: No. Pictures are recognized by their contents, so a photo that is already on the TV is never sent again, even under a new name.
+
+Q: Can I show Christmas or other holiday art only during the holidays?
+A: Yes. Put the pictures in a themed collection with a yearly date window, such as December 1 to January 6. While the window is open the collection replaces your everyday art, or is shown alongside it if you choose. Afterwards the everyday art comes back on its own, and no files are deleted.
+
+Q: Can an AI assistant like Claude or ChatGPT make art for my Frame TV?
+A: Yes, through your own assistant. Turn on the optional MCP endpoint and connect an MCP client such as Claude Code or Claude Desktop. The assistant makes the images with its own tools; Frame TV Art Manager tells it the screen's size, prepares and previews the images, puts them in a themed collection, and schedules them. The app holds no AI account or API key.
+
+Q: Does it keep my original photos?
+A: Yes. Each picture's untouched original is kept in the artwork folder's hidden .frame-tv-art-manager/originals directory, and every prepared version is made from it, so you can change an image setting later without losing quality. Pictures prepared by earlier versions, which replaced originals outright, keep their current file as the original from then on.
 
 Q: What can I run it on?
 A: Anything that runs Docker and stays on: a Synology, Unraid, or TrueNAS NAS, a mini PC, a Raspberry Pi-class board, or a Mac. The image is built for amd64, arm64, and armv7.
@@ -63,13 +72,14 @@ Family photos, travel shots, and your kids' drawings all work. The catch with do
 upload at a time from a phone, portraits that get cropped, and a TV that eventually runs out of room.
 Automatic uploads turn that into "drop files in a folder".
 2. Public-domain masterpieces
-The Art Institute of Chicago, The Met, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish
+The Art Institute of Chicago, The Met, the Cleveland Museum of Art, SMK, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish
 high-resolution images of public-domain works for anyone to use. Van Gogh, Monet, Hokusai, Vermeer, and Seurat are all
-there. The free 4K art guide lists where to look and how to
+there. Frame TV Art Manager downloads from the first four with no API key, for example museum:search:winter to search them all at once.
+The free 4K art guide lists where to look and how to
 pull art in automatically.
 3. Free photo and space imagery
-NASA's image library and Astronomy Picture of the Day, Unsplash, Pexels, and Pixabay offer free images under their own
-licenses. Frame TV Art Manager can download from all of them on a schedule; Unsplash, Pexels, and Pixabay need a free API key.
+Wikimedia Commons' Picture of the Day and Featured Pictures, NASA's image library and Astronomy Picture of the Day, Unsplash, Pexels, and Pixabay offer free images under their own
+licenses. Frame TV Art Manager can download from all of them on a schedule; Wikimedia Commons needs no key, NASA works with its shared DEMO_KEY, and Unsplash, Pexels, and Pixabay need a free API key.
 
 ### How to keep the art changing without a subscription
 A Frame looks best when the art changes now and then. Frame TV Art Manager handles the parts that are tedious by hand:
@@ -77,6 +87,8 @@ A Frame looks best when the art changes now and then. Frame TV Art Manager handl
 - A large collection takes turns. When the TV is full, each piece the manager uploaded stays for 14 days (ROTATION_INTERVAL_DAYS) and is then swapped for art that hasn't been shown yet.
 - The slideshow can be set for you. SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), and SLIDESHOW_TYPE (shuffle or sequential) set the TV's slideshow for your uploaded photos over the local network. What the TV then allows is up to Samsung's firmware.
 - Nothing is uploaded twice. Pictures are recognized by their content, so re-adding the same file doesn't create duplicates on the TV.
+- Holiday art on its own schedule. A themed collection shows Christmas or Halloween art only on the dates you choose, then your everyday art returns.
+- Your AI assistant can help. With the optional MCP endpoint, an assistant such as Claude can make or find art and schedule it; see the AI art guide. The manager itself needs no AI subscription or key.
 The manager never picks which piece is on screen; the TV and its slideshow do that. It also never deletes art you put on the TV yourself.
 
 ### What you need
@@ -96,7 +108,7 @@ Q: How much is the Samsung Art Store?
 A: As reported in October 2026, US$4.99 per month or US$49.99 per year in the US. Prices vary by country, so check the Art Store on your TV.
 
 Q: Where can I get free art for a Samsung Frame TV?
-A: Museum open-access collections such as the Art Institute of Chicago, The Met, the National Gallery of Art, and the Rijksmuseum publish public-domain works for free. NASA, Unsplash, Pexels, and Pixabay offer free images under their own licenses. Frame TV Art Manager can download from several of these automatically.
+A: Museum open-access collections such as the Art Institute of Chicago, The Met, the Cleveland Museum of Art, SMK, the National Gallery of Art, and the Rijksmuseum publish public-domain works for free. Wikimedia Commons, NASA, Unsplash, Pexels, and Pixabay offer free images under their own licenses. Frame TV Art Manager downloads from the first four museums and Wikimedia Commons with no API key.
 
 Q: Can Frame TV Art Manager unlock Art Store content?
 A: No. It does not touch the Art Store or Samsung's licensed catalog. It only uploads your own pictures and art you choose from free sources.
@@ -136,6 +148,7 @@ The Docker guide walks through installation. The only required setting is TV_IPS
 - Read each TV to see what's stored on it.
 - Upload what's missing and remove pieces you deleted from the folder.
 - Apply TV settings such as slideshow, brightness, or power-off, only if you configured them.
+If you use themed collections, each sync also picks which pictures are wanted today, for example only the Christmas art from December 1 to January 6. Pictures that aren't wanted today are removed from the TV but stay in the folder.
 The prepared version of each picture replaces it in the artwork folder, and the untouched original is kept in the folder's hidden .frame-tv-art-manager/originals directory. Prepared versions are always re-made from the original, so changing an image setting later never costs quality.
 
 ### Why you never get duplicates
@@ -155,13 +168,14 @@ Each TV gets the same collection and is tracked separately, so a TV that's off d
 ### Adding art from your phone and the web
 - Network share: copy files into the artwork folder from any computer.
 - Upload page: turn on UPLOAD_ENABLED and open http://SERVER-IP:8080/upload in a browser. It also accepts iPhone Shortcuts and curl; see the Apple Photos guide.
-- Online sources: NASA, the Art Institute of Chicago, Unsplash, Pexels, Pixabay, and direct image links; see the free art guide.
+- Online sources: public-domain works from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK, and Wikimedia Commons' Picture of the Day and Featured Pictures, all with no API key; plus NASA, Unsplash, Pexels, Pixabay, and direct image links. See the free art guide.
+- An AI assistant: with the optional MCP endpoint, Claude or another assistant can add images it makes or finds, preview them, and schedule them; see the AI art guide.
 
 ### What it won't do
 - Delete art you added yourself, unless REMOVE_UNKNOWN_IMAGES=true.
 - Choose which piece is on screen. The TV and its slideshow decide.
 - Change anything on a TV whose state it can't confirm. That TV is skipped until the next sync.
-- Treat a failed folder scan or a website that's down as "delete everything".
+- Treat a failed folder scan or a website that's down as "delete everything". A failing source keeps its last good results, and the rest of the sync goes ahead.
 - Change anything at all in a dry run (DRY_RUN=true).
 
 Q: Can I upload photos to a Samsung Frame TV without the SmartThings app?
@@ -239,6 +253,8 @@ For one picture, add a mattes.json file to the artwork folder:
 }
 An override keeps working after the manager renames the file. An invalid mattes.json stops the sync before any TV is touched, so a typo can't go unnoticed.
 The gallery mat is part of the picture itself, so with the default MATTE_STYLE=none you won't get a border inside a border.
+PORTRAIT_MATTE sets the matte the TV uses when it shows art in portrait orientation; it defaults to the same value as MATTE_STYLE.
+Before each upload the manager checks the matte against the list the TV reports, and a matte the TV doesn't offer is replaced with none and logged as a warning.
 
 ### Settings at a glance
 Portrait and mat settings
@@ -250,6 +266,7 @@ Portrait and mat settings
 - IMAGE_MAX_UPSCALE | 3 | Largest enlargement before a picture is matted instead
 - SMART_CROP_ENABLED | false | Crop toward the interesting part instead of the center
 - MATTE_STYLE | none | Samsung's own matte for every upload
+- PORTRAIT_MATTE | same as MATTE_STYLE | Samsung's matte when the TV shows art in portrait orientation
 
 Q: How do I show portrait photos on a Samsung Frame TV without cropping?
 A: Use a border instead of a crop. Frame TV Art Manager does this by default: portraits are shown whole on a charcoal gallery mat tinted toward the photo's colors. Samsung's own mattes are another option.
@@ -270,15 +287,19 @@ A: Yes, a portrait shown whole is narrower than the screen. That's the trade-off
 
 URL: https://mikeo7.github.io/frame-tv-art-manager/guides/free-public-domain-art-samsung-frame-tv.html
 
-Short answer: major museums publish high-resolution images of public-domain paintings for anyone to use, including the Art Institute of Chicago, The Met, the National Gallery of Art, the Rijksmuseum, and the Smithsonian. NASA's imagery and photo sites such as Unsplash, Pexels, and Pixabay are free under their own terms. Frame TV Art Manager can download from the Art Institute of Chicago, NASA, Unsplash, Pexels, Pixabay, and direct links on a schedule and prepare each image for the TV's 3840×2160 screen.
+Short answer: major museums publish high-resolution images of public-domain paintings for anyone to use. Frame TV Art Manager downloads them with no API key from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK (the National Gallery of Denmark), and from Wikimedia Commons' Picture of the Day and Featured Pictures. One line, museum:search:winter, searches all four museums at once and keeps only public-domain works. NASA, Unsplash, Pexels, and Pixabay work too, and every image is prepared for the TV's 3840×2160 screen.
 
 ### Where to find free art for The Frame
+Five sources are built in and need no account or API key. The others work through a direct image link or a free key.
 Free sources of high-resolution art and photography
 - Source | What's there | Terms | Automatic download
-- Art Institute of Chicago | Impressionism, American art, Japanese prints | Public-domain works released under CC0 | Yes, no key
-- The Met Open Access | Paintings, prints, and objects from every era | Public-domain works released under CC0 | Via direct links
+- Art Institute of Chicago | Impressionism, American art, Japanese prints | Public-domain works released under CC0 | Yes, no key (art_institute_of_chicago)
+- The Met Open Access | Paintings, prints, and objects from every era | Public-domain works released under CC0 | Yes, no key (met)
+- Cleveland Museum of Art Open Access | Paintings, prints, and objects from many cultures | CC0 works only | Yes, no key (cleveland)
+- SMK, National Gallery of Denmark | Danish and European art, including Hammershøi | Public-domain works | Yes, no key (smk)
+- Wikimedia Commons | Picture of the Day and Featured Pictures: photography, nature, paintings | Often CC BY or CC BY-SA, which require credit | Yes, no key (commons)
 - National Gallery of Art | European and American painting | Open-access public-domain images | Via direct links
-- Rijksmuseum | Dutch Golden Age: Vermeer, Rembrandt | Public-domain images free to download | Via direct links
+- Rijksmuseum | Dutch Golden Age: Vermeer, Rembrandt | Public-domain images free to download | Via direct links; not a built-in source
 - Smithsonian Open Access | Art, nature, and history | CC0 items marked as such | Via direct links
 - NASA | Space telescopes, Earth from orbit, Astronomy Picture of the Day | Generally free to use; see NASA's media guidelines | Yes, free key or DEMO_KEY
 - Unsplash, Pexels, Pixabay | Modern photography | Each site's own free license | Yes, free API key
@@ -290,33 +311,56 @@ images credited to other photographers, under their own terms.
 Frame TV Art Manager can fetch art for you. Set ARTWORK_SOURCES_FILE=/data/sources.yaml; if the file
 doesn't exist, a commented starter file is created. A sources file looks like this:
 providers:
+museum:
+- search:winter landscape # up to 20 works mixed across four museums
+met:
+- search:sunflowers
+- object:436524 # one work by its ID
+cleveland:
+- search:snow?type=Painting # a search narrowed with a filter
+smk:
+- search:hammershøi
 art_institute_of_chicago:
-- photo:20684 # one artwork by its ID
-- search:impressionism # the top results for a search
+- photo:20684
+commons:
+- potd # Wikimedia Commons Picture of the Day
+- featured # the 10 newest Featured Pictures
 nasa:
 - apod # NASA Astronomy Picture of the Day
-- search:james webb
-unsplash:
-- collection:225444
-pexels:
-- curated
-pixabay:
-- editors_choice
 direct:
 - https://example.com/painting.jpg
 Downloads land in your artwork folder like any other picture, are prepared for the screen, and are uploaded on the next
-sync. If a source fails, nothing previously downloaded is removed. Removing a line from the file doesn't delete what it
+sync. If a source fails, nothing previously downloaded is removed and the rest of the sync goes ahead. Removing a line from the file doesn't delete what it
 already downloaded; delete those files yourself.
-Choosing public-domain works from the Art Institute of Chicago. A search: line downloads the
-top results for that search, and those can include works still under copyright. For public-domain art only, browse the
-public-domain filter on artic.edu and add each work as
-photo: plus the number in its address; for example, artic.edu/artworks/27992/… is photo:27992.
+- How much each line brings in: a museum search takes its first 10 results; museum:search takes up to 20, mixed across the museums.
+- Sized for 4K: images are requested just large enough to cover 3840×2160, with a smaller version as a fallback when the large one is over MAX_DOWNLOAD_SIZE_MB (20 MB by default) or 40 megapixels. Cleveland, SMK, and Commons images under 1920 pixels on the long edge are skipped.
+- Gentle on the museums: results are cached for 24 hours, rate limits are respected, and a provider that fails keeps its last good results.
+A sources file adds art to your everyday collection, which shows all year. To show winter or holiday art only on certain dates, put it in a themed collection.
+
+### Search four museums by theme
+museum:search:<theme> searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK at once and mixes their results.
+When two museums hold copies of the same work by the same artist, common for prints, only one is kept. If one museum is down, the others' works are still used.
+Public domain only. Searches of the Art Institute of Chicago, The Met, and SMK return only public-domain works, and Cleveland searches return only CC0 works.
+The public-domain and has-image filters are always applied, and unknown filters are rejected, so a typo can't widen a search.
+Each museum can also be searched on its own, and The Met and Cleveland accept filters after a ?, written as name=value pairs joined by &:
+- The Met: departmentId, isHighlight, isOnView, artistOrCulture, title, tags, medium, geoLocation, dateBegin, dateEnd. For example, met:search:?isHighlight=true&departmentId=11; the query before the ? may be empty when a filter is given.
+- Cleveland: type (such as Painting or Print), department, highlight, artists, title, created_after, created_before, currently_on_view.
+- SMK takes no filters.
+To add one work, use its ID from the museum's page: metmuseum.org/art/collection/search/436524 is met:object:436524,
+clevelandart.org/art/1997.111 is cleveland:object:1997.111, open.smk.dk/artwork/image/KMS1 is smk:object:KMS1,
+and artic.edu/artworks/27992/… is art_institute_of_chicago:photo:27992.
+
+### Wikimedia Commons pictures and credit
+Wikimedia Commons is a free media library whose community picks Featured Pictures and a Picture of the Day. commons:potd adds one picture a day
+(it changes at midnight UTC), commons:featured takes the 10 newest Featured Pictures, and commons:search:northern lights takes 10 Featured Pictures matching a query.
+Commons files are often CC BY or CC BY-SA, which require crediting the author and license. Frame TV Art Manager records the title, artist, provider,
+source page, and license of every downloaded image under attributions in /status, for museum works too, and skips Commons files without license information.
 
 ### What makes art look good on The Frame
 - Landscape works fill the screen best. Paintings close to 16:9, 3:2, or 4:3 are cropped only slightly; square and tall works are shown whole on a gallery mat.
 - Resolution matters. Aim for images at least 3840 pixels wide. Images that would need more than 3× enlargement are matted rather than blown up into blur.
 - Matte finish suits paintings. Oil paintings, watercolors, and prints look more like real art on The Frame's matte screen than glossy photographs do.
-- Change with the seasons. Searches such as search:winter landscape or search:autumn give the collection a seasonal feel.
+- Change with the seasons. Searches such as museum:search:snow or museum:search:autumn give the collection a seasonal feel, and a themed collection shows holiday art only on the dates you choose.
 See the art size guide for exactly what happens to each shape.
 
 ### A few public-domain favorites
@@ -324,27 +368,267 @@ See the art size guide for exactly what happens to each shape.
 - Katsushika Hokusai, The Great Wave off Kanagawa, about 1831, in many museum collections.
 - Claude Monet's Water Lilies and Stacks of Wheat series.
 - Vincent van Gogh, The Bedroom, 1889, Art Institute of Chicago.
-- Johannes Vermeer, The Milkmaid, about 1660, Rijksmuseum.
+- Pieter Bruegel the Elder, The Harvesters, 1565, The Met.
+- Vilhelm Hammershøi's quiet interiors, SMK.
 
-### Coming soon: art curated by your AI assistant
-A built-in MCP server is planned so AI assistants such as Claude or ChatGPT can put together themed sets, for
-example "a Christmas set from public-domain museum paintings", and send them to the TV without API keys. It is not
-available yet; this page will be updated when it ships.
+### Let your AI assistant choose the paintings
+With the optional MCP endpoint turned on, an AI assistant such as Claude can search the same four museums for you
+(search_public_domain_art), add the works you like to a themed collection with their title, artist, license, and museum link,
+preview how each will be fitted to the screen, and schedule the collection. The manager holds no AI keys; see
+AI art for The Frame with MCP.
 
 Q: Where can I get free art for my Samsung Frame TV?
-A: Museum open-access programs at the Art Institute of Chicago, The Met, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish public-domain artwork for free. NASA, Unsplash, Pexels, and Pixabay offer free images under their own terms.
+A: Museum open-access programs at The Met, the Art Institute of Chicago, the Cleveland Museum of Art, SMK, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish public-domain artwork for free, and Wikimedia Commons curates Featured Pictures. NASA, Unsplash, Pexels, and Pixabay offer free images under their own terms.
 
 Q: Is public-domain art free to display on my TV?
-A: Yes. Public-domain works are no longer under copyright, and museums that release images under CC0 put no conditions on using them. Photo sites such as Unsplash use their own licenses, so check each one.
+A: Yes. Public-domain works are no longer under copyright, and museums that release images under CC0 put no conditions on using them. Wikimedia Commons files are often CC BY or CC BY-SA, which require crediting the author, and photo sites such as Unsplash use their own licenses, so check each one.
 
 Q: Can Frame TV Art Manager download art automatically?
-A: Yes. List sources in a sources file and it downloads from the Art Institute of Chicago, NASA, Unsplash, Pexels, Pixabay, and direct image links on each sync, then prepares and uploads the art.
+A: Yes. List sources in a sources file and it downloads from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, SMK, Wikimedia Commons, NASA, Unsplash, Pexels, Pixabay, and direct image links on each sync, then prepares and uploads the art.
 
-Q: Does the Art Institute of Chicago search only return public-domain works?
-A: No. A search downloads the top results, which can include works still in copyright. Use photo: with an artwork ID from the public-domain filter on artic.edu to choose only public-domain works.
+Q: Do I need an API key for museum art?
+A: No. The Art Institute of Chicago, The Met, the Cleveland Museum of Art, SMK, and Wikimedia Commons need no key. Unsplash, Pexels, and Pixabay need a free key, and NASA works with its shared DEMO_KEY or a free key of your own.
+
+Q: Do the museum searches only return public-domain works?
+A: Yes. Searches of the Art Institute of Chicago, The Met, and SMK return only public-domain works, and Cleveland searches return only CC0 works. The public-domain and has-image filters are always applied.
 
 Q: What resolution should free art be for The Frame?
 A: At least 3840 pixels wide for the 4K models. Smaller images are shown whole on a gallery mat instead of being enlarged into blur.
+
+## Seasonal and holiday art collections on the Samsung Frame TV
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/seasonal-art-collections-samsung-frame-tv.html
+
+Short answer: Frame TV Art Manager can show Christmas, Halloween, or spring art on The Frame only on the dates you choose. Put the pictures in a themed collection with a yearly window, such as December 1 to January 6. While the window is open, the collection replaces your everyday art (exclusive, the default) or is shown alongside it. When the window closes, the holiday pictures come off the TV and your everyday art returns by itself. No files are deleted, and art you added to the TV yourself is never touched.
+
+### How a themed collection works
+A themed collection is a named group of pictures from your artwork folder, such as "Christmas", that is shown only when its schedule says so.
+Without any collections nothing changes: every picture in the folder is part of the normal rotation. Each collection has one of three schedules:
+Themed collection schedules
+- Schedule | When it is active
+- always | Always.
+- off | Never. New collections start here, so nothing changes on the TV until you schedule one.
+- window | Every year from a start date to an end date, written as MM-DD and including both days. A window can run across New Year, such as 12-01 to 01-06. 02-29 is allowed and simply doesn't occur in other years.
+Dates follow LOCATION_TIMEZONE, the same clock as AUTO_OFF_TIME (UTC by default), so a window opens at midnight where the TV is.
+The change reaches the TV on the first sync after midnight, within 30 minutes by default.
+
+### Replace your everyday art, or add to it
+Pictures that belong to no collection are your everyday art. Each sync picks what to show like this:
+- Exclusive (the default): while an exclusive collection is active and holds at least one picture, only pictures from active collections are shown. Your Christmas art replaces the everyday art.
+- Not exclusive: an active collection is shown together with the everyday art. Good for a light seasonal touch, such as spring flowers mixed into your usual photos.
+- Out of season: a picture that belongs only to inactive collections is hidden, and its copy is removed from the TV like any picture that left the folder. A picture in several collections is shown while any of them is active.
+Hiding a picture never deletes its file. The manager's other rules still apply: it never removes art you put on the TV yourself, and it never chooses which stored piece is on screen; the TV and its slideshow do that.
+
+### A year of art: Christmas, Halloween, and spring
+Three collections cover most of a year: Christmas, exclusive, from 12-01 to 01-06; Halloween, exclusive, from 10-01 to 10-31; and Spring, not exclusive, from 03-20 to 06-20. Here is what the TV shows on a few dates:
+What the Frame shows with three seasonal collections
+- Date | Active | On the TV
+- April 10 | Spring | Everyday art plus the spring pictures
+- October 15 | Halloween | Halloween pictures only
+- November 7 | None | Everyday art only; all seasonal pictures hidden
+- December 24 | Christmas | Christmas pictures only
+- January 7 | None | Everyday art only
+An exclusive collection with no pictures in the folder doesn't replace anything, so an empty Halloween collection leaves your everyday art up.
+
+### Create and schedule a collection
+With an AI assistant
+The easiest way is an AI assistant connected over MCP. Ask for "a Christmas collection shown December 1 to January 6" and it adds the
+pictures, then sets the schedule with update_collection and starts a sync. It can make new images or find public-domain paintings.
+The AI art guide shows the setup and a full example.
+By hand
+Collections live in .frame-tv-art-manager/collections.json inside the artwork folder, for example data/artwork/.frame-tv-art-manager/collections.json.
+The file must be readable only by the service user (chmod 600). Each member names a picture by its key; the assistant's
+list_artwork tool reports every picture's key.
+{
+"version": 1,
+"collections": [
+{
+"slug": "christmas",
+"name": "Christmas",
+"exclusive": true,
+"activation": { "mode": "window", "start": "12-01", "end": "01-06" },
+"members": [
+{ "key": "snowy-canal.jpg", "added_at": "2026-11-07T00:00:00Z" }
+]
+},
+{
+"slug": "halloween",
+"name": "Halloween",
+"exclusive": true,
+"activation": { "mode": "window", "start": "10-01", "end": "10-31" },
+"members": []
+},
+{
+"slug": "spring",
+"name": "Spring",
+"exclusive": false,
+"activation": { "mode": "window", "start": "03-20", "end": "06-20" },
+"members": []
+}
+]
+}
+Membership follows each picture's stable identity, so renaming a picture, or re-preparing it after a settings change, keeps it in its collection.
+One limitation: two portraits joined into a side-by-side collage become a new picture that belongs to no collection.
+
+### Fill a collection with public-domain paintings
+Museums hold centuries of winter scenes, harvests, and spring gardens, free to use. Two ways to bring them in:
+- Into a collection, through your assistant. Its search_public_domain_art tool searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK at once. Pick the works you want and add_artwork stores each one in the collection with its title, artist, license, and museum link.
+- Into your everyday art, through a sources file. A line such as museum:search:christmas downloads up to 20 public-domain works mixed across the same four museums. Downloads join the everyday art, which shows all year, so add them to a collection afterwards if they should be seasonal.
+The free art guide covers every museum source, search filters, and credits.
+
+### Collections on a full TV
+Themed collections decide which pictures are wanted today. Rotation and MAX_ARTWORK_IMAGES then work on those pictures only.
+- When an exclusive collection opens, the everyday pieces the manager uploaded are no longer wanted, so they are removed from the TV and the holiday pictures are uploaded in their place. When it closes, the reverse happens and the everyday art is uploaded again. Expect a busy sync at both ends of the window.
+- If the collection is bigger than the TV holds, it rotates within itself: each piece stays at least ROTATION_INTERVAL_DAYS (14 by default). A five-week Christmas window shows about three rounds at 14 days; set a shorter interval, such as 3, if you want more of the set to appear.
+- A non-exclusive collection on a full TV waits its turn: its pictures join the queue, and pieces never shown go first, but a slot only opens when a piece on the TV has stayed its full interval.
+- Art you uploaded to the TV yourself is never rotated or removed, and it takes up space the collections can't use.
+
+### If the collections file has a mistake
+If collections.json can't be read, for example after a typo, the manager never shows or removes art based on a guess. It keeps the last collections it read
+successfully since it started and reports the sync as failed in /status and /health until you fix the file. If it has never read the file,
+it skips the TV work for that sync and reports the error. Tools that change collections refuse to overwrite a file they can't read, and with
+DRY_RUN=true collections are evaluated but never saved.
+
+Q: Can I show Christmas art on my Frame TV only in December?
+A: Yes. Put the pictures in a themed collection with a yearly window, such as 12-01 to 12-31 or 12-01 to 01-06. Frame TV Art Manager shows them only while the window is open, in your LOCATION_TIMEZONE.
+
+Q: What happens to my everyday art during the holidays?
+A: With an exclusive collection, the default, the everyday pieces the manager uploaded come off the TV while the holiday collection is active and go back up when it ends. With a non-exclusive collection, both are shown.
+
+Q: Are holiday pictures deleted after the season?
+A: No. Their copies are removed from the TV, but the files stay in your artwork folder and come back the next year when the window opens again.
+
+Q: Can a collection run over New Year?
+A: Yes. A window whose end date is earlier than its start date, such as 12-01 to 01-06, wraps the new year. Both the start and end days are included.
+
+Q: Do I need an AI assistant to use themed collections?
+A: No. You can edit .frame-tv-art-manager/collections.json in the artwork folder by hand. An assistant connected over MCP just makes it easier to add pictures and set dates.
+
+## Make AI art for your Samsung Frame TV with Claude or ChatGPT (MCP)
+
+URL: https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html
+
+Short answer: Frame TV Art Manager has a built-in MCP endpoint, off by default, that lets your own AI assistant build art collections for your Samsung Frame TV. The assistant makes the images with its own tools; the manager holds no AI keys and calls no AI service. It tells the assistant the screen's exact size and format, stores and checks each image, previews how it will be fitted, puts it in a themed collection, schedules it, and syncs it to the TV. Turn it on with MCP_ENABLED=true and an MCP_TOKEN of at least 24 characters, then connect Claude Code, Claude Desktop, or another MCP client.
+
+### What MCP is
+The Model Context Protocol (MCP) is an open standard that lets an AI assistant use tools provided by
+other programs. A program that speaks MCP, called a server, lists its tools with their names, inputs, and purpose, and the assistant
+decides when to call them during a conversation. Frame TV Art Manager is an MCP server: when you ask your assistant for a Christmas
+collection, it calls the manager's tools to read the TV's display spec, add the images, and set the dates.
+
+### Why the manager needs no AI keys
+The images come from your assistant, under your own account with it. Frame TV Art Manager never calls an AI service and stores no AI credentials. Its job is everything that happens after an image exists:
+- Telling the assistant what the TV needs: 3840×2160 by default, 16:9, sRGB, JPEG or PNG, the size limit, and how other shapes are cropped or matted.
+- Storing each image after checking it is a real JPEG or PNG, and recognizing duplicates by their contents.
+- Showing a preview of each picture exactly as it will be prepared for the TV.
+- Putting the pictures in a themed collection, scheduling it, and starting a sync.
+If your assistant can't make images, it can still search public-domain museum collections, or add images from https links you give it.
+
+### Set it up in four steps
+Make a token
+Run openssl rand -hex 24 and keep the result. The token must be at least 24 characters with no spaces.
+Turn on the endpoint
+Add MCP_ENABLED and MCP_TOKEN to the container's environment, as below, and run docker compose up -d.
+Connect your assistant
+Add the server to Claude Code or Claude Desktop with the commands below, or to any MCP client that supports streamable HTTP.
+Check the connection
+Ask "What does my Frame TV need from an image?" The assistant should call get_display_spec and answer with the screen's size.
+compose.yaml (add to the service's environment)
+environment:
+MCP_ENABLED: "true"
+MCP_TOKEN: "paste-the-output-of: openssl rand -hex 24"
+The endpoint is http://<server-address>:8080/mcp (port HEALTH_PORT, which must stay on), and every request must send
+Authorization: Bearer <MCP_TOKEN>. While MCP_ENABLED is off, the address returns 404.
+Claude Code
+claude mcp add --transport http frame-tv http://<server-address>:8080/mcp \
+--header "Authorization: Bearer <MCP_TOKEN>"
+Claude Desktop
+Claude Desktop connects through the mcp-remote bridge, which needs Node.js.
+Add this to claude_desktop_config.json and restart Claude Desktop:
+{
+"mcpServers": {
+"frame-tv": {
+"command": "npx",
+"args": ["mcp-remote", "http://<server-address>:8080/mcp", "--allow-http",
+"--header", "Authorization:${FRAME_TV_AUTH}"],
+"env": { "FRAME_TV_AUTH": "Bearer <MCP_TOKEN>" }
+}
+}
+}
+Use https:// and drop --allow-http when the manager is behind a TLS proxy.
+ChatGPT and other MCP clients
+Other clients use the streamable HTTP transport with the URL and header above. Whether an assistant can connect depends on two things:
+its MCP support must let you send the Authorization header, and it must be able to reach your server. Claude Code and Claude Desktop
+run on your computer, so they reach a server on your home network. An assistant that connects from its own cloud servers, rather than from
+your computer, can't reach a home-network address; it would need the endpoint exposed behind a TLS reverse proxy (see Keep it safe).
+Check your assistant's current documentation before exposing anything.
+
+### The tools your assistant gets
+MCP tools provided by Frame TV Art Manager
+- Tool | What it does
+- get_display_spec | The target size (3840×2160 by default), aspect ratio, formats, size limit, and how pictures that don't fit are cropped or matted, with prompt tips
+- search_public_domain_art | Searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works
+- add_artwork | Stores one JPEG or PNG (an https link or base64 data) in a collection, creating the collection if needed, and records its title, artist, license, and link
+- preview_artwork | Shows a 960×540 preview of a picture exactly as it will be prepared for the TV; nothing is saved
+- list_artwork | Lists stored pictures with their collections, whether today's rules show them, and which TVs hold them
+- list_collections, create_collection, update_collection, delete_collection | Manage collections and their schedules
+- remove_from_collection | Takes a picture out of a collection
+- sync_now | Starts a sync now instead of waiting for the next one
+- get_status | The last sync's result and each TV's state
+
+### Example: a Christmas collection
+This is how a typical request plays out, shortened. Your assistant's wording will differ; the tool calls are the same.
+You: Make me 12 Christmas paintings in the style of Dutch winter landscapes and show them Dec 1 to Jan 6.
+Assistant calls get_display_spec, learns the screen is 3840×2160 and 16:9, and generates 12 landscape images with its own image tool, in one painterly style, with no text or frames.
+Assistant calls add_artwork once per image with the collection Christmas, a title, and the prompt as the description. The first call creates the collection, which starts off and exclusive.
+Assistant calls preview_artwork to check how the pictures will be fitted, then update_collection with the schedule window, 12-01 to 01-06, and finally sync_now and get_status.
+Assistant: The Christmas collection is scheduled from December 1 to January 6. Until then it stays hidden. On December 1 it replaces your everyday art, and on January 7 your everyday art comes back.
+You: Add a few real winter paintings too.
+Assistant calls search_public_domain_art for "winter", lists candidates with their title, artist, museum, and license, and adds the ones you pick with add_artwork, using each result's image link, license, and museum page.
+The window opens at midnight in LOCATION_TIMEZONE (UTC by default), so set it to your own time zone. The seasonal collections guide explains schedules, exclusive and everyday art, and what happens on a full TV.
+
+### Prompt tips for a matte art screen
+The Frame's anti-reflection matte panel makes paintings look like paintings, but it is still a lit screen in your living room. get_display_spec hands your assistant these tips, and they work just as well in your own prompts:
+- 16:9 landscape, highest resolution. Ask for a landscape composition at the highest resolution your image model supports, ideally exactly 3840×2160. Anything smaller than about 2560×1440 is visibly enlarged on a 4K screen. Keep the main subject away from the edges.
+- Painterly and textured. Oil, gouache, watercolor, etching, and woodcut styles look most like real art on the matte screen; glossy photoreal renders look like a TV.
+- Muted palettes, soft light. Avoid large pure-white or neon areas: they glow in a dark room at night.
+- No text, frames, or watermarks. Leave out text, signatures, watermarks, borders, frames, and mats; the TV and the manager add their own.
+- One style per set. Keep the style and palette the same across a collection so it feels curated.
+A snowy Dutch canal at dusk with skaters and a windmill, painted in oil
+with visible brushwork, muted blues and warm lamplight, 16:9 landscape,
+no text, no signature, no frame.
+Images that aren't exactly 16:9 are still handled: with the default settings, a landscape image fills the screen when that crops away at most 25%
+and needs no more than 3× enlargement; otherwise it is shown whole on a gallery mat. preview_artwork shows exactly which. See the
+art size guide for the details.
+
+### What the assistant can't do
+- Delete image files. Removing a picture from a collection, or deleting a collection, leaves the files in the folder.
+- Put a picture on screen right now. There is no "show this picture now" tool; the TV changes only through the normal sync, with all of its safety checks.
+- Fetch from your home network. Links must be https and point to the public internet; private addresses are refused, even after redirects.
+- Get around the upload rules. Images must be JPEG or PNG, no larger than MAX_DOWNLOAD_SIZE_MB (20 MB by default), and are checked and deduplicated before they are kept.
+- Change anything during a dry run. With DRY_RUN=true the read-only tools still work, and tools that would change anything are refused.
+Most assistants hand over generated images as links, so image_url is usually the practical choice; base64 data works for smaller images.
+
+### Keep it safe
+- Off by default. Nothing listens at /mcp until you set MCP_ENABLED=true and a token.
+- Treat the token like a password. Anyone with it can add art, change collections and their schedules, and start a sync, though not delete image files. Use a long random token, such as the output of openssl rand -hex 24.
+- Keep it on your home network. If you expose the endpoint beyond it, put it behind a reverse proxy with TLS; the token is sent with every request. Never forward port 8080 from your router.
+- Guessing is slowed down. Wrong tokens count toward the same per-address limit as upload passwords, and browser requests from other websites are refused.
+
+Q: Do I need an OpenAI or Anthropic API key to make AI art for my Frame TV?
+A: Not for Frame TV Art Manager. It holds no AI keys and calls no AI service. Your assistant makes the images under your own account with it, and the manager sizes, previews, schedules, and syncs them.
+
+Q: Which AI assistants work with Frame TV Art Manager?
+A: Claude Code, Claude Desktop through the mcp-remote bridge, and other MCP clients that support streamable HTTP with an Authorization header and can reach your server. An assistant that connects from its own cloud servers needs the endpoint exposed behind a TLS reverse proxy.
+
+Q: Can the AI assistant delete my photos or change what's on screen?
+A: No. No tool deletes image files, and there is no tool to show a picture right away. The TV changes only through the normal sync and its safety checks.
+
+Q: What size should AI-generated art be for The Frame?
+A: A 16:9 landscape, ideally exactly 3840×2160 pixels, as JPEG or PNG. Anything smaller than about 2560×1440 is visibly enlarged on the 4K screen.
+
+Q: Can my assistant use real paintings instead of AI images?
+A: Yes. The search_public_domain_art tool searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works, and add_artwork records each one's title, artist, license, and museum link.
 
 ## Samsung Frame TV art size: 3840×2160 explained
 
@@ -400,7 +684,11 @@ A 24-megapixel camera photo takes about a second. The prepared file replaces the
 
 ### File size and limits
 A 3840×2160 JPEG at quality 95 is usually a few megabytes. Downloads and web uploads are limited to 20 MB by
-default (MAX_DOWNLOAD_SIZE_MB). Each image is processed within a 512 MB memory budget, which is enough for 8K originals.
+default (MAX_DOWNLOAD_SIZE_MB, 1–100). Files you copy into the artwork folder may be up to 200 MB
+(MAX_LOCAL_FILE_SIZE_MB, 1–512); larger ones are skipped with a warning. Each image is processed within a 512 MB memory budget,
+which is enough for an 8-bit 8K original, and images above 40 megapixels are left out with a warning in the log.
+Making art with an AI image tool? Ask for a 16:9 landscape at the highest resolution it offers, ideally exactly 3840×2160; anything smaller than about
+2560×1440 is visibly enlarged on the 4K screen. The AI art guide shows how an assistant connected over MCP reads this spec itself.
 
 Q: What size should pictures be for a Samsung Frame TV?
 A: 3840×2160 pixels for the 4K models, a 16:9 landscape. The 32-inch Frame has a 1920×1080 panel.
@@ -473,21 +761,27 @@ Common settings (all optional except TV_IPS)
 - ROTATION_INTERVAL_DAYS | 14 | How long each piece stays on a full TV
 - MATTE_STYLE | none | Samsung matte for every upload
 - UPLOAD_ENABLED, UPLOAD_TOKEN | off | Web and iPhone Shortcut uploads
-- ARTWORK_SOURCES_FILE | unset | Download art from NASA, museums, and photo sites
+- ARTWORK_SOURCES_FILE | unset | Download art from museums, Wikimedia Commons, NASA, and photo sites
+- MCP_ENABLED, MCP_TOKEN | off | Let an AI assistant add and schedule art over MCP; the token needs at least 24 characters (AI art guide)
+- LOCATION_TIMEZONE | UTC | Clock for power times, sun-following brightness, and seasonal collection dates
+- MAX_LOCAL_FILE_SIZE_MB | 200 | Largest file accepted from the artwork folder (1–512); larger files are skipped with a warning
 - DRY_RUN | false | Plan without changing anything
 Every setting, with comments, is in .env.example.
+On/off settings accept true/false, 1/0, yes/no, on/off, or y/n in any case.
+Anything else, an unknown log level, or a bad TV address stops the service at startup with a clear error, so a typo can't silently turn a setting such as DRY_RUN off.
 
 ### Optional TV controls
 - Slideshow: SLIDESHOW_ENABLED, SLIDESHOW_INTERVAL (3, 15, 60, 720, or 1440 minutes), SLIDESHOW_TYPE (shuffle or sequential).
-- Brightness: a fixed BRIGHTNESS (0 to 50), or SOLAR_BRIGHTNESS_ENABLED=true with your latitude, longitude, and time zone to follow the sun between BRIGHTNESS_MIN and BRIGHTNESS_MAX.
+- Brightness: a fixed BRIGHTNESS on the Frame's Art Mode scale of 0 to 10, or SOLAR_BRIGHTNESS_ENABLED=true with your latitude, longitude, and time zone to follow the sun between BRIGHTNESS_MIN and BRIGHTNESS_MAX (also 0 to 10). Values from 11 to 50, from the 0 to 50 scale earlier releases documented, are converted (30 becomes 6) with a warning; anything else outside 0 to 10 stops startup.
 - Nightly power-off: AUTO_OFF_TIME=22:00 turns off TVs showing art and leaves TVs in use alone.
-- Wake-on-LAN: TV_MAC wakes a single TV that is confirmed off; never when its state is unknown. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it typically needs network_mode: host.
+- Morning power-on: AUTO_ON_TIME (for example 07:00) together with TV_MAC wakes a single TV once a day, on the first sync in the AUTO_ON_GRACE_HOURS window (default 2), only if the TV is confirmed off or has dropped off the network; never when its state is unknown. TV_MAC on its own no longer wakes the TV. The magic packet goes to 255.255.255.255 and the TV's /24 broadcast address; set TV_WOL_BROADCAST to use one other broadcast address instead. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it needs network_mode: host.
 If you leave these unset, the manager doesn't touch the TV's own settings.
 
 ### Monitoring and upgrades
 - GET /live: the process is running (used by the container healthcheck).
 - GET /ready and /health: 200 once the last sync succeeded, otherwise 503.
-- GET /status: per-TV status, last error, and rotation details as JSON.
+- GET /status: per-TV status, last error, rotation details, and credits for downloaded artwork as JSON. source_warning appears when an artwork source failed; the TVs still sync the art already on disk.
+When UPLOAD_TOKEN is set, /status shows the last error and TV addresses only to requests signed in as frame with that token. Without credentials it returns the same fields with TVs numbered tv-1, tv-2, …, no error text, and "redacted": true.
 Logs are structured JSON. To upgrade, run docker compose pull and docker compose up -d; your data folder carries over.
 Never expose port 8080 to the internet; keep it on your home network or behind a TLS reverse proxy.
 
@@ -556,7 +850,8 @@ running Docker all work. Preparing a 24-megapixel photo uses roughly 250 MB of m
 ### Network checklist
 - The NAS and the TV must reach each other: same network, or routing between VLANs.
 - Nothing needs to be opened to the internet. Keep port 8080 on your home network.
-- Wake-on-LAN (TV_MAC) is a broadcast that Docker's default bridge network doesn't forward, so it usually needs host networking.
+- The morning wake (AUTO_ON_TIME with TV_MAC) uses Wake-on-LAN, a broadcast that Docker's default bridge network doesn't forward, so it needs host networking. By default the packet goes to 255.255.255.255 and the TV's /24 broadcast address; TV_WOL_BROADCAST sends it to one other IPv4 broadcast address instead.
+- If you turn on the MCP endpoint for an AI assistant, it uses the same port 8080 and stays on your home network too.
 
 ## Home Assistant and Samsung Frame TV art
 
@@ -590,12 +885,19 @@ status, image count, and rotation details. Add this to configuration.yaml:
 rest:
 - resource: http://SERVER-IP:8080/status
 scan_interval: 300
+authentication: basic
+username: frame
+password: !secret frame_upload_token
 sensor:
 - name: Frame art last sync OK
 value_template: "{{ value_json.last_sync_ok }}"
 - name: Frame art last error
 value_template: "{{ value_json.last_error | default('', true) | truncate(250) }}"
-Then alert yourself when last_sync_ok stays false. /ready returns HTTP 200 or 503 if you'd rather use a simple binary check.
+The three sign-in lines matter once UPLOAD_TOKEN is set: /status then shows the last error and TV addresses only to requests signed in as
+frame with that token, and anonymous requests get the same fields with TVs numbered tv-1, tv-2, …, no error text, and "redacted": true.
+Put the token in secrets.yaml as frame_upload_token. Without UPLOAD_TOKEN, /status is open and the sign-in lines are harmless.
+Then alert yourself when last_sync_ok stays false. A source_warning field appears when an online art source failed; the TVs still sync the art already on disk.
+/ready returns HTTP 200 or 503 if you'd rather use a simple binary check; it needs no password.
 
 ### Send pictures from an automation
 Turn on the uploader (UPLOAD_ENABLED=true and a 16-character-plus UPLOAD_TOKEN). Home Assistant's
@@ -688,7 +990,8 @@ The form field must be named file. Send files one at a time: a second upload sen
 
 ### What happens after a photo is uploaded
 On the next sync it's prepared like any other picture: turned upright, shown whole on a gallery mat if it's a portrait,
-converted to sRGB, sharpened, and resized to 3840×2160. Then it goes to every TV in TV_IPS. To take it off the TV,
+converted to sRGB, sharpened, and resized to 3840×2160. Then it goes to every TV in TV_IPS. The untouched original you sent is kept in the
+artwork folder's hidden .frame-tv-art-manager/originals directory, so changing an image setting later re-prepares it without losing quality. To take it off the TV,
 delete its file from the artwork folder; the upload response tells you its name.
 
 ### Upload errors
@@ -761,6 +1064,11 @@ pieces yourself. REMOVE_UNKNOWN_IMAGES=true would also free space, but it delete
 The slideshow changes which stored piece is on screen, from every 3 minutes to once a day. Rotation changes which pieces
 are stored, every 14 days by default. Together, a large collection keeps moving through the TV.
 
+### Rotation and seasonal collections
+With themed collections, rotation works on the pictures wanted today. When an exclusive
+collection such as Christmas opens, the everyday pieces the manager uploaded come off the TV and the holiday pictures go up; if the holiday set is bigger than
+the TV holds, it rotates within itself. A short window may call for a shorter ROTATION_INTERVAL_DAYS so more of the set gets its turn.
+
 ### Checking on rotation
 http://SERVER-IP:8080/status shows rotating, artwork_waiting, and next_rotation for each TV.
 Some TVs limit storage by size rather than count; if uploads keep failing after space was freed, rotation pauses after three failures in a row and resumes once an upload succeeds.
@@ -795,7 +1103,7 @@ Per-TV status values in /status
 - Status | Meaning | What to do
 - ok | The last sync finished. | Nothing.
 - skipped (not art mode) | The TV was showing other content. | Nothing; it tries again next sync.
-- skipped (powered off) | The TV was off. | Nothing, or set TV_MAC to wake it.
+- skipped (powered off) | The TV was off. | Nothing, or set TV_MAC together with AUTO_ON_TIME to wake it once each morning.
 - backoff, unreachable | The TV didn't answer; retries wait longer, up to an hour. | Check the IP address and that server and TV share a network.
 - storage full | Rotation is off, or the TV is full of art the manager didn't upload. | See the storage guide.
 - recovery required | An upload or delete was interrupted before its result was confirmed. | Usually clears on its own; see below.
@@ -812,10 +1120,28 @@ To avoid duplicates or wrong deletions, that TV is paused until the result can b
 stop the container and delete that TV's tv_*_reconciliation.json file in the tokens folder. The manager then forgets which art it uploaded:
 existing art stays on the TV as if you'd added it yourself, and your collection is uploaded again.
 
+### It stops at startup after an upgrade
+Invalid settings stop the service at startup with a clear error in the log, so a typo can't silently change behavior. Two changes catch people after upgrading:
+- On/off values are strict. They accept true/false, 1/0, yes/no, on/off, or y/n in any case. Anything else, such as enabled, stops startup.
+- Brightness uses the Frame's 0–10 scale. Values from 11 to 50, from the 0–50 scale earlier releases documented, are converted (30 becomes 6) and logged as a warning; anything else outside 0–10 stops startup.
+Also note that TV_MAC on its own no longer wakes the TV; add AUTO_ON_TIME, for example 07:00.
+
+### /status shows redacted or source_warning
+- "redacted": true, TVs named tv-1, no error text: UPLOAD_TOKEN is set, and the request didn't sign in. Open /status signed in as frame with that token to see addresses and errors. Wrong credentials get 401.
+- source_warning: an online art source failed during the sync. Nothing it downloaded before is removed, and the TVs still sync the art already on disk. The source is tried again later, after its rate-limit reset or a growing delay of 15 minutes up to a day.
+
+### Seasonal art doesn't appear, or everyday art disappeared
+- New collections start off. Give the collection a schedule, such as a window from 12-01 to 01-06, or always.
+- Dates follow LOCATION_TIMEZONE, UTC by default, so a window may open hours earlier or later than you expect.
+- Everyday art gone? An active exclusive collection replaces it until its window ends. Make the collection non-exclusive to show both.
+- Sync reported as failed? .frame-tv-art-manager/collections.json may have a typo or the wrong permissions; it must be readable only by the service user (chmod 600). Until it's fixed, the manager keeps the last collections it read and changes nothing based on a guess.
+The seasonal collections guide explains schedules in full.
+
 ### Art looks cropped, blurry, or too bright
 - Cropped portraits: the default PORTRAIT_MODE=pad shows them whole; see the portrait guide.
 - Blurry: the source is too small for 4K; see the art size guide.
-- Too bright or dim at night: set BRIGHTNESS, or SOLAR_BRIGHTNESS_ENABLED=true to follow the sun.
+- Too bright or dim at night: set BRIGHTNESS on the Frame's 0–10 scale, or SOLAR_BRIGHTNESS_ENABLED=true to follow the sun. A TV that doesn't answer brightness or slideshow requests keeps syncing art; that setting is skipped with a warning in the log.
+- Wrong crop or mat after changing a setting: the next sync re-prepares every picture from its kept original, so the new setting applies cleanly. Pictures prepared by earlier versions, which replaced originals outright, can't get back what was cropped away; delete the prepared file and add the original again.
 - Left on all night: AUTO_OFF_TIME turns off TVs showing art at a set time.
 
 ### Permission errors on /data
@@ -837,6 +1163,9 @@ A: It was off or showing other content. Frame TV Art Manager never changes a TV 
 
 Q: Why don't new pictures show on the TV?
 A: They are added to My Photos on the next sync, but the TV decides which piece is on screen. Turn on the slideshow to cycle through new art.
+
+Q: Why did my everyday art disappear from the Frame TV?
+A: An exclusive themed collection, such as Christmas, is probably active. While it is, only its pictures are shown; the everyday art returns when its date window ends. Your files are never deleted.
 
 ## SmartThings alternative for Samsung Frame TV art
 
@@ -878,7 +1207,9 @@ hand, and what it does when the TV is off or unreachable.
 - Your collection is bigger than the TV holds and should rotate.
 - You have more than one Frame.
 - You shoot portraits and want them shown whole.
-- You'd like museum or NASA art to arrive on its own.
+- You'd like museum or NASA art to arrive on its own; the museum sources need no API key.
+- You want holiday art shown only on certain dates, with your everyday art returning afterwards.
+- You'd like an AI assistant such as Claude to make or find art and schedule it, without giving the app any AI keys.
 
 ### Choose SmartThings when
 - You only add a photo now and then.

@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-07-26">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="iPhone and Apple Photos">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="How to send Apple Photos to a Samsung Frame TV">
@@ -44,7 +44,7 @@
       "name": "Send Photos from iPhone to Samsung Frame TV",
       "description": "Send Apple Photos from an iPhone, iPad, or Mac to a Samsung Frame TV using an upload page, an iPhone Shortcut, a Mac script, or curl.",
       "datePublished": "2026-07-26",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "Send Apple Photos from an iPhone, iPad, or Mac to a Samsung Frame TV using an upload page, an iPhone Shortcut, a Mac script, or curl.",
       "inLanguage": "en",
       "datePublished": "2026-07-26",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -187,7 +187,7 @@
 <p class="eyebrow">iPhone and Apple Photos</p>
 <h1>How to send photos from an iPhone or Apple Photos to a Samsung Frame TV</h1>
 <p class="answer"><strong>Short answer:</strong> turn on Frame TV Art Manager's upload page and send photos to it from your iPhone, iPad, or Mac. The quickest way is the upload page in Safari; an iPhone Shortcut or a Mac script can send favorites or an album on a schedule. Photos join the artwork folder and reach every Frame TV on the next sync, within 30 minutes by default.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <p>Photos travel from your device to your own server over your home network. Whether your Photos library uses iCloud is up to your Apple settings; Frame TV Art Manager doesn't touch it. <code>SERVER-IP</code> below means the machine running Frame TV Art Manager, not the TV.</p>
 <nav class="toc" aria-labelledby="toc-title">
@@ -267,7 +267,8 @@ done</code></pre>
 <section aria-labelledby="after-upload">
 <h2 id="after-upload">What happens after a photo is uploaded</h2>
 <p>On the next sync it's prepared like any other picture: turned upright, shown whole on a gallery mat if it's a portrait,
-converted to sRGB, sharpened, and resized to 3840×2160. Then it goes to every TV in <code>TV_IPS</code>. To take it off the TV,
+converted to sRGB, sharpened, and resized to 3840×2160. Then it goes to every TV in <code>TV_IPS</code>. The untouched original you sent is kept in the
+artwork folder's hidden <code>.frame-tv-art-manager/originals</code> directory, so changing an image setting later re-prepares it without losing quality. To take it off the TV,
 delete its file from the artwork folder; the upload response tells you its name.</p>
 </section>
 <section aria-labelledby="errors">
@@ -346,6 +347,8 @@ delete its file from the artwork folder; the upload response tells you its name.
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

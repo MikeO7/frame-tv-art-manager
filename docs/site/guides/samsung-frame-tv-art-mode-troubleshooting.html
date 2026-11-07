@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-11-06">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="Troubleshooting">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Samsung Frame TV art troubleshooting">
@@ -44,7 +44,7 @@
       "name": "Samsung Frame TV Art Not Showing? Troubleshooting",
       "description": "Fix Frame TV art that won't appear: no Allow prompt, TV skipped, storage full, upload errors, and every Frame TV Art Manager status explained.",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "Fix Frame TV art that won't appear: no Allow prompt, TV skipped, storage full, upload errors, and every Frame TV Art Manager status explained.",
       "inLanguage": "en",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -153,6 +153,14 @@
             "@type": "Answer",
             "text": "They are added to My Photos on the next sync, but the TV decides which piece is on screen. Turn on the slideshow to cycle through new art."
           }
+        },
+        {
+          "@type": "Question",
+          "name": "Why did my everyday art disappear from the Frame TV?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "An exclusive themed collection, such as Christmas, is probably active. While it is, only its pictures are shown; the everyday art returns when its date window ends. Your files are never deleted."
+          }
         }
       ]
     }
@@ -187,7 +195,7 @@
 <p class="eyebrow">Troubleshooting</p>
 <h1>Samsung Frame TV art troubleshooting</h1>
 <p class="answer"><strong>Short answer:</strong> most problems come down to three things: the TV hasn't approved the connection, the TV was off or not in Art Mode during the sync, or its storage is full. Check <code>http://SERVER-IP:8080/status</code>; each TV's status says which it is, and the sections below explain each one.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <nav class="toc" aria-labelledby="toc-title">
 <h2 id="toc-title">On this page</h2>
@@ -196,6 +204,9 @@
 <li><a href="#statuses">What each status means</a></li>
 <li><a href="#art-not-appearing">Pictures don't appear on the TV</a></li>
 <li><a href="#recovery">"Recovery required" won't clear</a></li>
+<li><a href="#startup-errors">It stops at startup after an upgrade</a></li>
+<li><a href="#status-fields">/status shows redacted or source_warning</a></li>
+<li><a href="#seasonal">Seasonal art doesn't appear, or everyday art disappeared</a></li>
 <li><a href="#looks-wrong">Art looks cropped, blurry, or too bright</a></li>
 <li><a href="#permissions">Permission errors on /data</a></li>
 <li><a href="#upload-errors">Upload page errors</a></li>
@@ -220,7 +231,7 @@
 <tbody>
 <tr><td><code>ok</code></td><td>The last sync finished.</td><td>Nothing.</td></tr>
 <tr><td><code>skipped (not art mode)</code></td><td>The TV was showing other content.</td><td>Nothing; it tries again next sync.</td></tr>
-<tr><td><code>skipped (powered off)</code></td><td>The TV was off.</td><td>Nothing, or set <code>TV_MAC</code> to wake it.</td></tr>
+<tr><td><code>skipped (powered off)</code></td><td>The TV was off.</td><td>Nothing, or set <code>TV_MAC</code> together with <code>AUTO_ON_TIME</code> to wake it once each morning.</td></tr>
 <tr><td><code>backoff</code>, <code>unreachable</code></td><td>The TV didn't answer; retries wait longer, up to an hour.</td><td>Check the IP address and that server and TV share a network.</td></tr>
 <tr><td><code>storage full</code></td><td>Rotation is off, or the TV is full of art the manager didn't upload.</td><td>See the <a href="samsung-frame-tv-storage-full-art-rotation.html">storage guide</a>.</td></tr>
 <tr><td><code>recovery required</code></td><td>An upload or delete was interrupted before its result was confirmed.</td><td>Usually clears on its own; see below.</td></tr>
@@ -242,12 +253,39 @@
 stop the container and delete that TV's <code>tv_*_reconciliation.json</code> file in the tokens folder. The manager then forgets which art it uploaded:
 existing art stays on the TV as if you'd added it yourself, and your collection is uploaded again.</p>
 </section>
+<section aria-labelledby="startup-errors">
+<h2 id="startup-errors">It stops at startup after an upgrade</h2>
+<p>Invalid settings stop the service at startup with a clear error in the log, so a typo can't silently change behavior. Two changes catch people after upgrading:</p>
+<ul>
+<li><strong>On/off values are strict.</strong> They accept <code>true</code>/<code>false</code>, <code>1</code>/<code>0</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>y</code>/<code>n</code> in any case. Anything else, such as <code>enabled</code>, stops startup.</li>
+<li><strong>Brightness uses the Frame's 0–10 scale.</strong> Values from 11 to 50, from the 0–50 scale earlier releases documented, are converted (30 becomes 6) and logged as a warning; anything else outside 0–10 stops startup.</li>
+</ul>
+<p>Also note that <code>TV_MAC</code> on its own no longer wakes the TV; add <code>AUTO_ON_TIME</code>, for example <code>07:00</code>.</p>
+</section>
+<section aria-labelledby="status-fields">
+<h2 id="status-fields">/status shows redacted or source_warning</h2>
+<ul>
+<li><strong><code>"redacted": true</code>, TVs named <code>tv-1</code>, no error text:</strong> <code>UPLOAD_TOKEN</code> is set, and the request didn't sign in. Open <code>/status</code> signed in as <code>frame</code> with that token to see addresses and errors. Wrong credentials get <code>401</code>.</li>
+<li><strong><code>source_warning</code>:</strong> an online art source failed during the sync. Nothing it downloaded before is removed, and the TVs still sync the art already on disk. The source is tried again later, after its rate-limit reset or a growing delay of 15 minutes up to a day.</li>
+</ul>
+</section>
+<section aria-labelledby="seasonal">
+<h2 id="seasonal">Seasonal art doesn't appear, or everyday art disappeared</h2>
+<ul>
+<li><strong>New collections start <code>off</code>.</strong> Give the collection a schedule, such as a <code>window</code> from <code>12-01</code> to <code>01-06</code>, or <code>always</code>.</li>
+<li><strong>Dates follow <code>LOCATION_TIMEZONE</code></strong>, UTC by default, so a window may open hours earlier or later than you expect.</li>
+<li><strong>Everyday art gone?</strong> An active exclusive collection replaces it until its window ends. Make the collection non-exclusive to show both.</li>
+<li><strong>Sync reported as failed?</strong> <code>.frame-tv-art-manager/collections.json</code> may have a typo or the wrong permissions; it must be readable only by the service user (<code>chmod 600</code>). Until it's fixed, the manager keeps the last collections it read and changes nothing based on a guess.</li>
+</ul>
+<p>The <a href="seasonal-art-collections-samsung-frame-tv.html">seasonal collections guide</a> explains schedules in full.</p>
+</section>
 <section aria-labelledby="looks-wrong">
 <h2 id="looks-wrong">Art looks cropped, blurry, or too bright</h2>
 <ul>
 <li><strong>Cropped portraits:</strong> the default <code>PORTRAIT_MODE=pad</code> shows them whole; see the <a href="samsung-frame-tv-portrait-photos-mat.html">portrait guide</a>.</li>
 <li><strong>Blurry:</strong> the source is too small for 4K; see the <a href="samsung-frame-tv-art-size.html">art size guide</a>.</li>
-<li><strong>Too bright or dim at night:</strong> set <code>BRIGHTNESS</code>, or <code>SOLAR_BRIGHTNESS_ENABLED=true</code> to follow the sun.</li>
+<li><strong>Too bright or dim at night:</strong> set <code>BRIGHTNESS</code> on the Frame's 0–10 scale, or <code>SOLAR_BRIGHTNESS_ENABLED=true</code> to follow the sun. A TV that doesn't answer brightness or slideshow requests keeps syncing art; that setting is skipped with a warning in the log.</li>
+<li><strong>Wrong crop or mat after changing a setting:</strong> the next sync re-prepares every picture from its kept original, so the new setting applies cleanly. Pictures prepared by earlier versions, which replaced originals outright, can't get back what was cropped away; delete the prepared file and add the original again.</li>
 <li><strong>Left on all night:</strong> <code>AUTO_OFF_TIME</code> turns off TVs showing art at a set time.</li>
 </ul>
 </section>
@@ -278,6 +316,10 @@ Logs are JSON; errors from the TV include <code>error_kind</code>, <code>operati
 <details>
 <summary>Why don't new pictures show on the TV?</summary>
 <p>They are added to My Photos on the next sync, but the TV decides which piece is on screen. Turn on the slideshow to cycle through new art.</p>
+</details>
+<details>
+<summary>Why did my everyday art disappear from the Frame TV?</summary>
+<p>An exclusive themed collection, such as Christmas, is probably active. While it is, only its pictures are shown; the everyday art returns when its date window ends. Your files are never deleted.</p>
 </details>
 </section>
 </article>
@@ -318,6 +360,8 @@ Logs are JSON; errors from the TV include <code>error_kind</code>, <code>operati
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

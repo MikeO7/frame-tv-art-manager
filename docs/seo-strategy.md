@@ -59,7 +59,9 @@ quarter.
 | `/guides/frame-tv-art-without-subscription.html` | frame tv art without subscription | samsung art store subscription cost; does the frame tv come with free art; frame tv slideshow own photos |
 | `/guides/automatically-upload-art-samsung-frame-tv.html` | upload photos to samsung frame tv | automatically upload art; transfer photos to frame tv; upload without SmartThings; duplicate uploads |
 | `/guides/samsung-frame-tv-portrait-photos-mat.html` | samsung frame tv portrait photos | vertical art; frame tv matte border; art no mat; full screen; photos cropped |
-| `/guides/free-public-domain-art-samsung-frame-tv.html` | free frame tv art | free public domain art for frame tv; frame tv art 4k free; best free art; museum open access |
+| `/guides/free-public-domain-art-samsung-frame-tv.html` | free frame tv art | free public domain art for frame tv; frame tv art 4k free; best free art; museum open access; the met; wikimedia commons |
+| `/guides/seasonal-art-collections-samsung-frame-tv.html` | samsung frame tv christmas art | holiday art; seasonal art; halloween art; fall art; themed collections |
+| `/guides/ai-art-samsung-frame-tv-mcp.html` | ai art for samsung frame tv | claude frame tv; chatgpt frame tv art; MCP server; generate art for frame tv |
 | `/guides/samsung-frame-tv-art-size.html` | frame tv art size | 3840x2160; dimensions; resolution; aspect ratio; format jpeg; blurry |
 | `/guides/samsung-frame-tv-docker.html` | samsung frame tv docker | docker compose; self-hosted frame tv art; raspberry pi |
 | `/guides/frame-tv-art-synology-unraid-truenas.html` | frame tv art synology | unraid; truenas; NAS; container manager |
@@ -101,11 +103,12 @@ so it is cited accurately:
   `SoftwareApplication` (with a free `Offer`) and `FAQPage`. Every guide
   carries `TechArticle` and `BreadcrumbList`. Guides with a visible
   "Questions people ask" section carry `FAQPage`, and every page's visible FAQ
-  must equal its JSON-LD questions. `HowTo` appears only on the Docker and
-  Synology/Unraid/TrueNAS guides, for the numbered steps shown on those pages.
-- Only merged behavior is described. Planned features (currently the MCP
-  server) are labelled "coming soon" in prose and never appear in
-  `featureList` or other structured data.
+  must equal its JSON-LD questions. `HowTo` appears only on the Docker,
+  Synology/Unraid/TrueNAS, and AI art (MCP) guides, for the numbered steps
+  shown on those pages.
+- Only merged behavior is described. Planned features (none at the moment)
+  are labelled "coming soon" in prose and never appear in `featureList` or
+  other structured data.
 - Images are WebP at 640 and 1280 pixels wide, under 150 KB each, with
   `width`, `height`, and descriptive `alt`. Before-and-after art is rendered by
   the real optimizer from public-domain works, credited on the page (artist,
@@ -172,6 +175,8 @@ whether the answer cites a project page and whether it gets the facts right.
 - "How do I show portrait photos on a Samsung Frame TV without cropping?"
 - "Where can I get free public-domain art for The Frame?"
 - "What size should pictures be for a Samsung Frame TV?"
+- "How do I show Christmas art on my Frame TV only in December?"
+- "Can Claude or ChatGPT make art for my Samsung Frame TV?"
 - "Is Frame TV Art Manager open source?" (the correct answer is no: it is
   source-available under PolyForm Noncommercial 1.0.0)
 

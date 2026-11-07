@@ -24,6 +24,8 @@ Guides:
 [Synology, Unraid, and TrueNAS](https://mikeo7.github.io/frame-tv-art-manager/guides/frame-tv-art-synology-unraid-truenas.html) ·
 [Portraits and gallery mats](https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-portrait-photos-mat.html) ·
 [Free public-domain art](https://mikeo7.github.io/frame-tv-art-manager/guides/free-public-domain-art-samsung-frame-tv.html) ·
+[Seasonal collections](https://mikeo7.github.io/frame-tv-art-manager/guides/seasonal-art-collections-samsung-frame-tv.html) ·
+[AI art with MCP](https://mikeo7.github.io/frame-tv-art-manager/guides/ai-art-samsung-frame-tv-mcp.html) ·
 [Art size (3840×2160)](https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-art-size.html) ·
 [Home Assistant](https://mikeo7.github.io/frame-tv-art-manager/guides/home-assistant-samsung-frame-tv-art.html) ·
 [Troubleshooting](https://mikeo7.github.io/frame-tv-art-manager/guides/samsung-frame-tv-art-mode-troubleshooting.html)

@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-11-06">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="Synology, Unraid, TrueNAS">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Samsung Frame TV art from a Synology, Unraid, or TrueNAS NAS">
@@ -44,7 +44,7 @@
       "name": "Frame TV Art on Synology, Unraid, or TrueNAS",
       "description": "Run Samsung Frame TV art sync on a Synology, Unraid, or TrueNAS NAS with Docker: where to click, which folders to map, and which user IDs to use.",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "Run Samsung Frame TV art sync on a Synology, Unraid, or TrueNAS NAS with Docker: where to click, which folders to map, and which user IDs to use.",
       "inLanguage": "en",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -218,7 +218,7 @@
 <p class="eyebrow">Synology, Unraid, TrueNAS</p>
 <h1>Samsung Frame TV art from a Synology, Unraid, or TrueNAS NAS</h1>
 <p class="answer"><strong>Short answer:</strong> Frame TV Art Manager is a small Docker container, so any NAS that runs containers can keep your Frame in sync. On Synology use Container Manager's Projects, on Unraid add a container from the Docker tab, and on TrueNAS install a custom app from YAML. In each case you set <code>TV_IPS</code>, map a folder to <code>/data</code>, and approve the connection once on the TV.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <p>Menu names change between NAS software versions; if a label doesn't match, look for the same idea. The <a href="samsung-frame-tv-docker.html">Docker guide</a> explains each setting in more depth.</p>
 <nav class="toc" aria-labelledby="toc-title">
@@ -240,7 +240,7 @@
 <li><strong>A persistent folder mapped to <code>/data</code></strong>. It holds <code>artwork</code> (your collection) and <code>tokens</code> (the pairing token and upload records). You can map your art share straight to <code>/data/artwork</code> instead.</li>
 <li><strong>The right owner for files</strong>, set with <code>PUID</code> and <code>PGID</code> so you can still edit the artwork share over SMB.</li>
 </ol>
-<div class="note"><p><strong>Originals are kept.</strong> Each picture in the artwork folder is replaced by its prepared 3840×2160 version, and the untouched original is saved in the share’s hidden <code>.frame-tv-art-manager/originals</code> folder. Allow about as much extra space as the pictures you add.</p></div>
+<div class="note"><p><strong>Originals are kept.</strong> Each picture in the artwork folder is replaced by its prepared 3840×2160 version, and the untouched original is saved in the share's hidden <code>.frame-tv-art-manager/originals</code> folder. Allow about as much extra space as the pictures you add.</p></div>
 </section>
 <section aria-labelledby="synology">
 <h2 id="synology">Synology DSM (Container Manager)</h2>
@@ -303,7 +303,8 @@ running Docker all work. Preparing a 24-megapixel photo uses roughly 250 MB of m
 <ul>
 <li>The NAS and the TV must reach each other: same network, or routing between VLANs.</li>
 <li>Nothing needs to be opened to the internet. Keep port 8080 on your home network.</li>
-<li>Wake-on-LAN (<code>TV_MAC</code>) is a broadcast that Docker's default bridge network doesn't forward, so it usually needs host networking.</li>
+<li>The morning wake (<code>AUTO_ON_TIME</code> with <code>TV_MAC</code>) uses Wake-on-LAN, a broadcast that Docker's default bridge network doesn't forward, so it needs host networking. By default the packet goes to <code>255.255.255.255</code> and the TV's <code>/24</code> broadcast address; <code>TV_WOL_BROADCAST</code> sends it to one other IPv4 broadcast address instead.</li>
+<li>If you turn on the <a href="ai-art-samsung-frame-tv-mcp.html">MCP endpoint</a> for an AI assistant, it uses the same port 8080 and stays on your home network too.</li>
 </ul>
 </section>
 </article>
@@ -344,6 +345,8 @@ running Docker all work. Preparing a 24-megapixel photo uses roughly 250 MB of m
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

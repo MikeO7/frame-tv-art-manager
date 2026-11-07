@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-07-26">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="Docker setup">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Install Frame TV Art Manager with Docker">
@@ -44,7 +44,7 @@
       "name": "Samsung Frame TV Art on Docker: Setup Guide",
       "description": "Install Frame TV Art Manager with Docker Compose to sync art to a Samsung Frame TV from a NAS, mini PC, Raspberry Pi, or Mac. One required setting.",
       "datePublished": "2026-07-26",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "Install Frame TV Art Manager with Docker Compose to sync art to a Samsung Frame TV from a NAS, mini PC, Raspberry Pi, or Mac. One required setting.",
       "inLanguage": "en",
       "datePublished": "2026-07-26",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -228,7 +228,7 @@
 <p class="eyebrow">Docker setup</p>
 <h1>Install Frame TV Art Manager with Docker</h1>
 <p class="answer"><strong>Short answer:</strong> run the <code>ghcr.io/mikeo7/frame-tv-art-manager:latest</code> image with your Samsung Frame TV's IP address in <code>TV_IPS</code> and a <code>./data:/data</code> volume. Approve the connection once on the TV, then copy JPEG or PNG files into <code>data/artwork</code>. The image runs on amd64, arm64, and armv7, so it fits a NAS, a mini PC, a Raspberry Pi-class board, or a Mac.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-07-26">July 26, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <p>Using a Synology, Unraid, or TrueNAS box? The <a href="frame-tv-art-synology-unraid-truenas.html">NAS guide</a> shows where each step happens in their web interfaces.</p>
 <nav class="toc" aria-labelledby="toc-title">
@@ -301,18 +301,23 @@ and <code>PGID</code> to control file ownership, or own the folders yourself, ad
 <tr><td><code>ROTATION_INTERVAL_DAYS</code></td><td><code>14</code></td><td>How long each piece stays on a full TV</td></tr>
 <tr><td><code>MATTE_STYLE</code></td><td><code>none</code></td><td>Samsung matte for every upload</td></tr>
 <tr><td><code>UPLOAD_ENABLED</code>, <code>UPLOAD_TOKEN</code></td><td>off</td><td>Web and iPhone Shortcut uploads</td></tr>
-<tr><td><code>ARTWORK_SOURCES_FILE</code></td><td>unset</td><td>Download art from NASA, museums, and photo sites</td></tr>
+<tr><td><code>ARTWORK_SOURCES_FILE</code></td><td>unset</td><td>Download art from museums, Wikimedia Commons, NASA, and photo sites</td></tr>
+<tr><td><code>MCP_ENABLED</code>, <code>MCP_TOKEN</code></td><td>off</td><td>Let an AI assistant add and schedule art over MCP; the token needs at least 24 characters (<a href="ai-art-samsung-frame-tv-mcp.html">AI art guide</a>)</td></tr>
+<tr><td><code>LOCATION_TIMEZONE</code></td><td>UTC</td><td>Clock for power times, sun-following brightness, and <a href="seasonal-art-collections-samsung-frame-tv.html">seasonal collection</a> dates</td></tr>
+<tr><td><code>MAX_LOCAL_FILE_SIZE_MB</code></td><td><code>200</code></td><td>Largest file accepted from the artwork folder (1–512); larger files are skipped with a warning</td></tr>
 <tr><td><code>DRY_RUN</code></td><td><code>false</code></td><td>Plan without changing anything</td></tr>
 </tbody></table></div>
-<p>Every setting, with comments, is in <a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">.env.example</a>.</p>
+<p>Every setting, with comments, is in <a href="https://github.com/MikeO7/frame-tv-art-manager/blob/main/.env.example">.env.example</a>.
+On/off settings accept <code>true</code>/<code>false</code>, <code>1</code>/<code>0</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>y</code>/<code>n</code> in any case.
+Anything else, an unknown log level, or a bad TV address stops the service at startup with a clear error, so a typo can't silently turn a setting such as <code>DRY_RUN</code> off.</p>
 </section>
 <section aria-labelledby="tv-controls">
 <h2 id="tv-controls">Optional TV controls</h2>
 <ul>
 <li><strong>Slideshow:</strong> <code>SLIDESHOW_ENABLED</code>, <code>SLIDESHOW_INTERVAL</code> (3, 15, 60, 720, or 1440 minutes), <code>SLIDESHOW_TYPE</code> (<code>shuffle</code> or <code>sequential</code>).</li>
-<li><strong>Brightness:</strong> a fixed <code>BRIGHTNESS</code> (0 to 50), or <code>SOLAR_BRIGHTNESS_ENABLED=true</code> with your latitude, longitude, and time zone to follow the sun between <code>BRIGHTNESS_MIN</code> and <code>BRIGHTNESS_MAX</code>.</li>
+<li><strong>Brightness:</strong> a fixed <code>BRIGHTNESS</code> on the Frame's Art Mode scale of 0 to 10, or <code>SOLAR_BRIGHTNESS_ENABLED=true</code> with your latitude, longitude, and time zone to follow the sun between <code>BRIGHTNESS_MIN</code> and <code>BRIGHTNESS_MAX</code> (also 0 to 10). Values from 11 to 50, from the 0 to 50 scale earlier releases documented, are converted (30 becomes 6) with a warning; anything else outside 0 to 10 stops startup.</li>
 <li><strong>Nightly power-off:</strong> <code>AUTO_OFF_TIME=22:00</code> turns off TVs showing art and leaves TVs in use alone.</li>
-<li><strong>Morning power-on:</strong> <code>AUTO_ON_TIME</code> with <code>TV_MAC</code> wakes a single TV once a day when it is confirmed off; never when its state is unknown. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it typically needs <code>network_mode: host</code>.</li>
+<li><strong>Morning power-on:</strong> <code>AUTO_ON_TIME</code> (for example <code>07:00</code>) together with <code>TV_MAC</code> wakes a single TV once a day, on the first sync in the <code>AUTO_ON_GRACE_HOURS</code> window (default 2), only if the TV is confirmed off or has dropped off the network; never when its state is unknown. <code>TV_MAC</code> on its own no longer wakes the TV. The magic packet goes to <code>255.255.255.255</code> and the TV's <code>/24</code> broadcast address; set <code>TV_WOL_BROADCAST</code> to use one other broadcast address instead. Wake-on-LAN is a broadcast, which Docker's default bridge network doesn't pass to your LAN, so it needs <code>network_mode: host</code>.</li>
 </ul>
 <p>If you leave these unset, the manager doesn't touch the TV's own settings.</p>
 </section>
@@ -321,8 +326,9 @@ and <code>PGID</code> to control file ownership, or own the folders yourself, ad
 <ul>
 <li><code>GET /live</code>: the process is running (used by the container healthcheck).</li>
 <li><code>GET /ready</code> and <code>/health</code>: 200 once the last sync succeeded, otherwise 503.</li>
-<li><code>GET /status</code>: per-TV status, last error, and rotation details as JSON.</li>
+<li><code>GET /status</code>: per-TV status, last error, rotation details, and credits for downloaded artwork as JSON. <code>source_warning</code> appears when an artwork source failed; the TVs still sync the art already on disk.</li>
 </ul>
+<p>When <code>UPLOAD_TOKEN</code> is set, <code>/status</code> shows the last error and TV addresses only to requests signed in as <code>frame</code> with that token. Without credentials it returns the same fields with TVs numbered <code>tv-1</code>, <code>tv-2</code>, …, no error text, and <code>"redacted": true</code>.</p>
 <p>Logs are structured JSON. To upgrade, run <code>docker compose pull</code> and <code>docker compose up -d</code>; your <code>data</code> folder carries over.
 Never expose port 8080 to the internet; keep it on your home network or behind a TLS reverse proxy.</p>
 </section>
@@ -370,6 +376,8 @@ TV_IPS=192.168.1.150 ARTWORK_DIR="$PWD/data/artwork" TOKEN_DIR="$PWD/data/tokens
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

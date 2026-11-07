@@ -58,7 +58,7 @@
       "url": "https://mikeo7.github.io/frame-tv-art-manager/",
       "name": "Frame TV Art Manager: Samsung Frame Art, No Subscription",
       "description": "Free self-hosted service that keeps Samsung The Frame's Art Mode in sync with a folder on your NAS or home server.",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -105,8 +105,12 @@
         "Never removes art it did not upload unless configured to",
         "Talks to the TV directly on the local network with no Samsung or SmartThings account",
         "Web uploader for browsers, iPhone Shortcuts, and curl",
-        "Online sources: NASA, Art Institute of Chicago, Unsplash, Pexels, Pixabay, direct URLs",
-        "Samsung mattes, slideshow, solar brightness, nightly power-off, and Wake-on-LAN"
+        "Keeps each picture's untouched original and re-prepares from it when image settings change",
+        "Free online sources with no API key: public-domain works from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK, plus Wikimedia Commons Picture of the Day and Featured Pictures",
+        "Online sources with a free API key: Unsplash, Pexels, Pixabay, and NASA (or its shared DEMO_KEY); plus direct image URLs",
+        "Themed collections shown on a yearly date window, such as Christmas art from December 1 to January 6",
+        "Optional MCP endpoint so your own AI assistant can add, preview, and schedule art; the app holds no AI keys",
+        "Samsung mattes, slideshow, brightness on the Art Mode 0-10 scale or following the sun, nightly power-off, and morning Wake-on-LAN"
       ],
       "softwareRequirements": "Samsung Frame TV running Tizen 8.0 or newer on the same local network; Docker or a Go build"
     },
@@ -153,7 +157,7 @@
           "name": "Do I need SmartThings or a Samsung account?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. It talks to the TV directly on your local network. Only optional online sources such as NASA or Unsplash contact the internet, and only when you turn them on."
+            "text": "No. It talks to the TV directly on your local network. Only optional online sources such as museums or NASA, and images an AI assistant asks it to fetch, contact the internet, and only when you turn them on."
           }
         },
         {
@@ -186,6 +190,30 @@
           "acceptedAnswer": {
             "@type": "Answer",
             "text": "No. Pictures are recognized by their contents, so a photo that is already on the TV is never sent again, even under a new name."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I show Christmas or other holiday art only during the holidays?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Put the pictures in a themed collection with a yearly date window, such as December 1 to January 6. While the window is open the collection replaces your everyday art, or is shown alongside it if you choose. Afterwards the everyday art comes back on its own, and no files are deleted."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can an AI assistant like Claude or ChatGPT make art for my Frame TV?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, through your own assistant. Turn on the optional MCP endpoint and connect an MCP client such as Claude Code or Claude Desktop. The assistant makes the images with its own tools; Frame TV Art Manager tells it the screen's size, prepares and previews the images, puts them in a themed collection, and schedules them. The app holds no AI account or API key."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it keep my original photos?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Each picture's untouched original is kept in the artwork folder's hidden .frame-tv-art-manager/originals directory, and every prepared version is made from it, so you can change an image setting later without losing quality. Pictures prepared by earlier versions, which replaced originals outright, keep their current file as the original from then on."
           }
         },
         {
@@ -281,7 +309,7 @@
 <h2 id="how-title">How it works</h2>
 <p class="intro">You manage a folder; Frame TV Art Manager keeps every Frame matched to it.</p>
 <ol class="steps">
-<li><h3>Add pictures</h3><p>Copy JPEG or PNG files into the artwork folder, send them from your iPhone, or let it fetch art from NASA and museum collections.</p></li>
+<li><h3>Add pictures</h3><p>Copy JPEG or PNG files into the artwork folder, send them from your iPhone, let it fetch art from NASA and museum collections, or ask your AI assistant.</p></li>
 <li><h3>It prepares each one</h3><p>Upright, color-corrected, sharpened, and fitted to 3840×2160: cropped only when little is lost, otherwise shown whole on a gallery mat.</p></li>
 <li><h3>Every TV stays in sync</h3><p>New pictures are uploaded once, deleted ones are removed, and a full TV takes turns. Your own uploads are never touched.</p></li>
 </ol>
@@ -339,7 +367,7 @@
 </article>
 <article class="card">
 <h3>Art from anywhere</h3>
-<p>A shared folder, a password-protected upload page, iPhone Shortcuts, or online sources: NASA, the Art Institute of Chicago, Unsplash, Pexels, Pixabay, and direct links.</p>
+<p>A shared folder, a password-protected upload page, iPhone Shortcuts, or online sources. Public-domain paintings from the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK, and Wikimedia Commons' Picture of the Day, need no API key. <a href="guides/free-public-domain-art-samsung-frame-tv.html">Free art sources</a>.</p>
 </article>
 <article class="card">
 <h3>Samsung mattes too</h3>
@@ -347,10 +375,21 @@
 </article>
 <article class="card">
 <h3>TV controls, if you want them</h3>
-<p>Slideshow timing, brightness that follows the sun, a nightly power-off, and Wake-on-LAN. Each stays off until you set it.</p>
+<p>Slideshow timing, brightness on the Frame's 0–10 scale or following the sun, a nightly power-off, and a morning wake. Each stays off until you set it.</p>
+</article>
+<article class="card">
+<h3>Holiday art on a schedule</h3>
+<p>Group pictures into themed collections with a yearly window, such as Christmas from Dec 1 to Jan 6. Your everyday art returns by itself afterwards. <a href="guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a>.</p>
+</article>
+<article class="card">
+<h3>Works with your AI assistant</h3>
+<p>An optional MCP endpoint lets Claude or another assistant make or find art, preview it on the screen's real size, and schedule it. The app holds no AI keys. <a href="guides/ai-art-samsung-frame-tv-mcp.html">AI art guide</a>.</p>
+</article>
+<article class="card">
+<h3>Originals kept</h3>
+<p>Each picture's untouched original is saved in a hidden folder, and every prepared version is made from it, so changing a setting later never costs quality.</p>
 </article>
 </div>
-<p class="note"><strong>Coming soon:</strong> a built-in MCP server, so AI assistants such as Claude or ChatGPT can put together themed sets, like a Christmas collection of public-domain museum paintings, and send them to the TV without API keys. It isn't available yet.</p>
 </div>
 </section>
 
@@ -387,6 +426,7 @@
 <li>Change anything on a TV whose state it can't confirm.</li>
 <li>Empty the TV if the folder is emptied, or drop art because a website is down.</li>
 <li>Choose which piece is on screen, or change anything at all with <code>DRY_RUN=true</code>.</li>
+<li>Delete image files when a picture leaves a collection, or let an AI assistant change the TV outside the normal, checked sync.</li>
 </ul>
 </article>
 </div>
@@ -441,6 +481,18 @@
 <p class="eyebrow">Free 4K art</p>
 <h3>Free public-domain 4K art for Samsung The Frame</h3>
 <p>Museum open-access collections, NASA, and photo sites, and how to pull art from them automatically.</p>
+<span class="more">Read the guide <span aria-hidden="true">→</span></span>
+</a>
+<a class="card" href="guides/seasonal-art-collections-samsung-frame-tv.html">
+<p class="eyebrow">Seasonal collections</p>
+<h3>Seasonal and holiday art collections on The Frame</h3>
+<p>Show Christmas, Halloween, or spring art on yearly dates, then return to your everyday art automatically.</p>
+<span class="more">Read the guide <span aria-hidden="true">→</span></span>
+</a>
+<a class="card" href="guides/ai-art-samsung-frame-tv-mcp.html">
+<p class="eyebrow">AI art with MCP</p>
+<h3>Make AI art for The Frame with Claude or ChatGPT</h3>
+<p>Connect your own assistant over MCP: it makes the images, the manager sizes, previews, and schedules them.</p>
 <span class="more">Read the guide <span aria-hidden="true">→</span></span>
 </a>
 <a class="card" href="guides/samsung-frame-tv-art-size.html">
@@ -509,7 +561,7 @@
 </details>
 <details>
 <summary>Do I need SmartThings or a Samsung account?</summary>
-<p>No. It talks to the TV directly on your local network. Only optional online sources such as NASA or Unsplash contact the internet, and only when you turn them on.</p>
+<p>No. It talks to the TV directly on your local network. Only optional online sources such as museums or NASA, and images an AI assistant asks it to fetch, contact the internet, and only when you turn them on.</p>
 </details>
 <details>
 <summary>How does it handle portrait photos?</summary>
@@ -526,6 +578,18 @@
 <details>
 <summary>Will it upload the same photo twice?</summary>
 <p>No. Pictures are recognized by their contents, so a photo that is already on the TV is never sent again, even under a new name.</p>
+</details>
+<details>
+<summary>Can I show Christmas or other holiday art only during the holidays?</summary>
+<p>Yes. Put the pictures in a themed collection with a yearly date window, such as December 1 to January 6. While the window is open the collection replaces your everyday art, or is shown alongside it if you choose. Afterwards the everyday art comes back on its own, and no files are deleted.</p>
+</details>
+<details>
+<summary>Can an AI assistant like Claude or ChatGPT make art for my Frame TV?</summary>
+<p>Yes, through your own assistant. Turn on the optional MCP endpoint and connect an MCP client such as Claude Code or Claude Desktop. The assistant makes the images with its own tools; Frame TV Art Manager tells it the screen's size, prepares and previews the images, puts them in a themed collection, and schedules them. The app holds no AI account or API key.</p>
+</details>
+<details>
+<summary>Does it keep my original photos?</summary>
+<p>Yes. Each picture's untouched original is kept in the artwork folder's hidden .frame-tv-art-manager/originals directory, and every prepared version is made from it, so you can change an image setting later without losing quality. Pictures prepared by earlier versions, which replaced originals outright, keep their current file as the original from then on.</p>
 </details>
 <details>
 <summary>What can I run it on?</summary>
@@ -558,6 +622,8 @@
 <li><a href="./guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="./guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="./guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="./guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="./guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="./guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="./guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="./guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

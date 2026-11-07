@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-11-06">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="No subscription">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Samsung Frame TV art without a subscription">
@@ -44,7 +44,7 @@
       "name": "Samsung Frame TV Art Without a Subscription",
       "description": "You don't need the $4.99/month Art Store to keep The Frame fresh. Use your own photos and free public-domain art, synced from a folder.",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "You don't need the $4.99/month Art Store to keep The Frame fresh. Use your own photos and free public-domain art, synced from a folder.",
       "inLanguage": "en",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -153,7 +153,7 @@
           "name": "Where can I get free art for a Samsung Frame TV?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Museum open-access collections such as the Art Institute of Chicago, The Met, the National Gallery of Art, and the Rijksmuseum publish public-domain works for free. NASA, Unsplash, Pexels, and Pixabay offer free images under their own licenses. Frame TV Art Manager can download from several of these automatically."
+            "text": "Museum open-access collections such as the Art Institute of Chicago, The Met, the Cleveland Museum of Art, SMK, the National Gallery of Art, and the Rijksmuseum publish public-domain works for free. Wikimedia Commons, NASA, Unsplash, Pexels, and Pixabay offer free images under their own licenses. Frame TV Art Manager downloads from the first four museums and Wikimedia Commons with no API key."
           }
         },
         {
@@ -205,7 +205,7 @@
 <p class="eyebrow">No subscription</p>
 <h1>Samsung Frame TV art without a subscription</h1>
 <p class="answer"><strong>Short answer:</strong> you don't need Samsung's Art Store to enjoy The Frame. Your own photos in My Photos are free to display, and museums publish thousands of public-domain paintings you can use at no cost. Frame TV Art Manager, a free self-hosted service, keeps a folder of that art on the TV for you: it prepares each picture for the 4K screen, uploads it over your home network, and swaps art in and out when the TV is full.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <p>This guide is for Frame owners who like Art Mode but don't want another monthly bill. It covers what Samsung charges for, what stays free, and how to get a steady supply of good-looking art onto the TV without paying for a subscription.</p>
 <nav class="toc" aria-labelledby="toc-title">
@@ -241,13 +241,14 @@ TV can show any stored piece.</p>
 upload at a time from a phone, portraits that get cropped, and a TV that eventually runs out of room.
 <a href="automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a> turn that into "drop files in a folder".</p>
 <h3 id="public-domain">2. Public-domain masterpieces</h3>
-<p>The Art Institute of Chicago, The Met, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish
+<p>The Art Institute of Chicago, The Met, the Cleveland Museum of Art, SMK, the National Gallery of Art, the Rijksmuseum, and the Smithsonian publish
 high-resolution images of public-domain works for anyone to use. Van Gogh, Monet, Hokusai, Vermeer, and Seurat are all
-there. The <a href="free-public-domain-art-samsung-frame-tv.html">free 4K art guide</a> lists where to look and how to
+there. Frame TV Art Manager downloads from the first four with no API key, for example <code>museum:search:winter</code> to search them all at once.
+The <a href="free-public-domain-art-samsung-frame-tv.html">free 4K art guide</a> lists where to look and how to
 pull art in automatically.</p>
 <h3 id="free-photo-sites">3. Free photo and space imagery</h3>
-<p>NASA's image library and Astronomy Picture of the Day, Unsplash, Pexels, and Pixabay offer free images under their own
-licenses. Frame TV Art Manager can download from all of them on a schedule; Unsplash, Pexels, and Pixabay need a free API key.</p>
+<p>Wikimedia Commons' Picture of the Day and Featured Pictures, NASA's image library and Astronomy Picture of the Day, Unsplash, Pexels, and Pixabay offer free images under their own
+licenses. Frame TV Art Manager can download from all of them on a schedule; Wikimedia Commons needs no key, NASA works with its shared <code>DEMO_KEY</code>, and Unsplash, Pexels, and Pixabay need a free API key.</p>
 </section>
 <section aria-labelledby="keep-it-changing">
 <h2 id="keep-it-changing">How to keep the art changing without a subscription</h2>
@@ -257,6 +258,8 @@ licenses. Frame TV Art Manager can download from all of them on a schedule; Unsp
 <li><strong>A large collection takes turns.</strong> When the TV is full, each piece the manager uploaded stays for 14 days (<code>ROTATION_INTERVAL_DAYS</code>) and is then swapped for art that hasn't been shown yet.</li>
 <li><strong>The slideshow can be set for you.</strong> <code>SLIDESHOW_ENABLED</code>, <code>SLIDESHOW_INTERVAL</code> (3, 15, 60, 720, or 1440 minutes), and <code>SLIDESHOW_TYPE</code> (<code>shuffle</code> or <code>sequential</code>) set the TV's slideshow for your uploaded photos over the local network. What the TV then allows is up to Samsung's firmware.</li>
 <li><strong>Nothing is uploaded twice.</strong> Pictures are recognized by their content, so re-adding the same file doesn't create duplicates on the TV.</li>
+<li><strong>Holiday art on its own schedule.</strong> A <a href="seasonal-art-collections-samsung-frame-tv.html">themed collection</a> shows Christmas or Halloween art only on the dates you choose, then your everyday art returns.</li>
+<li><strong>Your AI assistant can help.</strong> With the optional MCP endpoint, an assistant such as Claude can make or find art and schedule it; see the <a href="ai-art-samsung-frame-tv-mcp.html">AI art guide</a>. The manager itself needs no AI subscription or key.</li>
 </ul>
 <p>The manager never picks which piece is on screen; the TV and its slideshow do that. It also never deletes art you put on the TV yourself.</p>
 </section>
@@ -286,7 +289,7 @@ It is an independent project and is not affiliated with or endorsed by Samsung.<
 </details>
 <details>
 <summary>Where can I get free art for a Samsung Frame TV?</summary>
-<p>Museum open-access collections such as the Art Institute of Chicago, The Met, the National Gallery of Art, and the Rijksmuseum publish public-domain works for free. NASA, Unsplash, Pexels, and Pixabay offer free images under their own licenses. Frame TV Art Manager can download from several of these automatically.</p>
+<p>Museum open-access collections such as the Art Institute of Chicago, The Met, the Cleveland Museum of Art, SMK, the National Gallery of Art, and the Rijksmuseum publish public-domain works for free. Wikimedia Commons, NASA, Unsplash, Pexels, and Pixabay offer free images under their own licenses. Frame TV Art Manager downloads from the first four museums and Wikimedia Commons with no API key.</p>
 </details>
 <details>
 <summary>Can Frame TV Art Manager unlock Art Store content?</summary>
@@ -335,6 +338,8 @@ It is an independent project and is not affiliated with or endorsed by Samsung.<
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>

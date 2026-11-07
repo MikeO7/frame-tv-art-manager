@@ -26,7 +26,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Frame TV Art Manager: The Starry Night shown whole on a charcoal gallery mat on a Samsung Frame TV">
 <meta property="article:published_time" content="2026-11-06">
-<meta property="article:modified_time" content="2026-11-06">
+<meta property="article:modified_time" content="2026-11-07">
 <meta property="article:section" content="Home Assistant">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Home Assistant and Samsung Frame TV art, locally">
@@ -44,7 +44,7 @@
       "name": "Home Assistant and Samsung Frame TV Art",
       "description": "Pair Home Assistant with a local Frame TV art sync: watch it with a REST sensor, send pictures from automations, and avoid two tools fighting.",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "isPartOf": {
         "@id": "https://mikeo7.github.io/frame-tv-art-manager/#website"
       },
@@ -61,7 +61,7 @@
       "description": "Pair Home Assistant with a local Frame TV art sync: watch it with a REST sensor, send pictures from automations, and avoid two tools fighting.",
       "inLanguage": "en",
       "datePublished": "2026-11-06",
-      "dateModified": "2026-11-06",
+      "dateModified": "2026-11-07",
       "author": {
         "@id": "https://github.com/MikeO7#person"
       },
@@ -196,7 +196,7 @@
 <p class="eyebrow">Home Assistant</p>
 <h1>Home Assistant and Samsung Frame TV art</h1>
 <p class="answer"><strong>Short answer:</strong> Home Assistant is good at controlling the TV; Frame TV Art Manager is good at keeping its art collection in sync. Run the art manager as its own Docker container on your network, watch it from Home Assistant with a REST sensor on <code>/status</code>, and send pictures to it from automations with the upload endpoint. Everything stays local; no SmartThings cloud is involved.</p>
-<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-06">November 6, 2026</time></span></p>
+<p class="meta"><span>By <a href="https://github.com/MikeO7">MikeO7</a></span><span>Published <time datetime="2026-11-06">November 6, 2026</time></span><span>Last updated <time datetime="2026-11-07">November 7, 2026</time></span></p>
 </header>
 <p>Frame TV Art Manager is not a Home Assistant integration or add-on. It's a separate service that works well alongside one.</p>
 <nav class="toc" aria-labelledby="toc-title">
@@ -244,12 +244,19 @@ status, image count, and rotation details. Add this to <code>configuration.yaml<
 <pre><code>rest:
   - resource: http://SERVER-IP:8080/status
     scan_interval: 300
+    authentication: basic
+    username: frame
+    password: !secret frame_upload_token
     sensor:
       - name: Frame art last sync OK
         value_template: "{{ value_json.last_sync_ok }}"
       - name: Frame art last error
         value_template: "{{ value_json.last_error | default('', true) | truncate(250) }}"</code></pre>
-<p>Then alert yourself when <code>last_sync_ok</code> stays false. <code>/ready</code> returns HTTP 200 or 503 if you'd rather use a simple binary check.</p>
+<p>The three sign-in lines matter once <code>UPLOAD_TOKEN</code> is set: <code>/status</code> then shows the last error and TV addresses only to requests signed in as
+<code>frame</code> with that token, and anonymous requests get the same fields with TVs numbered <code>tv-1</code>, <code>tv-2</code>, …, no error text, and <code>"redacted": true</code>.
+Put the token in <code>secrets.yaml</code> as <code>frame_upload_token</code>. Without <code>UPLOAD_TOKEN</code>, <code>/status</code> is open and the sign-in lines are harmless.</p>
+<p>Then alert yourself when <code>last_sync_ok</code> stays false. A <code>source_warning</code> field appears when an online art source failed; the TVs still sync the art already on disk.
+<code>/ready</code> returns HTTP 200 or 503 if you'd rather use a simple binary check; it needs no password.</p>
 </section>
 <section aria-labelledby="send-pictures">
 <h2 id="send-pictures">Send pictures from an automation</h2>
@@ -330,6 +337,8 @@ upload sent at the same moment gets HTTP 429 and should be retried.</p>
 <li><a href="../guides/automatically-upload-art-samsung-frame-tv.html">Automatic uploads</a></li>
 <li><a href="../guides/samsung-frame-tv-portrait-photos-mat.html">Portraits and mats</a></li>
 <li><a href="../guides/free-public-domain-art-samsung-frame-tv.html">Free 4K art</a></li>
+<li><a href="../guides/seasonal-art-collections-samsung-frame-tv.html">Seasonal collections</a></li>
+<li><a href="../guides/ai-art-samsung-frame-tv-mcp.html">AI art (MCP)</a></li>
 <li><a href="../guides/samsung-frame-tv-art-size.html">Image size</a></li>
 <li><a href="../guides/samsung-frame-tv-docker.html">Docker setup</a></li>
 <li><a href="../guides/frame-tv-art-synology-unraid-truenas.html">Synology, Unraid, TrueNAS</a></li>
