@@ -49,6 +49,22 @@ func newArtworkCollection(
 	healthStatus *health.Status,
 	store collectionpkg.Store,
 ) (ArtworkCollection, error) {
+	local, err := newLocalCollection(cfg, logger, healthStatus, store, resources.NewDefaultController())
+	if err != nil {
+		return nil, err
+	}
+	return local, nil
+}
+
+// newLocalCollection is newArtworkCollection with an explicit transform
+// admission controller, so callers can share it with other image work.
+func newLocalCollection(
+	cfg *config.Config,
+	logger *slog.Logger,
+	healthStatus *health.Status,
+	store collectionpkg.Store,
+	limits *resources.Controller,
+) (*localCollection, error) {
 	if cfg == nil {
 		return nil, errors.New("artwork collection configuration is required")
 	}
@@ -62,7 +78,7 @@ func newArtworkCollection(
 		mutation: make(chan struct{}, 1),
 		cfg:      cfg, logger: logger, health: healthStatus,
 		loader: sources.NewLoader(cfg, logger, store),
-		limits: resources.NewDefaultController(), store: store,
+		limits: limits, store: store,
 	}, nil
 }
 

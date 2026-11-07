@@ -60,6 +60,9 @@ func validateSecuritySettings(cfg *Config) error {
 	if cfg.UploadEnabled && len(cfg.UploadToken) < 16 {
 		return fmt.Errorf("UPLOAD_TOKEN must contain at least 16 characters when UPLOAD_ENABLED=true")
 	}
+	if err := validateMCPSettings(cfg); err != nil {
+		return err
+	}
 	if cfg.SourcesFile == "" {
 		return nil
 	}
@@ -69,6 +72,26 @@ func validateSecuritySettings(cfg *Config) error {
 	default:
 		return nil
 	}
+}
+
+// minimumMCPTokenLength keeps the bearer token out of practical guessing
+// range even before the per-client failure limit applies.
+const minimumMCPTokenLength = 24
+
+func validateMCPSettings(cfg *Config) error {
+	if !cfg.MCPEnabled {
+		return nil
+	}
+	if cfg.HealthPort == 0 {
+		return errors.New("MCP_ENABLED=true requires HEALTH_PORT, because /mcp is served by the health server")
+	}
+	if len(cfg.MCPToken) < minimumMCPTokenLength {
+		return fmt.Errorf("MCP_TOKEN must contain at least %d characters when MCP_ENABLED=true", minimumMCPTokenLength)
+	}
+	if strings.ContainsFunc(cfg.MCPToken, func(character rune) bool { return character <= ' ' || character == 0x7f }) {
+		return errors.New("MCP_TOKEN must not contain spaces or control characters")
+	}
+	return nil
 }
 
 func validateEnums(cfg *Config) error {

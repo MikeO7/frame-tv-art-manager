@@ -30,6 +30,11 @@ func TestLoadEnvironRejectsInvalidSettings(t *testing.T) {
 		{name: "latitude syntax", environ: []string{tv, "LOCATION_LATITUDE=north"}, want: "LOCATION_LATITUDE"},
 		{name: "longitude syntax", environ: []string{tv, "LOCATION_LONGITUDE=west"}, want: "LOCATION_LONGITUDE"},
 		{name: "portrait mode", environ: []string{tv, "PORTRAIT_MODE=stretch"}, want: "PORTRAIT_MODE"},
+		{name: "mcp without token", environ: []string{tv, "MCP_ENABLED=true"}, want: "MCP_TOKEN must contain at least 24"},
+		{name: "mcp short token", environ: []string{tv, "MCP_ENABLED=on", "MCP_TOKEN=short-token"}, want: "MCP_TOKEN must contain at least 24"},
+		{name: "mcp token with space", environ: []string{tv, "MCP_ENABLED=yes", "MCP_TOKEN=abcdefghijkl mnopqrstuvwxyz"}, want: "MCP_TOKEN must not contain spaces"},
+		{name: "mcp without health server", environ: []string{tv, "MCP_ENABLED=1", "HEALTH_PORT=0", "MCP_TOKEN=abcdefghijklmnopqrstuvwxyz"}, want: "requires HEALTH_PORT"},
+		{name: "mcp switch typo", environ: []string{tv, "MCP_ENABLED=maybe"}, want: "MCP_ENABLED must be true or false"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

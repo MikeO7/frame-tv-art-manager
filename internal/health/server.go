@@ -11,6 +11,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -130,6 +131,34 @@ func (s *Status) SetTVStatus(ip string, status TVStatus) {
 	s.TVStatuses[ip] = status
 }
 
+// Report is an immutable copy of the service health state.
+type Report struct {
+	StartedAt    time.Time
+	LastSyncAt   time.Time
+	LastSyncOK   bool
+	LastError    string
+	SyncCount    int
+	CurrentStage string
+	Lifecycle    string
+	// TVs is ordered by TV address.
+	TVs []TVStatus
+}
+
+// Report returns a consistent copy of the current health state.
+func (s *Status) Report() Report {
+	snapshot := s.snapshot()
+	report := Report{
+		StartedAt: snapshot.StartedAt, LastSyncAt: snapshot.LastSyncAt, LastSyncOK: snapshot.LastSyncOK,
+		LastError: snapshot.LastErrorMessage, SyncCount: snapshot.SyncCount,
+		CurrentStage: snapshot.CurrentStage, Lifecycle: snapshot.Lifecycle,
+		TVs: make([]TVStatus, 0, len(snapshot.TVStatuses)),
+	}
+	for _, address := range slices.Sorted(maps.Keys(snapshot.TVStatuses)) {
+		report.TVs = append(report.TVs, snapshot.TVStatuses[address])
+	}
+	return report
+}
+
 func (s *Status) snapshot() statusSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -150,8 +179,20 @@ type Server struct {
 	now      func() time.Time
 	importer ArtworkImporter
 	imports  chan struct{}
-	// authFailures rate-limits wrong UPLOAD_TOKEN guesses per client address.
+	// authFailures rate-limits wrong UPLOAD_TOKEN and MCP_TOKEN guesses per
+	// client address.
 	authFailures *authLimiter
+	// mcp is the Model Context Protocol handler mounted at /mcp, or nil.
+	mcp http.Handler
+}
+
+// ServerOption configures an optional HTTP module.
+type ServerOption func(*Server)
+
+// WithMCP mounts handler at /mcp. The server serves it only while
+// MCP_ENABLED is on, and only to requests that present MCP_TOKEN.
+func WithMCP(handler http.Handler) ServerOption {
+	return func(server *Server) { server.mcp = handler }
 }
 
 // ArtworkImporter is the only collection authority required by HTTP uploads.
@@ -166,12 +207,16 @@ func NewServer(
 	status *Status,
 	logger *slog.Logger,
 	importer ArtworkImporter,
+	options ...ServerOption,
 ) *Server {
 	server := &Server{
 		cfg: cfg, status: status, logger: logger, now: time.Now,
 		importer: importer, imports: make(chan struct{}, 1),
 	}
 	server.authFailures = newAuthLimiter(func() time.Time { return server.now() })
+	for _, option := range options {
+		option(server)
+	}
 	return server
 }
 
@@ -188,6 +233,9 @@ func (s *Server) Bind(ctx context.Context) error {
 	if s.cfg.UploadEnabled && s.importer == nil {
 		return errors.New("upload endpoint requires an authoritative artwork collection")
 	}
+	if s.cfg.MCPEnabled && s.mcp == nil {
+		return errors.New("MCP endpoint is enabled but no MCP handler was provided")
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
@@ -195,6 +243,7 @@ func (s *Server) Bind(ctx context.Context) error {
 	mux.HandleFunc("/ready", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/upload", s.HandleUpload)
+	mux.Handle("/mcp", s.mcpEndpoint())
 
 	server := &http.Server{
 		Addr:              net.JoinHostPort(s.cfg.HealthBindAddress, fmt.Sprintf("%d", s.cfg.HealthPort)),

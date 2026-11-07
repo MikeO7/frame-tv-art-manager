@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,6 +126,7 @@ func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
 		TotalImages: len(observation.Inventory.ContentIDs),
 		Rotating:    result.Rotation.Active, ArtworkWaiting: result.Rotation.Waiting,
 		NextRotation: result.Rotation.NextAt,
+		OnTV:         ownedOnTV(result),
 	}
 	for _, command := range result.AppliedCommands {
 		switch command {
@@ -167,6 +169,27 @@ func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
 		}
 	}
 	return summary
+}
+
+// ownedOnTV returns the sorted digests of Owned Artwork whose content is in
+// the observed TV Inventory, or nil when the inventory is unknown.
+func ownedOnTV(result reconcile.Result) []string {
+	inventory := result.Observation.Inventory
+	if !inventory.Known {
+		return nil
+	}
+	present := make(map[string]struct{}, len(inventory.ContentIDs))
+	for _, contentID := range inventory.ContentIDs {
+		present[contentID] = struct{}{}
+	}
+	digests := make([]string, 0, len(result.State.Bindings))
+	for digest, binding := range result.State.Bindings {
+		if _, ok := present[binding.ContentID]; ok {
+			digests = append(digests, digest)
+		}
+	}
+	slices.Sort(digests)
+	return digests
 }
 
 func convergenceSkipStatus(disposition samsung.Disposition) string {

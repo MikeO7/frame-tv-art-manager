@@ -4,19 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"log/slog"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
+	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
+	"github.com/MikeO7/frame-tv-art-manager/internal/resources"
+	"github.com/MikeO7/frame-tv-art-manager/internal/themes"
 )
 
 // ManagedEngine owns the authoritative artwork collection used by both Sync
 // Cycles and operator imports. Keeping construction here prevents the store and
 // the engine from being configured with different roots or collection limits.
 type ManagedEngine struct {
+	cfg        *config.Config
+	logger     *slog.Logger
 	engine     *convergenceEngine
 	collection ArtworkCollection
+	themes     *themes.Store
+	limits     *resources.Controller
 }
 
 // NewManagedEngine constructs the complete synchronization boundary from one
@@ -41,7 +49,12 @@ func NewManagedEngine(
 	if err != nil {
 		return nil, fmt.Errorf("construct authoritative collection: %w", err)
 	}
-	artwork, err := newArtworkCollection(cfg, logger, healthStatus, store)
+	themeStore, err := themes.NewStore(cfg.ArtworkDir, cfg.DryRun)
+	if err != nil {
+		return nil, fmt.Errorf("construct themed collections: %w", err)
+	}
+	limits := resources.NewDefaultController()
+	artwork, err := newLocalCollection(cfg, logger, healthStatus, store, limits)
 	if err != nil {
 		return nil, fmt.Errorf("construct artwork collection preparation: %w", err)
 	}
@@ -49,10 +62,52 @@ func NewManagedEngine(
 	if err != nil {
 		return nil, fmt.Errorf("construct cached reconciliation engine: %w", err)
 	}
+	engine.themes = themeStore
 	return &ManagedEngine{
-		engine:     engine,
-		collection: artwork,
+		cfg: cfg, logger: logger, engine: engine, collection: artwork, themes: themeStore, limits: limits,
 	}, nil
+}
+
+// Themes is the themed collections store whose rules every Sync Cycle applies.
+func (engine *ManagedEngine) Themes() *themes.Store {
+	return engine.themes
+}
+
+// RequestSync asks for an early Sync Cycle. Repeated requests collapse into
+// one pending cycle and never run concurrently with another cycle. It reports
+// whether this call queued a new request.
+func (engine *ManagedEngine) RequestSync() bool {
+	return engine.engine.requestCycle()
+}
+
+// Placements maps each artwork digest to the TVs whose latest observed
+// inventory held it.
+func (engine *ManagedEngine) Placements() map[string][]string {
+	return engine.engine.placementsByDigest()
+}
+
+// RenderPreview renders item in memory as the TV will show it, sharing the
+// transform admission limit with collection optimization. It writes nothing.
+func (engine *ManagedEngine) RenderPreview(ctx context.Context, item collectionpkg.Item) (*image.RGBA, error) {
+	cfg := engine.cfg.OptimizeOptions()
+	input := optimize.PreviewInput{
+		Path: item.Path,
+		Optimized: item.Derivative != "" && item.TransformKey == optimize.TransformKey(cfg) &&
+			item.Width == cfg.MaxWidth && item.Height == cfg.MaxHeight,
+	}
+	var rendered *image.RGBA
+	err := engine.limits.Run(ctx, resources.Request{
+		Class: resources.Interactive, Mode: "preview",
+		InputPixels: int64(item.Width) * int64(item.Height), InputBytes: item.Size,
+	}, func(runCtx context.Context) error {
+		var renderErr error
+		rendered, renderErr = optimize.RenderPreview(runCtx, input, cfg, engine.logger)
+		return renderErr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("render preview of %s: %w", item.Name, err)
+	}
+	return rendered, nil
 }
 
 // Prepare returns a verified snapshot while sharing mutation authority with

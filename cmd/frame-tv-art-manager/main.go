@@ -6,15 +6,19 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/app"
+	"github.com/MikeO7/frame-tv-art-manager/internal/assistant"
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
+	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sync"
 )
 
@@ -28,6 +32,8 @@ var (
 const (
 	directoryArtwork = "artwork"
 	directoryTokens  = "tokens"
+
+	museumSearchTimeout = 30 * time.Second
 )
 
 func main() {
@@ -95,7 +101,19 @@ func buildApplication(
 	if err != nil {
 		return nil, fmt.Errorf("construct sync cycle: %w", err)
 	}
-	healthServer := health.NewServer(cfg, healthStatus, logger, engine)
+	var serverOptions []health.ServerOption
+	if cfg.MCPEnabled {
+		handler, err := assistant.NewHandler(assistant.Options{
+			Config: cfg, Logger: logger, Artwork: engine, Themes: engine.Themes(), Status: healthStatus, Version: Version,
+			Searcher: sources.NewArtSearcher(&http.Client{Timeout: museumSearchTimeout}, logger),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("construct MCP endpoint: %w", err)
+		}
+		serverOptions = append(serverOptions, health.WithMCP(handler))
+		logger.Info("MCP endpoint enabled", "path", "/mcp")
+	}
+	healthServer := health.NewServer(cfg, healthStatus, logger, engine, serverOptions...)
 	applicationOptions := app.Options{
 		Prepare: func(ctx context.Context) error {
 			_, err := engine.Prepare(ctx, collection.PrepareRequest{DryRun: cfg.DryRun})

@@ -44,20 +44,8 @@ func rewriteImage(
 
 	filename := filepath.Base(path)
 	logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", img.Bounds().Dx(), img.Bounds().Dy()))
-	rgba := toRGBA(RotateImage(normalizeColor(img, colorData, cfg, logger, filename), orientation))
-	sourceW, sourceH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
-	if sourceW != cfg.MaxWidth || sourceH != cfg.MaxHeight {
-		rgba = fitImage(ctx, rgba, cfg, logger)
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		amount := scaleAwareSharpenAmount(cfg.SharpenAmount, sourceW, sourceH, cfg.MaxWidth, cfg.MaxHeight)
-		rgba = sharpen(rgba, amount, cfg.SharpenThreshold)
-	}
-	if cfg.MuseumModeEnabled {
-		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
-	}
-	if err := ctx.Err(); err != nil {
+	rgba, err := transformDecoded(ctx, img, orientation, colorData, cfg, logger, filename)
+	if err != nil {
 		return err
 	}
 	if err := f.Close(); err != nil {
@@ -76,6 +64,39 @@ func rewriteImage(
 		return fmt.Errorf("replace optimized image: %w", err)
 	}
 	return nil
+}
+
+// transformDecoded applies color normalization, orientation, the frame fit,
+// sharpening, and museum effects to a decoded image. It is the pixel half of
+// rewriteImage and is shared with in-memory previews.
+//
+//nolint:revive // the transform inputs mirror rewriteImage exactly
+func transformDecoded(
+	ctx context.Context,
+	img image.Image,
+	orientation int,
+	colorData embeddedColorData,
+	cfg Config,
+	logger *slog.Logger,
+	filename string,
+) (*image.RGBA, error) {
+	rgba := toRGBA(RotateImage(normalizeColor(img, colorData, cfg, logger, filename), orientation))
+	sourceW, sourceH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
+	if sourceW != cfg.MaxWidth || sourceH != cfg.MaxHeight {
+		rgba = fitImage(ctx, rgba, cfg, logger)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		amount := scaleAwareSharpenAmount(cfg.SharpenAmount, sourceW, sourceH, cfg.MaxWidth, cfg.MaxHeight)
+		rgba = sharpen(rgba, amount, cfg.SharpenThreshold)
+	}
+	if cfg.MuseumModeEnabled {
+		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return rgba, nil
 }
 
 // writeValidatedOutput encodes img into out as PNG for a .png extension and
