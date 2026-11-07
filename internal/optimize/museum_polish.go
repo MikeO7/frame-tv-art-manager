@@ -2,12 +2,29 @@ package optimize
 
 import (
 	"image"
+	"math"
 )
 
-// polishPixel limits the maximum brightness and adds paper grain noise to a pixel.
+// Highlights roll off smoothly from the knee toward paperWhite instead of
+// clipping, so bright detail (clouds, lace, snow) stays distinguishable.
+const (
+	highlightKnee = 0.8 * 255
+	paperWhite    = 235.0
+)
+
+// rollOffHighlight compresses values above the knee along a tanh shoulder
+// that approaches paperWhite.
+func rollOffHighlight(value float32) float32 {
+	if value <= highlightKnee {
+		return value
+	}
+	const span = paperWhite - highlightKnee
+	return highlightKnee + span*float32(math.Tanh(float64(value-highlightKnee)/span))
+}
+
+// polishPixel rolls off highlights to a paper white and adds paper grain noise to a pixel.
 func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
-	const maxBright = 235.0
-	r, g, b = min(r, maxBright), min(g, maxBright), min(b, maxBright)
+	r, g, b = rollOffHighlight(r), rollOffHighlight(g), rollOffHighlight(b)
 
 	avg := (r + g + b) * 0.33333333
 	r = r*0.92 + avg*0.08

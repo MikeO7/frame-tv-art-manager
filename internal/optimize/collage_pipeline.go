@@ -1,9 +1,12 @@
 package optimize
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -133,9 +136,10 @@ func (p *catalogPass) collectRawPortraits(ctx context.Context, localFiles map[st
 // the pairs with their collage in localFiles.
 func (p *catalogPass) processCollages(ctx context.Context, localFiles map[string]struct{}) error {
 	rawPortraits := p.collectRawPortraits(ctx, localFiles)
+	pairs, leftover := pairPortraits(p.portraitFeatures(ctx, rawPortraits))
 	var collageErrors []error
-	for i := 0; i+1 < len(rawPortraits); i += 2 {
-		f1, f2 := rawPortraits[i], rawPortraits[i+1]
+	for _, pair := range pairs {
+		f1, f2 := pair[0], pair[1]
 		p.logger.Info("pairing portrait images into collage", "file1", f1, "file2", f2)
 		collageFilename, err := p.processCollagePair(ctx, f1, f2)
 		if collageFilename != "" {
@@ -150,11 +154,87 @@ func (p *catalogPass) processCollages(ctx context.Context, localFiles map[string
 		}
 	}
 
-	// If an odd number remains, leave the last raw input untouched so it can pair
-	// with a future upload. Derivative metadata, not its filename, preserves that
-	// eligibility across cycles.
-	if len(rawPortraits)%2 == 1 {
-		delete(localFiles, rawPortraits[len(rawPortraits)-1])
+	// If an odd number remains, leave the unpaired raw input untouched so it can
+	// pair with a future upload. Derivative metadata, not its filename,
+	// preserves that eligibility across cycles.
+	if leftover != "" {
+		delete(localFiles, leftover)
 	}
 	return errors.Join(collageErrors...)
+}
+
+// portraitFeature is what pairing compares: the image's mean Oklab color and
+// its aspect ratio.
+type portraitFeature struct {
+	name   string
+	color  oklab
+	aspect float64
+}
+
+// portraitFeatures measures each portrait one decode at a time. A portrait
+// that cannot be measured within the working-set budget gets neutral features
+// so it still pairs and its error surfaces when the collage is rendered.
+func (p *catalogPass) portraitFeatures(ctx context.Context, names []string) []portraitFeature {
+	features := make([]portraitFeature, 0, len(names))
+	for _, name := range names {
+		feature := portraitFeature{name: name, color: oklab{l: 0.5}, aspect: 2.0 / 3.0}
+		path := filepath.Join(p.artworkDir, name)
+		inputs, err := inspectCollageInputs(ctx, path)
+		if err == nil {
+			err = validateWorkingSet(inputs, p.cfg)
+		}
+		var img *image.RGBA
+		if err == nil {
+			img, err = loadAndRotateImageWithConfig(ctx, path, p.cfg, p.logger)
+		}
+		if err == nil {
+			feature.color = measurePalette([]*image.RGBA{img}).mean
+			feature.aspect = float64(img.Bounds().Dx()) / float64(img.Bounds().Dy())
+		} else {
+			p.logger.Debug("portrait colors unavailable for pairing", "file", name, "error", err)
+		}
+		features = append(features, feature)
+	}
+	return features
+}
+
+// pairCost is low for portraits that look good side by side: similar overall
+// color, similar lightness, and similar shape for equal-height openings.
+func pairCost(first, second portraitFeature) float64 {
+	return first.color.distance(second.color) + 0.5*math.Abs(first.color.l-second.color.l) +
+		0.5*math.Abs(math.Log(first.aspect/second.aspect))
+}
+
+// pairPortraits greedily joins the most compatible portraits first. Ties break
+// by name, so pairing is deterministic. With an odd count, the least
+// compatible portrait is returned as the leftover.
+func pairPortraits(features []portraitFeature) ([][2]string, string) {
+	type candidate struct {
+		cost        float64
+		first, next int
+	}
+	var candidates []candidate
+	for i := range features {
+		for j := i + 1; j < len(features); j++ {
+			candidates = append(candidates, candidate{cost: pairCost(features[i], features[j]), first: i, next: j})
+		}
+	}
+	slices.SortStableFunc(candidates, func(a, b candidate) int {
+		return cmp.Or(cmp.Compare(a.cost, b.cost), cmp.Compare(a.first, b.first), cmp.Compare(a.next, b.next))
+	})
+	paired := make([]bool, len(features))
+	var pairs [][2]string
+	for _, option := range candidates {
+		if paired[option.first] || paired[option.next] {
+			continue
+		}
+		paired[option.first], paired[option.next] = true, true
+		pairs = append(pairs, [2]string{features[option.first].name, features[option.next].name})
+	}
+	for index, done := range paired {
+		if !done {
+			return pairs, features[index].name
+		}
+	}
+	return pairs, ""
 }

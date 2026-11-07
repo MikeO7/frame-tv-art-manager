@@ -18,7 +18,8 @@ func TestScaleAwareSharpenAmount(t *testing.T) {
 	}{
 		{name: "one to one", amount: 0.25, sourceWidth: 100, sourceHeight: 100, targetWidth: 100, targetHeight: 100, want: 0.25},
 		{name: "fourfold downscale", amount: 0.25, sourceWidth: 400, sourceHeight: 400, targetWidth: 100, targetHeight: 100, want: 0.375},
-		{name: "fourfold upscale", amount: 0.25, sourceWidth: 100, sourceHeight: 100, targetWidth: 400, targetHeight: 400, want: 0.125},
+		{name: "mild upscale", amount: 0.25, sourceWidth: 100, sourceHeight: 100, targetWidth: 125, targetHeight: 125, want: 0.25 / math.Sqrt(1.25)},
+		{name: "fourfold upscale is not sharpened", amount: 0.25, sourceWidth: 100, sourceHeight: 100, targetWidth: 400, targetHeight: 400, want: 0},
 		{name: "disabled", sourceWidth: 100, sourceHeight: 100, targetWidth: 400, targetHeight: 400, want: 0},
 		{name: "invalid geometry", amount: 0.25, sourceHeight: 100, targetWidth: 400, targetHeight: 400, want: 0},
 		{name: "bounded operator maximum", amount: 2, sourceWidth: 400, sourceHeight: 400, targetWidth: 100, targetHeight: 100, want: 2},
@@ -33,6 +34,47 @@ func TestScaleAwareSharpenAmount(t *testing.T) {
 				t.Fatalf("scaleAwareSharpenAmount() = %v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestSharpenAddsEdgeContrastWithoutHalos(t *testing.T) {
+	t.Parallel()
+	// A soft, S-shaped vertical edge from 60 to 180, as left by resampling.
+	ramp := []uint8{60, 60, 62, 70, 100, 150, 172, 180, 180}
+	src := image.NewRGBA(image.Rect(0, 0, len(ramp), 5))
+	for y := range 5 {
+		for x, value := range ramp {
+			src.SetRGBA(x, y, color.RGBA{R: value, G: value, B: value, A: 255})
+		}
+	}
+	out := sharpen(src, 1, 0)
+	for x := range ramp {
+		got := out.RGBAAt(x, 2).R
+		if got < 60 || got > 180 {
+			t.Fatalf("pixel %d = %d overshoots the source range 60..180 (halo)", x, got)
+		}
+	}
+	if before, after := int(ramp[5])-int(ramp[4]), int(out.RGBAAt(5, 2).R)-int(out.RGBAAt(4, 2).R); after <= before {
+		t.Fatalf("edge contrast %d not increased from %d", after, before)
+	}
+}
+
+func TestSharpenLeavesFlatAndNoiseFloorUntouched(t *testing.T) {
+	t.Parallel()
+	src := image.NewRGBA(image.Rect(0, 0, 6, 6))
+	for y := range 6 {
+		for x := range 6 {
+			value := uint8(100 + (x+y)%2*2) // a 2-level ripple, below threshold 4
+			src.SetRGBA(x, y, color.RGBA{R: value, G: value, B: value, A: 255})
+		}
+	}
+	out := sharpen(src, 1, 4)
+	for y := range 6 {
+		for x := range 6 {
+			if out.RGBAAt(x, y) != src.RGBAAt(x, y) {
+				t.Fatalf("pixel %d,%d changed below the noise threshold", x, y)
+			}
+		}
 	}
 }
 

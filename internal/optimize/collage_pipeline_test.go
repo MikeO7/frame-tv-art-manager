@@ -191,8 +191,9 @@ func TestCollageOutputExtensionIsOrderIndependentAndPreservesPNG(t *testing.T) {
 func TestCreateCollageAppliesSharpenPerPanel(t *testing.T) {
 	t.Parallel()
 	input := image.NewRGBA(image.Rect(0, 0, 8, 8))
-	fillRGBA(input, input.Bounds(), color.RGBA{R: 100, G: 100, B: 100, A: 255})
-	input.SetRGBA(4, 4, color.RGBA{R: 150, G: 150, B: 150, A: 255})
+	for x, value := range []uint8{60, 62, 70, 100, 150, 172, 180, 180} {
+		fillRGBA(input, image.Rect(x, 0, x+1, 8), color.RGBA{R: value, G: value, B: value, A: 255})
+	}
 	cfg := DefaultConfig()
 	cfg.MaxWidth, cfg.MaxHeight = 16, 8
 	cfg.SmartCropEnabled = false
@@ -202,13 +203,14 @@ func TestCreateCollageAppliesSharpenPerPanel(t *testing.T) {
 		ctx: context.Background(), cfg: cfg, logger: slog.New(slog.DiscardHandler),
 		rightSharpen: 1,
 	})
-	left := color.RGBAModel.Convert(output.At(4, 4)).(color.RGBA)
-	right := color.RGBAModel.Convert(output.At(12, 4)).(color.RGBA)
-	if left.R != 150 {
-		t.Fatalf("unsharpened left-panel value = %d, want 150", left.R)
+	// Sharpening steepens the soft edge; the unsharpened left panel keeps it.
+	left := color.RGBAModel.Convert(output.At(3, 4)).(color.RGBA)
+	right := color.RGBAModel.Convert(output.At(11, 4)).(color.RGBA)
+	if left.R != 100 {
+		t.Fatalf("unsharpened left-panel edge = %d, want 100", left.R)
 	}
-	if right.R <= left.R {
-		t.Fatalf("right-panel sharpened value = %d, want greater than left %d", right.R, left.R)
+	if right.R >= left.R {
+		t.Fatalf("right-panel sharpened edge = %d, want darker than left %d", right.R, left.R)
 	}
 }
 
@@ -583,3 +585,28 @@ const (
 	smallCollageWidth  = 96
 	smallCollageHeight = 54
 )
+
+func TestPairPortraitsMatchesColorAndShape(t *testing.T) {
+	t.Parallel()
+	features := []portraitFeature{
+		{name: "a-blue-dark.jpg", color: oklab{l: 0.3, a: -0.02, b: -0.1}, aspect: 0.67},
+		{name: "b-warm-light.jpg", color: oklab{l: 0.8, a: 0.03, b: 0.08}, aspect: 0.75},
+		{name: "c-blue-dark.jpg", color: oklab{l: 0.32, a: -0.02, b: -0.09}, aspect: 0.66},
+		{name: "d-warm-light.jpg", color: oklab{l: 0.78, a: 0.03, b: 0.07}, aspect: 0.75},
+		{name: "e-odd.jpg", color: oklab{l: 0.55}, aspect: 0.4},
+	}
+	pairs, leftover := pairPortraits(features)
+	want := [][2]string{{"b-warm-light.jpg", "d-warm-light.jpg"}, {"a-blue-dark.jpg", "c-blue-dark.jpg"}}
+	if !slices.Equal(pairs, want) {
+		t.Fatalf("pairs = %v, want %v", pairs, want)
+	}
+	if leftover != "e-odd.jpg" {
+		t.Fatalf("leftover = %q, want the least compatible portrait", leftover)
+	}
+	if pairs, leftover := pairPortraits(features[:2]); len(pairs) != 1 || leftover != "" {
+		t.Fatalf("two portraits: pairs %v leftover %q", pairs, leftover)
+	}
+	if pairs, leftover := pairPortraits(nil); pairs != nil || leftover != "" {
+		t.Fatalf("no portraits: pairs %v leftover %q", pairs, leftover)
+	}
+}

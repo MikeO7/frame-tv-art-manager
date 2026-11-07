@@ -27,6 +27,27 @@ func TestPolishPixel_MaxBrightnessClamp(t *testing.T) {
 	}
 }
 
+func TestRollOffHighlightKeepsBrightDetail(t *testing.T) {
+	t.Parallel()
+	if got := rollOffHighlight(120); got != 120 {
+		t.Fatalf("mid-tone changed: %v", got)
+	}
+	previous := rollOffHighlight(highlightKnee)
+	for value := float32(highlightKnee + 5); value <= 255; value += 5 {
+		got := rollOffHighlight(value)
+		if got <= previous {
+			t.Fatalf("roll-off not strictly increasing at %v: %v <= %v", value, got, previous)
+		}
+		if got >= paperWhite {
+			t.Fatalf("roll-off at %v = %v reaches paper white %v", value, got, paperWhite)
+		}
+		previous = got
+	}
+	if distinct := rollOffHighlight(255) - rollOffHighlight(235); distinct < 1 {
+		t.Fatalf("255 and 235 collapse to within %v levels; highlight detail lost", distinct)
+	}
+}
+
 func TestCalculateWarpAndWeftHelpers(t *testing.T) {
 	warp := calculateWarpCell(4, -0.7)
 	if warp <= 0 || warp > 1 {
