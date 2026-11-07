@@ -94,7 +94,11 @@ func TestLoadDefaultContract(t *testing.T) {
 		GateTimeout:                    10 * time.Second,
 		PUID:                           0,
 		PGID:                           0,
-		PortraitMode:                   "crop",
+		PortraitMode:                   contractPad,
+		PadStyle:                       "mat",
+		MaxCropPercent:                 25,
+		MaxUpscale:                     3,
+		MatTone:                        "auto",
 	}
 
 	if !reflect.DeepEqual(got, want) {
@@ -168,7 +172,9 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		"UPLOAD_ENABLED": contractTrue, "UPLOAD_TOKEN": "contract-upload-token", "CONNECTION_TIMEOUT_SECONDS": "11",
 		"API_TIMEOUT_SECONDS": "12", "UPLOAD_DELAY_MS": "250",
 		"UPLOAD_ATTEMPTS": "2", "GATE_TIMEOUT_MS": "750",
-		"PUID": "1000", "PGID": "1001", "PORTRAIT_MODE": contractPad,
+		"PUID": "1000", "PGID": "1001", "PORTRAIT_MODE": "collage",
+		"IMAGE_PAD_STYLE": "blur", "IMAGE_MAX_CROP_PERCENT": "10", "IMAGE_MAX_UPSCALE": "2",
+		"IMAGE_MAT_TONE": "dark",
 	}
 	for key, value := range values {
 		t.Setenv(key, value)
@@ -248,7 +254,11 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		GateTimeout:                    750 * time.Millisecond,
 		PUID:                           1000,
 		PGID:                           1001,
-		PortraitMode:                   contractPad,
+		PortraitMode:                   "collage",
+		PadStyle:                       "blur",
+		MaxCropPercent:                 10,
+		MaxUpscale:                     2,
+		MatTone:                        "dark",
 	}
 
 	got, _, err := LoadWithWarnings()

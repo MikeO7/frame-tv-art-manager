@@ -252,21 +252,37 @@ Preparation is on by default (`IMAGE_OPTIMIZE_ENABLED`). Images that need it
 are:
 
 - rotated upright using their EXIF orientation;
-- fitted to the screen, either cropped, padded, or paired into a collage
-  (see below);
+- fitted to the screen: cropped when little would be lost, otherwise shown
+  whole on a gallery mat (see below);
 - converted to sRGB when they carry an ICC color profile; HDR PNGs are
   tone-mapped to standard range;
 - resized in linear light to exactly 3840×2160 (`IMAGE_MAX_WIDTH`,
   `IMAGE_MAX_HEIGHT`) and lightly sharpened;
 - saved as JPEG quality 95. PNGs stay PNG, alpha included.
 
-Portrait photos follow `PORTRAIT_MODE`:
+### Crop or mat
+
+Landscape images are cropped to fill the screen only when the crop removes at
+most `IMAGE_MAX_CROP_PERCENT` of the picture (default 25%, so 3:2 photos and
+4:3 paintings fill the screen) and filling it needs no more than
+`IMAGE_MAX_UPSCALE` enlargement (default 3×). Anything else — square art,
+panoramas, small images — is shown whole instead of being cut off or blown
+up into blur.
+
+Portrait images follow `PORTRAIT_MODE`:
 
 | Mode | Result |
 | --- | --- |
-| `crop` (default) | Crops to fill the screen. |
-| `pad` | Centers the photo on a blurred background. |
-| `collage` | Places two portrait photos side by side. |
+| `pad` (default) | Shows the whole image, padded to the screen. |
+| `collage` | Pairs two portraits side by side; an unpaired one is padded. |
+| `crop` | Crops to fill the screen. |
+
+`IMAGE_PAD_STYLE` sets how padded images look:
+
+| Style | Result |
+| --- | --- |
+| `mat` (default) | A gallery mat with a lighter bevel around the opening, set slightly above center as framers do. The mat is a deep charcoal, which stays calm in a dark room at night, and switches to a soft warm greige (never bright white) only when the art's own edge is too dark to stand out. Both are faintly tinted toward the art's colors. `IMAGE_MAT_TONE=light` or `dark` forces one tone. Collages get a double-opening mat with both images whole and at equal height. |
+| `blur` | A darkened, desaturated blur of the image fills the screen behind it. Collages fill each half by cropping. |
 
 Optional, off by default:
 
@@ -324,7 +340,11 @@ The full, annotated list is in [`.env.example`](.env.example).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORTRAIT_MODE` | `crop` | `crop`, `pad`, or `collage` |
+| `PORTRAIT_MODE` | `pad` | `pad`, `collage`, or `crop` |
+| `IMAGE_PAD_STYLE` | `mat` | `mat` (gallery mat) or `blur` |
+| `IMAGE_MAX_CROP_PERCENT` | `25` | Most of a landscape image that may be cropped away; `100` always crops |
+| `IMAGE_MAX_UPSCALE` | `3` | Largest enlargement before an image is matted instead (1–16) |
+| `IMAGE_MAT_TONE` | `auto` | `auto` (charcoal, greige for dark-edged art), `light`, or `dark` |
 | `IMAGE_MAX_WIDTH` × `IMAGE_MAX_HEIGHT` | `3840` × `2160` | Output size |
 | `IMAGE_JPEG_QUALITY` | `95` | JPEG quality (1–100) |
 | `IMAGE_SHARPEN_AMOUNT` | `0.25` | Sharpening strength; `0` turns it off |
@@ -494,9 +514,9 @@ No. It only removes art it uploaded, unless you turn on
 `REMOVE_UNKNOWN_IMAGES`.
 
 **Does it work with portrait photos?**
-Yes. Portrait photos are cropped to fill the screen by default, or padded on a
-blurred background, or paired side by side (`PORTRAIT_MODE`). Output is
-3840×2160 by default.
+Yes. By default they are shown whole on a charcoal gallery mat tinted toward
+the art's colors. They can also be paired side by side or cropped to fill the
+screen (`PORTRAIT_MODE`, `IMAGE_PAD_STYLE`). Output is 3840×2160 by default.
 
 **Can I send photos from an iPhone or Apple Photos?**
 Yes. Turn on the password-protected upload page and use an iPhone or Mac

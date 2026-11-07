@@ -7,19 +7,33 @@ import (
 	"golang.org/x/image/draw"
 )
 
-func padPortraitWithOptions(src *image.RGBA, targetW, targetH int, linearLight bool) *image.RGBA {
-	// Blur a centered target-aspect crop to fill the background.
+// padOnBlur centers the whole image over a blurred, muted fill of itself.
+// The image is never upscaled beyond cfg.MaxUpscale.
+func padOnBlur(src *image.RGBA, cfg Config) *image.RGBA {
+	targetW, targetH := cfg.MaxWidth, cfg.MaxHeight
 	backgroundCrop := cropRectForAspectWithProtection(src, float64(targetW)/float64(targetH), false, 0, false, 0)
-	bg := blurImage(resizeCrop(src, backgroundCrop, targetW, targetH, linearLight), 8)
+	bg := blurImage(resizeCrop(src, backgroundCrop, targetW, targetH, cfg.LinearLightResize), 8)
+	muteBackground(bg)
 
-	// Scale the upright portrait to the target height, preserving aspect ratio,
-	// and draw it centered over the background.
 	srcBounds := src.Bounds()
-	newW := min(int(float64(srcBounds.Dx())*(float64(targetH)/float64(srcBounds.Dy()))), targetW)
-	scaledPortrait := resizeCrop(src, srcBounds, newW, targetH, linearLight)
-	startX := (targetW - newW) / 2
-	std_draw.Draw(bg, image.Rect(startX, 0, startX+newW, targetH), scaledPortrait, scaledPortrait.Bounds().Min, std_draw.Over)
+	width, height := containedSize(srcBounds.Dx(), srcBounds.Dy(), targetW, targetH, cfg.MaxUpscale)
+	scaled := resizeCrop(src, srcBounds, width, height, cfg.LinearLightResize)
+	x, y := (targetW-width)/2, (targetH-height)/2
+	std_draw.Draw(bg, image.Rect(x, y, x+width, y+height), scaled, image.Point{}, std_draw.Over)
 	return bg
+}
+
+// muteBackground halves saturation and darkens by a quarter so the blurred
+// fill recedes behind the sharp image instead of competing with it.
+func muteBackground(img *image.RGBA) {
+	pix := img.Pix
+	for offset := 0; offset+3 < len(pix); offset += 4 {
+		red, green, blue := float64(pix[offset]), float64(pix[offset+1]), float64(pix[offset+2])
+		gray := 0.2126*red + 0.7152*green + 0.0722*blue
+		pix[offset] = clampByte(0.75 * (gray + 0.5*(red-gray)))
+		pix[offset+1] = clampByte(0.75 * (gray + 0.5*(green-gray)))
+		pix[offset+2] = clampByte(0.75 * (gray + 0.5*(blue-gray)))
+	}
 }
 
 // blurImage applies a heavy blur by downscaling 8x, running three box-blur

@@ -242,7 +242,7 @@ parallel.
    original filename is never used. The response JSON includes the saved
    `filename`.
 4. **Prepared.** On the next sync, the normal image settings apply: EXIF
-   orientation, your `PORTRAIT_MODE` (crop by default, or pad or collage),
+   orientation, your `PORTRAIT_MODE` (a gallery mat by default, or collage or crop),
    sRGB color conversion, light sharpening, and resizing to exactly 3840×2160
    by default. The prepared version replaces the uploaded file in the folder and
    may get a new name.

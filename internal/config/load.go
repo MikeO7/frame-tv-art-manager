@@ -91,6 +91,18 @@ func validateEnums(cfg *Config) error {
 		return fmt.Errorf("PORTRAIT_MODE must be one of collage, pad, crop; got %q", cfg.PortraitMode)
 	}
 
+	switch cfg.PadStyle {
+	case "mat", "blur":
+	default:
+		return fmt.Errorf("IMAGE_PAD_STYLE must be mat or blur; got %q", cfg.PadStyle)
+	}
+
+	switch cfg.MatTone {
+	case "auto", "light", "dark":
+	default:
+		return fmt.Errorf("IMAGE_MAT_TONE must be auto, light, or dark; got %q", cfg.MatTone)
+	}
+
 	return nil
 }
 
@@ -155,6 +167,8 @@ func validateRanges(cfg *Config) error {
 		{between(cfg.HDRSourcePeakNits, 100, 10_000), "IMAGE_HDR_SOURCE_PEAK_NITS must be between 100 and 10000"},
 		{between(cfg.HDRTargetPeakNits, 80, 500), "IMAGE_HDR_TARGET_PEAK_NITS must be between 80 and 500"},
 		{between(cfg.MuseumModeIntensity, 1, 10), "IMAGE_MUSEUM_INTENSITY must be between 1 and 10"},
+		{between(cfg.MaxCropPercent, 0, 100), "IMAGE_MAX_CROP_PERCENT must be between 0 and 100"},
+		{between(cfg.MaxUpscale, 1, 16), "IMAGE_MAX_UPSCALE must be between 1 and 16"},
 		{between(cfg.HealthPort, 0, 65535), "HEALTH_PORT must be between 0 and 65535"},
 		{cfg.ConnectionTimeout > 0 && cfg.ConnectionTimeout <= 10*time.Minute, "CONNECTION_TIMEOUT_SECONDS must be between 1 and 600"},
 		{cfg.APITimeout > 0 && cfg.APITimeout <= 30*time.Minute, "API_TIMEOUT_SECONDS must be between 1 and 1800"},

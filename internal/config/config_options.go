@@ -40,5 +40,9 @@ func (c *Config) OptimizeOptions() optimize.Config {
 		MuseumModeEnabled:              c.MuseumModeEnabled,
 		MuseumModeIntensity:            c.MuseumModeIntensity,
 		PortraitMode:                   c.PortraitMode,
+		PadStyle:                       c.PadStyle,
+		MaxCropPercent:                 c.MaxCropPercent,
+		MaxUpscale:                     c.MaxUpscale,
+		MatTone:                        c.MatTone,
 	}
 }

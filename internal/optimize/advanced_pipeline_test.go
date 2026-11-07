@@ -512,6 +512,7 @@ func TestOptimizeFileUsesConfidentHTTPCrop(t *testing.T) {
 	cfg.MaxWidth, cfg.MaxHeight, cfg.SmartCropEnabled = 100, 100, true
 	cfg.SmartCropProvider, cfg.SmartCropProviderURL = "http", server.URL
 	cfg.SmartCropProviderTimeout, cfg.SharpenAmount = 2*time.Second, 0
+	cfg.MaxCropPercent = 100
 	name, _, err := OptimizeFile(path, cfg, slog.Default())
 	if err != nil {
 		t.Fatalf("OptimizeFile() error = %v", err)

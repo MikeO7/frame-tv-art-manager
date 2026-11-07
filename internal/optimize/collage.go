@@ -15,7 +15,13 @@ type collageRenderRequest struct {
 	leftSharpen, rightSharpen float64
 }
 
+// renderCollage joins two portraits. The mat style shows both whole, at equal
+// height, in a double-opening mat; the blur style fills each half of the frame
+// by cropping and separates the halves with a thin seam.
 func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.RGBA {
+	if request.cfg.PadStyle != padStyleBlur {
+		return sharpen(renderMat([]*image.RGBA{img1, img2}, request.cfg), max(request.leftSharpen, request.rightSharpen), request.cfg.SharpenThreshold)
+	}
 	targetWidth, targetHeight := request.cfg.MaxWidth, request.cfg.MaxHeight
 	canvas := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
 	leftWidth := targetWidth / 2

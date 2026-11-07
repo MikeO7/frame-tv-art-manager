@@ -47,11 +47,7 @@ func rewriteImage(
 	rgba := toRGBA(RotateImage(normalizeColor(img, colorData, cfg, logger, filename), orientation))
 	sourceW, sourceH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
 	if sourceW != cfg.MaxWidth || sourceH != cfg.MaxHeight {
-		if sourceH > sourceW && cfg.PortraitMode != "crop" {
-			rgba = padPortraitWithOptions(rgba, cfg.MaxWidth, cfg.MaxHeight, cfg.LinearLightResize)
-		} else {
-			rgba = centerCropConfigured(ctx, rgba, cfg.MaxWidth, cfg.MaxHeight, cfg, logger)
-		}
+		rgba = fitImage(ctx, rgba, cfg, logger)
 		if err := ctx.Err(); err != nil {
 			return err
 		}
