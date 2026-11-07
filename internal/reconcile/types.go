@@ -79,6 +79,9 @@ type Result struct {
 	Applied         int
 	AppliedCommands []CommandKind
 	Rotation        RotationStatus
+	// powerOffAttempted records that this run already sent the scheduled
+	// power-off, so a failure is never retried in the same cycle.
+	powerOffAttempted bool
 }
 
 // RotationStatus summarizes artwork rotation on a TV whose known storage

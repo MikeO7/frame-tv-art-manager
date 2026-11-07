@@ -142,6 +142,9 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		attempted := command
 		lastAttempt = &attempted
 		commandAttempts++
+		if command.Kind == CommandPowerOff {
+			result.powerOffAttempted = true
+		}
 		state, observation, err = s.execute(ctx, executionInput{
 			request: request, policy: policy, state: state, observation: observation, intent: command,
 			pace: paceMutation,
