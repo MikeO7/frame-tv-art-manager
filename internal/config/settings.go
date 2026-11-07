@@ -190,6 +190,11 @@ func (env *environment) parseRequiredValues(cfg *Config) error {
 		}
 		cfg.ManualBrightness = &brightness
 	}
+	if cfg.ManualBrightness != nil {
+		env.rescaleLegacyBrightness("BRIGHTNESS", cfg.ManualBrightness)
+	}
+	env.rescaleLegacyBrightness("BRIGHTNESS_MIN", &cfg.BrightnessMin)
+	env.rescaleLegacyBrightness("BRIGHTNESS_MAX", &cfg.BrightnessMax)
 	latitude, hasLatitude, err := env.optionalDecimal("LOCATION_LATITUDE")
 	if err != nil {
 		return err
@@ -273,6 +278,22 @@ func (env *environment) optionalDecimal(key string) (float64, bool, error) {
 func (env *environment) present(key string) bool {
 	_, ok := env.values[key]
 	return ok
+}
+
+// legacyMaxBrightness is the top of the 0-50 scale earlier releases
+// documented. Values above the Frame's 0-10 Art Mode scale but within it are
+// converted proportionally, so an existing setup keeps starting.
+const legacyMaxBrightness = 50
+
+func (env *environment) rescaleLegacyBrightness(variable string, value *int) {
+	if *value <= maxFrameBrightness || *value > legacyMaxBrightness {
+		return
+	}
+	scaled := (*value*maxFrameBrightness + legacyMaxBrightness/2) / legacyMaxBrightness
+	env.warn(variable, strconv.Itoa(scaled), fmt.Sprintf(
+		"%s=%d is on the old 0-%d scale; Frame TVs use 0-%d, so %d is used. Set %s=%d to silence this warning",
+		variable, *value, legacyMaxBrightness, maxFrameBrightness, scaled, variable, scaled))
+	*value = scaled
 }
 
 func (env *environment) warn(variable, fallback, message string) {

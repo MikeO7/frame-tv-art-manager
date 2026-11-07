@@ -445,7 +445,9 @@ own settings alone.
   (0–10). Alternatively, `SOLAR_BRIGHTNESS_ENABLED=true` with
   `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the
   sun between `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX` (also 0–10), reaching the
-  maximum when the sun is highest. Values outside 0–10 are rejected at startup.
+  maximum when the sun is highest. Values from 11 to 50, from the 0–50 scale
+  earlier releases documented, are converted (30 becomes 6) and logged as a
+  warning; anything else outside 0–10 stops startup.
   If a TV reports a narrower range, the value is pinned to the nearest level
   it accepts. A TV that doesn't answer brightness or slideshow requests keeps
   syncing artwork; that setting is left alone and a warning is logged.
