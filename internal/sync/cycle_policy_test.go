@@ -113,7 +113,7 @@ func TestConvergencePolicyPreservesUnsetSettingsAndDisablesExplicitSlideshow(t *
 	}
 
 	disable, err := convergencePolicy(&config.Config{
-		Timezone: "UTC", SlideshowOverride: true, SlideshowType: "sequential",
+		Timezone: "UTC", SlideshowOverride: true, SlideshowEnabledSet: true, SlideshowType: "sequential",
 	}, nil, now, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("disable convergencePolicy() error = %v", err)
@@ -121,6 +121,17 @@ func TestConvergencePolicyPreservesUnsetSettingsAndDisablesExplicitSlideshow(t *
 	if disable.Slideshow.Mode != reconcile.PolicyDisable ||
 		disable.Slideshow.Setting != (samsung.SlideshowSetting{Kind: samsung.SlideshowSequential}) {
 		t.Fatalf("disable slideshow policy = %+v", disable.Slideshow)
+	}
+
+	// Only SLIDESHOW_INTERVAL: tune a running slideshow, never stop one.
+	adjust, err := convergencePolicy(&config.Config{
+		Timezone: "UTC", SlideshowOverride: true, SlideshowIntervalSet: true, SlideshowInterval: 60,
+		SlideshowType: "shuffle",
+	}, nil, now, slog.New(slog.DiscardHandler))
+	if err != nil || adjust.Slideshow != (reconcile.SlideshowPolicy{
+		Mode: reconcile.PolicyAdjust, Setting: samsung.SlideshowSetting{Interval: 60},
+	}) {
+		t.Fatalf("adjust slideshow policy = %+v, %v", adjust.Slideshow, err)
 	}
 }
 

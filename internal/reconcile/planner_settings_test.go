@@ -108,3 +108,61 @@ func TestBuildPlanKeepsTheSlideshowCategoryTheTVPlays(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildPlanSlideshowModes(t *testing.T) {
+	t.Parallel()
+	running := samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowSequential, Category: "MY-C0002"}
+	stopped := samsung.SlideshowSetting{Interval: 0, Kind: samsung.SlideshowShuffle, Category: "MY-C0002"}
+	tests := []struct {
+		name     string
+		observed samsung.SlideshowSetting
+		policy   SlideshowPolicy
+		want     *samsung.SlideshowSetting
+	}{
+		{
+			name: "adjust interval of a running slideshow", observed: running,
+			policy: SlideshowPolicy{Mode: PolicyAdjust, Setting: samsung.SlideshowSetting{Interval: 60}},
+			want:   &samsung.SlideshowSetting{Interval: 60, Kind: samsung.SlideshowSequential, Category: "MY-C0002"},
+		},
+		{
+			name: "adjust kind of a running slideshow", observed: running,
+			policy: SlideshowPolicy{Mode: PolicyAdjust, Setting: samsung.SlideshowSetting{Kind: samsung.SlideshowShuffle}},
+			want:   &samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle, Category: "MY-C0002"},
+		},
+		{
+			name: "adjust never starts a stopped slideshow", observed: stopped,
+			policy: SlideshowPolicy{Mode: PolicyAdjust, Setting: samsung.SlideshowSetting{Interval: 60}},
+		},
+		{
+			name: "disable ignores the remembered kind", observed: stopped,
+			policy: SlideshowPolicy{Mode: PolicyDisable, Setting: samsung.SlideshowSetting{Kind: samsung.SlideshowSequential}},
+		},
+		{
+			name: "disable stops a running slideshow", observed: running,
+			policy: SlideshowPolicy{Mode: PolicyDisable},
+			want:   &samsung.SlideshowSetting{Interval: 0, Kind: samsung.SlideshowSequential, Category: "MY-C0002"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			observation := knownObservation(samsung.PowerStateOn)
+			observation.Slideshow = samsung.SlideshowObservation{Setting: test.observed, Known: true, ObservedAt: testTime}
+			identity, err := identityFromObservation(observation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := BuildPlan(snapshot(), observation, initialState(identity), Policy{Slideshow: test.policy})
+			if err != nil {
+				t.Fatalf("BuildPlan() error = %v", err)
+			}
+			var got *samsung.SlideshowSetting
+			if len(plan.Commands) == 1 {
+				got = plan.Commands[0].DesiredSlideshow
+			}
+			if (got == nil) != (test.want == nil) || (got != nil && *got != *test.want) {
+				t.Fatalf("desired slideshow = %+v, want %+v (commands %+v)", got, test.want, plan.Commands)
+			}
+		})
+	}
+}

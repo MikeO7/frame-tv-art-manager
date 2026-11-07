@@ -121,6 +121,10 @@ const (
 	PolicyPreserve PolicyMode = iota
 	PolicyDisable
 	PolicySet
+	// PolicyAdjust changes a slideshow only while the TV already plays one: a
+	// zero interval or empty kind keeps the value the TV reports. It never
+	// turns a slideshow on or off.
+	PolicyAdjust
 )
 
 type PowerPolicy uint8

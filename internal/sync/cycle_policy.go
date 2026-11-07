@@ -52,9 +52,20 @@ func convergencePolicy(
 				Kind: kind,
 			},
 		}
-		if cfg.SlideshowEnabled {
+		switch {
+		case cfg.SlideshowEnabled:
 			policy.Slideshow.Mode = reconcile.PolicySet
 			policy.Slideshow.Setting.Interval = cfg.SlideshowInterval
+		case !cfg.SlideshowEnabledSet:
+			// Only the interval or type was configured: tune a slideshow the
+			// owner already runs, and never switch one on or off.
+			policy.Slideshow = reconcile.SlideshowPolicy{Mode: reconcile.PolicyAdjust}
+			if cfg.SlideshowIntervalSet {
+				policy.Slideshow.Setting.Interval = cfg.SlideshowInterval
+			}
+			if cfg.SlideshowTypeSet {
+				policy.Slideshow.Setting.Kind = kind
+			}
 		}
 	}
 	location := (*brightness.SolarLocation)(nil)

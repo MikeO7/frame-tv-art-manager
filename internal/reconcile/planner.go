@@ -160,11 +160,15 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		desired := policy.Slideshow.Setting
 		// The category is the TV's playback source, not operator policy: keep it.
 		desired.Category = observation.Slideshow.Setting.Category
-		if policy.Slideshow.Mode == PolicyDisable {
+		switch policy.Slideshow.Mode {
+		case PolicyDisable:
 			desired.Interval = 0
 			if !desired.Valid() {
 				desired.Kind = observation.Slideshow.Setting.Kind
 			}
+		case PolicyAdjust:
+			desired = adjustedSlideshow(desired, observation.Slideshow.Setting)
+		case PolicyPreserve, PolicySet:
 		}
 		// A disabled slideshow is off whatever playback kind the TV remembers.
 		bothOff := desired.Interval == 0 && observation.Slideshow.Setting.Interval == 0
@@ -238,4 +242,21 @@ func clonePointer[T any](value *T) *T {
 	}
 	clone := *value
 	return &clone
+}
+
+// adjustedSlideshow applies the configured interval and kind to a slideshow
+// that is already playing. A stopped slideshow stays stopped, and a value the
+// operator did not configure keeps what the TV reports.
+func adjustedSlideshow(configured, observed samsung.SlideshowSetting) samsung.SlideshowSetting {
+	if observed.Interval == 0 {
+		return observed
+	}
+	desired := observed
+	if configured.Interval > 0 {
+		desired.Interval = configured.Interval
+	}
+	if configured.Kind != "" {
+		desired.Kind = configured.Kind
+	}
+	return desired
 }

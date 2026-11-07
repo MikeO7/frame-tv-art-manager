@@ -68,6 +68,13 @@ type Config struct {
 	// When false, the TV's current slideshow settings are preserved.
 	SlideshowOverride bool
 
+	// SlideshowEnabledSet, SlideshowIntervalSet, and SlideshowTypeSet record
+	// which slideshow variables were set. Without SLIDESHOW_ENABLED the
+	// manager only adjusts a slideshow that is already playing.
+	SlideshowEnabledSet  bool
+	SlideshowIntervalSet bool
+	SlideshowTypeSet     bool
+
 	// --- Brightness ---
 
 	// ManualBrightness is a fixed brightness value (0–50). Nil if unset.

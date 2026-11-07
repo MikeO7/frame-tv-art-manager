@@ -9,7 +9,7 @@ import (
 )
 
 func validatePolicy(policy Policy) error {
-	if policy.Power > PowerOn || policy.Slideshow.Mode > PolicySet || policy.Brightness.Mode > PolicySet {
+	if policy.Power > PowerOn || policy.Slideshow.Mode > PolicyAdjust || policy.Brightness.Mode > PolicySet {
 		return errors.New("reconciliation policy contains an invalid mode")
 	}
 	if !policy.WakeBoundary.IsZero() && policy.Power != PowerOn {
@@ -46,6 +46,11 @@ func validateSlideshowPolicy(policy SlideshowPolicy) error {
 	case PolicySet:
 		if !policy.Setting.Valid() || policy.Setting.Interval <= 0 {
 			return errors.New("slideshow policy setting must have a positive interval and valid kind")
+		}
+		return nil
+	case PolicyAdjust:
+		if policy.Setting.Interval < 0 || (policy.Setting.Kind != "" && !policy.Setting.Valid()) {
+			return errors.New("adjusted slideshow policy interval or kind is invalid")
 		}
 		return nil
 	default:

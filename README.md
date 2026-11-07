@@ -434,9 +434,12 @@ uploads stop adding images once the limit is reached.
 All of these are optional. If you don't set them, the manager leaves the TV's
 own settings alone.
 
-- **Slideshow.** Setting any of `SLIDESHOW_ENABLED`, `SLIDESHOW_INTERVAL`
-  (3, 15, 60, 720, or 1440 minutes), or `SLIDESHOW_TYPE` (`shuffle` or
-  `sequential`) puts the manager in charge of the slideshow.
+- **Slideshow.** `SLIDESHOW_ENABLED=true` or `false` puts the manager in
+  charge of starting and stopping the slideshow, using `SLIDESHOW_INTERVAL`
+  (3, 15, 60, 720, or 1440 minutes) and `SLIDESHOW_TYPE` (`shuffle` or
+  `sequential`). If you set only `SLIDESHOW_INTERVAL` or `SLIDESHOW_TYPE`, the
+  manager adjusts a slideshow that is already running and never turns one on
+  or off. The TV keeps playing the category it was already playing.
 - **Brightness.** `BRIGHTNESS` sets a fixed level on the Frame's Art Mode scale
   (0–10). Alternatively, `SOLAR_BRIGHTNESS_ENABLED=true` with
   `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the
