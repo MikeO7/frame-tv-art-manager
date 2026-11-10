@@ -106,3 +106,32 @@ func TestLinearLightResizePreservesAverageLight(t *testing.T) {
 		t.Fatalf("linear-light black/white average = %d, want approximately 188", got)
 	}
 }
+
+// IMAGE_SHARPEN_AMOUNT is a dial: the edge contrast it adds grows with the
+// amount, and a small amount adds a small fraction of what full strength
+// does. It used to add most of full strength at any non-zero setting.
+func TestSharpenStrengthFollowsAmount(t *testing.T) {
+	t.Parallel()
+	ramp := []uint8{60, 60, 62, 70, 100, 150, 172, 180, 180}
+	src := image.NewRGBA(image.Rect(0, 0, len(ramp), 5))
+	for y := range 5 {
+		for x, value := range ramp {
+			src.SetRGBA(x, y, color.RGBA{R: value, G: value, B: value, A: 255})
+		}
+	}
+	added := func(amount float64) int {
+		out := sharpen(src, amount, 0)
+		total := 0
+		for x := range ramp {
+			total += max(int(out.RGBAAt(x, 2).R)-int(ramp[x]), int(ramp[x])-int(out.RGBAAt(x, 2).R))
+		}
+		return total
+	}
+	tenth, quarter, half, full, double := added(0.1), added(0.25), added(0.5), added(1), added(2)
+	if !(0 < tenth && tenth < quarter && quarter < half && half < full && full <= double) {
+		t.Fatalf("change by amount 0.1, 0.25, 0.5, 1, 2 = %d, %d, %d, %d, %d; want it to grow", tenth, quarter, half, full, double)
+	}
+	if tenth*4 > full {
+		t.Fatalf("amount 0.1 changes %d levels, more than a quarter of full strength's %d", tenth, full)
+	}
+}

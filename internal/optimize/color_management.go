@@ -279,32 +279,12 @@ type matrixProfile struct {
 }
 
 func parseMatrixProfile(data []byte) (matrixProfile, error) {
-	if len(data) < 132 {
-		return matrixProfile{}, errors.New("ICC profile header is truncated")
-	}
-	if err := validateICCHeader(data); err != nil {
+	tags, err := parseICCTags(data)
+	if err != nil {
 		return matrixProfile{}, err
 	}
 	if string(data[16:20]) != "RGB " || string(data[20:24]) != "XYZ " {
 		return matrixProfile{}, errors.New("ICC profile is not an RGB matrix profile with XYZ connection space")
-	}
-	declared := int(binary.BigEndian.Uint32(data[:4]))
-	if declared < 132 || declared > len(data) {
-		return matrixProfile{}, errors.New("ICC profile length is invalid")
-	}
-	data = data[:declared]
-	count := int(binary.BigEndian.Uint32(data[128:132]))
-	if count > 256 || 132+count*12 > len(data) {
-		return matrixProfile{}, errors.New("ICC tag table is invalid")
-	}
-	tags := make(map[string][]byte, count)
-	for index := 0; index < count; index++ {
-		entry := data[132+index*12 : 144+index*12]
-		offset, size := int(binary.BigEndian.Uint32(entry[4:8])), int(binary.BigEndian.Uint32(entry[8:12]))
-		if offset < 0 || size < 0 || offset+size > len(data) {
-			return matrixProfile{}, errors.New("ICC tag range is invalid")
-		}
-		tags[string(entry[:4])] = data[offset : offset+size]
 	}
 	var profile matrixProfile
 	for channel, signature := range []string{"rXYZ", "gXYZ", "bXYZ"} {

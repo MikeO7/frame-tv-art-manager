@@ -96,9 +96,13 @@ func transpose3x3(matrix [3][3]float64) [3][3]float64 {
 	return transposed
 }
 
-// convertICCToSRGB converts src from its embedded matrix/TRC profile to
-// premultiplied sRGB. Rows are converted in parallel partitions.
+// convertICCToSRGB converts src from its embedded profile to premultiplied
+// sRGB: an RGB matrix/TRC profile, or a CMYK profile's lookup table. Rows are
+// converted in parallel partitions.
 func convertICCToSRGB(src image.Image, profileData []byte) (*image.RGBA, error) {
+	if iccDataColorSpace(profileData) == "CMYK" {
+		return convertCMYKToSRGB(src, profileData)
+	}
 	profile, err := parseMatrixProfile(profileData)
 	if err != nil {
 		return nil, err

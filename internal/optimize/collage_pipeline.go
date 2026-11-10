@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"slices"
@@ -230,36 +231,145 @@ func pairCost(first, second portraitFeature) float64 {
 		0.5*math.Abs(math.Log(first.aspect/second.aspect))
 }
 
-// pairPortraits greedily joins the most compatible portraits first. Ties break
-// by name, so pairing is deterministic. With an odd count, the least
-// compatible portrait is returned as the leftover.
+// exactPairingLimit is the most portraits paired by exhaustive search. Its
+// table has one entry per subset, so the limit keeps it to a few megabytes.
+const exactPairingLimit = 18
+
+// pairPortraits joins portraits so the total cost of all pairs is lowest.
+// Taking the best pair first can strand two portraits that suit nothing but
+// each other's partners, so up to exactPairingLimit portraits are paired by
+// exhaustive search. A larger backlog starts from the best pairs and trades
+// partners while a trade lowers the total, which is close but not guaranteed
+// lowest. Pairs are ordered by name, so pairing is deterministic. With an odd
+// count, the portrait whose absence costs least is returned as the leftover.
 func pairPortraits(features []portraitFeature) ([][2]string, string) {
+	cost := func(first, second int) float64 { return pairCost(features[first], features[second]) }
+	var pairs [][2]int
+	leftover := -1
+	if len(features) <= exactPairingLimit {
+		pairs, leftover = exactPairs(len(features), cost)
+	} else {
+		pairs, leftover = greedyPairs(len(features), cost)
+		for improvePairs(pairs, &leftover, cost) {
+			continue
+		}
+	}
+	for index, pair := range pairs {
+		pairs[index] = [2]int{min(pair[0], pair[1]), max(pair[0], pair[1])}
+	}
+	slices.SortFunc(pairs, func(a, b [2]int) int { return cmp.Compare(a[0], b[0]) })
+	var named [][2]string
+	for _, pair := range pairs {
+		named = append(named, [2]string{features[pair[0]].name, features[pair[1]].name})
+	}
+	if leftover < 0 {
+		return named, ""
+	}
+	return named, features[leftover].name
+}
+
+// exactPairs returns the pairing with the lowest total cost and the unpaired
+// index, or -1 when the count is even. It fills a table of the best total for
+// every subset: a subset's lowest member must pair with some other member,
+// and the rest is a smaller subset already solved. An odd count adds a
+// stand-in partner that costs nothing, and whoever takes it is the leftover.
+func exactPairs(count int, cost func(first, second int) float64) ([][2]int, int) {
+	nodes := count + count%2
+	price := func(first, second int) float64 {
+		if second >= count {
+			return 0
+		}
+		return cost(first, second)
+	}
+	best := make([]float64, 1<<nodes)
+	partner := make([]uint8, 1<<nodes)
+	for subset := 1; subset < len(best); subset++ {
+		if bits.OnesCount(uint(subset))%2 != 0 { //nolint:gosec // subset is a non-negative table index
+			continue
+		}
+		lowest := bits.TrailingZeros(uint(subset)) //nolint:gosec // subset is a non-negative table index
+		rest := subset &^ (1 << lowest)
+		best[subset] = math.Inf(1)
+		for other := lowest + 1; other < nodes; other++ {
+			if rest&(1<<other) == 0 {
+				continue
+			}
+			if total := price(lowest, other) + best[rest&^(1<<other)]; total < best[subset] {
+				best[subset], partner[subset] = total, uint8(other) //nolint:gosec // other is below exactPairingLimit
+			}
+		}
+	}
+	var pairs [][2]int
+	leftover := -1
+	for subset := len(best) - 1; subset > 0; {
+		lowest := bits.TrailingZeros(uint(subset)) //nolint:gosec // subset is a non-negative table index
+		other := int(partner[subset])
+		if other >= count {
+			leftover = lowest
+		} else {
+			pairs = append(pairs, [2]int{lowest, other})
+		}
+		subset &^= 1<<lowest | 1<<other
+	}
+	return pairs, leftover
+}
+
+// greedyPairs joins the cheapest pair first, breaking ties by index, and
+// returns the pairs with the unpaired index, or -1 when the count is even.
+func greedyPairs(count int, cost func(first, second int) float64) ([][2]int, int) {
 	type candidate struct {
 		cost        float64
 		first, next int
 	}
 	var candidates []candidate
-	for i := range features {
-		for j := i + 1; j < len(features); j++ {
-			candidates = append(candidates, candidate{cost: pairCost(features[i], features[j]), first: i, next: j})
+	for i := range count {
+		for j := i + 1; j < count; j++ {
+			candidates = append(candidates, candidate{cost: cost(i, j), first: i, next: j})
 		}
 	}
 	slices.SortStableFunc(candidates, func(a, b candidate) int {
 		return cmp.Or(cmp.Compare(a.cost, b.cost), cmp.Compare(a.first, b.first), cmp.Compare(a.next, b.next))
 	})
-	paired := make([]bool, len(features))
-	var pairs [][2]string
+	paired := make([]bool, count)
+	var pairs [][2]int
 	for _, option := range candidates {
 		if paired[option.first] || paired[option.next] {
 			continue
 		}
 		paired[option.first], paired[option.next] = true, true
-		pairs = append(pairs, [2]string{features[option.first].name, features[option.next].name})
+		pairs = append(pairs, [2]int{option.first, option.next})
 	}
-	for index, done := range paired {
-		if !done {
-			return pairs, features[index].name
+	return pairs, slices.Index(paired, false)
+}
+
+// improvePairs makes every partner trade that lowers the total cost in one
+// sweep and reports whether it made any. Each trade lowers the total by more
+// than rounding error, so repeated sweeps end.
+func improvePairs(pairs [][2]int, leftover *int, cost func(first, second int) float64) bool {
+	const gain = 1e-9
+	improved := false
+	for first := range pairs {
+		for second := first + 1; second < len(pairs); second++ {
+			a, b, c, d := pairs[first][0], pairs[first][1], pairs[second][0], pairs[second][1]
+			current := cost(a, b) + cost(c, d)
+			switch straight, crossed := cost(a, c)+cost(b, d), cost(a, d)+cost(b, c); {
+			case straight < current-gain && straight <= crossed:
+				pairs[first], pairs[second], improved = [2]int{a, c}, [2]int{b, d}, true
+			case crossed < current-gain:
+				pairs[first], pairs[second], improved = [2]int{a, d}, [2]int{b, c}, true
+			}
+		}
+		if *leftover < 0 {
+			continue
+		}
+		a, b := pairs[first][0], pairs[first][1]
+		current := cost(a, b)
+		switch keepFirst, keepSecond := cost(a, *leftover), cost(b, *leftover); {
+		case keepFirst < current-gain && keepFirst <= keepSecond:
+			pairs[first], *leftover, improved = [2]int{a, *leftover}, b, true
+		case keepSecond < current-gain:
+			pairs[first], *leftover, improved = [2]int{b, *leftover}, a, true
 		}
 	}
-	return pairs, ""
+	return improved
 }
