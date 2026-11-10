@@ -128,7 +128,7 @@ func TestSharpenStrengthFollowsAmount(t *testing.T) {
 		return total
 	}
 	tenth, quarter, half, full, double := added(0.1), added(0.25), added(0.5), added(1), added(2)
-	if !(0 < tenth && tenth < quarter && quarter < half && half < full && full <= double) {
+	if 0 >= tenth || tenth >= quarter || quarter >= half || half >= full || full > double {
 		t.Fatalf("change by amount 0.1, 0.25, 0.5, 1, 2 = %d, %d, %d, %d, %d; want it to grow", tenth, quarter, half, full, double)
 	}
 	if tenth*4 > full {

@@ -3,7 +3,6 @@ package optimize
 import (
 	"encoding/binary"
 	"image"
-	"io"
 	"log/slog"
 	"math"
 	"strings"
@@ -160,8 +159,17 @@ func cmykPixels(inks ...[4]uint8) *image.CMYK {
 func TestCMYKProfileLookupTablesReproduceThePress(t *testing.T) {
 	t.Parallel()
 	inks := [][4]uint8{
-		{0, 0, 0, 0}, {255, 0, 0, 0}, {0, 255, 0, 0}, {0, 0, 255, 0}, {0, 0, 0, 255},
-		{128, 0, 0, 0}, {64, 191, 0, 0}, {30, 60, 90, 120}, {200, 40, 160, 20}, {0, 0, 0, 128}, {255, 255, 255, 0},
+		{0, 0, 0, 0},
+		{255, 0, 0, 0},
+		{0, 255, 0, 0},
+		{0, 0, 255, 0},
+		{0, 0, 0, 255},
+		{128, 0, 0, 0},
+		{64, 191, 0, 0},
+		{30, 60, 90, 120},
+		{200, 40, 160, 20},
+		{0, 0, 0, 128},
+		{255, 255, 255, 0},
 	}
 	cases := []struct {
 		name      string
@@ -260,7 +268,7 @@ func TestCMYKProfileRejectsWhatItCannotConvert(t *testing.T) {
 
 	// A profile that cannot be used falls back to the plain conversion and
 	// still yields a picture.
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := Config{ColorProfilePolicy: profileConvertSRGB}
 	fallback := normalizeColor(cmykPixels([4]uint8{255, 0, 0, 0}), embeddedColorData{icc: cases[1].profile}, cfg, logger, "press.jpg")
 	if got, want := fallback.RGBAAt(0, 0), toRGBA(cmykPixels([4]uint8{255, 0, 0, 0})).RGBAAt(0, 0); got != want {

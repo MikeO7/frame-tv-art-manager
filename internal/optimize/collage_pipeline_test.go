@@ -622,7 +622,7 @@ func TestPairPortraitsMatchesColorAndShape(t *testing.T) {
 	if pairs, leftover := pairPortraits(features[:2]); len(pairs) != 1 || leftover != "" {
 		t.Fatalf("two portraits: pairs %v leftover %q", pairs, leftover)
 	}
-	if pairs, leftover := pairPortraits(nil); pairs != nil || leftover != "" {
+	if pairs, leftover := pairPortraits(nil); len(pairs) != 0 || leftover != "" {
 		t.Fatalf("no portraits: pairs %v leftover %q", pairs, leftover)
 	}
 }
@@ -633,9 +633,9 @@ func TestPairPortraitsMatchesColorAndShape(t *testing.T) {
 func TestPairPortraitsMinimizesTotalMismatch(t *testing.T) {
 	t.Parallel()
 	lightness := []float64{0.20, 0.44, 0.50, 0.74}
-	features := make([]portraitFeature, len(lightness))
+	features := make([]portraitFeature, 0, len(lightness)+1)
 	for index, value := range lightness {
-		features[index] = portraitFeature{name: fmt.Sprintf("%d.jpg", index), color: oklab{l: value}, aspect: 0.67}
+		features = append(features, portraitFeature{name: fmt.Sprintf("%d.jpg", index), color: oklab{l: value}, aspect: 0.67})
 	}
 	if greedy, _ := greedyPairs(len(features), func(a, b int) float64 { return pairCost(features[a], features[b]) }); !slices.Equal(
 		greedy, [][2]int{{1, 2}, {0, 3}},

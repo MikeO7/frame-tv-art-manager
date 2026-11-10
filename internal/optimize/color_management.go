@@ -283,7 +283,7 @@ func parseMatrixProfile(data []byte) (matrixProfile, error) {
 	if err != nil {
 		return matrixProfile{}, err
 	}
-	if string(data[16:20]) != "RGB " || string(data[20:24]) != "XYZ " {
+	if string(data[16:20]) != "RGB " || string(data[20:24]) != iccSpaceXYZ {
 		return matrixProfile{}, errors.New("ICC profile is not an RGB matrix profile with XYZ connection space")
 	}
 	var profile matrixProfile

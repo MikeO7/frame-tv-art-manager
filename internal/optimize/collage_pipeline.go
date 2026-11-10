@@ -258,7 +258,7 @@ func pairPortraits(features []portraitFeature) ([][2]string, string) {
 		pairs[index] = [2]int{min(pair[0], pair[1]), max(pair[0], pair[1])}
 	}
 	slices.SortFunc(pairs, func(a, b [2]int) int { return cmp.Compare(a[0], b[0]) })
-	var named [][2]string
+	named := make([][2]string, 0, len(pairs))
 	for _, pair := range pairs {
 		named = append(named, [2]string{features[pair[0]].name, features[pair[1]].name})
 	}
@@ -284,10 +284,10 @@ func exactPairs(count int, cost func(first, second int) float64) ([][2]int, int)
 	best := make([]float64, 1<<nodes)
 	partner := make([]uint8, 1<<nodes)
 	for subset := 1; subset < len(best); subset++ {
-		if bits.OnesCount(uint(subset))%2 != 0 { //nolint:gosec // subset is a non-negative table index
+		if bits.OnesCount(uint(subset))%2 != 0 {
 			continue
 		}
-		lowest := bits.TrailingZeros(uint(subset)) //nolint:gosec // subset is a non-negative table index
+		lowest := bits.TrailingZeros(uint(subset))
 		rest := subset &^ (1 << lowest)
 		best[subset] = math.Inf(1)
 		for other := lowest + 1; other < nodes; other++ {
@@ -302,7 +302,7 @@ func exactPairs(count int, cost func(first, second int) float64) ([][2]int, int)
 	var pairs [][2]int
 	leftover := -1
 	for subset := len(best) - 1; subset > 0; {
-		lowest := bits.TrailingZeros(uint(subset)) //nolint:gosec // subset is a non-negative table index
+		lowest := bits.TrailingZeros(uint(subset))
 		other := int(partner[subset])
 		if other >= count {
 			leftover = lowest
