@@ -722,6 +722,11 @@ them, the manager leaves the TV's own settings alone.
   order and wraps around. It picks only art the manager uploaded, only while
   the TV is in Art Mode, and only when the TV can confirm what's on screen.
   It runs between syncs, so it doesn't wait for `SYNC_INTERVAL_MINUTES`.
+  It never wakes the screen: once a Frame from 2024 or earlier turns its
+  screen off (the motion or light sensor, or the power button), the manager
+  makes no picture changes, uploads, or other changes until the screen is on
+  again. 2025 and newer Frames report the same state while showing art, so
+  on those the manager asks the TV whether Art Mode is on.
   `SLIDESHOW_ENABLED=false` turns it off and leaves the picture to the TV.
   The manager does this itself because, on current firmware, the TV's own
   slideshow of My Photos asks for an Art Store subscription: the TV accepts
@@ -803,7 +808,7 @@ Mode, and reachable from the server (`ping`). If you denied it before, remove
 the entry under the TV's device connection settings and restart the container.
 
 **Status says `skipped (not art mode)` or `skipped (powered off)`.** The TV is
-off or showing other content. The manager waits and tries again at the next
+off, its screen is asleep, or it is showing other content. The manager waits and tries again at the next
 sync. With `TV_MAC` and `AUTO_ON_TIME` set, it wakes a TV that is off once a
 day.
 

@@ -28,7 +28,10 @@ const (
 // DeviceInfo holds metadata about a connected Samsung TV, retrieved via
 // the REST API at https://<ip>:8002/api/v2/.
 type DeviceInfo struct {
-	ModelName       string `json:"modelName"`
+	ModelName string `json:"modelName"`
+	// Model is the platform code, such as "24_PTM_FTV_T09", whose prefix is
+	// the two-digit model year.
+	Model           string `json:"model"`
 	FirmwareVersion string `json:"firmwareVersion"`
 	FrameTVSupport  string `json:"FrameTVSupport"` // "true" or "false"
 	PowerState      string `json:"PowerState"`     // "on", "off", or "standby"

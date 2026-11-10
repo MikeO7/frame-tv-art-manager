@@ -174,6 +174,7 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 	tests := []struct {
 		name             string
 		power            string
+		model            string
 		artMode          string
 		artModeErr       error
 		connectErr       error
@@ -181,6 +182,13 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 		wantArtModeCalls int
 	}{
 		{name: "power off", power: "off", artMode: "on", wantDisposition: DispositionBlockedPowerOff},
+		{
+			// A 2024 Frame reports standby once its sensor puts Art Mode to
+			// sleep; asking the art channel would not tell, and a picture
+			// change would light the screen.
+			name: "pre-2025 Frame asleep in Art Mode", power: stringStandby, model: "24_PTM_FTV_T09", artMode: stringOn,
+			wantDisposition: DispositionBlockedPowerOff,
+		},
 		{
 			name: "standby outside Art Mode", power: "standby", artMode: "off",
 			wantDisposition: DispositionBlockedPowerOff, wantArtModeCalls: 1,
@@ -199,6 +207,7 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			transport := eligibleObservationTransport(json.RawMessage(`[]`))
 			transport.device.PowerState = test.power
+			transport.device.Model = test.model
 			transport.artMode = test.artMode
 			transport.artModeErr = test.artModeErr
 			transport.connectErr = test.connectErr
@@ -213,6 +222,9 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 			}
 			if transport.artModeCalls != test.wantArtModeCalls || transport.inventoryCalls != 0 {
 				t.Fatalf("read calls = art %d, inventory %d", transport.artModeCalls, transport.inventoryCalls)
+			}
+			if test.model != "" && transport.connectCalls != 0 {
+				t.Fatalf("connect calls = %d, want none for a sleeping pre-2025 Frame", transport.connectCalls)
 			}
 		})
 	}

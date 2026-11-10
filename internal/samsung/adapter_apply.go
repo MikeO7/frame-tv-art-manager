@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -350,7 +351,10 @@ type operationalState struct {
 // as on or in standby, the art channel. REST "standby" covers both network
 // standby (the art channel refuses connections) and 2025+ Frames, which report
 // standby while showing art, so the art channel decides; a standby TV whose
-// art channel does not answer is known off.
+// art channel does not answer is known off. Earlier Frames report standby
+// once the screen is dark, including when the motion or light sensor put Art
+// Mode to sleep, so they are off without asking: selecting a picture would
+// light the screen again.
 func (a *adapter) readPowerState(ctx context.Context, device DeviceInfo, dryRun bool) (operationalState, error) {
 	rawPower := strings.TrimSpace(device.PowerState)
 	power, known := parseDevicePowerState(rawPower)
@@ -361,6 +365,9 @@ func (a *adapter) readPowerState(ctx context.Context, device DeviceInfo, dryRun 
 		return operationalState{Power: PowerStateOff}, nil
 	}
 	standby := rawPower == stringStandby
+	if standby && !standbyMayShowArt(device) {
+		return operationalState{Power: PowerStateOff}, nil
+	}
 	if err := a.transport.Connect(ctx, dryRun); err != nil {
 		if standby && !errors.Is(err, ErrUnauthorized) && ctx.Err() == nil {
 			return operationalState{Power: PowerStateOff}, nil
@@ -461,4 +468,23 @@ func powerPollError(callerCtx, pollCtx context.Context, lastErr error) error {
 		return fmt.Errorf("poll power-state postcondition: %w", err)
 	}
 	return fmt.Errorf("poll power-state postcondition: %w", errors.Join(pollCtx.Err(), lastErr))
+}
+
+// firstYearShowingArtInStandby is the first Frame model year that reports
+// REST standby while Art Mode is lit.
+const firstYearShowingArtInStandby = 25
+
+// standbyMayShowArt reports whether a TV in REST standby may still be showing
+// art. The model code starts with the two-digit model year; a TV whose year
+// is unknown is asked over the art channel, as a 2025+ Frame is.
+func standbyMayShowArt(device DeviceInfo) bool {
+	prefix, _, found := strings.Cut(strings.TrimSpace(device.Model), "_")
+	if !found || len(prefix) != 2 {
+		return true
+	}
+	year, err := strconv.Atoi(prefix)
+	if err != nil {
+		return true
+	}
+	return year >= firstYearShowingArtInStandby
 }
