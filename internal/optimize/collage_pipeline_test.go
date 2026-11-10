@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"image"
 	"image/color"
@@ -611,7 +612,7 @@ func TestPairPortraitsMatchesColorAndShape(t *testing.T) {
 		{name: "e-odd.jpg", color: oklab{l: 0.55}, aspect: 0.4},
 	}
 	pairs, leftover := pairPortraits(features)
-	want := [][2]string{{"b-warm-light.jpg", "d-warm-light.jpg"}, {"a-blue-dark.jpg", "c-blue-dark.jpg"}}
+	want := [][2]string{{"a-blue-dark.jpg", "c-blue-dark.jpg"}, {"b-warm-light.jpg", "d-warm-light.jpg"}}
 	if !slices.Equal(pairs, want) {
 		t.Fatalf("pairs = %v, want %v", pairs, want)
 	}
@@ -621,7 +622,80 @@ func TestPairPortraitsMatchesColorAndShape(t *testing.T) {
 	if pairs, leftover := pairPortraits(features[:2]); len(pairs) != 1 || leftover != "" {
 		t.Fatalf("two portraits: pairs %v leftover %q", pairs, leftover)
 	}
-	if pairs, leftover := pairPortraits(nil); pairs != nil || leftover != "" {
+	if pairs, leftover := pairPortraits(nil); len(pairs) != 0 || leftover != "" {
 		t.Fatalf("no portraits: pairs %v leftover %q", pairs, leftover)
+	}
+}
+
+// Taking the closest pair first strands the two outer portraits with each
+// other; trading partners gives two good pairs instead of one perfect and one
+// poor.
+func TestPairPortraitsMinimizesTotalMismatch(t *testing.T) {
+	t.Parallel()
+	lightness := []float64{0.20, 0.44, 0.50, 0.74}
+	features := make([]portraitFeature, 0, len(lightness)+1)
+	for index, value := range lightness {
+		features = append(features, portraitFeature{name: fmt.Sprintf("%d.jpg", index), color: oklab{l: value}, aspect: 0.67})
+	}
+	if greedy, _ := greedyPairs(len(features), func(a, b int) float64 { return pairCost(features[a], features[b]) }); !slices.Equal(
+		greedy, [][2]int{{1, 2}, {0, 3}},
+	) {
+		t.Fatalf("greedy pairs = %v; the case no longer exercises a partner trade", greedy)
+	}
+	pairs, leftover := pairPortraits(features)
+	if want := [][2]string{{"0.jpg", "1.jpg"}, {"2.jpg", "3.jpg"}}; !slices.Equal(pairs, want) || leftover != "" {
+		t.Fatalf("pairs = %v leftover %q, want %v", pairs, leftover, want)
+	}
+
+	// With an odd count the leftover is chosen for the lowest total too: the
+	// outlier is left out though taking the best pairs first would pair it.
+	features = append(features, portraitFeature{name: "outlier.jpg", color: oklab{l: 0.95, a: 0.3}, aspect: 0.4})
+	pairs, leftover = pairPortraits(features)
+	if want := [][2]string{{"0.jpg", "1.jpg"}, {"2.jpg", "3.jpg"}}; !slices.Equal(pairs, want) || leftover != "outlier.jpg" {
+		t.Fatalf("odd count: pairs = %v leftover %q, want %v and the outlier", pairs, leftover, want)
+	}
+}
+
+// A backlog too large for exhaustive search still ends at least as good as
+// taking the best pairs first, and pairs every portrait exactly once.
+func TestPairPortraitsImprovesLargeBacklog(t *testing.T) {
+	t.Parallel()
+	features := make([]portraitFeature, 2*exactPairingLimit+1)
+	state := uint32(7)
+	for index := range features {
+		state = state*1664525 + 1013904223
+		features[index] = portraitFeature{
+			name:   fmt.Sprintf("%02d.jpg", index),
+			color:  oklab{l: float64(state>>8&0xff) / 255, a: float64(state>>16&0xff)/510 - 0.25},
+			aspect: 0.5 + float64(state>>24)/1020,
+		}
+	}
+	byName := make(map[string]portraitFeature, len(features))
+	for _, feature := range features {
+		byName[feature.name] = feature
+	}
+	total := func(pairs [][2]string) float64 {
+		sum := 0.0
+		for _, pair := range pairs {
+			sum += pairCost(byName[pair[0]], byName[pair[1]])
+		}
+		return sum
+	}
+	greedy, _ := greedyPairs(len(features), func(a, b int) float64 { return pairCost(features[a], features[b]) })
+	greedyTotal := 0.0
+	for _, pair := range greedy {
+		greedyTotal += pairCost(features[pair[0]], features[pair[1]])
+	}
+	pairs, leftover := pairPortraits(features)
+	if got := total(pairs); got >= greedyTotal {
+		t.Fatalf("total mismatch %.4f is not below best-first pairing's %.4f", got, greedyTotal)
+	}
+	seen := map[string]int{leftover: 1}
+	for _, pair := range pairs {
+		seen[pair[0]]++
+		seen[pair[1]]++
+	}
+	if len(pairs) != exactPairingLimit || len(seen) != len(features) {
+		t.Fatalf("%d pairs covering %d of %d portraits", len(pairs), len(seen), len(features))
 	}
 }

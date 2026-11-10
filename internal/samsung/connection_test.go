@@ -286,6 +286,12 @@ func TestConnectionPendingRequestsFailWhenUnansweredOrClosed(t *testing.T) {
 		t.Fatalf("SendAndWait(canceled) error = %v, want context.Canceled", err)
 	}
 
+	// A canceled write closes its socket, so the listener checks use a
+	// connection of their own.
+	conn = newTestConnection(t, host, port, endpointRemoteControl)
+	if err := conn.Open(context.Background()); err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
 	pending, cleanup, err := conn.registerPending("in-flight")
 	if err != nil {
 		t.Fatalf("registerPending() error = %v", err)

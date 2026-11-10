@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
@@ -31,9 +32,21 @@ type ArtworkCollection interface {
 	prepareCycle(context.Context) (preparedCollection, error)
 }
 
+// maxArrivalPasses bounds how often one cycle re-optimizes for artwork that
+// was imported while it worked. Later arrivals wait for the next cycle.
+const maxArrivalPasses = 3
+
+// localCollection runs one cycle preparation at a time. The store serializes
+// its own operations, so imports and inventory reads are not held behind a
+// cycle: a cycle spends minutes downloading and optimizing, and an upload or
+// an assistant request must not wait that long. A cycle publishes against the
+// snapshot it rendered from, which keeps artwork imported meanwhile.
 type localCollection struct {
-	mutation chan struct{}
+	cycle    chan struct{}
 	gateOnce sync.Once
+	// arrivals counts imports committed from outside the cycle, so a cycle
+	// can tell that artwork it has not rendered joined the collection.
+	arrivals atomic.Uint64
 	cfg      *config.Config
 	logger   *slog.Logger
 	health   *health.Status
@@ -75,8 +88,8 @@ func newLocalCollection(
 		logger = slog.Default()
 	}
 	return &localCollection{
-		mutation: make(chan struct{}, 1),
-		cfg:      cfg, logger: logger, health: healthStatus,
+		cycle: make(chan struct{}, 1),
+		cfg:   cfg, logger: logger, health: healthStatus,
 		loader: sources.NewLoader(cfg, logger, store),
 		limits: limits, store: store,
 	}, nil
@@ -87,10 +100,6 @@ func (c *localCollection) Prepare(
 	request collectionpkg.PrepareRequest,
 ) (collectionpkg.Snapshot, error) {
 	request.DryRun = request.DryRun || c.cfg.DryRun
-	if err := c.acquire(ctx); err != nil {
-		return collectionpkg.Snapshot{}, err
-	}
-	defer c.release()
 	return c.prepareInventory(ctx, request)
 }
 
@@ -99,25 +108,23 @@ func (c *localCollection) Import(
 	request collectionpkg.ImportRequest,
 ) (collectionpkg.Snapshot, error) {
 	request.DryRun = request.DryRun || c.cfg.DryRun
-	if err := c.acquire(ctx); err != nil {
-		return collectionpkg.Snapshot{}, err
-	}
-	defer c.release()
-	return c.store.Import(ctx, request)
+	snapshot, err := c.store.Import(ctx, request)
+	c.noteArrival(err, request.DryRun)
+	return snapshot, err
 }
 
 func (c *localCollection) ImportBatch(
 	ctx context.Context,
 	requests []collectionpkg.ImportRequest,
 ) (collectionpkg.Snapshot, error) {
+	dryRun := c.cfg.DryRun
 	for index := range requests {
 		requests[index].DryRun = requests[index].DryRun || c.cfg.DryRun
+		dryRun = dryRun || requests[index].DryRun
 	}
-	if err := c.acquire(ctx); err != nil {
-		return collectionpkg.Snapshot{}, err
-	}
-	defer c.release()
-	return c.store.ImportBatch(ctx, requests)
+	snapshot, err := c.store.ImportBatch(ctx, requests)
+	c.noteArrival(err, dryRun)
+	return snapshot, err
 }
 
 func (c *localCollection) Apply(
@@ -125,11 +132,16 @@ func (c *localCollection) Apply(
 	request collectionpkg.ApplyRequest,
 ) (collectionpkg.Snapshot, error) {
 	request.DryRun = request.DryRun || c.cfg.DryRun
-	if err := c.acquire(ctx); err != nil {
-		return collectionpkg.Snapshot{}, err
+	snapshot, err := c.store.Apply(ctx, request)
+	c.noteArrival(err, request.DryRun)
+	return snapshot, err
+}
+
+// noteArrival records a committed change made outside cycle preparation.
+func (c *localCollection) noteArrival(err error, dryRun bool) {
+	if err == nil && !dryRun {
+		c.arrivals.Add(1)
 	}
-	defer c.release()
-	return c.store.Apply(ctx, request)
 }
 
 func (c *localCollection) prepareCycle(ctx context.Context) (preparedCollection, error) {
@@ -154,18 +166,18 @@ func (c *localCollection) prepareCycle(ctx context.Context) (preparedCollection,
 
 func (c *localCollection) acquire(ctx context.Context) error {
 	c.gateOnce.Do(func() {
-		if c.mutation == nil {
-			c.mutation = make(chan struct{}, 1)
+		if c.cycle == nil {
+			c.cycle = make(chan struct{}, 1)
 		}
 	})
-	if err := acquireGate(ctx, c.mutation); err != nil {
-		return fmt.Errorf("wait for artwork collection mutation: %w", err)
+	if err := acquireGate(ctx, c.cycle); err != nil {
+		return fmt.Errorf("wait for artwork collection cycle: %w", err)
 	}
 	return nil
 }
 
 func (c *localCollection) release() {
-	<-c.mutation
+	<-c.cycle
 }
 
 func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection, error) {
@@ -176,6 +188,9 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 		result.snapshot = snapshot
 		return result, err
 	}
+	// The arrival count is read before each snapshot, so an import that lands
+	// after the snapshot is always noticed.
+	seen := c.arrivals.Load()
 	baseline, err := c.prepareAuthoritativeSnapshot(ctx)
 	if err != nil {
 		return result, err
@@ -199,42 +214,63 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 	if c.health != nil {
 		c.health.SetSourceWarning(sourceWarning)
 	}
-	if result.downloaded > 0 {
-		baseline, err = c.prepareAuthoritativeSnapshot(ctx)
+	refresh := result.downloaded > 0
+	for pass := 1; ; pass++ {
+		if arrived := c.arrivals.Load(); refresh || arrived != seen {
+			seen = arrived
+			if baseline, err = c.prepareAuthoritativeSnapshot(ctx); err != nil {
+				return result, err
+			}
+		}
+		refresh = false
+		snapshot, optimized, err := c.optimizeAndPublish(ctx, baseline)
+		result.optimized += optimized
 		if err != nil {
 			return result, err
 		}
+		result.snapshot = snapshot
+		// Artwork imported while this pass rendered was kept but not
+		// optimized. Another pass renders it now, so TVs are not sent the raw
+		// picture this cycle and its replacement the next.
+		if c.arrivals.Load() == seen || pass == maxArrivalPasses {
+			return result, nil
+		}
 	}
+}
+
+// optimizeAndPublish renders the derivatives baseline lacks and publishes
+// them, returning the resulting snapshot and how many pictures it rendered.
+// A collection that needs nothing is returned as it is.
+func (c *localCollection) optimizeAndPublish(
+	ctx context.Context,
+	baseline collectionpkg.Snapshot,
+) (collectionpkg.Snapshot, int, error) {
 	metadata := newMetadataProjection(baseline)
 	stageRequest := optimize.StageRequest{
 		Inputs: stageInputs(c.cfg.ArtworkDir, baseline), Config: c.cfg.OptimizeOptions(), Logger: c.logger,
 	}
 	requiresStage, err := optimize.RequiresStage(ctx, stageRequest)
 	if err != nil {
-		return result, fmt.Errorf("preflight artwork optimization: %w", err)
+		return collectionpkg.Snapshot{}, 0, fmt.Errorf("preflight artwork optimization: %w", err)
 	}
 	if !requiresStage {
-		result.snapshot = baseline
-		return result, nil
+		return baseline, 0, nil
 	}
-
 	if c.health != nil {
 		c.health.SetStage("optimizing artwork")
 	}
 	stage, err := c.optimize(ctx, stageRequest)
 	if err != nil {
-		return result, fmt.Errorf("optimize artwork collection: %w", err)
+		return collectionpkg.Snapshot{}, 0, fmt.Errorf("optimize artwork collection: %w", err)
 	}
-	result.optimized = stage.Optimized
 	snapshot, err := c.publishStage(ctx, stage, metadata, baseline)
 	if err != nil {
-		return result, err
+		return collectionpkg.Snapshot{}, stage.Optimized, err
 	}
 	if err := c.validateAuthoritativeSnapshot(snapshot); err != nil {
-		return result, err
+		return collectionpkg.Snapshot{}, stage.Optimized, err
 	}
-	result.snapshot = snapshot
-	return result, nil
+	return snapshot, stage.Optimized, nil
 }
 
 func (c *localCollection) publishStage(

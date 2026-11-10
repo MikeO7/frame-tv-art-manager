@@ -124,3 +124,47 @@ func TestCanvasTextureReachesTheImageEdge(t *testing.T) {
 		t.Fatalf("border blue averages %.1f, want the varnish tint the rest of the picture gets", edge)
 	}
 }
+
+// The crack network must not repeat across the frame: a tiled pattern shows as
+// a visible grid on a 4K panel.
+func TestCraquelureDoesNotTile(t *testing.T) {
+	t.Parallel()
+	const width, height = 1024, 512
+	field := newCraquelureField(width, height)
+	cracked, repeated := 0, 0
+	for y := range height {
+		for x := range width - 256 {
+			here := field.at(x, y)
+			if here == 0 {
+				continue
+			}
+			cracked++
+			if field.at(x+256, y) == here {
+				repeated++
+			}
+		}
+	}
+	if share := float64(cracked) / float64((width-256)*height); share < 0.02 || share > 0.2 {
+		t.Fatalf("cracks cover %.1f%% of the canvas, want a sparse network", share*100)
+	}
+	if repeated*20 > cracked {
+		t.Fatalf("%d of %d crack pixels repeat 256 pixels along", repeated, cracked)
+	}
+	// Cracks are continuous lines: no crack pixel stands alone.
+	for y := 1; y < height-1; y++ {
+		for x := 1; x < width-1; x++ {
+			if field.at(x, y) > -0.3 {
+				continue
+			}
+			neighbors := 0
+			for _, step := range [][2]int{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}} {
+				if field.at(x+step[0], y+step[1]) < 0 {
+					neighbors++
+				}
+			}
+			if neighbors < 2 {
+				t.Fatalf("crack pixel at %d,%d has %d crack neighbors", x, y, neighbors)
+			}
+		}
+	}
+}

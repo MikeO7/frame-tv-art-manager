@@ -87,7 +87,9 @@ func cropRectForAspectWithProtection(
 // luminance. Each pixel's strength adapts to the headroom left by its local
 // minimum and maximum, and the result is clamped to that local range, so
 // edges gain contrast without halos and flat areas such as mats are untouched.
-// amount 0 disables it and values of 1 or more are full strength. threshold
+// amount is the gain on the pixel's difference from its four neighbors where
+// headroom is full: 0 disables it and the effect grows in proportion, so the
+// setting is a dial and not a switch. threshold
 // skips neighborhoods whose 8-bit luminance range is smaller than it, which
 // keeps JPEG noise from being amplified. Only opaque pixels change.
 func sharpen(src *image.RGBA, amount float64, threshold int) *image.RGBA {
@@ -102,7 +104,10 @@ func sharpen(src *image.RGBA, amount float64, threshold int) *image.RGBA {
 	luma := lumaPlane(src)
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
-	peak := float32(-1 / (8 - 3*min(amount, 1)))
+	// A neighbor weight of -amount/(4*amount+1) makes the normalized filter
+	// equal center + amount*(4*center - neighbors); it approaches the filter's
+	// -1/4 pole only as amount grows without bound.
+	peak := float32(-amount / (4*amount + 1))
 	minimumRange := float32(threshold) / 255
 	runPixelRows(1, height-1, func(_, startY, endY int) {
 		for y := startY; y < endY; y++ {

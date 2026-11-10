@@ -187,6 +187,18 @@ func commandError(operation string, outcome Outcome, cause error) *Error {
 	return &Error{Kind: kind, Operation: operation, Retryable: retryable, Outcome: outcome, Cause: cause}
 }
 
+// guardError classifies a failure of the reads that precede a command.
+// Nothing has been sent to the TV at that point, so a TV that did not answer
+// in time is a timeout the caller may retry, not a cancellation: the caller
+// is still waiting.
+func guardError(ctx context.Context, cause error) *Error {
+	typed := commandError("refresh command guard", OutcomeNotAttempted, cause)
+	if timedOutWaitingForTV(ctx, cause) {
+		typed.Kind, typed.Retryable = ErrorKindTimeout, true
+	}
+	return typed
+}
+
 func (a *adapter) invalidateAuthorization() {
 	a.stateMu.Lock()
 	a.connectionGeneration++

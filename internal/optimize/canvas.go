@@ -7,8 +7,6 @@ import (
 )
 
 func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
-	lutCraquelureOnce.Do(initializeCraquelure)
-
 	opacity := min(0.04*math.Pow(1.32, float64(intensity-1)), 0.60)
 
 	bounds := src.Bounds()
@@ -16,6 +14,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
+	cracks := newCraquelureField(width, height)
 
 	runPixelRows(0, height, func(_, startY, endY int) {
 		//nolint:gosec // startY is a positive row offset, conversion is mathematically safe
@@ -23,7 +22,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 		for y := startY; y < endY; y++ {
 			offset := y * src.Stride
 			for x := range width {
-				processCanvasPixel(src, dst, offset+x*4, x, y, &state, opacity)
+				processCanvasPixel(src, dst, offset+x*4, x, y, &state, opacity, &cracks)
 			}
 		}
 	})
@@ -31,7 +30,7 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 }
 
 //nolint:revive // per-pixel hot loop: flat parameters avoid per-pixel struct-construction overhead
-func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64) {
+func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacity float64, cracks *craquelureField) {
 	impasto := calculateScharrImpasto(src, x, y)
 	weave, varnishPool := calculateWeave(x, y)
 
@@ -42,7 +41,7 @@ func processCanvasPixel(src, dst *image.RGBA, i, x, y int, state *uint32, opacit
 		weave -= 0.05
 	}
 
-	weave += lookupCraquelure(x, y)
+	weave += cracks.at(x, y)
 	weave += impasto
 
 	srcPix := src.Pix

@@ -532,7 +532,8 @@ are:
 - rotated upright using their EXIF orientation;
 - fitted to the screen: cropped when little would be lost, otherwise shown
   whole on a gallery mat (see below);
-- converted to sRGB when they carry an ICC color profile; HDR PNGs (PQ or HLG
+- converted to sRGB when they carry an ICC color profile, including CMYK
+  JPEGs with their press profile; HDR PNGs (PQ or HLG
   in BT.2020, Display P3, or BT.709) are tone-mapped to standard range;
 - resized in linear light to exactly 3840×2160 (`IMAGE_MAX_WIDTH`,
   `IMAGE_MAX_HEIGHT`) without ringing, so dark tones beside a bright edge are
@@ -559,7 +560,7 @@ Portrait images follow `PORTRAIT_MODE`:
 | Mode | Result |
 | --- | --- |
 | `pad` (default) | Shows the whole image, padded to the screen. |
-| `collage` | Pairs portraits side by side, matching them by color, lightness, and shape; an unpaired one waits for a partner. |
+| `collage` | Pairs portraits side by side, choosing the pairs that match best overall by color, lightness, and shape; an unpaired one waits for a partner. |
 | `crop` | Crops to fill the screen. |
 
 `IMAGE_PAD_STYLE` sets how padded images look:
@@ -674,7 +675,7 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `IMAGE_MAX_WIDTH` × `IMAGE_MAX_HEIGHT` | `3840` × `2160` | Output size |
 | `IMAGE_JPEG_QUALITY` | `95` | JPEG quality (1–100) |
 | `IMAGE_JPEG_SUBSAMPLING` | `444` | JPEG color resolution: `444` (full) or `420` (smaller files, softer color edges) |
-| `IMAGE_SHARPEN_AMOUNT` | `0.25` | Sharpening strength; `0` turns it off |
+| `IMAGE_SHARPEN_AMOUNT` | `0.25` | Sharpening strength from `0` (off) to `2`; the effect grows in proportion |
 | `SMART_CROP_ENABLED` | `false` | Content-aware cropping |
 | `IMAGE_MUSEUM_MODE` | `false` | Canvas texture and warmth |
 | `IMAGE_OPTIMIZE_ENABLED` | `true` | Turn all preparation off with `false` |
@@ -686,7 +687,7 @@ The full, annotated list is in [`.env.example`](.env.example).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `UPLOAD_ENABLED` | `false` | Turn on the `/upload` page |
+| `UPLOAD_ENABLED` | `false` | Turn on the `/upload` page; needs `HEALTH_PORT` |
 | `UPLOAD_TOKEN` | — | Upload password, at least 16 characters |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Also delete TV art the manager didn't upload (destructive) |
 | `DRY_RUN` | `false` | Plan without changing anything |
