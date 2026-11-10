@@ -83,6 +83,12 @@ func (c *connection) SendAndWait(ctx context.Context, payload []byte, requestID 
 	select {
 	case data, ok := <-ch:
 		if !ok {
+			// A canceled write closes the socket, so a caller that gave up
+			// can find the listener closed too. It is told it canceled, not
+			// that the TV dropped the connection.
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			return nil, ErrNotConnected
 		}
 		return data, nil
