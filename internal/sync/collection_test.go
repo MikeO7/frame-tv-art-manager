@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
@@ -56,23 +57,15 @@ func TestArtworkCollectionBoundaryValidationAndCancellation(t *testing.T) {
 		t.Fatalf("Apply() = %+v, %v; request = %+v", applied, err, store.applyRequest)
 	}
 
+	// A second cycle waits for the running one and gives up with its caller.
 	local := boundary.(*localCollection)
-	local.mutation <- struct{}{}
+	local.cycle <- struct{}{}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := local.Prepare(canceled, collectionpkg.PrepareRequest{}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled Prepare() error = %v, want context cancellation", err)
-	}
-	if _, err := local.Import(canceled, collectionpkg.ImportRequest{}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled Import() error = %v, want context cancellation", err)
-	}
-	if _, err := local.Apply(canceled, collectionpkg.ApplyRequest{}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled Apply() error = %v, want context cancellation", err)
-	}
 	if _, err := local.prepareCycle(canceled); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled prepareCycle() error = %v, want context cancellation", err)
 	}
-	<-local.mutation
+	<-local.cycle
 }
 
 func TestLocalCollectionLogsInventoryBoundaryAndDuration(t *testing.T) {
@@ -498,4 +491,151 @@ func (panicSourceLoader) Sync(context.Context, collectionpkg.Snapshot) (int, err
 
 func (l fixedSourceLoader) Sync(context.Context, collectionpkg.Snapshot) (int, error) {
 	return l.downloaded, l.err
+}
+
+type blockingSourceLoader struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (l blockingSourceLoader) Sync(ctx context.Context, _ collectionpkg.Snapshot) (int, error) {
+	close(l.started)
+	select {
+	case <-l.release:
+		return 0, nil
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}
+
+// applyHookStore runs before once, ahead of the first Apply.
+type applyHookStore struct {
+	collectionpkg.Store
+	before     func()
+	applyCalls int
+}
+
+func (store *applyHookStore) Apply(ctx context.Context, request collectionpkg.ApplyRequest) (collectionpkg.Snapshot, error) {
+	store.applyCalls++
+	if store.applyCalls == 1 {
+		store.before()
+	}
+	return store.Store.Apply(ctx, request)
+}
+
+// createGrayJPEG is a flat picture of one gray level, so pictures of
+// different levels stay distinct after optimization.
+func createGrayJPEG(t *testing.T, level uint8) []byte {
+	t.Helper()
+	picture := image.NewGray(image.Rect(0, 0, 8, 4))
+	for index := range picture.Pix {
+		picture.Pix[index] = level
+	}
+	var buffer bytes.Buffer
+	if err := jpeg.Encode(&buffer, picture, nil); err != nil {
+		t.Fatalf("encode JPEG: %v", err)
+	}
+	return buffer.Bytes()
+}
+
+func requireAllOptimized(t *testing.T, snapshot collectionpkg.Snapshot, want int) {
+	t.Helper()
+	if len(snapshot.Items) != want {
+		t.Fatalf("cycle snapshot has %d items, want %d: %+v", len(snapshot.Items), want, snapshot.Items)
+	}
+	for _, item := range snapshot.Items {
+		if item.Derivative != collectionpkg.DerivativeOptimized {
+			t.Fatalf("%s reached the cycle result unoptimized", item.Name)
+		}
+	}
+}
+
+// A cycle downloads and optimizes for minutes. An upload or an assistant's
+// inventory read during that time must be served at once, and the uploaded
+// picture must still come out of the cycle optimized.
+func TestLocalCollectionServesImportsWhileACycleDownloads(t *testing.T) {
+	t.Parallel()
+	artworkDir := t.TempDir()
+	store := newTestCollectionStore(t, artworkDir)
+	if _, err := store.Import(context.Background(), collectionpkg.ImportRequest{
+		Reader: bytes.NewReader(createJPEG(t, 8, 4)), Hint: "first.jpg",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	loader := blockingSourceLoader{started: make(chan struct{}), release: make(chan struct{})}
+	manager := &localCollection{
+		cfg: &config.Config{
+			ArtworkDir: artworkDir, OptimizeEnabled: true,
+			OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,
+		},
+		logger: slog.Default(), loader: loader, store: store,
+	}
+	type outcome struct {
+		prepared preparedCollection
+		err      error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		prepared, err := manager.prepareCycle(context.Background())
+		done <- outcome{prepared: prepared, err: err}
+	}()
+	<-loader.started
+
+	waiting, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := manager.Prepare(waiting, collectionpkg.PrepareRequest{DryRun: true}); err != nil {
+		t.Fatalf("inventory read during a cycle: %v", err)
+	}
+	if _, err := manager.Import(waiting, collectionpkg.ImportRequest{
+		Reader: bytes.NewReader(createGrayJPEG(t, 200)), Hint: "second.jpg",
+	}); err != nil {
+		t.Fatalf("import during a cycle: %v", err)
+	}
+	select {
+	case result := <-done:
+		t.Fatalf("cycle finished while its download was still blocked: %+v", result)
+	default:
+	}
+	close(loader.release)
+	result := <-done
+	if result.err != nil {
+		t.Fatalf("prepareCycle() error = %v", result.err)
+	}
+	requireAllOptimized(t, result.prepared.snapshot, 2)
+}
+
+// A picture imported while the cycle is already rendering is kept by the
+// publication and rendered by a further pass of the same cycle.
+func TestLocalCollectionOptimizesArtworkThatArrivesWhileRendering(t *testing.T) {
+	t.Parallel()
+	artworkDir := t.TempDir()
+	inner := newTestCollectionStore(t, artworkDir)
+	if _, err := inner.Import(context.Background(), collectionpkg.ImportRequest{
+		Reader: bytes.NewReader(createJPEG(t, 8, 4)), Hint: "first.jpg",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := &applyHookStore{Store: inner}
+	manager := &localCollection{
+		cfg: &config.Config{
+			ArtworkDir: artworkDir, OptimizeEnabled: true,
+			OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,
+		},
+		logger: slog.Default(), loader: fixedSourceLoader{}, store: store,
+	}
+	store.before = func() {
+		if _, err := manager.Import(context.Background(), collectionpkg.ImportRequest{
+			Reader: bytes.NewReader(createGrayJPEG(t, 200)), Hint: "second.jpg",
+		}); err != nil {
+			t.Errorf("import while rendering: %v", err)
+		}
+	}
+	result, err := manager.prepareCycle(context.Background())
+	if err != nil {
+		t.Fatalf("prepareCycle() error = %v", err)
+	}
+	requireAllOptimized(t, result.snapshot, 2)
+	if store.applyCalls != 2 || result.optimized != 2 {
+		t.Fatalf("published %d times and optimized %d pictures, want 2 and 2", store.applyCalls, result.optimized)
+	}
 }

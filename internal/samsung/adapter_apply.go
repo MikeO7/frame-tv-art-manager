@@ -29,7 +29,7 @@ func (a *adapter) Apply(ctx context.Context, authorization Authorization, comman
 	}
 	inventory, err := a.freshCommandGuard(ctx, transport, authorization, command)
 	if err != nil {
-		return a.finishCommand(receipt, commandError("refresh command guard", OutcomeNotAttempted, err))
+		return a.finishCommand(receipt, guardError(ctx, err))
 	}
 	if _, upload := command.(Upload); upload {
 		prepared.upload.existing = make(map[string]struct{}, len(inventory.ContentIDs))

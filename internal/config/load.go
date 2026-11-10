@@ -60,6 +60,9 @@ func validateSecuritySettings(cfg *Config) error {
 	if cfg.UploadEnabled && len(cfg.UploadToken) < 16 {
 		return fmt.Errorf("UPLOAD_TOKEN must contain at least 16 characters when UPLOAD_ENABLED=true")
 	}
+	if cfg.UploadEnabled && cfg.HealthPort == 0 {
+		return errors.New("UPLOAD_ENABLED=true requires HEALTH_PORT, because /upload is served by the health server")
+	}
 	if err := validateMCPSettings(cfg); err != nil {
 		return err
 	}

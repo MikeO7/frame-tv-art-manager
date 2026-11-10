@@ -687,7 +687,7 @@ The full, annotated list is in [`.env.example`](.env.example).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `UPLOAD_ENABLED` | `false` | Turn on the `/upload` page |
+| `UPLOAD_ENABLED` | `false` | Turn on the `/upload` page; needs `HEALTH_PORT` |
 | `UPLOAD_TOKEN` | — | Upload password, at least 16 characters |
 | `REMOVE_UNKNOWN_IMAGES` | `false` | Also delete TV art the manager didn't upload (destructive) |
 | `DRY_RUN` | `false` | Plan without changing anything |

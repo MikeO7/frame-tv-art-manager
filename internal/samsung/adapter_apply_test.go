@@ -275,6 +275,28 @@ func TestAdapterFreshInventoryPreventsStaleDelete(t *testing.T) {
 	}
 }
 
+// A TV that stops answering during the reads before a command has received
+// nothing. That is a timeout the reconciler may retry, not a cancellation.
+func TestAdapterGuardTimeoutIsRetryableAndSendsNothing(t *testing.T) {
+	transport := mutationTransportForInventory(`[{"content_id":"id-1","category_id":"MY-C0002"}]`)
+	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+	observation := observeForCommand(t, adapter, CapabilityImageDeletion)
+	transport.inventoryErr = fmt.Errorf("read art channel: %w", context.DeadlineExceeded)
+	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Delete{ContentID: "id-1"})
+	var typed *Error
+	if !errors.As(err, &typed) || typed.Kind != ErrorKindTimeout || !typed.Retryable ||
+		typed.Outcome != OutcomeNotAttempted || receipt.Outcome != OutcomeNotAttempted || transport.deleteCalls != 0 {
+		t.Fatalf("receipt/error/calls = %+v/%+v/%d, want a retryable timeout with nothing sent", receipt, err, transport.deleteCalls)
+	}
+
+	// When the caller's own deadline has passed, it is the caller that gave up.
+	expired, cancel := context.WithDeadline(context.Background(), time.Unix(1, 0))
+	defer cancel()
+	if got := guardError(expired, context.DeadlineExceeded); got.Kind != ErrorKindCanceled || got.Retryable {
+		t.Fatalf("expired caller: kind %v retryable %v, want a non-retryable cancellation", got.Kind, got.Retryable)
+	}
+}
+
 func TestAdapterStandbyArtModeAllowsGuardedDelete(t *testing.T) {
 	const inventory = `[{"content_id":"id-1","category_id":"MY-C0002"}]`
 	transport := mutationTransportForInventory(inventory)
