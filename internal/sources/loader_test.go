@@ -678,3 +678,13 @@ func TestLoaderLoadTXTSourcesRejectsUnsafeManifestReads(t *testing.T) {
 		}
 	})
 }
+
+func TestParseYamlSourcesAcceptsCommentOnlyStarter(t *testing.T) {
+	urls, err := parseYamlSources([]byte("# Add sources below.\n# providers:\n#   unsplash: []\n\n"))
+	if err != nil || len(urls) != 0 {
+		t.Fatalf("parseYamlSources(comments) = %v, %v; want no sources and no error", urls, err)
+	}
+	if _, err := parseYamlSources([]byte("unexpected: shape\n")); err == nil {
+		t.Fatal("YAML of the wrong shape was accepted")
+	}
+}
