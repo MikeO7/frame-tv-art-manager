@@ -524,6 +524,7 @@ func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 	tests := []struct {
 		name       string
 		power      string
+		model      string
 		artMode    string
 		artModeErr error
 		connectErr error
@@ -536,6 +537,22 @@ func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 		{name: "Art Mode does not satisfy off", power: stringStandby, artMode: stringOn, desired: PowerStateOff},
 		{name: "Art Mode off satisfies off", power: stringStandby, artMode: stringOff, desired: PowerStateOff, wantMatch: true},
 		{name: "Art Mode off does not satisfy on", power: stringStandby, artMode: stringOff, desired: PowerStateOn},
+		{
+			name: "2025 Frame showing art in standby is on", power: stringStandby, model: "25_PTM_FTV",
+			artMode: stringOn, desired: PowerStateOn, wantMatch: true,
+		},
+		{
+			name: "2024 Frame in standby is off whatever Art Mode says", power: stringStandby, model: "24_PTM_FTV_T09",
+			artMode: stringOn, desired: PowerStateOff, wantMatch: true,
+		},
+		{
+			name: "2024 Frame in standby is not on", power: stringStandby, model: "24_PTM_FTV_T09",
+			artMode: stringOn, desired: PowerStateOn,
+		},
+		{
+			name: "unparsable model year asks the art channel", power: stringStandby, model: "PTM_FTV",
+			artMode: stringOn, desired: PowerStateOn, wantMatch: true,
+		},
 		{
 			name: "standby with silent art channel is off", power: stringStandby,
 			artModeErr: errors.New("art mode unavailable"), desired: PowerStateOff, wantMatch: true,
@@ -556,6 +573,7 @@ func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			transport := mutationTransportForInventory(`[]`)
 			transport.device.PowerState = test.power
+			transport.device.Model = test.model
 			transport.deviceErr = test.deviceErr
 			transport.connectErr = test.connectErr
 			transport.artMode = test.artMode
