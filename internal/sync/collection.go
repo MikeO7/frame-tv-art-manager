@@ -226,7 +226,7 @@ func (c *localCollection) prepareLocked(ctx context.Context) (preparedCollection
 		return result, fmt.Errorf("optimize artwork collection: %w", err)
 	}
 	result.optimized = stage.Optimized
-	snapshot, err := c.publishStage(ctx, stage, metadata)
+	snapshot, err := c.publishStage(ctx, stage, metadata, baseline)
 	if err != nil {
 		return result, err
 	}
@@ -241,6 +241,7 @@ func (c *localCollection) publishStage(
 	ctx context.Context,
 	stage *optimize.Stage,
 	metadata *metadataProjection,
+	baseline collectionpkg.Snapshot,
 ) (collectionpkg.Snapshot, error) {
 	if err := metadata.apply(stage.Derivatives); err != nil {
 		return collectionpkg.Snapshot{}, errors.Join(
@@ -250,6 +251,7 @@ func (c *localCollection) publishStage(
 	snapshot, applyErr := c.store.Apply(ctx, collectionpkg.ApplyRequest{
 		Directory: stage.Directory,
 		Metadata:  metadata.items,
+		Baseline:  &baseline,
 	})
 	if err := errors.Join(applyErr, stage.Close()); err != nil {
 		return collectionpkg.Snapshot{}, fmt.Errorf("publish optimized artwork collection: %w", err)

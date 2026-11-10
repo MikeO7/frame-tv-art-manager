@@ -53,9 +53,20 @@ func (s *store) commitBatch(ctx context.Context, plan batchPlan, read stagedByte
 		})
 	}
 	if err := writeJournal(ctx, s.root, tx); err != nil {
-		return errors.Join(fmt.Errorf("publish batch transaction intent: %w", err), cleanupBatchStages(cleanupCtx, s.root))
+		return abandonBatchIntent(cleanupCtx, s.root, fmt.Errorf("publish batch transaction intent: %w", err))
 	}
 	return recoverBatchTransaction(ctx, s.root, tx)
+}
+
+// abandonBatchIntent removes the staged artwork of a journal that was never
+// published. A journal whose publication could not be confirmed may be visible
+// and still names those stages, so they stay for recovery to roll forward; if
+// the journal turns out to be absent, the next batch removes them as orphans.
+func abandonBatchIntent(ctx context.Context, root string, intentErr error) error {
+	if errors.Is(intentErr, durablefs.ErrOutcomeUnknown) {
+		return intentErr
+	}
+	return errors.Join(intentErr, cleanupBatchStages(ctx, root))
 }
 
 func (s *store) stageBatchAddition(ctx context.Context, item Item, index int, read stagedBytes) (transactionEffect, error) {

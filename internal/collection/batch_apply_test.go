@@ -6,11 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
@@ -170,7 +173,7 @@ func TestPrepareRecoversBatchTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan staged collection: %v", err)
 	}
-	plan, err := buildBatchPlan(seed.Items, items)
+	plan, err := buildBatchPlan(seed.Items, items, nil)
 	if err != nil {
 		t.Fatalf("build batch plan: %v", err)
 	}
@@ -1010,5 +1013,93 @@ func assertBytesEqual(t *testing.T, path string, expected []byte) {
 	}
 	if !bytes.Equal(actual, expected) {
 		t.Fatalf("bytes at %s changed", path)
+	}
+}
+
+func TestApplyKeepsArtworkAddedOrChangedAfterBaseline(t *testing.T) {
+	root := t.TempDir()
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for hint, width := range map[string]int{"replaced.png": 2, "edited.png": 3} {
+		if _, err := valueStore.Import(context.Background(), ImportRequest{
+			Reader: bytes.NewReader(encodeInternalImage(t, width, 2)), Hint: hint,
+		}); err != nil {
+			t.Fatalf("seed %s: %v", hint, err)
+		}
+	}
+	baseline, err := valueStore.Prepare(context.Background(), PrepareRequest{})
+	if err != nil {
+		t.Fatalf("prepare baseline: %v", err)
+	}
+	// The stage is rendered from the baseline; meanwhile an operator drops a
+	// new picture into the folder and overwrites another.
+	stage := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stage, "rendered.png"), encodeInternalImage(t, 4, 2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dropped := encodeInternalImage(t, 5, 2)
+	if err := os.WriteFile(filepath.Join(root, "dropped.png"), dropped, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	edited := encodeInternalImage(t, 6, 2)
+	if err := os.WriteFile(filepath.Join(root, "edited.png"), edited, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := valueStore.Apply(context.Background(), ApplyRequest{Directory: stage, Baseline: &baseline})
+	if err != nil {
+		t.Fatalf("apply staged collection: %v", err)
+	}
+	names := make([]string, 0, len(snapshot.Items))
+	for _, item := range snapshot.Items {
+		names = append(names, item.Name)
+	}
+	if want := []string{"dropped.png", "edited.png", "rendered.png"}; !slices.Equal(names, want) {
+		t.Fatalf("applied names = %v, want %v", names, want)
+	}
+	for name, want := range map[string][]byte{"dropped.png": dropped, "edited.png": edited} {
+		if got, err := os.ReadFile(filepath.Join(root, name)); err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("%s was not kept intact: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "replaced.png")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("baseline artwork the stage replaced remains: %v", err)
+	}
+}
+
+func TestAbandonBatchIntentKeepsStagesAVisibleJournalMayName(t *testing.T) {
+	failure := errors.New("sync directory: input/output error")
+	tests := []struct {
+		name      string
+		intentErr error
+		wantStage bool
+	}{
+		{name: "journal never published", intentErr: failure, wantStage: false},
+		{
+			name:      "journal publication unconfirmed",
+			intentErr: fmt.Errorf("replace journal: %w", errors.Join(durablefs.ErrOutcomeUnknown, failure)),
+			wantStage: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := ensureLayout(root); err != nil {
+				t.Fatal(err)
+			}
+			stage := filepath.Join(root, controlDirectory, stagingName, "batch-000-stage.png")
+			if err := os.WriteFile(stage, encodeInternalImage(t, 2, 2), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := abandonBatchIntent(context.Background(), root, test.intentErr); !errors.Is(err, failure) {
+				t.Fatalf("abandon error = %v, want it to carry %v", err, failure)
+			}
+			_, err := os.Stat(stage)
+			if kept := err == nil; kept != test.wantStage {
+				t.Fatalf("stage kept = %v (%v), want %v", kept, err, test.wantStage)
+			}
+		})
 	}
 }
