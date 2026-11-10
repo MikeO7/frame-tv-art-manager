@@ -25,7 +25,9 @@ func (s *service) prepareInitialState(ctx context.Context, input initialStateInp
 		input.state.TV = input.identity
 		return input.state, nil
 	}
-	if input.policy.Power != PowerOn {
+	// Legacy bindings can only be proven against a known inventory, so a TV
+	// that is off or out of Art Mode defers the migration instead of failing.
+	if input.policy.Power != PowerOn && input.observation.Disposition == samsung.DispositionEligible {
 		return s.stateForFirstRun(
 			ctx, input.identity, input.request.Snapshot, input.observation, input.request.DryRun,
 		)

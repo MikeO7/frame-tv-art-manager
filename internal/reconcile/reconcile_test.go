@@ -1613,3 +1613,43 @@ func TestReceiptObservationAndCommandMappingBranches(t *testing.T) {
 		}
 	}
 }
+
+func TestRunKeepsBindingRenewedAfterContentLeftTV(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "state")
+	service := newTestService(t, directory, Policy{})
+	art := snapshot(artworkItem("art.jpg", "art"))
+	digest := hex.EncodeToString(art.Items[0].Digest[:])
+	empty := knownObservation(samsung.PowerStateOn)
+	run := func(cycle string, adapter *fakeAdapter) Result {
+		t.Helper()
+		result, err := service.Run(context.Background(), Request{CycleID: cycle, TV: adapter, Snapshot: art})
+		if err != nil || result.Status != StatusComplete {
+			t.Fatalf("%s: result = %#v, error = %v", cycle, result, err)
+		}
+		return result
+	}
+	uploaded := func(contentID string) *fakeAdapter {
+		present := knownObservation(samsung.PowerStateOn, contentID)
+		return &fakeAdapter{
+			observations: []samsung.Observation{empty, empty, present, present},
+			receipts: []samsung.Receipt{{
+				CommandID: "upload", Outcome: samsung.OutcomeApplied, ContentID: contentID, CompletedAt: testTime,
+			}},
+		}
+	}
+	run("first", uploaded("old"))
+
+	// The owner deleted the picture on the TV: the stale binding is pruned and
+	// the artwork uploaded again within one cycle.
+	renewed := run("second", uploaded("new"))
+	if got := renewed.State.Bindings[digest].ContentID; got != "new" {
+		t.Fatalf("binding after re-upload = %q (%#v), want new", got, renewed.State.Bindings)
+	}
+
+	present := knownObservation(samsung.PowerStateOn, "new")
+	settled := &fakeAdapter{observations: []samsung.Observation{present, present}}
+	run("third", settled)
+	if settled.applyCalls != 0 {
+		t.Fatalf("settled cycle sent %v, want no commands", settled.commands)
+	}
+}

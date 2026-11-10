@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -13,14 +14,22 @@ import (
 
 func TestClassifyObservationErrorPolicy(t *testing.T) {
 	operation := operationObserve
+	expired, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+	defer cancel()
 	tests := []struct {
 		name      string
+		ctx       context.Context
 		cause     error
 		wantKind  ErrorKind
 		retryable bool
 	}{
 		{name: "canceled", cause: context.Canceled, wantKind: ErrorKindCanceled},
-		{name: "deadline", cause: context.DeadlineExceeded, wantKind: ErrorKindCanceled},
+		{name: "caller deadline", ctx: expired, cause: context.DeadlineExceeded, wantKind: ErrorKindCanceled},
+		{
+			// net and net/http timeouts satisfy errors.Is(DeadlineExceeded).
+			name: "TV did not answer in time", cause: fmt.Errorf("dial tcp: %w", context.DeadlineExceeded),
+			wantKind: ErrorKindTimeout, retryable: true,
+		},
 		{name: "unauthorized", cause: ErrUnauthorized, wantKind: ErrorKindUnauthorized},
 		{name: "timeout", cause: ErrTimeout, wantKind: ErrorKindTimeout, retryable: true},
 		{name: "connection failure", cause: ErrConnectionFailure, wantKind: ErrorKindUnreachable, retryable: true},
@@ -39,7 +48,11 @@ func TestClassifyObservationErrorPolicy(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := classifyObservationError(operation, test.cause)
+			ctx := test.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			got := classifyObservationError(ctx, operation, test.cause)
 			if got.Kind != test.wantKind || got.Retryable != test.retryable {
 				t.Fatalf("classifyObservationError() = %+v, want kind %v retryable %t", got, test.wantKind, test.retryable)
 			}
