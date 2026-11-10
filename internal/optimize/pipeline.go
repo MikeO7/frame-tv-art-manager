@@ -52,6 +52,11 @@ func (p *catalogPass) run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			break
 		}
+		// A collage rendered this pass is complete: transforming it again
+		// would stack effects on it and replace its lineage.
+		if _, input := p.inputs[filename]; !input {
+			continue
+		}
 		p.optimizeFile(ctx, filename)
 	}
 	return errors.Join(ctx.Err(), collageErr)

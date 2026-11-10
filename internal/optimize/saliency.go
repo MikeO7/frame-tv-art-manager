@@ -26,7 +26,8 @@ func findBestDirectorCropWithProtection(
 	// PASS 1: Global Analysis (256px)
 	const workSize = 256
 	scale := float64(workSize) / float64(srcSize)
-	workW, workH := int(float64(srcW)*scale), int(float64(srcH)*scale)
+	// A strip thinner than 1:256 would otherwise scale to an empty analysis image.
+	workW, workH := max(int(float64(srcW)*scale), 1), max(int(float64(srcH)*scale), 1)
 	workImg := image.NewRGBA(image.Rect(0, 0, workW, workH))
 	draw.CatmullRom.Scale(workImg, workImg.Bounds(), src, src.Bounds(), draw.Src, nil)
 

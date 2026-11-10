@@ -55,7 +55,8 @@ func calculateRMSContrast(src *image.RGBA) float64 {
 		sumSq += sumSqs[i]
 	}
 	mean := sum / float64(width*height)
-	return math.Sqrt(sumSq/float64(width*height) - mean*mean)
+	// Rounding can leave a uniform image with a slightly negative variance.
+	return math.Sqrt(max(sumSq/float64(width*height)-mean*mean, 0))
 }
 
 // processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.

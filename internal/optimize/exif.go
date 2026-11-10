@@ -167,7 +167,11 @@ func findOrientationTag(tiff []byte, bo binary.ByteOrder, numEntries, entryOffse
 				return 1, fmt.Errorf("unexpected orientation tag count: %d", count)
 			}
 			orientation := int(bo.Uint16(tiff[entryOffset+8:]))
-			if orientation < 1 || orientation > 8 {
+			// Some cameras and editors write 0 for "not set".
+			if orientation == 0 {
+				return 1, nil
+			}
+			if orientation > 8 {
 				return 1, fmt.Errorf("invalid orientation value: %d", orientation)
 			}
 			return orientation, nil
