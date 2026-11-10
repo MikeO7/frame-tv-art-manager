@@ -251,7 +251,7 @@ func (a *adapter) failObservation(
 	operation string,
 	cause error,
 ) (Observation, error) {
-	typed := classifyObservationError(operation, cause)
+	typed := classifyObservationError(ctx, operation, cause)
 	observation.Disposition = DispositionUnsafeUnknown
 	observation.ArtMode = ArtModeUnknown
 	observation.Authorization = Authorization{}
@@ -279,10 +279,20 @@ func (a *adapter) failObservation(
 	return cloneObservation(observation), typed
 }
 
-func classifyObservationError(operation string, cause error) *Error {
+// timedOutWaitingForTV reports a deadline that expired inside a network
+// operation while the caller is still waiting. Dial, handshake and HTTP client
+// timeouts all surface as context.DeadlineExceeded, and they mean the TV did
+// not answer, not that the caller gave up.
+func timedOutWaitingForTV(ctx context.Context, cause error) bool {
+	return ctx.Err() == nil && errors.Is(cause, context.DeadlineExceeded)
+}
+
+func classifyObservationError(ctx context.Context, operation string, cause error) *Error {
 	kind := ErrorKindInvalidResponse
 	retryable := true
 	switch {
+	case timedOutWaitingForTV(ctx, cause):
+		kind = ErrorKindTimeout
 	case errors.Is(cause, context.Canceled), errors.Is(cause, context.DeadlineExceeded):
 		kind = ErrorKindCanceled
 		retryable = false

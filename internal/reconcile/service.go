@@ -69,7 +69,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		state = wake.state
 		observation = wake.observation
 	}
-	if state.LegacyMigrationPending {
+	if state.LegacyMigrationPending && observation.Disposition == samsung.DispositionEligible {
 		state, err = s.completeDeferredLegacyMigration(ctx, state, request.Snapshot, observation, request.DryRun)
 		if err != nil {
 			return wake.result(statusForError(err), state, observation), err
@@ -79,6 +79,10 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		return wake.result(StatusKnownSkip, state, observation), nil
 	}
 	selectedThisCycle := false
+	// stalePrunes maps each digest whose binding left the TV to the content ID
+	// that went missing, so a binding renewed by an upload later in the same
+	// cycle is not mistaken for the stale one.
+	stalePrunes := make(map[string]string)
 	// replan plans the next step, never selecting artwork twice in one cycle.
 	replan := func(observation samsung.Observation, state State) (Plan, State, error) {
 		plan, planned, err := s.buildPlan(request.Snapshot, observation, state, policy)
@@ -88,6 +92,9 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		if err == nil && uploadUnresolved {
 			plan.Commands = artworkCommandsBlocked(plan.Commands)
 			plan.PruneBindings = nil
+		}
+		for _, digest := range plan.PruneBindings {
+			stalePrunes[digest] = state.Bindings[digest].ContentID
 		}
 		return plan, planned, err
 	}
@@ -113,10 +120,6 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	paceMutation := false
 	var lastAttempt *CommandIntent
 	commandAttempts := 0
-	pruneBindings := make(map[string]struct{}, len(plan.PruneBindings))
-	for _, digest := range plan.PruneBindings {
-		pruneBindings[digest] = struct{}{}
-	}
 	for len(currentPlan.Commands) > 0 {
 		candidate := currentPlan.Commands[0]
 		fresh, observeErr := request.TV.Observe(ctx, samsung.ObserveRequest{
@@ -132,9 +135,6 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		refreshedPlan, refreshedState, planErr := replan(fresh, state)
 		if planErr != nil {
 			return result, planErr
-		}
-		for _, digest := range refreshedPlan.PruneBindings {
-			pruneBindings[digest] = struct{}{}
 		}
 		if len(refreshedPlan.Commands) == 0 {
 			currentPlan = refreshedPlan
@@ -219,7 +219,10 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	}
 	desired := snapshotDigests(request.Snapshot)
 	now := s.clock.Now()
-	for digest := range pruneBindings {
+	for digest, staleContentID := range stalePrunes {
+		if state.Bindings[digest].ContentID != staleContentID {
+			continue
+		}
 		delete(state.Bindings, digest)
 		if _, wanted := desired[digest]; wanted {
 			recordShown(&state, digest, now)

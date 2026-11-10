@@ -431,3 +431,37 @@ func writeLegacyMappingFile(t *testing.T, path string, mapping map[string]string
 		t.Fatal(err)
 	}
 }
+
+func TestRunDefersLegacyMigrationUntilTVInventoryIsKnown(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	item := artworkItem("monet.jpg", "committed monet bytes")
+	art := snapshot(item)
+	writeLegacyMapping(t, directory, map[string]string{"monet.jpg": "content-1"})
+	service, err := New(Config{
+		StateDirectory: directory, LegacyMappingDirectory: directory,
+	}, Dependencies{Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	off := knownObservation(samsung.PowerStateOff)
+	off.Inventory = samsung.Inventory{}
+	skipped, err := service.Run(context.Background(), Request{
+		CycleID: "tv-off", TV: &fakeAdapter{observations: []samsung.Observation{off}}, Snapshot: art,
+	})
+	if err != nil || skipped.Status != StatusKnownSkip {
+		t.Fatalf("TV off: status = %v, error = %v; want a known skip", skipped.Status, err)
+	}
+
+	adapter := &fakeAdapter{observations: []samsung.Observation{knownObservation(samsung.PowerStateOn, "content-1")}}
+	result, err := service.Run(context.Background(), Request{CycleID: "tv-on", TV: adapter, Snapshot: art})
+	if err != nil || result.Status != StatusComplete || adapter.applyCalls != 0 {
+		t.Fatalf("TV on: result = %+v, error = %v, apply calls = %d", result, err, adapter.applyCalls)
+	}
+	if got := result.State.Bindings[hex.EncodeToString(item.Digest[:])].ContentID; got != "content-1" {
+		t.Fatalf("migrated binding content = %q, want content-1", got)
+	}
+}
