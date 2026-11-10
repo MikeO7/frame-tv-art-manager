@@ -96,16 +96,18 @@ func TestCommonsResolveFailures(t *testing.T) {
 	}))
 	provider := newCommonsProvider(discardLogger())
 	provider.BaseURL, provider.gate = server.URL, newRateGate()
-	for line, want := range map[string]string{
-		"commons":             "invalid commons format",
-		"commons:search":      "requires a query",
-		"commons:search:  ":   "requires a query",
-		"commons:other":       "unknown commons type",
-		"commons:search:snow": "commons api error badvalue: Unrecognized value",
-		"commons:featured":    "commons rate limit reached",
+	// The rate-limited request goes last: it closes the provider's gate, which
+	// then answers every later request without reaching the server.
+	for _, test := range []struct{ line, want string }{
+		{"commons", "invalid commons format"},
+		{"commons:search", "requires a query"},
+		{"commons:search:  ", "requires a query"},
+		{"commons:other", "unknown commons type"},
+		{"commons:search:snow", "commons api error badvalue: Unrecognized value"},
+		{"commons:featured", "commons rate limit reached"},
 	} {
-		if _, err := provider.Resolve(context.Background(), line); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("Resolve(%q) error = %v, want %q", line, err, want)
+		if _, err := provider.Resolve(context.Background(), test.line); err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("Resolve(%q) error = %v, want %q", test.line, err, test.want)
 		}
 	}
 }
