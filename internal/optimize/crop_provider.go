@@ -33,12 +33,21 @@ func cropRectWithPolicy(ctx context.Context, src *image.RGBA, targetW, targetH i
 	targetAspect := float64(targetW) / float64(targetH)
 	if cfg.SmartCropEnabled && cfg.SmartCropProvider == smartCropProviderHTTP {
 		proposal, err := requestAdvancedCrop(ctx, src, targetW, targetH, cfg)
-		if err == nil && proposal.Confidence >= cfg.SmartCropProviderMinConfidence {
-			return image.Rect(proposal.X, proposal.Y, proposal.X+proposal.Width, proposal.Y+proposal.Height)
+		upscale := 0.0
+		if err == nil {
+			upscale = fillScale(proposal.Width, proposal.Height, targetW, targetH)
 		}
-		if err != nil {
+		tooSmall := cfg.MaxUpscale > 0 && upscale > cfg.MaxUpscale+1e-9
+		if err == nil && proposal.Confidence >= cfg.SmartCropProviderMinConfidence && !tooSmall {
+			box := image.Rect(proposal.X, proposal.Y, proposal.X+proposal.Width, proposal.Y+proposal.Height)
+			return exactAspectWithin(box, targetAspect)
+		}
+		switch {
+		case err == nil && tooSmall:
+			logger.Info("advanced crop proposal needs too much upscaling; using local crop", "upscale", upscale)
+		case err != nil:
 			logger.Warn("advanced crop provider failed; using local crop", "error", err)
-		} else {
+		default:
 			logger.Info("advanced crop proposal below confidence threshold; using local crop", "confidence", proposal.Confidence)
 		}
 	}
@@ -120,9 +129,24 @@ func requestAdvancedCrop(ctx context.Context, src *image.RGBA, targetW, targetH 
 	return proposal, nil
 }
 
+// exactAspectWithin shrinks the longer side of box about its centre to the
+// target aspect, as the local crop does. A provider box may be up to 1% off,
+// which would otherwise stretch the picture by tens of pixels at 4K.
+func exactAspectWithin(box image.Rectangle, targetAspect float64) image.Rectangle {
+	if float64(box.Dx())/float64(box.Dy()) > targetAspect {
+		width := max(int(float64(box.Dy())*targetAspect), 1)
+		left := box.Min.X + (box.Dx()-width)/2
+		return image.Rect(left, box.Min.Y, left+width, box.Max.Y)
+	}
+	height := min(max(int(float64(box.Dx())/targetAspect), 1), box.Dy())
+	top := box.Min.Y + (box.Dy()-height)/2
+	return image.Rect(box.Min.X, top, box.Max.X, top+height)
+}
+
 func validateCropProposal(proposal cropProposal, bounds image.Rectangle, targetAspect float64) error {
 	if proposal.Width <= 0 || proposal.Height <= 0 || proposal.X < 0 || proposal.Y < 0 ||
-		proposal.X+proposal.Width > bounds.Dx() || proposal.Y+proposal.Height > bounds.Dy() {
+		proposal.Width > bounds.Dx() || proposal.Height > bounds.Dy() ||
+		proposal.X > bounds.Dx()-proposal.Width || proposal.Y > bounds.Dy()-proposal.Height {
 		return errors.New("advanced crop provider returned out-of-bounds crop")
 	}
 	if proposal.Confidence < 0 || proposal.Confidence > 1 {

@@ -194,6 +194,7 @@ func renderMat(images []*image.RGBA, cfg Config) *image.RGBA {
 		opening := image.Rect(x, y, x+sizes[index].X, y+sizes[index].Y)
 		drawBevel(canvas, opening, bevelWidth, bevelColor.rgba())
 		scaled := resizeCrop(src, src.Bounds(), opening.Dx(), opening.Dy(), cfg.LinearLightResize)
+		scaled = sharpenResampled(scaled, cfg, float64(opening.Dy())/float64(src.Bounds().Dy()))
 		std_draw.Draw(canvas, opening, scaled, image.Point{}, std_draw.Over)
 		x += opening.Dx() + margin
 	}

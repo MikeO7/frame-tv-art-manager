@@ -532,11 +532,14 @@ are:
 - rotated upright using their EXIF orientation;
 - fitted to the screen: cropped when little would be lost, otherwise shown
   whole on a gallery mat (see below);
-- converted to sRGB when they carry an ICC color profile; HDR PNGs are
-  tone-mapped to standard range;
+- converted to sRGB when they carry an ICC color profile; HDR PNGs (PQ or HLG
+  in BT.2020, Display P3, or BT.709) are tone-mapped to standard range;
 - resized in linear light to exactly 3840×2160 (`IMAGE_MAX_WIDTH`,
-  `IMAGE_MAX_HEIGHT`) and given halo-free contrast-adaptive sharpening
-  (none for images enlarged more than 1.5×, which have no detail to recover);
+  `IMAGE_MAX_HEIGHT`) without ringing, so dark tones beside a bright edge are
+  not outlined in black, and given halo-free contrast-adaptive sharpening.
+  Each picture is sharpened for the size it was actually resized to, also on
+  a mat, a blurred background, or in a collage (none for a picture enlarged
+  more than 1.5×, which has no detail to recover);
 - saved as baseline JPEG quality 95 with full-resolution 4:4:4 color and
   per-image optimized Huffman tables, so saturated edges and fine line art
   stay crisp (`IMAGE_JPEG_SUBSAMPLING=420` trades that for smaller files).
@@ -574,15 +577,20 @@ Optional, off by default:
   through skin tones, text, and fine detail.
 - **External crop service** (`SMART_CROP_PROVIDER=http`) sends a small preview,
   at most 512 pixels, to a crop service you run. Low-confidence or failed
-  answers fall back to the local crop.
+  answers fall back to the local crop, and so does a box that would need more
+  than `IMAGE_MAX_UPSCALE` enlargement.
 - **Museum mode** (`IMAGE_MUSEUM_MODE=true`) adds a subtle canvas texture and
-  warmth, and rolls bright highlights off smoothly to a paper white. `IMAGE_MUSEUM_INTENSITY` runs from 1 to 10 (default 5).
+  warmth, evens out contrast (flat pictures gain up to 15%, harsh ones lose up
+  to 15%, without getting darker or lighter overall), and rolls bright
+  highlights off smoothly to a paper white while keeping their color. `IMAGE_MUSEUM_INTENSITY` runs from 1 to 10 (default 5).
 
 Each transform runs within a memory budget (`IMAGE_MAX_WORKING_MEMORY_MB`,
 default 512 MB). A 24-megapixel camera photo takes about a second and roughly
 250 MB. An 8-bit 8K image (33 megapixels) just fits the default budget; a
 16-bit PNG or a smart crop of that size can need a larger one. Images above
-40 megapixels are left out of the collection with a warning in the log.
+40 megapixels are left out of the collection with a warning in the log. Two
+portraits that are too large to render together stay unpaired, with a warning,
+instead of holding up the rest of the collection.
 
 ### Kept originals
 

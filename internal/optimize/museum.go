@@ -20,17 +20,28 @@ var (
 )
 
 // applyMuseumMode orchestrates a suite of visual filters to simulate physical
-// artwork. Contrast is pulled toward a rich gallery RMS target in place.
+// artwork. Contrast is pulled toward a rich gallery RMS target in place: tones
+// spread from, or gather toward, the picture's own mean brightness by at most
+// 15%, so the picture gains or loses contrast without getting darker or
+// lighter overall.
 func applyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	const targetRMS = 58.0
-	applyContrastAndGamut(src, min(max(1.0+(targetRMS-calculateRMSContrast(src))/100.0, 0.85), 1.15))
+	mean, rms := lumaMeanAndRMS(src)
+	applyContrastAndGamut(src, mean/255, min(max(targetRMS/max(rms, 1), 0.85), 1.15))
 	if intensity > 0 {
 		src = applyCanvasTexture(src, min(intensity, 10))
 	}
 	return galleryMasterPolish(src)
 }
 
+// calculateRMSContrast is the standard deviation of 8-bit luminance.
 func calculateRMSContrast(src *image.RGBA) float64 {
+	_, rms := lumaMeanAndRMS(src)
+	return rms
+}
+
+// lumaMeanAndRMS returns the mean and standard deviation of 8-bit luminance.
+func lumaMeanAndRMS(src *image.RGBA) (mean, rms float64) {
 	width, height := src.Bounds().Dx(), src.Bounds().Dy()
 	var sums, sumSqs [pixelPartitions]float64
 	runPixelRows(0, height, func(partition, startY, endY int) {
@@ -54,12 +65,23 @@ func calculateRMSContrast(src *image.RGBA) float64 {
 		sum += sums[i]
 		sumSq += sumSqs[i]
 	}
-	mean := sum / float64(width*height)
+	mean = sum / float64(width*height)
 	// Rounding can leave a uniform image with a slightly negative variance.
-	return math.Sqrt(max(sumSq/float64(width*height)-mean*mean, 0))
+	return mean, math.Sqrt(max(sumSq/float64(width*height)-mean*mean, 0))
 }
 
-// processGamutPixel applies the gamma contrast and pigment gamut compression to a pixel.
+// pivotedContrast scales the distance of an encoded tone in 0..1 from pivot
+// by strength at the pivot, bending smoothly so that black, the pivot and
+// white stay where they are and nothing clips.
+func pivotedContrast(value, pivot, strength float64) float64 {
+	pivot = min(max(pivot, 0.1), 0.9)
+	if value < pivot {
+		return pivot * math.Pow(value/pivot, strength)
+	}
+	return 1 - (1-pivot)*math.Pow((1-value)/(1-pivot), strength)
+}
+
+// processGamutPixel applies the contrast curve and pigment gamut compression to a pixel.
 func processGamutPixel(r, g, b uint8, lutLin *[256]float64) (uint8, uint8, uint8) {
 	rLin := lutLin[r]
 	gLin := lutLin[g]
@@ -86,13 +108,12 @@ func museumLUTIndex(linear float64) int {
 	}
 }
 
-func applyContrastAndGamut(src *image.RGBA, contrastGamma float64) {
+func applyContrastAndGamut(src *image.RGBA, pivot, strength float64) {
 	width, height := src.Bounds().Dx(), src.Bounds().Dy()
 
-	decode := &srgbLookup().decode
 	var lutLin [256]float64
 	for i := range lutLin {
-		lutLin[i] = math.Pow(decode[i], contrastGamma)
+		lutLin[i] = srgbDecode(pivotedContrast(float64(i)/255, pivot, strength))
 	}
 	lutSrgbOnce.Do(func() {
 		for i := range lutSrgb {

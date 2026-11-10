@@ -9,10 +9,9 @@ import (
 )
 
 type collageRenderRequest struct {
-	ctx                       context.Context
-	cfg                       Config
-	logger                    *slog.Logger
-	leftSharpen, rightSharpen float64
+	ctx    context.Context
+	cfg    Config
+	logger *slog.Logger
 }
 
 // renderCollage joins two portraits. The mat style shows both whole, at equal
@@ -20,7 +19,7 @@ type collageRenderRequest struct {
 // by cropping and separates the halves with a thin seam.
 func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.RGBA {
 	if request.cfg.PadStyle != padStyleBlur {
-		return sharpen(renderMat([]*image.RGBA{img1, img2}, request.cfg), max(request.leftSharpen, request.rightSharpen), request.cfg.SharpenThreshold)
+		return renderMat([]*image.RGBA{img1, img2}, request.cfg)
 	}
 	targetWidth, targetHeight := request.cfg.MaxWidth, request.cfg.MaxHeight
 	canvas := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
@@ -29,8 +28,8 @@ func renderCollage(img1, img2 *image.RGBA, request collageRenderRequest) *image.
 
 	left := centerCropConfigured(request.ctx, img1, leftWidth, targetHeight, request.cfg, request.logger)
 	right := centerCropConfigured(request.ctx, img2, rightWidth, targetHeight, request.cfg, request.logger)
-	left = sharpen(left, request.leftSharpen, request.cfg.SharpenThreshold)
-	right = sharpen(right, request.rightSharpen, request.cfg.SharpenThreshold)
+	left = sharpenResampled(left, request.cfg, fillScale(img1.Bounds().Dx(), img1.Bounds().Dy(), leftWidth, targetHeight))
+	right = sharpenResampled(right, request.cfg, fillScale(img2.Bounds().Dx(), img2.Bounds().Dy(), rightWidth, targetHeight))
 
 	std_draw.Draw(canvas, image.Rect(0, 0, leftWidth, targetHeight), left, left.Bounds().Min, std_draw.Src)
 	std_draw.Draw(canvas, image.Rect(leftWidth, 0, targetWidth, targetHeight), right, right.Bounds().Min, std_draw.Src)

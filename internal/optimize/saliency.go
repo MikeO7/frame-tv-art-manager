@@ -50,7 +50,13 @@ func findBestDirectorCropWithProtection(
 	if (bestScore-centerScore)/math.Max(math.Abs(centerScore), 1e-9) < max(minGain, 0) {
 		return max((srcSize-windowSize)/2, 0)
 	}
-	globalOffset := int(float64(bestMapPos) / scale)
+	// The analysis offsets 0..axis-window span the source offsets
+	// 0..srcSize-windowSize exactly, so both ends of the image are reachable
+	// and no truncation accumulates between the two scales.
+	globalOffset := max((srcSize-windowSize)/2, 0)
+	if axis, window := windows.span(); axis > window {
+		globalOffset = bestMapPos * (srcSize - windowSize) / (axis - window)
+	}
 	if protected {
 		return clampOffset(globalOffset, windowSize, srcSize)
 	}
@@ -118,6 +124,10 @@ func (c cropWindows) score(offset int) float64 {
 	}
 	band := max(2, min(c.windowW, c.windowH)/32)
 	edge := func(position int) float64 {
+		// A window boundary on the image edge cuts through nothing.
+		if position <= 0 || position >= axis {
+			return 0
+		}
 		return getRectSum(c.protection, c.axisRect(max(position-band, 0), min(position+band, axis)-1), c.workW)
 	}
 	boundary := edge(offset) + edge(offset+window)

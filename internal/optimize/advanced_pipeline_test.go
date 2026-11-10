@@ -127,7 +127,7 @@ func TestColorNormalizationFallbackAndTransparentPixel(t *testing.T) {
 		t.Fatalf("black tone map = %v", got)
 	}
 	_ = normalizeColor(source, embeddedColorData{description: "PNG gAMA"}, cfg, slog.New(slog.DiscardHandler), "gamma.png")
-	if hlgEOTF(0.25) <= 0 {
+	if hlgEOTF([3]float64{0.25, 0.25, 0.25})[0] <= 0 {
 		t.Fatal("HLG low branch returned non-positive light")
 	}
 	pngMetadata := appendPNGColorChunk(pngSignature[:], pngChunkGamma, []byte{0, 0, 0xb1, 0x8f})
@@ -336,7 +336,7 @@ func TestStreamingJPEGMetadataAcceptsFillAndStandaloneMarkers(t *testing.T) {
 
 func TestPNGColorDataDoesNotToneMapUnsupportedHDRPrimaries(t *testing.T) {
 	t.Parallel()
-	data := appendPNGColorChunk(pngSignature[:], "cICP", []byte{12, 16, 0, 1})
+	data := appendPNGColorChunk(pngSignature[:], "cICP", []byte{11, 16, 0, 1})
 	data = appendPNGColorChunk(data, pngChunkEnd, nil)
 	metadata, err := readPNGColorData(bytes.NewReader(data))
 	if err != nil {

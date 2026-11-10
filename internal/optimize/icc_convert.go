@@ -2,6 +2,7 @@ package optimize
 
 import (
 	"image"
+	"math"
 )
 
 // iccLookupSize covers every 16-bit sample value a decoder can report.
@@ -38,7 +39,9 @@ func newICCTransform(profile matrixProfile) iccTransform {
 		d50ToD65([3]float64{0, 1, 0}),
 		d50ToD65([3]float64{0, 0, 1}),
 	}
-	transform.matrix = multiply3x3(linearSRGBFromXYZD65, multiply3x3(transpose3x3(adaptation), deviceToXYZD50))
+	transform.matrix = whitePreserving(
+		multiply3x3(linearSRGBFromXYZD65, multiply3x3(transpose3x3(adaptation), deviceToXYZD50)),
+	)
 	for channel, curve := range profile.curves {
 		table := make([]float64, iccLookupSize)
 		for value := range table {
@@ -47,6 +50,28 @@ func newICCTransform(profile matrixProfile) iccTransform {
 		transform.lookup[channel] = table
 	}
 	return transform
+}
+
+// whitePreserving rescales each row so device white maps to exactly sRGB
+// white. A display profile's colorants sum to the D50 connection white, but
+// profiles and the adaptation matrix round that white differently, which
+// otherwise leaves neutral tones a level off and an sRGB profile not an
+// identity. Profiles whose white is deliberately elsewhere are left alone.
+func whitePreserving(matrix [3][3]float64) [3][3]float64 {
+	const tolerance = 0.01
+	for row := range matrix {
+		white := matrix[row][0] + matrix[row][1] + matrix[row][2]
+		if math.Abs(white-1) > tolerance {
+			return matrix
+		}
+	}
+	for row := range matrix {
+		white := matrix[row][0] + matrix[row][1] + matrix[row][2]
+		for column := range matrix[row] {
+			matrix[row][column] /= white
+		}
+	}
+	return matrix
 }
 
 func multiply3x3(left, right [3][3]float64) [3][3]float64 {

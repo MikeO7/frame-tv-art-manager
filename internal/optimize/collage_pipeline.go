@@ -79,16 +79,7 @@ func (p *catalogPass) renderCollageFile(ctx context.Context, first, second, labe
 		return "", fmt.Errorf("load/rotate %s: %w", filepath.Base(second), err)
 	}
 
-	leftWidth := cfg.MaxWidth / 2
-	collage := renderCollage(img1, img2, collageRenderRequest{
-		ctx: ctx, cfg: cfg, logger: p.logger,
-		leftSharpen: scaleAwareSharpenAmount(
-			cfg.SharpenAmount, img1.Bounds().Dx(), img1.Bounds().Dy(), leftWidth, cfg.MaxHeight,
-		),
-		rightSharpen: scaleAwareSharpenAmount(
-			cfg.SharpenAmount, img2.Bounds().Dx(), img2.Bounds().Dy(), cfg.MaxWidth-leftWidth, cfg.MaxHeight,
-		),
-	})
+	collage := renderCollage(img1, img2, collageRenderRequest{ctx: ctx, cfg: cfg, logger: p.logger})
 	if cfg.MuseumModeEnabled {
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
 	}
@@ -172,6 +163,15 @@ func (p *catalogPass) processCollages(ctx context.Context, localFiles map[string
 			delete(localFiles, f2)
 			localFiles[collageFilename] = struct{}{}
 			p.optimized++
+		}
+		// Two large portraits can exceed the memory budget together though
+		// each fits alone. That is a property of the pair, not a failed
+		// pass: the pair stays as it is and every other file is still
+		// optimized.
+		if errors.Is(err, errWorkingSetLimit) {
+			p.logger.Warn("portrait pair is too large to collage; leaving both as they are",
+				"file1", f1, "file2", f2, "error", err)
+			continue
 		}
 		if err != nil {
 			p.logger.Error("failed to create collage pair", "file1", f1, "file2", f2, "error", err)
