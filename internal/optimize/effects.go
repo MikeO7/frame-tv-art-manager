@@ -41,7 +41,7 @@ func cropRectForAspectWithProtection(
 
 	if float64(srcW)/float64(srcH) > targetAspect {
 		// Image is wider than target: crop horizontally.
-		cropW := int(float64(srcH) * targetAspect)
+		cropW := max(int(float64(srcH)*targetAspect), 1)
 		bestX := (srcW - cropW) / 2 // Default to center
 		if smart {
 			bestX = findBestDirectorCropWithProtection(src, cropW, srcH, true, minGain, protect, protectionStrength)
@@ -50,7 +50,7 @@ func cropRectForAspectWithProtection(
 	}
 
 	// Image is taller than target: crop vertically.
-	cropH := int(float64(srcW) / targetAspect)
+	cropH := max(int(float64(srcW)/targetAspect), 1)
 	bestY := (srcH - cropH) / 2 // Default to center
 	if smart {
 		bestY = findBestDirectorCropWithProtection(src, srcW, cropH, false, minGain, protect, protectionStrength)
