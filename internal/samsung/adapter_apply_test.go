@@ -16,7 +16,7 @@ import (
 
 type scriptedMutationTransport struct {
 	*scriptedObservationTransport
-	devices             []DeviceInfo
+	devices             []deviceInfo
 	inventories         []json.RawMessage
 	slideshowValues     []SlideshowSetting
 	slideshowWrites     []SlideshowSetting
@@ -107,7 +107,7 @@ func TestSlideshowOutcomeClassifiesPostconditionEvidence(t *testing.T) {
 	}
 }
 
-func (t *scriptedMutationTransport) DeviceInfo(ctx context.Context) (DeviceInfo, error) {
+func (t *scriptedMutationTransport) DeviceInfo(ctx context.Context) (deviceInfo, error) {
 	t.deviceInfoCalls++
 	if len(t.devices) == 0 {
 		return t.scriptedObservationTransport.DeviceInfo(ctx)
@@ -166,13 +166,13 @@ func (t *scriptedMutationTransport) ConfigureSlideshow(_ context.Context, settin
 	return t.slideshowWriteErr
 }
 
-func (t *scriptedMutationTransport) Brightness(context.Context) (BrightnessReading, error) {
+func (t *scriptedMutationTransport) Brightness(context.Context) (brightnessReading, error) {
 	if len(t.brightnessValues) == 0 {
-		return BrightnessReading{}, errors.New("brightness script exhausted")
+		return brightnessReading{}, errors.New("brightness script exhausted")
 	}
 	value := t.brightnessValues[0]
 	t.brightnessValues = t.brightnessValues[1:]
-	return BrightnessReading{Value: value, Max: 10}, nil
+	return brightnessReading{Value: value, Max: 10}, nil
 }
 
 func (t *scriptedMutationTransport) CurrentArtwork(context.Context) (string, error) {
@@ -227,7 +227,7 @@ func TestAdapterUploadIsDigestBoundAndSingleUse(t *testing.T) {
 	if receipt.Outcome != OutcomeApplied || receipt.ContentID != "new-id" || transport.uploadCalls != 1 {
 		t.Fatalf("receipt/calls = %+v/%d", receipt, transport.uploadCalls)
 	}
-	if _, err := adapter.Apply(context.Background(), observation.Authorization, command); !errors.Is(err, ErrNotAuthorized) {
+	if _, err := adapter.Apply(context.Background(), observation.Authorization, command); !errors.Is(err, errNotAuthorized) {
 		t.Fatalf("reused authorization error = %v, want ErrNotAuthorized", err)
 	}
 }
@@ -270,7 +270,7 @@ func TestAdapterFreshInventoryPreventsStaleDelete(t *testing.T) {
 	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 	observation := observeForCommand(t, adapter, CapabilityImageDeletion)
 	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Delete{ContentID: "id-1"})
-	if !errors.Is(err, ErrNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.deleteCalls != 0 {
+	if !errors.Is(err, errNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.deleteCalls != 0 {
 		t.Fatalf("receipt/error/calls = %+v/%v/%d", receipt, err, transport.deleteCalls)
 	}
 }
@@ -361,12 +361,12 @@ func TestAdapterSettingsRequireKnownPreviousAndVerifyDesired(t *testing.T) {
 }
 
 func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
-	off := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOff}
-	on := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOn}
-	standby := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringStandby}
+	off := deviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOff}
+	on := deviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOn}
+	standby := deviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringStandby}
 	t.Run("wake", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
-		transport.devices = []DeviceInfo{off, off, on}
+		transport.devices = []deviceInfo{off, off, on}
 		adapter := newTestAdapterWithMAC(t, transport)
 		observation := observeForCommand(t, adapter, CapabilityRemotePower)
 		receipt, err := adapter.Apply(context.Background(), observation.Authorization, Wake{})
@@ -376,7 +376,7 @@ func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 	})
 	t.Run("wake from standby", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
-		transport.devices = []DeviceInfo{standby, standby, on}
+		transport.devices = []deviceInfo{standby, standby, on}
 		transport.artMode = stringOff
 		adapter := newTestAdapterWithMAC(t, transport)
 		observation := observeForCommand(t, adapter, CapabilityRemotePower)
@@ -387,7 +387,7 @@ func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 	})
 	t.Run("power off", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
-		transport.devices = []DeviceInfo{on, on, off}
+		transport.devices = []deviceInfo{on, on, off}
 		transport.inventories = []json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`[]`)}
 		adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 		observation := observeForCommand(t, adapter, CapabilityRemotePower)
@@ -398,7 +398,7 @@ func TestAdapterWakeAndPowerOffRequirePostcondition(t *testing.T) {
 	})
 	t.Run("power off reaches standby", func(t *testing.T) {
 		transport := mutationTransportForInventory(`[]`)
-		transport.devices = []DeviceInfo{on, on, standby}
+		transport.devices = []deviceInfo{on, on, standby}
 		transport.artModes = []string{stringOn, stringOn, stringOff}
 		transport.inventories = []json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`[]`)}
 		adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
@@ -419,7 +419,7 @@ func TestAdapterWakeRevalidatesStandbyArtMode(t *testing.T) {
 	transport.artMode = stringOn
 
 	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Wake{})
-	if !errors.Is(err, ErrNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.wakeCalls != 0 {
+	if !errors.Is(err, errNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.wakeCalls != 0 {
 		t.Fatalf("standby Art Mode wake receipt/error/calls = %+v/%v/%d", receipt, err, transport.wakeCalls)
 	}
 }
@@ -427,10 +427,10 @@ func TestAdapterWakeRevalidatesStandbyArtMode(t *testing.T) {
 func TestAdapterPowerPostconditionPollsUntilTransition(t *testing.T) {
 	t.Parallel()
 
-	off := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOff}
-	on := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOn}
+	off := deviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOff}
+	on := deviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOn}
 	transport := mutationTransportForInventory(`[]`)
-	transport.devices = []DeviceInfo{off, off, off, off, on}
+	transport.devices = []deviceInfo{off, off, off, off, on}
 	adapter := newTestAdapterWithMAC(t, transport)
 	adapter.config.RequestTimeout = time.Second
 
@@ -444,7 +444,7 @@ func TestAdapterPowerPostconditionPollsUntilTransition(t *testing.T) {
 func TestAdapterPowerPostconditionPollingIsBoundedAndCancelable(t *testing.T) {
 	t.Parallel()
 
-	off := DeviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOff}
+	off := deviceInfo{ModelName: "Frame", FrameTVSupport: stringTrue, PowerState: stringOff}
 	tests := []struct {
 		name    string
 		context func() (context.Context, context.CancelFunc)
@@ -513,7 +513,7 @@ func TestAdapterAuthorizationIsBoundToObservedCapability(t *testing.T) {
 	adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
 	observation := observeForCommand(t, adapter, CapabilityImageUpload)
 	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Delete{ContentID: "id-1"})
-	if !errors.Is(err, ErrNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.deleteCalls != 0 {
+	if !errors.Is(err, errNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.deleteCalls != 0 {
 		t.Fatalf("receipt/error/delete calls = %+v/%v/%d", receipt, err, transport.deleteCalls)
 	}
 }
@@ -559,7 +559,7 @@ func TestDesiredPowerObservedClassifiesStandbyByArtMode(t *testing.T) {
 		},
 		{
 			name: "standby refusing the art channel is off", power: stringStandby,
-			connectErr: ErrConnectionFailure, desired: PowerStateOff, wantMatch: true,
+			connectErr: errConnectionFailure, desired: PowerStateOff, wantMatch: true,
 		},
 		{
 			name: "on with silent art channel is unknown", power: stringOn,

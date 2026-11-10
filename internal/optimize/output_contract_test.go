@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
@@ -150,7 +150,7 @@ func TestOrdinaryTransformOutputContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantName := artwork.BuildContentName("gradient.jpg", digest, extJPG, 8)
+	wantName := collection.BuildContentName("gradient.jpg", digest, extJPG, 8)
 	if name != wantName {
 		t.Fatalf("optimized name = %q, want post-encode digest name %q", name, wantName)
 	}

@@ -12,7 +12,7 @@ func TestLogCycleSummary_RendersStatusesAndWarnings(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	LogCycleSummary(logger, CycleSummary{
+	logCycleSummary(logger, cycleSummary{
 		CycleNum:        7,
 		StartTime:       time.Date(2026, 1, 12, 8, 0, 0, 0, time.UTC),
 		SyncIntervalMin: 5,
@@ -20,7 +20,7 @@ func TestLogCycleSummary_RendersStatusesAndWarnings(t *testing.T) {
 		FromSources:     1,
 		Optimized:       2,
 		FailedTVs:       1,
-		TVs: []TVSyncResult{
+		TVs: []tvSyncResult{
 			{IP: "192.168.0.1", Model: "Mock", Status: "ok", ArtMode: true},
 			{IP: "192.168.0.2", Status: statusBackoff, Model: "mocked"},
 			{IP: "192.168.0.3", Status: "error", ErrorMessage: strings.Repeat("x", 80)},

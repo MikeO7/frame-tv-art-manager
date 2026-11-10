@@ -18,7 +18,7 @@ const uploadSettleTime = 5 * time.Minute
 // later inventory can still prove.
 func parkableUpload(state State, err error) bool {
 	return errors.Is(err, ErrRecoveryRequired) && state.Pending != nil &&
-		state.Pending.Command.Kind == CommandUpload && state.Pending.Phase != PhaseApplied &&
+		state.Pending.Command.Kind == CommandUpload && state.Pending.Phase != phaseApplied &&
 		state.UnresolvedUpload == nil
 }
 
@@ -103,7 +103,7 @@ func resolveUnresolvedUpload(state State, observation samsung.Observation, now t
 	return result, true
 }
 
-func uploadSettleStart(parked *Pending) *time.Time {
+func uploadSettleStart(parked *pending) *time.Time {
 	if parked.Receipt != nil && !parked.Receipt.CompletedAt.IsZero() {
 		return &parked.Receipt.CompletedAt
 	}
@@ -114,7 +114,7 @@ func uploadSettleStart(parked *Pending) *time.Time {
 // parked upload: an ID absent before the upload and not bound to other art.
 // State files written before InventoryBeforeIDs existed fall back to the
 // inventory fingerprint, so any change at all stays unexplained.
-func unexplainedArtwork(state State, parked *Pending, observation samsung.Observation) bool {
+func unexplainedArtwork(state State, parked *pending, observation samsung.Observation) bool {
 	if parked.InventoryBeforeIDs == nil {
 		return observation.Inventory.Fingerprint != parked.InventoryBefore.Digest
 	}
@@ -135,8 +135,8 @@ func unexplainedArtwork(state State, parked *Pending, observation samsung.Observ
 
 // artworkCommandsBlocked removes commands that change artwork while an upload
 // outcome is unproven. Settings and power commands are kept.
-func artworkCommandsBlocked(commands []CommandIntent) []CommandIntent {
-	for _, kind := range []CommandKind{CommandUpload, CommandDeleteOwned, CommandDeleteUnknown, CommandSelect} {
+func artworkCommandsBlocked(commands []commandIntent) []commandIntent {
+	for _, kind := range []CommandKind{CommandUpload, CommandDeleteOwned, CommandDeleteUnknown, commandSelect} {
 		commands = withoutCommand(commands, kind)
 	}
 	return commands

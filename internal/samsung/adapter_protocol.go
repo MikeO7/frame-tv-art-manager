@@ -116,7 +116,7 @@ func (t *protocolTransport) admitConnection(ctx context.Context, host string, dr
 			return err
 		}
 		if blocked {
-			return ErrGateFailed
+			return errGateFailed
 		}
 	}
 	if !dryRun {
@@ -124,39 +124,39 @@ func (t *protocolTransport) admitConnection(ctx context.Context, host string, dr
 	}
 	_, err := loadAuthenticationToken(t.config.TokenPath)
 	if err != nil {
-		return fmt.Errorf("dry-run requires an existing token: %w", errors.Join(ErrUnauthorized, err))
+		return fmt.Errorf("dry-run requires an existing token: %w", errors.Join(errUnauthorized, err))
 	}
 	return nil
 }
 
-func (t *protocolTransport) DeviceInfo(ctx context.Context) (DeviceInfo, error) {
+func (t *protocolTransport) DeviceInfo(ctx context.Context) (deviceInfo, error) {
 	host, port, err := observationAddress(t.config.Address)
 	if err != nil {
-		return DeviceInfo{}, err
+		return deviceInfo{}, err
 	}
 	url := "https://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/api/v2/"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return DeviceInfo{}, fmt.Errorf("build device-info request: %w", err)
+		return deviceInfo{}, fmt.Errorf("build device-info request: %w", err)
 	}
 	response, err := t.deviceHTTPClient.Do(request)
 	if err != nil {
-		return DeviceInfo{}, fmt.Errorf("fetch device info: %w", err)
+		return deviceInfo{}, fmt.Errorf("fetch device info: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return DeviceInfo{}, fmt.Errorf("device-info status %d: %w", response.StatusCode, ErrConnectionFailure)
+		return deviceInfo{}, fmt.Errorf("device-info status %d: %w", response.StatusCode, errConnectionFailure)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxDeviceInfoBytes+1))
 	if err != nil {
-		return DeviceInfo{}, fmt.Errorf("read device info: %w", err)
+		return deviceInfo{}, fmt.Errorf("read device info: %w", err)
 	}
 	if len(body) > maxDeviceInfoBytes {
-		return DeviceInfo{}, errors.New("device-info response exceeds limit")
+		return deviceInfo{}, errors.New("device-info response exceeds limit")
 	}
 	var envelope deviceInfoResponse
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		return DeviceInfo{}, fmt.Errorf("parse device info: %w", err)
+		return deviceInfo{}, fmt.Errorf("parse device info: %w", err)
 	}
 	return envelope.Device, nil
 }

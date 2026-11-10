@@ -21,7 +21,7 @@ func TestScheduledPowerOffRunsAfterAnEarlierCommandFails(t *testing.T) {
 	}{
 		{
 			name: "rejected upload", uploadOutcome: samsung.OutcomeNotApplied,
-			finalState: knownObservation(samsung.PowerStateOn), wantApplied: []CommandKind{CommandPowerOff},
+			finalState: knownObservation(samsung.PowerStateOn), wantApplied: []CommandKind{commandPowerOff},
 		},
 		{
 			name: "unknown upload outcome", uploadOutcome: samsung.OutcomeUnknown,

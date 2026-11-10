@@ -133,7 +133,7 @@ func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation s
 	return nil
 }
 
-func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	if p.accessKey == "" {
 		return nil, errors.New("UNSPLASH_ACCESS_KEY not configured")
 	}
@@ -160,7 +160,7 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]SourceIm
 		return nil, errors.New("unknown unsplash type")
 	}
 
-	images := make([]SourceImage, 0, len(photos))
+	images := make([]sourceImage, 0, len(photos))
 	for _, photo := range photos {
 		image, err := p.image(parts[2], photo)
 		if err != nil {
@@ -177,15 +177,15 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]SourceIm
 
 // image requests a JPEG rendition that covers the panel without upscaling
 // (fit=max) from the raw image URL.
-func (p *unsplashProvider) image(source string, photo unsplashPhoto) (SourceImage, error) {
+func (p *unsplashProvider) image(source string, photo unsplashPhoto) (sourceImage, error) {
 	if photo.ID == "" || photo.URLs.Raw == "" {
-		return SourceImage{}, errors.New("missing photo ID or raw URL")
+		return sourceImage{}, errors.New("missing photo ID or raw URL")
 	}
 	params := map[string]string{"fm": "jpg", "q": "95", "fit": "max"}
 	maps.Copy(params, coverQuery(photo.Width, photo.Height))
 	downloadURL, err := withQuery(photo.URLs.Raw, params)
 	if err != nil {
-		return SourceImage{}, err
+		return sourceImage{}, err
 	}
 	sourceURL := photo.Links.HTML
 	if sourceURL != "" {
@@ -195,10 +195,10 @@ func (p *unsplashProvider) image(source string, photo unsplashPhoto) (SourceImag
 		}
 		sourceURL += separator + unsplashReferral
 	}
-	label := strings.ReplaceAll(Filename(source+"-"+photo.ID), " ", "-")
-	return SourceImage{
+	label := strings.ReplaceAll(filename(source+"-"+photo.ID), " ", "-")
+	return sourceImage{
 		URL: downloadURL, Identity: sourceIdentity(p.Name(), photo.ID, label), TrackURL: photo.Links.DownloadLocation,
-		Attribution: Attribution{
+		Attribution: attribution{
 			Provider: p.Name(), Title: firstNonEmpty(photo.Description, photo.AltDescription),
 			Artist: photo.User.Name, SourceURL: sourceURL, License: unsplashLicense,
 		},

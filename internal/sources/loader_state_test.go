@@ -23,7 +23,7 @@ import (
 // scriptedProvider counts resolutions and fails while err is set.
 type scriptedProvider struct {
 	name     string
-	images   []SourceImage
+	images   []sourceImage
 	err      error
 	calls    atomic.Int32
 	tracked  []string
@@ -32,12 +32,12 @@ type scriptedProvider struct {
 
 func (p *scriptedProvider) Name() string          { return p.name }
 func (p *scriptedProvider) CanHandle(string) bool { return true }
-func (p *scriptedProvider) Resolve(context.Context, string) ([]SourceImage, error) {
+func (p *scriptedProvider) Resolve(context.Context, string) ([]sourceImage, error) {
 	p.calls.Add(1)
 	if p.err != nil {
 		return nil, p.err
 	}
-	return append([]SourceImage(nil), p.images...), nil
+	return append([]sourceImage(nil), p.images...), nil
 }
 
 func (p *scriptedProvider) TrackDownload(_ context.Context, trackURL string) error {
@@ -79,21 +79,21 @@ func newStateFixture(t *testing.T, lines string) *stateFixture {
 	}
 	fixture := &stateFixture{
 		artworkDir: t.TempDir(), sourcesFile: sourcesFile, server: server, now: time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
-		provider: &scriptedProvider{name: providerPexels, images: []SourceImage{{
+		provider: &scriptedProvider{name: providerPexels, images: []sourceImage{{
 			URL: server.URL + "/missing", Fallbacks: []string{server.URL + "/art.jpg"}, Identity: "pexels--art--1",
 			TrackURL:    "https://api.example/track/1",
-			Attribution: Attribution{Provider: providerPexels, Title: "Art", Artist: "Ann", License: pexelsLicense},
+			Attribution: attribution{Provider: providerPexels, Title: "Art", Artist: "Ann", License: pexelsLicense},
 		}}},
 	}
 	return fixture
 }
 
-func (f *stateFixture) loader(t *testing.T) *Loader {
+func (f *stateFixture) loader(t *testing.T) *loader {
 	t.Helper()
 	loader := newTestLoader(&config.Config{
 		SourcesFile: f.sourcesFile, ArtworkDir: f.artworkDir, MaxDownloadSizeMB: 20,
 	}, discardLogger())
-	loader.providers = []SourceProvider{f.provider}
+	loader.providers = []sourceProvider{f.provider}
 	loader.now = func() time.Time { return f.now }
 	return loader
 }
@@ -352,14 +352,14 @@ func TestPrepareImageFallsBackAndReportsEveryCandidate(t *testing.T) {
 	t.Parallel()
 	fixture := newStateFixture(t, "")
 	loader := fixture.loader(t)
-	prepared, err := loader.prepareImage(context.Background(), SourceImage{
+	prepared, err := loader.prepareImage(context.Background(), sourceImage{
 		URL: fixture.server.URL + "/missing", Fallbacks: []string{fixture.server.URL + "/other.jpg"}, Identity: "x",
 	})
 	if err != nil {
 		t.Fatalf("prepareImage() error = %v", err)
 	}
 	_ = os.Remove(prepared.path)
-	_, err = loader.prepareImage(context.Background(), SourceImage{
+	_, err = loader.prepareImage(context.Background(), sourceImage{
 		URL: fixture.server.URL + "/missing", Fallbacks: []string{"ftp://example.com/a.jpg"}, Identity: "x",
 	})
 	if err == nil || !strings.Contains(err.Error(), "HTTP 404") || !strings.Contains(err.Error(), "unsupported URL scheme") {

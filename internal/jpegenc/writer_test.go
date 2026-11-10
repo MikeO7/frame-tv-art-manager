@@ -169,7 +169,7 @@ func TestSubsampling444KeepsRedBlueStripeChroma(t *testing.T) {
 func TestEncodeDefaults(t *testing.T) {
 	t.Parallel()
 	src := artwork(40, 24)
-	if !bytes.Equal(mustEncode(t, src, nil), mustEncode(t, src, &Options{Quality: DefaultQuality})) {
+	if !bytes.Equal(mustEncode(t, src, nil), mustEncode(t, src, &Options{Quality: defaultQuality})) {
 		t.Fatal("nil options differ from default quality with 4:4:4")
 	}
 	if !bytes.Equal(mustEncode(t, src, &Options{Quality: -3}), mustEncode(t, src, &Options{Quality: 1})) {

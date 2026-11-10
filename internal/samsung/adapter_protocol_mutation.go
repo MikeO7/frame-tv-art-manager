@@ -93,7 +93,7 @@ func (t *protocolTransport) Delete(ctx context.Context, contentID string) error 
 
 func deleteReplyError(raw json.RawMessage, ok bool) error {
 	if !ok {
-		return commandError(commandDeleteName, OutcomeUnknown, ErrNotConnected)
+		return commandError(commandDeleteName, OutcomeUnknown, errNotConnected)
 	}
 	// image_deleted lists content IDs as an array, so only the error envelope
 	// fields are decoded.
@@ -213,7 +213,7 @@ func (t *protocolTransport) activeConnection() (*connection, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn == nil || !t.conn.IsAlive() {
-		return nil, ErrNotConnected
+		return nil, errNotConnected
 	}
 	return t.conn, nil
 }

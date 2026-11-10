@@ -104,7 +104,7 @@ func TestSelectSemantics(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			file := Empty()
+			file := empty()
 			file.Collections = test.collections
 			selection := Select(file, items, test.now)
 			got := make([]string, 0, len(selection.Items))
@@ -215,7 +215,7 @@ func TestSlug(t *testing.T) {
 
 func TestFileFindAndAdd(t *testing.T) {
 	t.Parallel()
-	file := Empty()
+	file := empty()
 	christmas, err := NewCollection("Christmas", "", true, Activation{Mode: ModeOff})
 	if err != nil {
 		t.Fatal(err)

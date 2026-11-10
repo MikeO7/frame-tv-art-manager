@@ -78,7 +78,7 @@ func (p *smkProvider) fetchJSON(ctx context.Context, apiURL string, out any) err
 	}, out)
 }
 
-func (p *smkProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *smkProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
 		return nil, errors.New("invalid smk format; use smk:search:<query> or smk:object:<object number>")
@@ -107,7 +107,7 @@ func (p *smkProvider) Resolve(ctx context.Context, line string) ([]SourceImage, 
 		if !ok {
 			return nil, errors.New("smk object is not public domain or has no image large enough for the panel")
 		}
-		return []SourceImage{candidate.image}, nil
+		return []sourceImage{candidate.image}, nil
 	default:
 		return nil, errors.New("unknown smk type")
 	}
@@ -184,12 +184,12 @@ func (p *smkProvider) candidate(artwork smkArtwork) (Candidate, bool) {
 		link = "https://open.smk.dk/artwork/image/" + url.PathEscape(artwork.ObjectNumber)
 	}
 	urls := renditionURLs(ranked)
-	attribution := Attribution{Provider: p.Name(), Title: title, Artist: artist, SourceURL: link, License: smkLicense}
+	attribution := attribution{Provider: p.Name(), Title: title, Artist: artist, SourceURL: link, License: smkLicense}
 	return Candidate{
 		Provider: p.Name(), ID: artwork.ObjectNumber, Title: title, Artist: artist, Date: date,
 		ImageURL: ranked[0].url, Width: ranked[0].width, Height: ranked[0].height, License: smkLicense, Link: link,
 		SourceLine: providerSMK + ":" + cmdObject + ":" + artwork.ObjectNumber,
-		image: SourceImage{
+		image: sourceImage{
 			URL: urls[0], Fallbacks: urls[1:], Identity: museumObjectIdentity(p.Name(), artwork.ObjectNumber), Attribution: attribution,
 		},
 	}, true

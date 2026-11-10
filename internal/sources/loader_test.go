@@ -23,7 +23,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
-func newTestLoader(cfg *config.Config, logger *slog.Logger) *Loader {
+func newTestLoader(cfg *config.Config, logger *slog.Logger) *loader {
 	store, err := collection.New(collection.Config{
 		Root: cfg.ArtworkDir, MaxItems: cfg.MaxArtworkImages,
 		MaxImportBytes: int64(cfg.MaxDownloadSizeMB) * bytesPerMB,
@@ -52,7 +52,7 @@ func testPNGBytes(t *testing.T) []byte {
 	return buffer.Bytes()
 }
 
-func setMockProviderURLs(l *Loader, baseURL string) {
+func setMockProviderURLs(l *loader, baseURL string) {
 	for _, provider := range l.providers {
 		switch value := provider.(type) {
 		case *unsplashProvider:
@@ -113,13 +113,13 @@ func TestLoader_Sync_Direct(t *testing.T) {
 }
 
 type staticSourceProvider struct {
-	images []SourceImage
+	images []sourceImage
 }
 
 func (p staticSourceProvider) Name() string          { return "static" }
 func (p staticSourceProvider) CanHandle(string) bool { return true }
-func (p staticSourceProvider) Resolve(context.Context, string) ([]SourceImage, error) {
-	return append([]SourceImage(nil), p.images...), nil
+func (p staticSourceProvider) Resolve(context.Context, string) ([]sourceImage, error) {
+	return append([]sourceImage(nil), p.images...), nil
 }
 
 type countingImporter struct {
@@ -169,7 +169,7 @@ func TestLoaderSyncImportsResolvedImagesAsBatch(t *testing.T) {
 	}
 	importer := &countingImporter{Store: store}
 	loader := NewLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default(), importer)
-	loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{
+	loader.providers = []sourceProvider{staticSourceProvider{images: []sourceImage{
 		{URL: server.URL + "/first", Identity: "first"},
 		{URL: server.URL + "/second", Identity: "second"},
 	}}}
@@ -195,7 +195,7 @@ func TestLoaderSyncStopsDownloadingImmediatelyWhenCanceled(t *testing.T) {
 	}))
 	defer server.Close()
 	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default())
-	loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{
+	loader.providers = []sourceProvider{staticSourceProvider{images: []sourceImage{
 		{URL: server.URL + "/1", Identity: "one"},
 		{URL: server.URL + "/2", Identity: "two"},
 		{URL: server.URL + "/3", Identity: "three"},
@@ -230,11 +230,11 @@ func TestLoaderSyncFlushesAtBoundedBatchSize(t *testing.T) {
 	}
 	importer := &countingImporter{Store: store}
 	loader := NewLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default(), importer)
-	images := make([]SourceImage, sourceImportBatchSize+1)
+	images := make([]sourceImage, sourceImportBatchSize+1)
 	for index := range images {
-		images[index] = SourceImage{URL: server.URL, Identity: fmt.Sprintf("image-%02d", index)}
+		images[index] = sourceImage{URL: server.URL, Identity: fmt.Sprintf("image-%02d", index)}
 	}
-	loader.providers = []SourceProvider{staticSourceProvider{images: images}}
+	loader.providers = []sourceProvider{staticSourceProvider{images: images}}
 	count, err := loader.syncLine(context.Background(), "static:any")
 	if err != nil {
 		t.Fatal(err)
@@ -309,7 +309,7 @@ func TestLoaderSyncLineLimitAndImportErrors(t *testing.T) {
 	t.Run("collection limit", func(t *testing.T) {
 		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxArtworkImages: 1}, slog.Default())
 		loader.collectionSize = 1
-		loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{{
+		loader.providers = []sourceProvider{staticSourceProvider{images: []sourceImage{{
 			URL: "http://example.com/never-requested.jpg", Identity: "limited",
 		}}}}
 		count, err := loader.syncLine(context.Background(), "static:any")
@@ -329,7 +329,7 @@ func TestLoaderSyncLineLimitAndImportErrors(t *testing.T) {
 			slog.Default(),
 			scriptedImporter{err: errors.New("batch commit failed")},
 		)
-		loader.providers = []SourceProvider{staticSourceProvider{images: []SourceImage{{URL: server.URL, Identity: "one"}}}}
+		loader.providers = []sourceProvider{staticSourceProvider{images: []sourceImage{{URL: server.URL, Identity: "one"}}}}
 		if _, err := loader.syncLine(context.Background(), "static:any"); err == nil || !strings.Contains(err.Error(), "batch commit failed") {
 			t.Fatalf("syncLine() error = %v", err)
 		}
@@ -423,7 +423,7 @@ providers:
 `
 	_ = os.WriteFile(path, []byte(yamlContent), 0o600)
 
-	l := &Loader{sourcesFile: path}
+	l := &loader{sourcesFile: path}
 	urls, err := l.loadSources(context.Background())
 	if err != nil {
 		t.Fatalf("loadSources YAML failed: %v", err)
@@ -442,7 +442,7 @@ func TestLoadSources_Txt(t *testing.T) {
 	txtContent := "direct:http://a.com/1.jpg\n# comment\nhttp://b.com/2.jpg\n"
 	_ = os.WriteFile(path, []byte(txtContent), 0o600)
 
-	l := &Loader{sourcesFile: path}
+	l := &loader{sourcesFile: path}
 	urls, err := l.loadSources(context.Background())
 	if err != nil {
 		t.Fatalf("loadSources TXT failed: %v", err)
@@ -459,7 +459,7 @@ func TestLoadSourcesDoesNotCacheFailedRevision(t *testing.T) {
 	if err := os.WriteFile(path, []byte("sources:\n  - https://example.com/art.jpg\n"), 0o600); err != nil {
 		t.Fatalf("write valid sources: %v", err)
 	}
-	loader := &Loader{sourcesFile: path}
+	loader := &loader{sourcesFile: path}
 	if _, err := loader.loadSources(context.Background()); err != nil {
 		t.Fatalf("load valid sources: %v", err)
 	}

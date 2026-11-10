@@ -69,7 +69,7 @@ func TestPixabayResolveRoutesCommandsToAPIQueries(t *testing.T) {
 			}
 			if len(images) != 1 || images[0].URL != "https://cdn.pixabay.example/get/temp_1280.jpg" ||
 				images[0].Identity != sourceIdentity(providerPixabay, "photo:7", "photo-7") ||
-				images[0].Attribution != (Attribution{
+				images[0].Attribution != (attribution{
 					Provider: providerPixabay, Title: "fox, red", Artist: "artist", SourceURL: "https://pixabay.com/photos/fox-7/", License: pixabayLicense,
 				}) {
 				t.Fatalf("Resolve(%q) = %+v", test.line, images)

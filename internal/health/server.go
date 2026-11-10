@@ -168,8 +168,8 @@ func (s *Status) snapshot() statusSnapshot {
 	return snapshot
 }
 
-// Server runs a lightweight HTTP health check endpoint.
-type Server struct {
+// server runs a lightweight HTTP health check endpoint.
+type server struct {
 	cfg      *config.Config
 	status   *Status
 	logger   *slog.Logger
@@ -177,7 +177,7 @@ type Server struct {
 	listener net.Listener
 	mu       sync.Mutex
 	now      func() time.Time
-	importer ArtworkImporter
+	importer artworkImporter
 	imports  chan struct{}
 	// authFailures rate-limits wrong UPLOAD_TOKEN and MCP_TOKEN guesses per
 	// client address.
@@ -187,16 +187,16 @@ type Server struct {
 }
 
 // ServerOption configures an optional HTTP module.
-type ServerOption func(*Server)
+type ServerOption func(*server)
 
 // WithMCP mounts handler at /mcp. The server serves it only while
 // MCP_ENABLED is on, and only to requests that present MCP_TOKEN.
 func WithMCP(handler http.Handler) ServerOption {
-	return func(server *Server) { server.mcp = handler }
+	return func(server *server) { server.mcp = handler }
 }
 
-// ArtworkImporter is the only collection authority required by HTTP uploads.
-type ArtworkImporter interface {
+// artworkImporter is the only collection authority required by HTTP uploads.
+type artworkImporter interface {
 	Import(context.Context, collection.ImportRequest) (collection.Snapshot, error)
 }
 
@@ -206,10 +206,10 @@ func NewServer(
 	cfg *config.Config,
 	status *Status,
 	logger *slog.Logger,
-	importer ArtworkImporter,
+	importer artworkImporter,
 	options ...ServerOption,
-) *Server {
-	server := &Server{
+) *server {
+	server := &server{
 		cfg: cfg, status: status, logger: logger, now: time.Now,
 		importer: importer, imports: make(chan struct{}, 1),
 	}
@@ -223,7 +223,7 @@ func NewServer(
 // Bind acquires the HTTP listener before the application is marked ready.
 // Binding errors are therefore terminal startup errors rather than failures in
 // an unobserved goroutine.
-func (s *Server) Bind(ctx context.Context) error {
+func (s *server) Bind(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -266,7 +266,7 @@ func (s *Server) Bind(ctx context.Context) error {
 }
 
 // Serve runs the already-bound server until shutdown.
-func (s *Server) Serve() error {
+func (s *server) Serve() error {
 	s.mu.Lock()
 	server, listener := s.server, s.listener
 	s.mu.Unlock()
@@ -281,7 +281,7 @@ func (s *Server) Serve() error {
 }
 
 // Shutdown gracefully stops the health server.
-func (s *Server) Shutdown(ctx context.Context) error {
+func (s *server) Shutdown(ctx context.Context) error {
 	if server := s.boundServer(); server != nil {
 		return server.Shutdown(ctx)
 	}
@@ -289,14 +289,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 // Close immediately releases the listener after a graceful shutdown timeout.
-func (s *Server) Close() error {
+func (s *server) Close() error {
 	if server := s.boundServer(); server != nil {
 		return server.Close()
 	}
 	return nil
 }
 
-func (s *Server) boundServer() *http.Server {
+func (s *server) boundServer() *http.Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.server

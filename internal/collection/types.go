@@ -23,8 +23,8 @@ const (
 	OriginSource         OriginClass = "source"
 	OriginDerived        OriginClass = "derived"
 
-	DerivativeOptimized DerivativeKind = "optimized"
-	DerivativeCollage   DerivativeKind = "collage"
+	DerivativeOptimized derivativeKind = "optimized"
+	DerivativeCollage   derivativeKind = "collage"
 
 	ChangeAdded     ChangeKind = "added"
 	ChangeAdopted   ChangeKind = "adopted"
@@ -52,7 +52,7 @@ type ImportRequest struct {
 	Reader   io.Reader
 	Hint     string
 	MaxBytes int64
-	Policy   Policy
+	Policy   policy
 	Origin   Origin
 	DryRun   bool
 }
@@ -88,14 +88,14 @@ type ItemMetadata struct {
 	Origin       Origin
 	SourceKeys   []string
 	TransformKey string
-	Derivative   DerivativeKind
+	Derivative   derivativeKind
 	// Originals are the kept untouched bytes a derivative is rendered from,
 	// in render order. Empty for untransformed artwork.
 	Originals []Original
 }
 
-// Policy applies request-specific limits. Zero values retain store limits.
-type Policy struct {
+// policy applies request-specific limits. Zero values retain store limits.
+type policy struct {
 	MaxPixels int64
 }
 
@@ -121,7 +121,7 @@ type Item struct {
 	// including sources combined into a derived collage.
 	SourceKeys   []string
 	TransformKey string
-	Derivative   DerivativeKind
+	Derivative   derivativeKind
 	// Originals links a derivative to the kept untouched bytes it is always
 	// re-rendered from: one image, or a collage's two portraits in order. A
 	// derivative made before originals were kept starts with its own bytes.
@@ -132,7 +132,7 @@ type FileType string
 
 type OriginClass string
 
-type DerivativeKind string
+type derivativeKind string
 
 type Origin struct {
 	Key   string

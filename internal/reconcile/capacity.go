@@ -40,24 +40,24 @@ func (s *service) buildPlan(
 
 func projectCapacityProbe(state State, observation samsung.Observation, observedAt time.Time) State {
 	projected := cloneState(state)
-	projected.Capacity = CapacityEvidence{
+	projected.Capacity = capacityEvidence{
 		Known: true, Maximum: len(observation.Inventory.ContentIDs) + 1,
 		ObservedAt: observedAt, Probe: true, Shortfalls: state.Capacity.Shortfalls,
 	}
 	return projected
 }
 
-func capacityProbeEligible(evidence CapacityEvidence, now time.Time, ttl time.Duration) bool {
+func capacityProbeEligible(evidence capacityEvidence, now time.Time, ttl time.Duration) bool {
 	return evidence.Known && !evidence.ObservedAt.IsZero() &&
 		!now.Before(evidence.ObservedAt.Add(ttl))
 }
 
-func hasCapacityMutation(commands []CommandIntent) bool {
-	return slices.ContainsFunc(commands, func(command CommandIntent) bool {
+func hasCapacityMutation(commands []commandIntent) bool {
+	return slices.ContainsFunc(commands, func(command commandIntent) bool {
 		return command.Kind == CommandUpload || command.Kind == CommandDeleteOwned || command.Kind == CommandDeleteUnknown
 	})
 }
 
-func hasCommand(commands []CommandIntent, kind CommandKind) bool {
-	return slices.ContainsFunc(commands, func(command CommandIntent) bool { return command.Kind == kind })
+func hasCommand(commands []commandIntent, kind CommandKind) bool {
+	return slices.ContainsFunc(commands, func(command commandIntent) bool { return command.Kind == kind })
 }

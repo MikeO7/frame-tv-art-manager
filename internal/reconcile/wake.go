@@ -61,7 +61,7 @@ func (s *service) preparePowerOn(
 		CollectionGeneration: request.Snapshot.Generation,
 		PolicyFingerprint:    policyFingerprint,
 		InventoryFingerprint: observation.Inventory.Fingerprint,
-		Commands:             []CommandIntent{{Kind: CommandWake}},
+		Commands:             []commandIntent{{Kind: CommandWake}},
 	}
 	if request.DryRun {
 		result := Result{
@@ -74,7 +74,7 @@ func (s *service) preparePowerOn(
 
 	prepared.state, prepared.observation, err = s.execute(ctx, executionInput{
 		request: request, policy: policy, state: state, observation: observation,
-		intent: CommandIntent{Kind: CommandWake},
+		intent: commandIntent{Kind: CommandWake},
 	})
 	if err != nil {
 		return prepared, err

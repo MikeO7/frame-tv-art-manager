@@ -5,7 +5,6 @@ import (
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
-	"github.com/MikeO7/frame-tv-art-manager/internal/resources"
 )
 
 func (c *localCollection) optimize(ctx context.Context, request optimize.StageRequest) (*optimize.Stage, error) {
@@ -19,7 +18,7 @@ func (c *localCollection) optimize(ctx context.Context, request optimize.StageRe
 		err := run(ctx)
 		return stage, err
 	}
-	err := c.limits.Run(ctx, resources.Request{Class: resources.Background, Mode: "collection-prepare"}, run)
+	err := c.limits.run(ctx, false, run)
 	return stage, err
 }
 

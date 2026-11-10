@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	EventD2DServiceMessage      = "d2d_service_message"
-	EventD2DServiceMessageEvent = "d2d.service.message.event"
-	EventChannelConnect         = "ms.channel.connect"
-	EventChannelReady           = "ms.channel.ready"
+	eventD2DServiceMessage      = "d2d_service_message"
+	eventD2DServiceMessageEvent = "d2d.service.message.event"
+	eventChannelConnect         = "ms.channel.connect"
+	eventChannelReady           = "ms.channel.ready"
 )
 
 const (
@@ -25,9 +25,9 @@ const (
 	jsonNull            = "null"
 )
 
-// DeviceInfo holds metadata about a connected Samsung TV, retrieved via
+// deviceInfo holds metadata about a connected Samsung TV, retrieved via
 // the REST API at https://<ip>:8002/api/v2/.
-type DeviceInfo struct {
+type deviceInfo struct {
 	ModelName string `json:"modelName"`
 	// Model is the platform code, such as "24_PTM_FTV_T09", whose prefix is
 	// the two-digit model year.
@@ -44,7 +44,7 @@ type DeviceInfo struct {
 
 // stableDeviceID returns the TV's hardware identity, preferring the device
 // UUID, or "" when the TV reported none.
-func (info DeviceInfo) stableDeviceID() string {
+func (info deviceInfo) stableDeviceID() string {
 	for _, candidate := range []string{info.DUID, info.ID, info.WifiMac} {
 		if value := strings.TrimSpace(candidate); value != "" {
 			return value
@@ -53,12 +53,12 @@ func (info DeviceInfo) stableDeviceID() string {
 	return ""
 }
 
-func validateFrameTVDevice(info DeviceInfo) error {
+func validateFrameTVDevice(info deviceInfo) error {
 	if strings.TrimSpace(info.ModelName) == "" {
 		return errors.New("device model is absent")
 	}
 	if strings.TrimSpace(info.FrameTVSupport) != stringTrue {
-		return fmt.Errorf("device does not report Frame TV support: %w", ErrConnectionFailure)
+		return fmt.Errorf("device does not report Frame TV support: %w", errConnectionFailure)
 	}
 	if _, known := parseDevicePowerState(info.PowerState); !known {
 		return fmt.Errorf("unrecognized device power state %q", info.PowerState)
@@ -77,9 +77,9 @@ func parseDevicePowerState(value string) (PowerState, bool) {
 	}
 }
 
-// ArtContent represents a single artwork item on the TV, as returned by
+// artContent represents a single artwork item on the TV, as returned by
 // the get_content_list art API request.
-type ArtContent struct {
+type artContent struct {
 	ContentID  string `json:"content_id"`
 	CategoryID string `json:"category_id"`
 }
@@ -95,7 +95,7 @@ type connInfo struct {
 
 // deviceInfoResponse is the raw JSON envelope from GET /api/v2/.
 type deviceInfoResponse struct {
-	Device DeviceInfo `json:"device"`
+	Device deviceInfo `json:"device"`
 }
 
 // artResponse is the raw d2d.service.message.event data envelope.

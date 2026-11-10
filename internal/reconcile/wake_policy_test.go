@@ -141,7 +141,7 @@ func TestPowerOnUnknownOutcomePersistsAndRecoversAcrossRestart(t *testing.T) {
 	})
 	if !errors.Is(err, ErrRecoveryRequired) || result.Status != StatusRecoveryRequired ||
 		result.State.Pending == nil || result.State.Pending.Command.Kind != CommandWake ||
-		result.State.Pending.Phase != PhaseOutcomeUnknown {
+		result.State.Pending.Phase != phaseOutcomeUnknown {
 		t.Fatalf("first Run() result = %#v, error = %v", result, err)
 	}
 

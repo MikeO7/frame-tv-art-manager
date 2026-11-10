@@ -119,7 +119,7 @@ func TestProtocolTransportObservesAndMutatesFrameTV(t *testing.T) {
 		t.Fatalf("wire slideshow mutations = %+v, want %+v", got, wantWrites)
 	}
 
-	if reading, err := transport.Brightness(ctx); err != nil || reading != (BrightnessReading{Value: 4, Min: 0, Max: 10}) {
+	if reading, err := transport.Brightness(ctx); err != nil || reading != (brightnessReading{Value: 4, Min: 0, Max: 10}) {
 		t.Fatalf("Brightness() = %+v, %v", reading, err)
 	}
 	if err := transport.ConfigureBrightness(ctx, 7); err != nil {
@@ -175,10 +175,10 @@ func TestProtocolTransportObservesAndMutatesFrameTV(t *testing.T) {
 	if err := transport.Close(ctx); err != nil {
 		t.Fatalf("second Close() error = %v", err)
 	}
-	if _, err := transport.ArtMode(ctx); !errors.Is(err, ErrNotConnected) {
+	if _, err := transport.ArtMode(ctx); !errors.Is(err, errNotConnected) {
 		t.Fatalf("ArtMode() after close error = %v, want ErrNotConnected", err)
 	}
-	if err := transport.Delete(ctx, "art-1"); !errors.Is(err, ErrNotConnected) || protocolErrorOutcome(err) != OutcomeNotAttempted {
+	if err := transport.Delete(ctx, "art-1"); !errors.Is(err, errNotConnected) || protocolErrorOutcome(err) != OutcomeNotAttempted {
 		t.Fatalf("Delete() after close error = %v, want not attempted", err)
 	}
 	if token, err := os.ReadFile(tokenPath); err != nil || string(token) != fixtureToken {
@@ -195,7 +195,7 @@ func TestProtocolTransportUsesLegacyArtAPIRequestNames(t *testing.T) {
 	transport := connectFixtureTransport(t, fixture, filepath.Join(t.TempDir(), "auth", "token"))
 	ctx := context.Background()
 
-	if reading, err := transport.Brightness(ctx); err != nil || reading != (BrightnessReading{Value: 4, Max: 10}) {
+	if reading, err := transport.Brightness(ctx); err != nil || reading != (brightnessReading{Value: 4, Max: 10}) {
 		t.Fatalf("legacy Brightness() = %+v, %v", reading, err)
 	}
 	if len(fixture.requestsNamed(requestArtModeSettings)) != 0 {
@@ -322,10 +322,10 @@ func TestProtocolTransportRejectsUnsafeOrInvalidCommands(t *testing.T) {
 		config: Config{Address: "127.0.0.1:1", TokenPath: filepath.Join(t.TempDir(), "missing-token"), ConnectTimeout: time.Millisecond},
 		logger: slog.New(slog.DiscardHandler),
 	}
-	if err := transport.Connect(context.Background(), true); !errors.Is(err, ErrUnauthorized) {
+	if err := transport.Connect(context.Background(), true); !errors.Is(err, errUnauthorized) {
 		t.Fatalf("dry-run Connect() error = %v, want ErrUnauthorized", err)
 	}
-	if _, err := transport.Brightness(context.Background()); !errors.Is(err, ErrNotConnected) {
+	if _, err := transport.Brightness(context.Background()); !errors.Is(err, errNotConnected) {
 		t.Fatalf("Brightness() error = %v, want ErrNotConnected", err)
 	}
 	canceledCtx, cancel := context.WithCancel(context.Background())

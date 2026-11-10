@@ -20,15 +20,15 @@ func unresolvedUploadState(t *testing.T, before samsung.Observation, receipt *Re
 		t.Fatal(err)
 	}
 	state := initialState(identity)
-	state.UnresolvedUpload = &Pending{
+	state.UnresolvedUpload = &pending{
 		OperationID: "operation", CycleID: "cycle", CollectionGen: digestHex("generation"),
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
-		InventoryBefore:   InventoryFingerprint{Digest: before.Inventory.Fingerprint},
-		Command: CommandIntent{
+		InventoryBefore:   inventoryFingerprint{Digest: before.Inventory.Fingerprint},
+		Command: commandIntent{
 			Kind: CommandUpload, Digest: digestHex("art"), Name: "art.jpg", Path: "/art/art.jpg",
 			FileType: collection.FileTypeJPEG, Size: 3, Matte: defaultMatte,
 		},
-		Phase: PhaseOutcomeUnknown, Receipt: receipt, PreparedAt: &preparedAt,
+		Phase: phaseOutcomeUnknown, Receipt: receipt, PreparedAt: &preparedAt,
 		InventoryBeforeIDs: slices.Clone(before.Inventory.ContentIDs),
 	}
 	return state

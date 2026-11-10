@@ -56,8 +56,8 @@ type StageRequest struct {
 	Logger *slog.Logger
 }
 
-// Rename records one namespace effect produced inside a Stage.
-type Rename struct {
+// rename records one namespace effect produced inside a Stage.
+type rename struct {
 	OldName string
 	NewName string
 }
@@ -67,7 +67,7 @@ type Rename struct {
 type Stage struct {
 	Directory   string
 	Optimized   int
-	Renames     []Rename
+	Renames     []rename
 	Derivatives []Derivative
 
 	workspace string
@@ -152,7 +152,7 @@ func StageCatalog(ctx context.Context, request StageRequest) (*Stage, error) {
 }
 
 func derivativesFromRenames(
-	renames []Rename,
+	renames []rename,
 	transformKey string,
 	metadata map[string]StageInput,
 ) []Derivative {

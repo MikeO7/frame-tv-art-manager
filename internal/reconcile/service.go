@@ -87,7 +87,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	replan := func(observation samsung.Observation, state State) (Plan, State, error) {
 		plan, planned, err := s.buildPlan(request.Snapshot, observation, state, policy)
 		if err == nil && selectedThisCycle {
-			plan.Commands = withoutCommand(plan.Commands, CommandSelect)
+			plan.Commands = withoutCommand(plan.Commands, commandSelect)
 		}
 		if err == nil && uploadUnresolved {
 			plan.Commands = artworkCommandsBlocked(plan.Commands)
@@ -118,7 +118,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	currentPlan := plan
 	storageFullAbsorbed := false
 	paceMutation := false
-	var lastAttempt *CommandIntent
+	var lastAttempt *commandIntent
 	commandAttempts := 0
 	for len(currentPlan.Commands) > 0 {
 		candidate := currentPlan.Commands[0]
@@ -155,7 +155,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		attempted := command
 		lastAttempt = &attempted
 		commandAttempts++
-		if command.Kind == CommandPowerOff {
+		if command.Kind == commandPowerOff {
 			result.powerOffAttempted = true
 		}
 		state, observation, err = s.execute(ctx, executionInput{
@@ -191,10 +191,10 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		commandAttempts = 0
 		result.Applied++
 		result.AppliedCommands = append(result.AppliedCommands, command.Kind)
-		if command.Kind == CommandPowerOff {
+		if command.Kind == commandPowerOff {
 			break
 		}
-		if command.Kind == CommandSelect {
+		if command.Kind == commandSelect {
 			selectedThisCycle = true
 		}
 		currentPlan, state, err = replan(observation, state)
@@ -246,7 +246,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 func (s *service) logMutationRetry(
 	ctx context.Context,
 	cycleID string,
-	command CommandIntent,
+	command commandIntent,
 	attempt int,
 	err error,
 ) {

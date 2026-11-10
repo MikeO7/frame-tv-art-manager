@@ -30,20 +30,20 @@ func TestClassifyObservationErrorPolicy(t *testing.T) {
 			name: "TV did not answer in time", cause: fmt.Errorf("dial tcp: %w", context.DeadlineExceeded),
 			wantKind: ErrorKindTimeout, retryable: true,
 		},
-		{name: "unauthorized", cause: ErrUnauthorized, wantKind: ErrorKindUnauthorized},
-		{name: "timeout", cause: ErrTimeout, wantKind: ErrorKindTimeout, retryable: true},
-		{name: "connection failure", cause: ErrConnectionFailure, wantKind: ErrorKindUnreachable, retryable: true},
-		{name: "not connected", cause: ErrNotConnected, wantKind: ErrorKindUnreachable, retryable: true},
+		{name: "unauthorized", cause: errUnauthorized, wantKind: ErrorKindUnauthorized},
+		{name: "timeout", cause: errTimeout, wantKind: ErrorKindTimeout, retryable: true},
+		{name: "connection failure", cause: errConnectionFailure, wantKind: ErrorKindUnreachable, retryable: true},
+		{name: "not connected", cause: errNotConnected, wantKind: ErrorKindUnreachable, retryable: true},
 		{name: "invalid response", cause: errors.New("malformed response"), wantKind: ErrorKindInvalidResponse, retryable: true},
 		{
 			name: "typed policy is preserved",
 			cause: &Error{
-				Kind:      ErrorKindPersistence,
+				Kind:      errorKindPersistence,
 				Operation: "persist token",
 				Retryable: false,
 				Cause:     io.ErrUnexpectedEOF,
 			},
-			wantKind: ErrorKindPersistence,
+			wantKind: errorKindPersistence,
 		},
 	}
 	for _, test := range tests {
@@ -112,7 +112,7 @@ func TestAdapterCloseContextRetainsCleanupOpportunity(t *testing.T) {
 func TestObservationBackoffBlocksNetworkAndReportsSchedule(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)}
 	transport := eligibleObservationTransport(json.RawMessage(`[]`))
-	transport.connectErr = ErrConnectionFailure
+	transport.connectErr = errConnectionFailure
 	adapter := newTestAdapter(t, clock, transport)
 
 	_, firstErr := adapter.Observe(context.Background(), ObserveRequest{
@@ -130,7 +130,7 @@ func TestObservationBackoffBlocksNetworkAndReportsSchedule(t *testing.T) {
 	observation, secondErr := adapter.Observe(context.Background(), ObserveRequest{
 		CycleID: "cycle-2", CollectionGeneration: "generation",
 	})
-	if observation.Disposition != DispositionBlockedBackoff || observation.Connection != ConnectionBackingOff ||
+	if observation.Disposition != DispositionBlockedBackoff || observation.Connection != connectionBackingOff ||
 		!unauthorized(observation.Authorization) {
 		t.Fatalf("backoff observation = %+v, want blocked without authorization", observation)
 	}

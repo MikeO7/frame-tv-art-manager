@@ -15,7 +15,7 @@ type initialStateInput struct {
 	request     Request
 	policy      Policy
 	observation samsung.Observation
-	identity    TVIdentity
+	identity    tvIdentity
 	state       State
 	exists      bool
 }
@@ -39,7 +39,7 @@ func (s *service) prepareInitialState(ctx context.Context, input initialStateInp
 
 func (s *service) stateForFirstRun(
 	ctx context.Context,
-	identity TVIdentity,
+	identity tvIdentity,
 	snapshot collection.Snapshot,
 	observation samsung.Observation,
 	dryRun bool,

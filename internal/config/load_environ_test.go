@@ -264,7 +264,7 @@ func TestLoadEnvironNormalizesRelativePaths(t *testing.T) {
 	}
 }
 
-func assertWarningVariables(t *testing.T, warnings []Warning, variables ...string) {
+func assertWarningVariables(t *testing.T, warnings []warning, variables ...string) {
 	t.Helper()
 	if len(warnings) != len(variables) {
 		t.Fatalf("warnings = %+v, want variables %v", warnings, variables)

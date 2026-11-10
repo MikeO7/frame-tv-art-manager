@@ -26,7 +26,7 @@ func (p *directProvider) CanHandle(line string) bool {
 	return true
 }
 
-func (p *directProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *directProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	urlStr := strings.TrimPrefix(line, "direct:")
 
 	u, err := neturl.Parse(urlStr)
@@ -37,7 +37,7 @@ func (p *directProvider) Resolve(ctx context.Context, line string) ([]SourceImag
 		return nil, errors.New("unsupported direct URL scheme")
 	}
 
-	return []SourceImage{
+	return []sourceImage{
 		{
 			URL:      urlStr,
 			Identity: sourceURLIdentity(p.Name(), urlStr),

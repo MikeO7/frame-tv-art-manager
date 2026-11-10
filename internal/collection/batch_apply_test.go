@@ -14,8 +14,6 @@ import (
 	"testing"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 func TestCollisionSafeNameBoundsSourceIdentity(t *testing.T) {
@@ -25,7 +23,7 @@ func TestCollisionSafeNameBoundsSourceIdentity(t *testing.T) {
 		stem: "ignored", typeID: FileTypeJPEG, digest: sha256.Sum256([]byte("source bytes")),
 	}
 	name := collisionSafeName(nil, input, Origin{Key: key, Class: OriginSource})
-	if len(name) > artwork.MaxNameBytes || !strings.HasSuffix(name, ".jpg") {
+	if len(name) > maxNameBytes || !strings.HasSuffix(name, ".jpg") {
 		t.Fatalf("collisionSafeName() = %q (%d bytes)", name, len(name))
 	}
 }

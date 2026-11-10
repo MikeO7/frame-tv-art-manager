@@ -18,7 +18,7 @@ type executionInput struct {
 	policy      Policy
 	state       State
 	observation samsung.Observation
-	intent      CommandIntent
+	intent      commandIntent
 	pace        bool
 }
 
@@ -35,10 +35,10 @@ func (s *service) execute(ctx context.Context, input executionInput) (State, sam
 	prepared := cloneState(state)
 	prepared.Revision++
 	preparedAt := s.clock.Now()
-	prepared.Pending = &Pending{
+	prepared.Pending = &pending{
 		OperationID: operationID, CycleID: input.request.CycleID, CollectionGen: input.request.Snapshot.Generation,
-		PolicyFingerprint: policyFingerprint, InventoryBefore: InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-		Command: input.intent, Phase: PhasePrepared, PreparedAt: &preparedAt,
+		PolicyFingerprint: policyFingerprint, InventoryBefore: inventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+		Command: input.intent, Phase: phasePrepared, PreparedAt: &preparedAt,
 	}
 	if input.intent.Kind == CommandUpload {
 		prepared.Pending.InventoryBeforeIDs = slices.Clone(observation.Inventory.ContentIDs)
@@ -65,7 +65,7 @@ func (s *service) execute(ctx context.Context, input executionInput) (State, sam
 
 func receiptObservation(
 	observation samsung.Observation,
-	intent CommandIntent,
+	intent commandIntent,
 	receipt samsung.Receipt,
 ) samsung.Observation {
 	switch intent.Kind {
@@ -78,13 +78,13 @@ func receiptObservation(
 		observation.Inventory.ContentIDs = slices.DeleteFunc(observation.Inventory.ContentIDs, func(id string) bool {
 			return id == intent.ContentID
 		})
-	case CommandSlideshow:
+	case commandSlideshow:
 		observation.Slideshow = samsung.SlideshowObservation{
 			Setting: *intent.DesiredSlideshow, Known: true, ObservedAt: receipt.CompletedAt,
 		}
 	case CommandBrightness:
 		observation.Brightness = samsung.SettingObservation{Value: *intent.DesiredValue, Known: true, ObservedAt: receipt.CompletedAt}
-	case CommandPowerOff:
+	case commandPowerOff:
 		observation.Power = samsung.PowerStateOff
 		observation.Disposition = samsung.DispositionBlockedPowerOff
 	case CommandWake:
@@ -107,7 +107,7 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 	if pending == nil {
 		return result, nil
 	}
-	if pending.Phase == PhaseApplied && pending.Receipt != nil && pending.Receipt.Outcome == samsung.OutcomeApplied {
+	if pending.Phase == phaseApplied && pending.Receipt != nil && pending.Receipt.Outcome == samsung.OutcomeApplied {
 		return resolveAppliedReceipt(result, observation, now)
 	}
 	switch pending.Command.Kind {
@@ -123,7 +123,7 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 			return state, ErrRecoveryRequired
 		}
 		if slices.Contains(observation.Inventory.ContentIDs, pending.Command.ContentID) {
-			if pending.Phase == PhaseApplied {
+			if pending.Phase == phaseApplied {
 				return state, ErrRecoveryRequired
 			}
 			result.Pending = nil
@@ -134,17 +134,17 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 			recordShown(&result, pending.Command.Digest, now)
 		}
 		delete(result.Tombstones, pending.Command.ContentID)
-	case CommandPowerOff, CommandWake:
+	case commandPowerOff, CommandWake:
 		// Either known power state settles the command: the target state proves
 		// it applied and the opposite state proves it did not.
-		if pending.Phase != PhaseApplied &&
+		if pending.Phase != phaseApplied &&
 			observation.Power != samsung.PowerStateOn && observation.Power != samsung.PowerStateOff {
 			return state, ErrRecoveryRequired
 		}
-	case CommandSelect:
+	case commandSelect:
 		// A picture change only affects what is on screen. When its outcome
 		// is unknown, the next due change picks again.
-	case CommandSlideshow:
+	case commandSlideshow:
 		if pending.Command.PreviousSlideshow == nil || pending.Command.DesiredSlideshow == nil ||
 			!settingSettled(observation.Slideshow.Known, observation.Capabilities.SlideshowRead) {
 			return state, ErrRecoveryRequired
@@ -175,11 +175,11 @@ func resolveAppliedReceipt(state State, observation samsung.Observation, now tim
 		recordShown(&state, pending.Command.Digest, now)
 	case CommandDeleteUnknown:
 		delete(state.Tombstones, pending.Command.ContentID)
-	case CommandSelect:
+	case commandSelect:
 		// The applied receipt is issued only after get_current_artwork
 		// confirmed the picture.
 		recordDisplay(&state, pending.Command, now)
-	case CommandSlideshow, CommandBrightness, CommandPowerOff, CommandWake:
+	case commandSlideshow, CommandBrightness, commandPowerOff, CommandWake:
 		// The Samsung applied receipt is issued only after command-specific
 		// postcondition verification.
 	default:
@@ -189,7 +189,7 @@ func resolveAppliedReceipt(state State, observation samsung.Observation, now tim
 	return state, nil
 }
 
-func foldUploadBinding(state *State, pending *Pending, observation samsung.Observation, confirmedAt time.Time) {
+func foldUploadBinding(state *State, pending *pending, observation samsung.Observation, confirmedAt time.Time) {
 	reusedContentID := false
 	for digest, binding := range state.Bindings {
 		if digest != pending.Command.Digest && binding.ContentID == pending.Receipt.ContentID {
@@ -201,13 +201,13 @@ func foldUploadBinding(state *State, pending *Pending, observation samsung.Obser
 	if reusedContentID && observation.Inventory.Known &&
 		pending.InventoryBefore.Digest == observation.Inventory.Fingerprint &&
 		slices.Contains(observation.Inventory.ContentIDs, pending.Receipt.ContentID) {
-		state.Capacity = CapacityEvidence{
+		state.Capacity = capacityEvidence{
 			Known: true, Maximum: len(observation.Inventory.ContentIDs), ObservedAt: confirmedAt,
 		}
 	}
 }
 
-func uploadBinding(pending *Pending, confirmedAt time.Time) Binding {
+func uploadBinding(pending *pending, confirmedAt time.Time) Binding {
 	return Binding{
 		Digest: pending.Command.Digest, ContentID: pending.Receipt.ContentID, Name: pending.Command.Name,
 		CollectionGeneration: pending.CollectionGen, ConfirmedAt: confirmedAt,

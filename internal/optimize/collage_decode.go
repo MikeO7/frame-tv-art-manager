@@ -76,5 +76,5 @@ func loadAndRotateImageWithConfig(ctx context.Context, path string, cfg Config, 
 	if err != nil {
 		return nil, err
 	}
-	return toRGBA(RotateImage(normalizeColor(img, colorMetadata, cfg, logger, filepath.Base(path)), orientation)), nil
+	return toRGBA(rotateImage(normalizeColor(img, colorMetadata, cfg, logger, filepath.Base(path)), orientation)), nil
 }

@@ -14,7 +14,7 @@ func TestBuildPlanLeavesUnreportedSettingsAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := BuildPlan(snapshot(artworkItem("a.jpg", "a")), observation, initialState(identity), Policy{
+	plan, err := buildPlan(snapshot(artworkItem("a.jpg", "a")), observation, initialState(identity), Policy{
 		Slideshow: SlideshowPolicy{
 			Mode: PolicySet, Setting: samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle},
 		},
@@ -58,7 +58,7 @@ func TestBuildPlanFitsBrightnessToTheTVScale(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			plan, err := BuildPlan(snapshot(), observation, initialState(identity), Policy{
+			plan, err := buildPlan(snapshot(), observation, initialState(identity), Policy{
 				Brightness: SettingPolicy{Mode: PolicySet, Value: test.policy},
 			})
 			if err != nil {
@@ -98,7 +98,7 @@ func TestBuildPlanKeepsTheSlideshowCategoryTheTVPlays(t *testing.T) {
 		{name: "same interval and kind", setting: samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle}},
 		{name: "new interval", setting: samsung.SlideshowSetting{Interval: 60, Kind: samsung.SlideshowShuffle}, wantPlan: true},
 	} {
-		plan, err := BuildPlan(snapshot(), observation, initialState(identity), Policy{
+		plan, err := buildPlan(snapshot(), observation, initialState(identity), Policy{
 			Slideshow: SlideshowPolicy{Mode: PolicySet, Setting: test.setting},
 		})
 		if err != nil {
@@ -156,7 +156,7 @@ func TestBuildPlanSlideshowModes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			plan, err := BuildPlan(snapshot(), observation, initialState(identity), Policy{Slideshow: test.policy})
+			plan, err := buildPlan(snapshot(), observation, initialState(identity), Policy{Slideshow: test.policy})
 			if err != nil {
 				t.Fatalf("BuildPlan() error = %v", err)
 			}

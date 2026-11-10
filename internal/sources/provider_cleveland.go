@@ -76,7 +76,7 @@ func (p *clevelandProvider) fetchJSON(ctx context.Context, apiURL string, out an
 	}, out)
 }
 
-func (p *clevelandProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *clevelandProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
 		return nil, errors.New("invalid cleveland format; use cleveland:search:<query> or cleveland:object:<id>")
@@ -105,7 +105,7 @@ func (p *clevelandProvider) Resolve(ctx context.Context, line string) ([]SourceI
 		if !ok {
 			return nil, errors.New("cleveland artwork is not CC0 or has no JPEG image large enough for the panel")
 		}
-		return []SourceImage{candidate.image}, nil
+		return []sourceImage{candidate.image}, nil
 	default:
 		return nil, errors.New("unknown cleveland type")
 	}
@@ -179,12 +179,12 @@ func (p *clevelandProvider) candidate(artwork clevelandArtwork) (Candidate, bool
 		artist = plainText(artwork.Creators[0].Description)
 	}
 	urls := renditionURLs(ranked)
-	attribution := Attribution{Provider: p.Name(), Title: plainText(artwork.Title), Artist: artist, SourceURL: link, License: publicDomainCC0}
+	attribution := attribution{Provider: p.Name(), Title: plainText(artwork.Title), Artist: artist, SourceURL: link, License: publicDomainCC0}
 	return Candidate{
 		Provider: p.Name(), ID: id, Title: attribution.Title, Artist: artist, Date: plainText(artwork.CreationDate),
 		ImageURL: ranked[0].url, Width: ranked[0].width, Height: ranked[0].height, License: publicDomainCC0, Link: link,
 		SourceLine: providerCleveland + ":" + cmdObject + ":" + id,
-		image: SourceImage{
+		image: sourceImage{
 			URL: urls[0], Fallbacks: urls[1:], Identity: museumObjectIdentity(p.Name(), id), Attribution: attribution,
 		},
 	}, true

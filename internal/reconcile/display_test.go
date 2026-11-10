@@ -41,22 +41,22 @@ func showLibrary(t *testing.T, count int) (collection.Snapshot, samsung.Observat
 	return snap, observation, state
 }
 
-func selectCommands(commands []CommandIntent) []CommandIntent {
-	return slices.DeleteFunc(slices.Clone(commands), func(command CommandIntent) bool {
-		return command.Kind != CommandSelect
+func selectCommands(commands []commandIntent) []commandIntent {
+	return slices.DeleteFunc(slices.Clone(commands), func(command commandIntent) bool {
+		return command.Kind != commandSelect
 	})
 }
 
 // showSequence plans and applies count picture changes, one interval apart,
 // and returns the content IDs shown in order.
-func showSequence(t *testing.T, count int, library int, order ShowOrder) []string {
+func showSequence(t *testing.T, count int, library int, order showOrder) []string {
 	t.Helper()
 	snap, observation, state := showLibrary(t, library)
 	policy := Policy{Show: ShowPolicy{Interval: 15 * time.Minute, Order: order}}
 	shown := make([]string, 0, count)
 	for step := range count {
 		observation.ObservedAt = testTime.Add(time.Duration(step) * 15 * time.Minute)
-		plan, err := BuildPlan(snap, observation, state, policy)
+		plan, err := buildPlan(snap, observation, state, policy)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,14 +115,14 @@ func TestPlanShowDecidesWhenAChangeIsDue(t *testing.T) {
 			name:   "too soon",
 			policy: ShowPolicy{Interval: interval},
 			mutate: func(state *State, observation *samsung.Observation) {
-				state.Display = &DisplayState{Digest: digestHex("a"), At: observation.ObservedAt.Add(-5 * time.Minute), Round: 1}
+				state.Display = &displayState{Digest: digestHex("a"), At: observation.ObservedAt.Add(-5 * time.Minute), Round: 1}
 			},
 		},
 		{
 			name:   "a timer firing slightly early still counts",
 			policy: ShowPolicy{Interval: interval},
 			mutate: func(state *State, observation *samsung.Observation) {
-				state.Display = &DisplayState{Digest: digestHex("a"), At: observation.ObservedAt.Add(-14 * time.Minute), Round: 1}
+				state.Display = &displayState{Digest: digestHex("a"), At: observation.ObservedAt.Add(-14 * time.Minute), Round: 1}
 			},
 			wantDue: true,
 		},
@@ -148,7 +148,7 @@ func TestPlanShowDecidesWhenAChangeIsDue(t *testing.T) {
 			if test.mutate != nil {
 				test.mutate(&state, &observation)
 			}
-			plan, err := BuildPlan(snap, observation, state, Policy{Show: test.policy})
+			plan, err := buildPlan(snap, observation, state, Policy{Show: test.policy})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -162,7 +162,7 @@ func TestPlanShowDecidesWhenAChangeIsDue(t *testing.T) {
 func TestPlanShowSkipsWhatIsAlreadyOnScreen(t *testing.T) {
 	snap, observation, state := showLibrary(t, 2)
 	observation.CurrentArtwork = "id-a.jpg"
-	plan, err := BuildPlan(snap, observation, state, Policy{Show: ShowPolicy{Interval: time.Minute, Order: ShowSequential}})
+	plan, err := buildPlan(snap, observation, state, Policy{Show: ShowPolicy{Interval: time.Minute, Order: ShowSequential}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestPlanShowSkipsWhatIsAlreadyOnScreen(t *testing.T) {
 
 	single, singleObservation, singleState := showLibrary(t, 1)
 	singleObservation.CurrentArtwork = "id-a.jpg"
-	plan, err = BuildPlan(single, singleObservation, singleState, Policy{Show: ShowPolicy{Interval: time.Minute}})
+	plan, err = buildPlan(single, singleObservation, singleState, Policy{Show: ShowPolicy{Interval: time.Minute}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,17 +213,17 @@ func TestRunRecordsAVerifiedPictureChange(t *testing.T) {
 }
 
 func TestDisplayStateValidation(t *testing.T) {
-	valid := DisplayState{Digest: digestHex("a"), At: testTime, Round: 2, Picked: map[string]int{digestHex("a"): 2, digestHex("b"): 1}}
+	valid := displayState{Digest: digestHex("a"), At: testTime, Round: 2, Picked: map[string]int{digestHex("a"): 2, digestHex("b"): 1}}
 	tests := []struct {
 		name    string
-		mutate  func(*DisplayState)
+		mutate  func(*displayState)
 		wantErr bool
 	}{
 		{name: "valid"},
-		{name: "bad digest", mutate: func(display *DisplayState) { display.Digest = "nope" }, wantErr: true},
-		{name: "zero time", mutate: func(display *DisplayState) { display.At = time.Time{} }, wantErr: true},
-		{name: "zero round", mutate: func(display *DisplayState) { display.Round = 0 }, wantErr: true},
-		{name: "future round", mutate: func(display *DisplayState) { display.Picked[digestHex("b")] = 3 }, wantErr: true},
+		{name: "bad digest", mutate: func(display *displayState) { display.Digest = "nope" }, wantErr: true},
+		{name: "zero time", mutate: func(display *displayState) { display.At = time.Time{} }, wantErr: true},
+		{name: "zero round", mutate: func(display *displayState) { display.Round = 0 }, wantErr: true},
+		{name: "future round", mutate: func(display *displayState) { display.Picked[digestHex("b")] = 3 }, wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

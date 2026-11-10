@@ -11,9 +11,9 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-// BuildPlan is a pure deterministic planner. It never reads files, observes a
+// buildPlan is a pure deterministic planner. It never reads files, observes a
 // TV, or mutates its inputs.
-func BuildPlan(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
+func buildPlan(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
 	if err := validateSnapshot(snapshot); err != nil {
 		return Plan{}, err
 	}
@@ -97,12 +97,12 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 	})
 	plan.CapacityLimited = admission.limited
 	plan.Rotation = admission.rotation
-	upload := func(artwork waitingArtwork) CommandIntent {
+	upload := func(artwork waitingArtwork) commandIntent {
 		matte := policy.DefaultMatte
 		if override, exists := matteOverrides[artwork.item.Name]; exists {
 			matte = override
 		}
-		return CommandIntent{
+		return commandIntent{
 			Kind: CommandUpload, Digest: artwork.digest, Name: artwork.item.Name,
 			Path: artwork.item.Path, FileType: artwork.item.Type, Size: artwork.item.Size, Matte: matte,
 			PortraitMatte: policy.PortraitMatte,
@@ -123,14 +123,14 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		if !policy.AllowEmpty && boundDesired == 0 && ownedRemaining <= 1 {
 			continue
 		}
-		plan.Commands = append(plan.Commands, CommandIntent{
+		plan.Commands = append(plan.Commands, commandIntent{
 			Kind: CommandDeleteOwned, Digest: binding.Digest, ContentID: binding.ContentID,
 		})
 		ownedRemaining--
 	}
 	for _, swap := range admission.swaps {
 		plan.Commands = append(plan.Commands,
-			CommandIntent{Kind: CommandDeleteOwned, Digest: swap.evict.Digest, ContentID: swap.evict.ContentID},
+			commandIntent{Kind: CommandDeleteOwned, Digest: swap.evict.Digest, ContentID: swap.evict.ContentID},
 			upload(swap.upload),
 		)
 	}
@@ -139,7 +139,7 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 			if _, owned := boundContent[contentID]; owned {
 				continue
 			}
-			plan.Commands = append(plan.Commands, CommandIntent{
+			plan.Commands = append(plan.Commands, commandIntent{
 				Kind: CommandDeleteUnknown, ContentID: contentID, RemoveUnknownApproved: true,
 			})
 		}
@@ -168,8 +168,8 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		bothOff := desired.Interval == 0 && observation.Slideshow.Setting.Interval == 0
 		if observation.Slideshow.Setting != desired && !bothOff {
 			previous := observation.Slideshow.Setting
-			plan.Commands = append(plan.Commands, CommandIntent{
-				Kind: CommandSlideshow, PreviousSlideshow: &previous, DesiredSlideshow: &desired,
+			plan.Commands = append(plan.Commands, commandIntent{
+				Kind: commandSlideshow, PreviousSlideshow: &previous, DesiredSlideshow: &desired,
 			})
 		}
 	}
@@ -182,24 +182,24 @@ func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation,
 		}
 		if observation.Brightness.Value != desired {
 			previous := observation.Brightness.Value
-			plan.Commands = append(plan.Commands, CommandIntent{
+			plan.Commands = append(plan.Commands, commandIntent{
 				Kind: CommandBrightness, PreviousValue: &previous, DesiredValue: &desired,
 			})
 		}
 	}
 	if policy.Power == PowerOff {
-		plan.Commands = append(plan.Commands, CommandIntent{Kind: CommandPowerOff})
+		plan.Commands = append(plan.Commands, commandIntent{Kind: commandPowerOff})
 	}
 	return plan, nil
 }
 
-func initialState(identity TVIdentity) State {
+func initialState(identity tvIdentity) State {
 	return State{
 		Version:    stateVersion,
 		TV:         identity,
 		Revision:   1,
 		Bindings:   map[string]Binding{},
-		Tombstones: map[string]Tombstone{},
+		Tombstones: map[string]tombstone{},
 	}
 }
 
@@ -207,7 +207,7 @@ func cloneState(state State) State {
 	clone := state
 	clone.Bindings = make(map[string]Binding, len(state.Bindings))
 	maps.Copy(clone.Bindings, state.Bindings)
-	clone.Tombstones = make(map[string]Tombstone, len(state.Tombstones))
+	clone.Tombstones = make(map[string]tombstone, len(state.Tombstones))
 	maps.Copy(clone.Tombstones, state.Tombstones)
 	clone.LastShown = maps.Clone(state.LastShown)
 	clone.Pending = clonePending(state.Pending)
@@ -216,7 +216,7 @@ func cloneState(state State) State {
 	return clone
 }
 
-func clonePending(value *Pending) *Pending {
+func clonePending(value *pending) *pending {
 	if value == nil {
 		return nil
 	}

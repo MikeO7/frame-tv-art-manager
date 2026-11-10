@@ -31,7 +31,7 @@ func newStateStore(directory string) stateStore {
 // path keys a record by the TV's stable device ID when it is known, so an
 // address change finds the same record. Without one it uses the address and
 // model, which is also how records written before device IDs were keyed.
-func (s stateStore) path(identity TVIdentity) string {
+func (s stateStore) path(identity tvIdentity) string {
 	key := sha256.Sum256([]byte(identity.Address + "\x00" + identity.Model))
 	if identity.DeviceID != "" {
 		key = sha256.Sum256([]byte("device\x00" + identity.DeviceID + "\x00" + identity.Model))
@@ -39,7 +39,7 @@ func (s stateStore) path(identity TVIdentity) string {
 	return filepath.Join(s.directory, "tv_"+hex.EncodeToString(key[:16])+"_reconciliation.json")
 }
 
-func (s stateStore) load(ctx context.Context, identity TVIdentity) (State, bool, error) {
+func (s stateStore) load(ctx context.Context, identity tvIdentity) (State, bool, error) {
 	if err := s.validateDirectory(false); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return State{}, false, nil
@@ -135,7 +135,7 @@ func encodeState(state State) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-func decodeState(data []byte, identity TVIdentity) (State, error) {
+func decodeState(data []byte, identity tvIdentity) (State, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var state State
@@ -183,14 +183,14 @@ func ensureJSONEOF(decoder *json.Decoder, subject string) error {
 	return nil
 }
 
-func legacyIdentity(identity TVIdentity) TVIdentity {
+func legacyIdentity(identity tvIdentity) tvIdentity {
 	identity.DeviceID = ""
 	return identity
 }
 
 // removeMigratedRecord deletes the address-keyed record once its content is
 // durable under the device-keyed path, so it can never be loaded again.
-func (s stateStore) removeMigratedRecord(identity TVIdentity) error {
+func (s stateStore) removeMigratedRecord(identity tvIdentity) error {
 	if identity.DeviceID == "" {
 		return nil
 	}

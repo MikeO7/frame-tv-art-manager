@@ -221,15 +221,15 @@ func TestRequestCycleCoalescesAndRunLoopServesIt(t *testing.T) {
 func TestPlacementsFollowTheLatestObservedInventory(t *testing.T) {
 	t.Parallel()
 	engine := &convergenceEngine{}
-	engine.recordPlacements(TVSyncResult{IP: "192.0.2.10", OnTV: []string{"aa", "bb"}})
-	engine.recordPlacements(TVSyncResult{IP: "192.0.2.11", OnTV: []string{"bb"}})
-	engine.recordPlacements(TVSyncResult{IP: "192.0.2.11"})
+	engine.recordPlacements(tvSyncResult{IP: "192.0.2.10", OnTV: []string{"aa", "bb"}})
+	engine.recordPlacements(tvSyncResult{IP: "192.0.2.11", OnTV: []string{"bb"}})
+	engine.recordPlacements(tvSyncResult{IP: "192.0.2.11"})
 	placements := engine.placementsByDigest()
 	if !slices.Equal(placements["aa"], []string{"192.0.2.10"}) ||
 		!slices.Equal(placements["bb"], []string{"192.0.2.10", "192.0.2.11"}) {
 		t.Fatalf("placements = %v", placements)
 	}
-	engine.recordPlacements(TVSyncResult{IP: "192.0.2.10", OnTV: []string{}})
+	engine.recordPlacements(tvSyncResult{IP: "192.0.2.10", OnTV: []string{}})
 	if placements := engine.placementsByDigest(); len(placements["aa"]) != 0 {
 		t.Fatalf("placements after empty inventory = %v", placements)
 	}

@@ -69,7 +69,7 @@ func TestCommonsResolveRecordsLicenseAndRequestsStandardThumbnails(t *testing.T)
 			strings.Join(wombat.Fallbacks, ",") != "https://thumb.example/a/Wombat.jpg/1920px-Wombat.jpg?utm_source=x" {
 			t.Errorf("%s: renditions = %s %v, want the 3840 then 1920 thumbnails", line, wombat.URL, wombat.Fallbacks)
 		}
-		want := Attribution{
+		want := attribution{
 			Provider: providerCommons, Title: "Common wombat", Artist: "Charles J. Sharp & friends",
 			SourceURL: "https://commons.example/wiki/File:Wombat.jpg", License: "CC BY-SA 4.0",
 		}

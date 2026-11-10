@@ -37,11 +37,11 @@ func TestSlideshowKindChangesPolicyFingerprintAndPlanIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("observation identity: %v", err)
 	}
-	plan, err := BuildPlan(snapshot(), observation, initialState(identity), sequential)
+	plan, err := buildPlan(snapshot(), observation, initialState(identity), sequential)
 	if err != nil {
 		t.Fatalf("BuildPlan() error = %v", err)
 	}
-	if len(plan.Commands) != 1 || plan.Commands[0].Kind != CommandSlideshow {
+	if len(plan.Commands) != 1 || plan.Commands[0].Kind != commandSlideshow {
 		t.Fatalf("commands = %#v, want one slideshow command", plan.Commands)
 	}
 	wantPrevious := samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowShuffle}
@@ -54,7 +54,7 @@ func TestSlideshowKindChangesPolicyFingerprintAndPlanIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal slideshow intent: %v", err)
 	}
-	var restored CommandIntent
+	var restored commandIntent
 	if err := json.Unmarshal(durable, &restored); err != nil {
 		t.Fatalf("unmarshal slideshow intent: %v", err)
 	}

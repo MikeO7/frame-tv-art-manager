@@ -70,7 +70,7 @@ func convergenceObservationCapabilities(policy Policy) samsung.CapabilitySet {
 	return required
 }
 
-func requiredCapabilities(command CommandIntent) samsung.CapabilitySet {
+func requiredCapabilities(command commandIntent) samsung.CapabilitySet {
 	required := baseCapabilities
 	switch command.Kind {
 	case CommandWake:
@@ -79,13 +79,13 @@ func requiredCapabilities(command CommandIntent) samsung.CapabilitySet {
 		required |= samsung.CapabilityImageUpload
 	case CommandDeleteOwned, CommandDeleteUnknown:
 		required |= samsung.CapabilityImageDeletion
-	case CommandSelect:
+	case commandSelect:
 		required |= samsung.CapabilityImageSelection
-	case CommandSlideshow:
+	case commandSlideshow:
 		required |= samsung.CapabilitySlideshowRead | samsung.CapabilitySlideshowWrite
 	case CommandBrightness:
 		required |= samsung.CapabilityBrightnessRead | samsung.CapabilityBrightnessWrite
-	case CommandPowerOff:
+	case commandPowerOff:
 		required |= samsung.CapabilityRemotePower
 	}
 	return required
@@ -93,17 +93,17 @@ func requiredCapabilities(command CommandIntent) samsung.CapabilitySet {
 
 // sameIntent compares intents by value, including the settings behind their
 // optional pointers.
-func sameIntent(left, right CommandIntent) bool {
+func sameIntent(left, right commandIntent) bool {
 	return reflect.DeepEqual(left, right)
 }
 
-func withoutCommand(commands []CommandIntent, kind CommandKind) []CommandIntent {
-	return slices.DeleteFunc(slices.Clone(commands), func(command CommandIntent) bool {
+func withoutCommand(commands []commandIntent, kind CommandKind) []commandIntent {
+	return slices.DeleteFunc(slices.Clone(commands), func(command commandIntent) bool {
 		return command.Kind == kind
 	})
 }
 
-func samsungCommand(intent CommandIntent) (samsung.Command, error) {
+func samsungCommand(intent commandIntent) (samsung.Command, error) {
 	switch intent.Kind {
 	case CommandUpload:
 		digestBytes, err := hex.DecodeString(intent.Digest)
@@ -118,13 +118,13 @@ func samsungCommand(intent CommandIntent) (samsung.Command, error) {
 		}, nil
 	case CommandDeleteOwned, CommandDeleteUnknown:
 		return samsung.Delete{ContentID: intent.ContentID}, nil
-	case CommandSelect:
+	case commandSelect:
 		return samsung.Select{ContentID: intent.ContentID}, nil
-	case CommandSlideshow:
+	case commandSlideshow:
 		return samsung.ConfigureSlideshow{Previous: *intent.PreviousSlideshow, Desired: *intent.DesiredSlideshow}, nil
 	case CommandBrightness:
 		return samsung.ConfigureBrightness{PreviousValue: *intent.PreviousValue, Value: *intent.DesiredValue}, nil
-	case CommandPowerOff:
+	case commandPowerOff:
 		return samsung.PowerOff{}, nil
 	case CommandWake:
 		return samsung.Wake{}, nil

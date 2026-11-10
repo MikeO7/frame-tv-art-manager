@@ -13,7 +13,7 @@ import (
 
 const testMCPToken = "mcp-test-token-0123456789abcdef"
 
-func mcpTestServer(t *testing.T, enabled bool) (*Server, *int) {
+func mcpTestServer(t *testing.T, enabled bool) (*server, *int) {
 	t.Helper()
 	reached := 0
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

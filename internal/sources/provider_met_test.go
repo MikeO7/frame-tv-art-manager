@@ -67,7 +67,7 @@ func TestMetSearchKeepsPublicDomainImagesAndCachesObjects(t *testing.T) {
 		images[0].Identity != museumObjectIdentity(providerMet, "1") {
 		t.Errorf("first image = %+v", images[0])
 	}
-	want := Attribution{
+	want := attribution{
 		Provider: providerMet, Title: "Sunflowers", Artist: "Vincent van Gogh",
 		SourceURL: "https://www.metmuseum.org/art/collection/search/1", License: publicDomainCC0,
 	}

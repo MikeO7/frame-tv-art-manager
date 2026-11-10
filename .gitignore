@@ -30,7 +30,7 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
-# Runtime data (root-level only; do not match internal/artwork package)
+# Runtime data (root-level only)
 tokens/
 /artwork/
 

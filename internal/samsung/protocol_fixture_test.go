@@ -209,7 +209,7 @@ func (f *protocolTVFixture) serveHTTP(w http.ResponseWriter, request *http.Reque
 		return
 	}
 	if writeProtocolFixtureJSON(ctx, conn, map[string]any{
-		keyEvent: EventChannelConnect, keyData: map[string]any{"token": json.Number(fixtureToken)},
+		keyEvent: eventChannelConnect, keyData: map[string]any{"token": json.Number(fixtureToken)},
 	}) != nil {
 		return
 	}
@@ -223,7 +223,7 @@ func (f *protocolTVFixture) serveHTTP(w http.ResponseWriter, request *http.Reque
 	if writeProtocolFixtureJSON(ctx, conn, map[string]any{keyEvent: "ms.voiceApp.hide"}) != nil {
 		return
 	}
-	if writeProtocolFixtureJSON(ctx, conn, map[string]any{keyEvent: EventChannelReady, keyData: map[string]any{}}) != nil {
+	if writeProtocolFixtureJSON(ctx, conn, map[string]any{keyEvent: eventChannelReady, keyData: map[string]any{}}) != nil {
 		return
 	}
 	f.serveArtApp(ctx, conn)
@@ -575,7 +575,7 @@ func writeProtocolD2DResponse(ctx context.Context, conn *websocket.Conn, respons
 		return err
 	}
 	return writeProtocolFixtureJSON(ctx, conn, map[string]any{
-		keyEvent: EventD2DServiceMessage, keyData: string(raw), "from": "fixture-host",
+		keyEvent: eventD2DServiceMessage, keyData: string(raw), "from": "fixture-host",
 	})
 }
 

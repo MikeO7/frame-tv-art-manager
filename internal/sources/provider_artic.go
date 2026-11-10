@@ -73,7 +73,7 @@ func (p *articProvider) CanHandle(line string) bool {
 	return strings.HasPrefix(line, "artic:") || strings.HasPrefix(line, "art_institute:") || strings.HasPrefix(line, "art_institute_of_chicago:")
 }
 
-func (p *articProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *articProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
 		return nil, errors.New("invalid art_institute_of_chicago format")
@@ -90,7 +90,7 @@ func (p *articProvider) Resolve(ctx context.Context, line string) ([]SourceImage
 
 // search resolves public-domain matches only: other works are served at a
 // copyright-restricted size far below the panel resolution.
-func (p *articProvider) search(ctx context.Context, query string) ([]SourceImage, error) {
+func (p *articProvider) search(ctx context.Context, query string) ([]sourceImage, error) {
 	candidates, err := p.searchCandidates(ctx, query, museumSearchLimit)
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func (p *articProvider) searchCandidates(ctx context.Context, query string, limi
 }
 
 // resolvePhoto retrieves a single artwork by its ID.
-func (p *articProvider) resolvePhoto(ctx context.Context, id string) ([]SourceImage, error) {
+func (p *articProvider) resolvePhoto(ctx context.Context, id string) ([]sourceImage, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/artworks/%s?fields=%s", p.BaseURL, url.PathEscape(id), articFields)
 	var result struct {
 		Data articArtwork `json:"data"`
@@ -139,7 +139,7 @@ func (p *articProvider) resolvePhoto(ctx context.Context, id string) ([]SourceIm
 	if !ok {
 		return nil, errors.New("artwork image is too small for an allowed IIIF size")
 	}
-	return []SourceImage{candidate.image}, nil
+	return []sourceImage{candidate.image}, nil
 }
 
 func (p *articProvider) candidate(artwork articArtwork) (Candidate, bool) {
@@ -158,7 +158,7 @@ func (p *articProvider) candidate(artwork articArtwork) (Candidate, bool) {
 	// artwork resolved before size selection is recognized.
 	legacy := fmt.Sprintf("%s/%s/full/!3840,2160/0/default.jpg", p.IIIFBaseURL, artwork.ImageID)
 	id := strconv.Itoa(artwork.ID)
-	attribution := Attribution{
+	attribution := attribution{
 		Provider: p.Name(), Title: artwork.Title, Artist: strings.Join(strings.Fields(artwork.ArtistDisplay), " "),
 		SourceURL: "https://www.artic.edu/artworks/" + id, License: publicDomainCC0,
 	}
@@ -167,7 +167,7 @@ func (p *articProvider) candidate(artwork articArtwork) (Candidate, bool) {
 		Provider: p.Name(), ID: id, Title: attribution.Title, Artist: attribution.Artist, Date: plainText(artwork.DateDisplay),
 		ImageURL: candidates[0], Width: renditionWidth, Height: renditionHeight, License: publicDomainCC0,
 		Link: attribution.SourceURL, SourceLine: "artic:" + cmdPhoto + ":" + id,
-		image: SourceImage{
+		image: sourceImage{
 			URL: candidates[0], Fallbacks: candidates[1:], Identity: sourceURLIdentity(p.Name(), legacy), Attribution: attribution,
 		},
 	}, true

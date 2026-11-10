@@ -12,8 +12,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 const controlDirectory = ".frame-tv-art-manager"
@@ -205,12 +203,12 @@ func collisionSafeName(items []Item, input validatedImage, origin Origin) string
 		}
 	}
 	for digestBytes := 6; digestBytes <= len(input.digest); digestBytes += 2 {
-		candidate := artwork.BuildContentName(label, input.digest, extension, digestBytes)
+		candidate := BuildContentName(label, input.digest, extension, digestBytes)
 		if nameAvailable(items, candidate) {
 			return candidate
 		}
 	}
-	return artwork.BuildContentName("artwork", input.digest, extension, len(input.digest))
+	return BuildContentName("artwork", input.digest, extension, len(input.digest))
 }
 
 func nameAvailable(items []Item, candidate string) bool {

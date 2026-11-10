@@ -63,15 +63,15 @@ func TestParseUploadedContentRequiresExplicitValidInventory(t *testing.T) {
 }
 
 func TestValidateFrameTVDeviceFailsClosed(t *testing.T) {
-	valid := DeviceInfo{ModelName: "QN55LS03D", FrameTVSupport: stringTrue, PowerState: stringOn}
+	valid := deviceInfo{ModelName: "QN55LS03D", FrameTVSupport: stringTrue, PowerState: stringOn}
 	tests := []struct {
 		name   string
-		mutate func(*DeviceInfo)
+		mutate func(*deviceInfo)
 	}{
-		{name: "missing model", mutate: func(info *DeviceInfo) { info.ModelName = " " }},
-		{name: "support absent", mutate: func(info *DeviceInfo) { info.FrameTVSupport = "" }},
-		{name: "support false", mutate: func(info *DeviceInfo) { info.FrameTVSupport = stringFalse }},
-		{name: "power unknown", mutate: func(info *DeviceInfo) { info.PowerState = "sleeping" }},
+		{name: "missing model", mutate: func(info *deviceInfo) { info.ModelName = " " }},
+		{name: "support absent", mutate: func(info *deviceInfo) { info.FrameTVSupport = "" }},
+		{name: "support false", mutate: func(info *deviceInfo) { info.FrameTVSupport = stringFalse }},
+		{name: "power unknown", mutate: func(info *deviceInfo) { info.PowerState = "sleeping" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -95,11 +95,11 @@ func TestValidateFrameTVDeviceFailsClosed(t *testing.T) {
 func TestAdapterRejectsUnverifiedFrameTVIdentity(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*DeviceInfo)
+		mutate func(*deviceInfo)
 	}{
-		{name: "unsupported", mutate: func(info *DeviceInfo) { info.FrameTVSupport = stringFalse }},
-		{name: "missing model", mutate: func(info *DeviceInfo) { info.ModelName = "" }},
-		{name: "unknown power", mutate: func(info *DeviceInfo) { info.PowerState = "unknown" }},
+		{name: "unsupported", mutate: func(info *deviceInfo) { info.FrameTVSupport = stringFalse }},
+		{name: "missing model", mutate: func(info *deviceInfo) { info.ModelName = "" }},
+		{name: "unknown power", mutate: func(info *deviceInfo) { info.PowerState = "unknown" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -125,7 +125,7 @@ func TestAdapterRejectsUnverifiedFrameTVIdentity(t *testing.T) {
 
 func TestWaitForImageAddedTimesOut(t *testing.T) {
 	events := make(chan json.RawMessage)
-	if _, err := waitForImageAdded(context.Background(), events, imageAddedMatch{requestID: "upload"}, time.Millisecond); !errors.Is(err, ErrTimeout) {
+	if _, err := waitForImageAdded(context.Background(), events, imageAddedMatch{requestID: "upload"}, time.Millisecond); !errors.Is(err, errTimeout) {
 		t.Fatalf("wait() error = %v, want ErrTimeout", err)
 	}
 }
@@ -204,7 +204,7 @@ func TestProtocolTransportQuietGateDoesNotDeadlockWhileConnecting(t *testing.T) 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := transport.Connect(ctx, false); !errors.Is(err, ErrGateFailed) {
+	if err := transport.Connect(ctx, false); !errors.Is(err, errGateFailed) {
 		t.Fatalf("Connect() error = %v, want quiet-gate block", err)
 	}
 }

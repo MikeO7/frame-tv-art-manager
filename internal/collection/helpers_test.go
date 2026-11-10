@@ -12,8 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
 )
 
 func TestPublicationVerificationAndDimensionsRejectInconsistentState(t *testing.T) {
@@ -41,10 +39,10 @@ func TestCollisionNamingFallsBackAfterEveryDigestPrefixIsOccupied(t *testing.T) 
 	input := validatedImage{digest: digest, typeID: FileTypePNG, stem: "photo"}
 	items := make([]Item, 0, 14)
 	for digestBytes := 6; digestBytes <= len(digest); digestBytes += 2 {
-		items = append(items, Item{Name: artwork.BuildContentName("photo", digest, ".png", digestBytes)})
+		items = append(items, Item{Name: BuildContentName("photo", digest, ".png", digestBytes)})
 	}
 	name := collisionSafeName(items, input, Origin{})
-	if name != artwork.BuildContentName("artwork", digest, ".png", len(digest)) {
+	if name != BuildContentName("artwork", digest, ".png", len(digest)) {
 		t.Fatalf("fallback name = %q", name)
 	}
 }

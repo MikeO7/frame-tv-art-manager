@@ -29,7 +29,7 @@ type convergenceEngine struct {
 	cfg        *config.Config
 	logger     *slog.Logger
 	health     *health.Status
-	collection ArtworkCollection
+	collection artworkCollection
 	runtimes   []*convergenceRuntime
 	cycleGate  chan struct{}
 	// themes is nil when themed collections are not wired; every item is then
@@ -55,7 +55,7 @@ func newConvergenceEngine(
 	cfg *config.Config,
 	logger *slog.Logger,
 	healthStatus *health.Status,
-	artwork ArtworkCollection,
+	artwork artworkCollection,
 ) (*convergenceEngine, error) {
 	if cfg == nil {
 		return nil, errors.New("convergence engine configuration is required")
@@ -165,7 +165,7 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	if len(tvErrors) == 1 && errors.Is(tvErrors[0], ctx.Err()) {
 		return ctx.Err()
 	}
-	LogCycleSummary(engine.logger, CycleSummary{
+	logCycleSummary(engine.logger, cycleSummary{
 		CycleNum: cycleNum, StartTime: startedAt, SyncIntervalMin: engine.cfg.SyncIntervalMin,
 		TotalLocal: len(prepared.snapshot.Items), FromSources: prepared.downloaded,
 		Optimized: prepared.optimized, FailedTVs: failedTVs, TVs: summaries, Warnings: prepared.warnings,
@@ -223,9 +223,9 @@ func (engine *convergenceEngine) syncAll(
 	label string,
 	snapshot collectionpkg.Snapshot,
 	policy reconcile.Policy,
-) ([]TVSyncResult, []error) {
+) ([]tvSyncResult, []error) {
 	type outcome struct {
-		summary TVSyncResult
+		summary tvSyncResult
 		err     error
 	}
 	results := make(chan outcome, len(engine.runtimes))
@@ -243,7 +243,7 @@ func (engine *convergenceEngine) syncAll(
 			results <- outcome{summary: summary, err: runErr}
 		}(runtime)
 	}
-	summaries := make([]TVSyncResult, 0, launched)
+	summaries := make([]tvSyncResult, 0, launched)
 	var errs []error
 	for range launched {
 		result := <-results
@@ -258,13 +258,13 @@ func (engine *convergenceEngine) syncAll(
 	if ctx.Err() != nil {
 		errs = append(errs, ctx.Err())
 	}
-	slices.SortFunc(summaries, func(left, right TVSyncResult) int {
+	slices.SortFunc(summaries, func(left, right tvSyncResult) int {
 		return strings.Compare(left.IP, right.IP)
 	})
 	return summaries, errs
 }
 
-func (engine *convergenceEngine) publishTVHealth(summary TVSyncResult) {
+func (engine *convergenceEngine) publishTVHealth(summary tvSyncResult) {
 	if engine.health == nil {
 		return
 	}

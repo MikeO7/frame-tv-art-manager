@@ -125,7 +125,7 @@ func TestAdapterWakesTVWhoseNetworkIsDark(t *testing.T) {
 			}
 			receipt, err := adapter.Apply(context.Background(), observation.Authorization, Wake{})
 			if !test.wantPresume {
-				if !errors.Is(err, ErrNotAuthorized) || transport.wakeCalls != 0 {
+				if !errors.Is(err, errNotAuthorized) || transport.wakeCalls != 0 {
 					t.Fatalf("Apply(wake) = %+v, %v; calls %d, want refusal", receipt, err, transport.wakeCalls)
 				}
 				return

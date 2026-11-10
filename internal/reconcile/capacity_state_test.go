@@ -34,7 +34,7 @@ func TestStorageFullPersistsFreshCapacityEvidenceAndClearsPending(t *testing.T) 
 	if result.State.Pending != nil {
 		t.Fatalf("storage-full state retained pending operation: %+v", result.State.Pending)
 	}
-	want := CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	want := capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if result.State.Capacity != want {
 		t.Fatalf("capacity evidence = %+v, want %+v", result.State.Capacity, want)
 	}
@@ -55,9 +55,9 @@ func TestKnownCapacityCountsUnknownArtworkAndCapsUploadsDeterministically(t *tes
 		t.Fatal(err)
 	}
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime}
 
-	plan, err := BuildPlan(snapshot(items...), observation, state, Policy{})
+	plan, err := buildPlan(snapshot(items...), observation, state, Policy{})
 	if err != nil {
 		t.Fatalf("BuildPlan() error = %v", err)
 	}
@@ -129,14 +129,14 @@ func TestCapacityNeverDeletesLastKnownGoodArtworkToCreateAnUploadSlot(t *testing
 		t.Fatal(err)
 	}
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
 	obsoleteDigest := digestHex("obsolete")
 	state.Bindings[obsoleteDigest] = Binding{
 		Digest: obsoleteDigest, ContentID: "last-known-good", Name: "old.jpg",
 		CollectionGeneration: digestHex("old-generation"), ConfirmedAt: testTime,
 	}
 
-	plan, err := BuildPlan(snapshot(artworkItem("replacement.jpg", "replacement")), observation, state, Policy{})
+	plan, err := buildPlan(snapshot(artworkItem("replacement.jpg", "replacement")), observation, state, Policy{})
 	if err != nil {
 		t.Fatalf("BuildPlan() error = %v", err)
 	}
@@ -159,7 +159,7 @@ func TestVerifiedObsoleteDeletionFreesCapacityForUploadOnReplan(t *testing.T) {
 	wantedDigest := hex.EncodeToString(wanted.Digest[:])
 	obsoleteDigest := digestHex("obsolete")
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	state.Bindings[wantedDigest] = Binding{
 		Digest: wantedDigest, ContentID: "wanted-id", Name: wanted.Name,
 		CollectionGeneration: snap.Generation, ConfirmedAt: testTime,
@@ -212,7 +212,7 @@ func TestSuccessfulCapacityProbeClearsEvidenceAndResumesAllUploads(t *testing.T)
 		t.Fatal(err)
 	}
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestSuccessfulCapacityProbeClearsEvidenceAndResumesAllUploads(t *testing.T)
 	if len(result.Plan.Commands) != 1 || result.Plan.Commands[0].Kind != CommandUpload {
 		t.Fatalf("probe plan = %+v, want exactly one upload", result.Plan.Commands)
 	}
-	if result.State.Capacity != (CapacityEvidence{}) {
+	if result.State.Capacity != (capacityEvidence{}) {
 		t.Fatalf("capacity after successful probe = %+v, want cleared evidence", result.State.Capacity)
 	}
 	if len(result.State.Bindings) != 2 {
@@ -258,7 +258,7 @@ func TestCapacityEvidenceDoesNotProbeBeforeExpiryAfterRestart(t *testing.T) {
 	full := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
 	identity, _ := identityFromObservation(full)
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestCapacityEvidenceDoesNotProbeBeforeExpiryAfterRestart(t *testing.T) {
 		result.Applied != 0 || adapter.applyCalls != 0 {
 		t.Fatalf("Run() = %+v, %v; apply calls = %d", result, err, adapter.applyCalls)
 	}
-	want := CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	want := capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if result.State.Capacity != want {
 		t.Fatalf("capacity evidence = %+v, want unchanged %+v", result.State.Capacity, want)
 	}
@@ -290,7 +290,7 @@ func TestCapacityProbeRecalibratesAfterInventoryChangeAndResumesAllUploads(t *te
 	beforeApply := knownObservation(samsung.PowerStateOn, "unknown-1")
 	identity, _ := identityFromObservation(initial)
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestCapacityProbeRecalibratesAfterInventoryChangeAndResumesAllUploads(t *te
 	if err != nil || result.Status != StatusComplete || result.Applied != 3 || adapter.applyCalls != 3 {
 		t.Fatalf("Run() = %+v, %v; apply calls = %d", result, err, adapter.applyCalls)
 	}
-	if result.State.Capacity != (CapacityEvidence{}) || len(result.State.Bindings) != 3 {
+	if result.State.Capacity != (capacityEvidence{}) || len(result.State.Bindings) != 3 {
 		t.Fatalf("state after resumed uploads = %+v", result.State)
 	}
 }
@@ -331,7 +331,7 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	full := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
 	identity, _ := identityFromObservation(full)
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	if !errors.Is(runErr, samsung.ErrStorageFull) || failing.applyCalls != 1 {
 		t.Fatalf("first probe = %+v, %v; apply calls = %d", result, runErr, failing.applyCalls)
 	}
-	wantFirst := CapacityEvidence{Known: true, Maximum: 2, ObservedAt: firstProbeAt}
+	wantFirst := capacityEvidence{Known: true, Maximum: 2, ObservedAt: firstProbeAt}
 	if result.State.Capacity != wantFirst {
 		t.Fatalf("first refreshed evidence = %+v, want %+v", result.State.Capacity, wantFirst)
 	}
@@ -392,7 +392,7 @@ func TestRepeatedStorageFullProbeRefreshesExpiryAndAllowsNoEarlyRetry(t *testing
 	if !errors.Is(runErr, samsung.ErrStorageFull) || secondFailing.applyCalls != 1 {
 		t.Fatalf("second probe = %+v, %v; apply calls = %d", secondResult, runErr, secondFailing.applyCalls)
 	}
-	wantSecond := CapacityEvidence{Known: true, Maximum: 2, ObservedAt: secondProbeAt}
+	wantSecond := capacityEvidence{Known: true, Maximum: 2, ObservedAt: secondProbeAt}
 	if secondResult.State.Capacity != wantSecond {
 		t.Fatalf("second refreshed evidence = %+v, want %+v", secondResult.State.Capacity, wantSecond)
 	}
@@ -403,7 +403,7 @@ func TestNonStorageProbeRejectionDoesNotRefreshCapacityEvidence(t *testing.T) {
 	full := knownObservation(samsung.PowerStateOn, "unknown-1", "unknown-2")
 	identity, _ := identityFromObservation(full)
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +424,7 @@ func TestNonStorageProbeRejectionDoesNotRefreshCapacityEvidence(t *testing.T) {
 		CycleID: "non-storage-probe-rejection", TV: adapter,
 		Snapshot: snapshot(artworkItem("first.jpg", "first")),
 	})
-	if !errors.Is(runErr, samsung.ErrArtAPIError) || result.State.Capacity != (CapacityEvidence{}) {
+	if !errors.Is(runErr, samsung.ErrArtAPIError) || result.State.Capacity != (capacityEvidence{}) {
 		t.Fatalf("Run() = %+v, %v; want original error and cleared capacity evidence", result, runErr)
 	}
 }
@@ -434,7 +434,7 @@ func TestExpiredCapacityProbePreservesLastKnownGoodArtwork(t *testing.T) {
 	observation := knownObservation(samsung.PowerStateOn, "last-known-good")
 	identity, _ := identityFromObservation(observation)
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
 	oldDigest := digestHex("old")
 	state.Bindings[oldDigest] = Binding{
 		Digest: oldDigest, ContentID: "last-known-good", Name: "old.jpg",
@@ -475,7 +475,7 @@ func TestExpiredCapacityDryRunPlansProbeWithoutPersistingLease(t *testing.T) {
 	full := knownObservation(samsung.PowerStateOn, "unknown-1")
 	identity, _ := identityFromObservation(full)
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestRunReportsCapacityFromFreshObservationWhenNothingRemains(t *testing.T) 
 		t.Fatal(err)
 	}
 	state := initialState(identity)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}

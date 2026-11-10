@@ -8,19 +8,19 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
 func TestAvailableContentNameExtendsDigestUntilFree(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	digest := sha256.Sum256([]byte("name"))
-	shortest := artwork.BuildContentName("label", digest, extJPG, 8)
+	shortest := collection.BuildContentName("label", digest, extJPG, 8)
 	if err := os.WriteFile(filepath.Join(directory, shortest), []byte("occupied"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	request := contentNameRequest{directory: directory, label: "label", digest: digest, extension: extJPG}
-	if got, err := availableContentName(context.Background(), request); err != nil || got != artwork.BuildContentName("label", digest, extJPG, 10) {
+	if got, err := availableContentName(context.Background(), request); err != nil || got != collection.BuildContentName("label", digest, extJPG, 10) {
 		t.Fatalf("availableContentName(occupied shortest) = %q, %v; want the next digest length", got, err)
 	}
 	request.currentName = shortest
@@ -29,7 +29,7 @@ func TestAvailableContentNameExtendsDigestUntilFree(t *testing.T) {
 	}
 
 	for digestBytes := 8; digestBytes <= sha256.Size; digestBytes += 2 {
-		name := artwork.BuildContentName("occupied", digest, extJPG, digestBytes)
+		name := collection.BuildContentName("occupied", digest, extJPG, digestBytes)
 		if err := os.WriteFile(filepath.Join(directory, name), []byte("occupied"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -99,7 +99,7 @@ func TestValidateImageRequiresCompleteDecodableImage(t *testing.T) {
 		{name: "canceled", ctx: canceled, path: valid, wantErr: true},
 	}
 	for _, test := range tests {
-		if err := ValidateImage(test.ctx, test.path); (err != nil) != test.wantErr {
+		if err := validateImage(test.ctx, test.path); (err != nil) != test.wantErr {
 			t.Errorf("ValidateImage(%s) error = %v, wantErr %t", test.name, err, test.wantErr)
 		}
 	}

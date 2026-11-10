@@ -24,7 +24,7 @@ type catalogPass struct {
 	logger       *slog.Logger
 	inputs       map[string]StageInput
 	optimized    int
-	renames      []Rename
+	renames      []rename
 	// lineage records, by output name, the digests of the originals each
 	// output was rendered from, in render order.
 	lineage map[string][][sha256.Size]byte
@@ -69,7 +69,7 @@ func (p *catalogPass) run(ctx context.Context) error {
 func (p *catalogPass) optimizeFile(ctx context.Context, filename string) {
 	path := filepath.Join(p.artworkDir, filename)
 	if !p.cfg.Enabled {
-		if err := ValidateImage(ctx, path); err != nil {
+		if err := validateImage(ctx, path); err != nil {
 			p.logger.Warn("skipping corrupt image", "file", filename, "error", err)
 		}
 		return
@@ -103,7 +103,7 @@ func (p *catalogPass) optimizeFile(ctx context.Context, filename string) {
 	if modified {
 		p.optimized++
 		if newFilename != filename {
-			p.renames = append(p.renames, Rename{OldName: filename, NewName: newFilename})
+			p.renames = append(p.renames, rename{OldName: filename, NewName: newFilename})
 			p.recordLineage(newFilename, lineage...)
 		}
 	}

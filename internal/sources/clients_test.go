@@ -305,7 +305,7 @@ func TestPexelsResolveRequestsCoveringRenditionAndSkipsEmptySources(t *testing.T
 	if images[0].Identity != sourceURLIdentity(providerPexels, "https://images.pexels.com/photos/1/a.jpeg") {
 		t.Errorf("identity %q is not derived from the original URL", images[0].Identity)
 	}
-	if len(images[0].Fallbacks) != 1 || images[0].Attribution != (Attribution{
+	if len(images[0].Fallbacks) != 1 || images[0].Attribution != (attribution{
 		Provider: providerPexels, Title: "Fox", Artist: "Ann", SourceURL: "https://www.pexels.com/photo/1/", License: pexelsLicense,
 	}) {
 		t.Errorf("image = %+v", images[0])

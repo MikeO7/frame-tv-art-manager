@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-// SlideshowKind is the Samsung wire mode for ordered or shuffled playback.
-type SlideshowKind string
+// slideshowKind is the Samsung wire mode for ordered or shuffled playback.
+type slideshowKind string
 
 const (
-	SlideshowSequential SlideshowKind = "slideshow"
-	SlideshowShuffle    SlideshowKind = "shuffleslideshow"
+	SlideshowSequential slideshowKind = "slideshow"
+	SlideshowShuffle    slideshowKind = "shuffleslideshow"
 )
 
 // SlideshowSetting is a complete observed or desired slideshow value.
@@ -20,13 +20,13 @@ const (
 // favorites); it is empty when the TV did not report one.
 type SlideshowSetting struct {
 	Interval int
-	Kind     SlideshowKind
+	Kind     slideshowKind
 	Category string `json:",omitempty"`
 }
 
 func parseSlideshowSetting(value, kind, category string) (SlideshowSetting, error) {
 	setting := SlideshowSetting{
-		Kind: SlideshowKind(strings.TrimSpace(kind)), Category: strings.TrimSpace(category),
+		Kind: slideshowKind(strings.TrimSpace(kind)), Category: strings.TrimSpace(category),
 	}
 	value = strings.TrimSpace(value)
 	if value == stringOff && setting.Kind == "" {
@@ -47,7 +47,7 @@ func parseSlideshowSetting(value, kind, category string) (SlideshowSetting, erro
 	return setting, nil
 }
 
-func (kind SlideshowKind) valid() bool {
+func (kind slideshowKind) valid() bool {
 	return kind == SlideshowSequential || kind == SlideshowShuffle
 }
 

@@ -35,14 +35,14 @@ func waitForImageAdded(
 		select {
 		case data, ok := <-events:
 			if !ok {
-				return "", ErrNotConnected
+				return "", errNotConnected
 			}
 			contentID, mine, err := parseImageAdded(data, match)
 			if mine {
 				return contentID, err
 			}
 		case <-timer.C:
-			return "", fmt.Errorf("%w: waiting for image_added", ErrTimeout)
+			return "", fmt.Errorf("%w: waiting for image_added", errTimeout)
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}

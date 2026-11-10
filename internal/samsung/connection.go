@@ -41,7 +41,7 @@ func (c *connection) registerPending(key string) (<-chan json.RawMessage, func()
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
 	if c.closed.Load() {
-		return nil, nil, ErrNotConnected
+		return nil, nil, errNotConnected
 	}
 	if _, exists := c.pending[key]; exists {
 		return nil, nil, fmt.Errorf("listener %q is already registered", key)
@@ -89,11 +89,11 @@ func (c *connection) SendAndWait(ctx context.Context, payload []byte, requestID 
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			return nil, ErrNotConnected
+			return nil, errNotConnected
 		}
 		return data, nil
 	case <-timer.C:
-		return nil, fmt.Errorf("%w: waiting for response %s", ErrTimeout, requestID)
+		return nil, fmt.Errorf("%w: waiting for response %s", errTimeout, requestID)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -105,7 +105,7 @@ func (c *connection) Send(ctx context.Context, payload []byte) error {
 	defer c.mu.Unlock()
 
 	if c.conn == nil {
-		return ErrNotConnected
+		return errNotConnected
 	}
 
 	c.logger.Debug("sending WebSocket message", "bytes", len(payload))

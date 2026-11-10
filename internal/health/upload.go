@@ -27,7 +27,7 @@ const (
 
 // HandleUpload routes artwork upload requests: GET serves the upload UI and
 // POST persists an image. All other methods and the disabled state short-circuit.
-func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
+func (s *server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	const uploadCSP = "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; " +
 		"object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 	w.Header().Set("Content-Security-Policy", uploadCSP)
@@ -86,7 +86,7 @@ func validUploadOrigin(request *http.Request) bool {
 // processUpload spools a single POSTed image to a private temporary file and
 // then imports it. Spooling keeps peak memory near one copy of the image and
 // keeps a slow client from holding the collection mutation while it sends.
-func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
+func (s *server) processUpload(w http.ResponseWriter, r *http.Request) {
 	select {
 	case s.imports <- struct{}{}:
 		defer func() { <-s.imports }()
@@ -123,14 +123,14 @@ func (s *Server) processUpload(w http.ResponseWriter, r *http.Request) {
 
 // maxUploadBytes resolves the configured per-upload limit, falling back to a
 // safe default when the configured value is non-positive.
-func (s *Server) maxUploadBytes() int64 {
+func (s *server) maxUploadBytes() int64 {
 	if mb := s.cfg.MaxDownloadSizeMB; mb > 0 {
 		return int64(mb) << 20
 	}
 	return defaultMaxUploadBytes
 }
 
-func (s *Server) persistWithImporter(ctx context.Context, w http.ResponseWriter, reader io.Reader) {
+func (s *server) persistWithImporter(ctx context.Context, w http.ResponseWriter, reader io.Reader) {
 	snapshot, err := s.importer.Import(ctx, collection.ImportRequest{
 		Reader: reader, Hint: "upload", MaxBytes: s.maxUploadBytes(),
 	})

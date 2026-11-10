@@ -9,10 +9,10 @@ import (
 // orientations read and write within cache-resident rows.
 const orientationTile = 64
 
-// RotateImage returns img transformed for the EXIF orientation tag (values
+// rotateImage returns img transformed for the EXIF orientation tag (values
 // 1-8). Orientation 1 and unknown values return img unchanged; every other
 // orientation returns a new zero-origin *image.RGBA.
-func RotateImage(img image.Image, orientation int) image.Image {
+func rotateImage(img image.Image, orientation int) image.Image {
 	if orientation < 2 || orientation > 8 {
 		return img
 	}

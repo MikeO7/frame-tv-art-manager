@@ -12,7 +12,6 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
-	"github.com/MikeO7/frame-tv-art-manager/internal/resources"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
@@ -23,11 +22,11 @@ type preparedCollection struct {
 	snapshot   collectionpkg.Snapshot
 }
 
-// ArtworkCollection is the shared mutation authority used by Sync Cycles and
+// artworkCollection is the shared mutation authority used by Sync Cycles and
 // operator imports. The private cycle method keeps source and transform
 // orchestration inside this package while the embedded Store remains the
 // narrow interface used by the HTTP upload module.
-type ArtworkCollection interface {
+type artworkCollection interface {
 	collectionpkg.Store
 	prepareCycle(context.Context) (preparedCollection, error)
 }
@@ -51,7 +50,7 @@ type localCollection struct {
 	logger   *slog.Logger
 	health   *health.Status
 	loader   sources.SourceLoader
-	limits   *resources.Controller
+	limits   *transformGate
 	store    collectionpkg.Store
 }
 
@@ -61,8 +60,8 @@ func newArtworkCollection(
 	logger *slog.Logger,
 	healthStatus *health.Status,
 	store collectionpkg.Store,
-) (ArtworkCollection, error) {
-	local, err := newLocalCollection(cfg, logger, healthStatus, store, resources.NewDefaultController())
+) (artworkCollection, error) {
+	local, err := newLocalCollection(cfg, logger, healthStatus, store, newTransformGate())
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +75,7 @@ func newLocalCollection(
 	logger *slog.Logger,
 	healthStatus *health.Status,
 	store collectionpkg.Store,
-	limits *resources.Controller,
+	limits *transformGate,
 ) (*localCollection, error) {
 	if cfg == nil {
 		return nil, errors.New("artwork collection configuration is required")

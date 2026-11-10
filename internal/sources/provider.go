@@ -43,8 +43,8 @@ func capSlug(slug string) string {
 	return slug
 }
 
-// SourceImage represents resolved metadata for a downloadable image source.
-type SourceImage struct {
+// sourceImage represents resolved metadata for a downloadable image source.
+type sourceImage struct {
 	// URL is the preferred download. Fallbacks are tried in order when it
 	// cannot be downloaded or fails validation, so a provider can offer a
 	// smaller rendition when the largest one exceeds the configured caps.
@@ -56,11 +56,11 @@ type SourceImage struct {
 	// TrackURL is a provider download-tracking endpoint that is called once
 	// the artwork has been imported.
 	TrackURL    string      `json:"track_url,omitempty"`
-	Attribution Attribution `json:"attribution"`
+	Attribution attribution `json:"attribution"`
 }
 
-// Attribution is the credit that a provider's terms require for its artwork.
-type Attribution struct {
+// attribution is the credit that a provider's terms require for its artwork.
+type attribution struct {
 	Provider  string `json:"provider"`
 	Title     string `json:"title,omitempty"`
 	Artist    string `json:"artist,omitempty"`
@@ -68,11 +68,11 @@ type Attribution struct {
 	License   string `json:"license,omitempty"`
 }
 
-// SourceProvider defines the seam for translating configuration lines into raw downloadable metadata.
-type SourceProvider interface {
+// sourceProvider defines the seam for translating configuration lines into raw downloadable metadata.
+type sourceProvider interface {
 	Name() string
 	CanHandle(line string) bool
-	Resolve(ctx context.Context, line string) ([]SourceImage, error)
+	Resolve(ctx context.Context, line string) ([]sourceImage, error)
 }
 
 // downloadTracker is implemented by providers whose terms require reporting
@@ -86,7 +86,7 @@ type downloadTracker interface {
 // manifest or filename, while label keeps generated artwork recognizable.
 func sourceIdentity(provider, stableKey, label string) string {
 	digest := sha256.Sum256([]byte(stableKey))
-	label = strings.TrimSuffix(Filename(label), filepath.Ext(label))
+	label = strings.TrimSuffix(filename(label), filepath.Ext(label))
 	label = strings.ReplaceAll(strings.TrimSpace(label), " ", "-")
 	if label == "" {
 		label = mediaTypeImage
@@ -181,7 +181,7 @@ var (
 	reDots = regexp.MustCompile(`\.+`)
 )
 
-// Filename sanitizes a filename by stripping special characters from the stem,
+// filename sanitizes a filename by stripping special characters from the stem,
 // collapsing spaces, and lowercasing the extension. This prevents issues with
 // the Samsung TV art API which can choke on certain characters.
 //
@@ -190,7 +190,7 @@ var (
 //	"café (1).JPEG" → "caf 1.jpeg"
 //	"...#$%.png"    → "image.png"
 //	"hello.JPG"     → "hello.jpg"
-func Filename(name string) string {
+func filename(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	stem := strings.TrimSuffix(name, filepath.Ext(name))
 

@@ -101,17 +101,17 @@ func (c *connection) readHandshake(ctx context.Context, conn *websocket.Conn) er
 			return err
 		}
 		switch resp.Event {
-		case EventChannelConnect:
+		case eventChannelConnect:
 			return c.extractAndSaveToken(ctx, resp.Data)
 		case "ms.channel.unauthorized":
-			return ErrUnauthorized
+			return errUnauthorized
 		case "ms.channel.timeOut":
-			return ErrTimeout
+			return errTimeout
 		default:
 			c.logger.Debug("skipping event before channel connect", "event", resp.Event)
 		}
 	}
-	return fmt.Errorf("no ms.channel.connect after %d events: %w", maxHandshakeEvents, ErrConnectionFailure)
+	return fmt.Errorf("no ms.channel.connect after %d events: %w", maxHandshakeEvents, errConnectionFailure)
 }
 
 func (c *connection) waitForChannelReady(ctx context.Context, conn *websocket.Conn) error {
@@ -123,15 +123,15 @@ func (c *connection) waitForChannelReady(ctx context.Context, conn *websocket.Co
 			return err
 		}
 		switch resp.Event {
-		case EventChannelReady:
+		case eventChannelReady:
 			return nil
 		case "ms.channel.unauthorized":
-			return ErrUnauthorized
+			return errUnauthorized
 		default:
 			c.logger.Debug("skipping event before channel ready", "event", resp.Event)
 		}
 	}
-	return fmt.Errorf("no ms.channel.ready after %d events: %w", maxHandshakeEvents, ErrConnectionFailure)
+	return fmt.Errorf("no ms.channel.ready after %d events: %w", maxHandshakeEvents, errConnectionFailure)
 }
 
 func (c *connection) Open(ctx context.Context) error {

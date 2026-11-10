@@ -61,7 +61,7 @@ func TestSearchFindsArtThatAddArtworkKeepsWithCredit(t *testing.T) {
 	resolver := &mapResolver{answers: map[string][]string{"example.com": {"127.0.0.1"}}}
 	fixture := newFixture(t, fixtureOptions{
 		searcher: searcher,
-		fetcher:  NewFetcher(FetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool}),
+		fetcher:  newFetcher(fetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool}),
 	})
 
 	var found searchArtOutput

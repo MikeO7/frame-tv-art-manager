@@ -68,8 +68,8 @@ type fixture struct {
 
 type fixtureOptions struct {
 	environ  []string
-	fetcher  *Fetcher
-	searcher ArtSearch
+	fetcher  *fetcher
+	searcher artSearch
 	// noSearcher builds the handler without a museum searcher.
 	noSearcher bool
 }

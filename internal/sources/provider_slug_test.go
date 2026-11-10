@@ -132,7 +132,7 @@ func TestFilename(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := Filename(tc.in)
+			got := filename(tc.in)
 			if got != tc.want {
 				t.Errorf("Filename(%q) = %q, want %q", tc.in, got, tc.want)
 			}

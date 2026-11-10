@@ -8,24 +8,24 @@ import (
 )
 
 var (
-	// ErrUnauthorized is returned when the TV rejects the connection
+	// errUnauthorized is returned when the TV rejects the connection
 	// (e.g. token is invalid or user denied access on the TV screen).
-	ErrUnauthorized = errors.New("samsung: TV rejected authorization")
+	errUnauthorized = errors.New("samsung: TV rejected authorization")
 
-	// ErrTimeout is returned when a connection or API request exceeds
+	// errTimeout is returned when a connection or API request exceeds
 	// the configured timeout.
-	ErrTimeout = errors.New("samsung: operation timed out")
+	errTimeout = errors.New("samsung: operation timed out")
 
-	// ErrNotConnected is returned when an operation is attempted on a
+	// errNotConnected is returned when an operation is attempted on a
 	// connection that has not been opened or has been closed.
-	ErrNotConnected = errors.New("samsung: not connected")
+	errNotConnected = errors.New("samsung: not connected")
 
-	// ErrGateFailed is returned when the Silent REST Gate indicates the
+	// errGateFailed is returned when the Silent REST Gate indicates the
 	// TV is not in art mode (busy with an app or powered off).
-	ErrGateFailed = errors.New("samsung: REST gate check failed — TV not in art mode")
+	errGateFailed = errors.New("samsung: REST gate check failed — TV not in art mode")
 
-	// ErrConnectionFailure is returned for unexpected handshake failures.
-	ErrConnectionFailure = errors.New("samsung: connection handshake failed")
+	// errConnectionFailure is returned for unexpected handshake failures.
+	errConnectionFailure = errors.New("samsung: connection handshake failed")
 
 	// ErrArtAPIError is returned when the TV's art endpoint responds with an
 	// application-level error code (e.g. invalid category or bad payload).
@@ -35,45 +35,45 @@ var (
 	// internal storage partition has no remaining space.
 	ErrStorageFull = errors.New("samsung: TV storage is full")
 
-	// ErrNotAuthorized is returned before any protocol write when an adapter
+	// errNotAuthorized is returned before any protocol write when an adapter
 	// cannot prove that a command is safe.
-	ErrNotAuthorized = errors.New("samsung: command not authorized")
+	errNotAuthorized = errors.New("samsung: command not authorized")
 )
 
 // ErrorKind classifies Samsung failures for policy and health reporting.
 type ErrorKind uint8
 
 const (
-	ErrorKindNone ErrorKind = iota
+	errorKindNone ErrorKind = iota
 	ErrorKindCanceled
 	ErrorKindBackoff
 	ErrorKindUnreachable
 	ErrorKindTimeout
 	ErrorKindUnauthorized
 	ErrorKindProtocol
-	ErrorKindUnsupported
+	errorKindUnsupported
 	ErrorKindInvalidResponse
 	ErrorKindStorageFull
-	ErrorKindNotAuthorized
-	ErrorKindPersistence
+	errorKindNotAuthorized
+	errorKindPersistence
 	ErrorKindOutcomeUnknown
 )
 
 // String returns the stable operator-facing name used in structured logs.
 func (kind ErrorKind) String() string {
 	names := [...]string{
-		ErrorKindNone:            "none",
+		errorKindNone:            "none",
 		ErrorKindCanceled:        "canceled",
 		ErrorKindBackoff:         "backoff",
 		ErrorKindUnreachable:     "unreachable",
 		ErrorKindTimeout:         "timeout",
 		ErrorKindUnauthorized:    "unauthorized",
 		ErrorKindProtocol:        "protocol",
-		ErrorKindUnsupported:     "unsupported",
+		errorKindUnsupported:     "unsupported",
 		ErrorKindInvalidResponse: "invalid_response",
 		ErrorKindStorageFull:     "storage_full",
-		ErrorKindNotAuthorized:   "not_authorized",
-		ErrorKindPersistence:     "persistence",
+		errorKindNotAuthorized:   "not_authorized",
+		errorKindPersistence:     "persistence",
 		ErrorKindOutcomeUnknown:  "outcome_unknown",
 	}
 	if int(kind) < len(names) {

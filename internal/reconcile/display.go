@@ -24,8 +24,8 @@ const (
 	showEarlyFraction = 10
 )
 
-// DisplayState is the manager's own picture rotation on one TV.
-type DisplayState struct {
+// displayState is the manager's own picture rotation on one TV.
+type displayState struct {
 	// Digest and At are the picture the manager last put on screen and when.
 	Digest string    `json:"digest"`
 	At     time.Time `json:"at"`
@@ -51,13 +51,13 @@ func planShow(
 	inventory map[string]struct{},
 	observation samsung.Observation,
 	policy ShowPolicy,
-) (CommandIntent, bool) {
+) (commandIntent, bool) {
 	if policy.Interval <= 0 || observation.Capabilities.ImageSelection != samsung.SupportSupported {
-		return CommandIntent{}, false
+		return commandIntent{}, false
 	}
 	display := state.Display
 	if display != nil && observation.ObservedAt.Before(display.At.Add(policy.Interval-policy.Interval/showEarlyFraction)) {
-		return CommandIntent{}, false
+		return commandIntent{}, false
 	}
 	shown := showCandidates(desired, state, inventory)
 	round, last := 1, ""
@@ -77,7 +77,7 @@ func planShow(
 		candidates = pool(round)
 	}
 	if len(candidates) == 0 {
-		return CommandIntent{}, false
+		return commandIntent{}, false
 	}
 	var next showCandidate
 	if policy.Order == ShowSequential {
@@ -85,7 +85,7 @@ func planShow(
 	} else {
 		next = nextInShuffle(candidates, round)
 	}
-	return CommandIntent{Kind: CommandSelect, Digest: next.digest, ContentID: next.contentID, Round: round}, true
+	return commandIntent{Kind: commandSelect, Digest: next.digest, ContentID: next.contentID, Round: round}, true
 }
 
 // showCandidates lists the desired pictures bound on the TV in name order.
@@ -140,11 +140,11 @@ func nextInShuffle(candidates []showCandidate, round int) showCandidate {
 }
 
 // recordDisplay notes a verified picture change.
-func recordDisplay(state *State, intent CommandIntent, at time.Time) {
+func recordDisplay(state *State, intent commandIntent, at time.Time) {
 	if intent.Digest == "" || intent.Round <= 0 {
 		return
 	}
-	display := DisplayState{Digest: intent.Digest, At: at.UTC(), Round: intent.Round, Picked: map[string]int{}}
+	display := displayState{Digest: intent.Digest, At: at.UTC(), Round: intent.Round, Picked: map[string]int{}}
 	if state.Display != nil {
 		maps.Copy(display.Picked, state.Display.Picked)
 	}
@@ -172,7 +172,7 @@ func retainDisplayHistory(state *State, desired map[string]struct{}) {
 	state.Display = &display
 }
 
-func cloneDisplay(display *DisplayState) *DisplayState {
+func cloneDisplay(display *displayState) *displayState {
 	if display == nil {
 		return nil
 	}
@@ -181,7 +181,7 @@ func cloneDisplay(display *DisplayState) *DisplayState {
 	return &clone
 }
 
-func validateDisplay(display *DisplayState) error {
+func validateDisplay(display *displayState) error {
 	if display == nil {
 		return nil
 	}

@@ -111,7 +111,7 @@ func TestPowerOnUnknownWakeRecoversThenMigratesBeforePlanning(t *testing.T) {
 		}},
 		applyErrs: []error{errors.New("wake acknowledgement lost")},
 	}
-	newService := func(adapterClock Clock) Service {
+	newService := func(adapterClock clock) Service {
 		service, newErr := New(Config{
 			StateDirectory: directory, LegacyMappingDirectory: directory, Policy: Policy{Power: PowerOn},
 		}, Dependencies{Clock: adapterClock, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler)})

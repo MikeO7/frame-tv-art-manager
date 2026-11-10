@@ -239,7 +239,7 @@ func (s *store) importLimit(requested int64) (int64, error) {
 	return requested, nil
 }
 
-func (s *store) pixelLimit(policy Policy) int64 {
+func (s *store) pixelLimit(policy policy) int64 {
 	if policy.MaxPixels > 0 && policy.MaxPixels < s.maxPixels {
 		return policy.MaxPixels
 	}

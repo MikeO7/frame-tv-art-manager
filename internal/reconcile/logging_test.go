@@ -19,7 +19,7 @@ func TestMutationRetryLogCarriesAttemptAndProtocolContext(t *testing.T) {
 		mutations: mutationExecution{attempts: 3},
 	}
 	cause := errors.New("temporary protocol response")
-	service.logMutationRetry(context.Background(), "cycle-7", CommandIntent{Kind: CommandUpload}, 1, &samsung.Error{
+	service.logMutationRetry(context.Background(), "cycle-7", commandIntent{Kind: CommandUpload}, 1, &samsung.Error{
 		Kind: samsung.ErrorKindInvalidResponse, Operation: "upload", Retryable: true,
 		Outcome: samsung.OutcomeNotAttempted, Cause: cause,
 	})

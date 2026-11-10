@@ -27,15 +27,15 @@ const (
 // errUnsafeURL classifies image links refused before any byte is fetched.
 var errUnsafeURL = errors.New("image URL is not allowed")
 
-// Resolver looks up the addresses of a host name.
-type Resolver interface {
+// resolver looks up the addresses of a host name.
+type resolver interface {
 	LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error)
 }
 
-// FetcherOptions configures how image links are downloaded. Zero values use
+// fetcherOptions configures how image links are downloaded. Zero values use
 // the system resolver and dialer and allow only public internet addresses.
-type FetcherOptions struct {
-	Resolver Resolver
+type fetcherOptions struct {
+	Resolver resolver
 	Dial     func(ctx context.Context, network, address string) (net.Conn, error)
 	// Allow decides whether an address may be dialed. It defaults to
 	// PublicAddress.
@@ -45,19 +45,19 @@ type FetcherOptions struct {
 	Timeout time.Duration
 }
 
-// Fetcher downloads images from https links without reaching private
+// fetcher downloads images from https links without reaching private
 // networks. Every address is checked at dial time, after DNS resolution and
 // for every redirect, so DNS rebinding cannot steer it to an internal host.
-type Fetcher struct {
-	resolver Resolver
+type fetcher struct {
+	resolver resolver
 	dial     func(ctx context.Context, network, address string) (net.Conn, error)
 	allow    func(netip.Addr) bool
 	client   *http.Client
 }
 
-// NewFetcher returns a Fetcher configured by options.
-func NewFetcher(options FetcherOptions) *Fetcher {
-	fetcher := &Fetcher{resolver: options.Resolver, dial: options.Dial, allow: options.Allow}
+// newFetcher returns a Fetcher configured by options.
+func newFetcher(options fetcherOptions) *fetcher {
+	fetcher := &fetcher{resolver: options.Resolver, dial: options.Dial, allow: options.Allow}
 	if fetcher.resolver == nil {
 		fetcher.resolver = net.DefaultResolver
 	}
@@ -65,7 +65,7 @@ func NewFetcher(options FetcherOptions) *Fetcher {
 		fetcher.dial = (&net.Dialer{Timeout: 15 * time.Second}).DialContext
 	}
 	if fetcher.allow == nil {
-		fetcher.allow = PublicAddress
+		fetcher.allow = publicAddress
 	}
 	timeout := options.Timeout
 	if timeout <= 0 {
@@ -97,7 +97,7 @@ func NewFetcher(options FetcherOptions) *Fetcher {
 
 // Fetch downloads at most maxBytes from rawURL and returns the bytes only
 // when they are a JPEG or PNG image.
-func (fetcher *Fetcher) Fetch(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
+func (fetcher *fetcher) Fetch(ctx context.Context, rawURL string, maxBytes int64) ([]byte, error) {
 	if len(rawURL) > maxImageURLBytes {
 		return nil, fmt.Errorf("%w: link is longer than %d characters", errUnsafeURL, maxImageURLBytes)
 	}
@@ -143,7 +143,7 @@ func (fetcher *Fetcher) Fetch(ctx context.Context, rawURL string, maxBytes int64
 
 // dialChecked resolves the host itself and dials only an allowed address, so
 // the checked address is exactly the one connected to.
-func (fetcher *Fetcher) dialChecked(ctx context.Context, network, address string) (net.Conn, error) {
+func (fetcher *fetcher) dialChecked(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid address", errUnsafeURL)
@@ -181,7 +181,7 @@ func (fetcher *Fetcher) dialChecked(ctx context.Context, network, address string
 	return nil, fmt.Errorf("connect to %s: %w", host, errors.Join(dialErrors...))
 }
 
-func (fetcher *Fetcher) remoteAllowed(conn net.Conn) bool {
+func (fetcher *fetcher) remoteAllowed(conn net.Conn) bool {
 	remote, err := netip.ParseAddrPort(conn.RemoteAddr().String())
 	return err == nil && fetcher.allow(remote.Addr().Unmap())
 }
@@ -248,10 +248,10 @@ var reservedPrefixes = []netip.Prefix{ //nolint:gochecknoglobals // immutable ad
 	netip.MustParsePrefix("2002::/16"),
 }
 
-// PublicAddress reports whether addr is a globally routable unicast address,
+// publicAddress reports whether addr is a globally routable unicast address,
 // rejecting loopback, private, link-local, multicast, unspecified, carrier
 // NAT, documentation, translation, and reserved ranges.
-func PublicAddress(addr netip.Addr) bool {
+func publicAddress(addr netip.Addr) bool {
 	addr = addr.Unmap()
 	if !addr.IsValid() || !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() ||
 		addr.IsLinkLocalUnicast() || addr.IsMulticast() || addr.IsUnspecified() {

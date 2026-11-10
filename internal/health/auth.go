@@ -102,7 +102,7 @@ func (l *authLimiter) pruneLocked(now time.Time) {
 // authenticate checks the request's Basic credentials against UPLOAD_TOKEN.
 // A client over its failure budget is refused before the token is compared,
 // so a correct guess cannot be confirmed while rate limited.
-func (s *Server) authenticate(request *http.Request) (authResult, time.Duration) {
+func (s *server) authenticate(request *http.Request) (authResult, time.Duration) {
 	client := clientAddress(request)
 	if wait := s.authFailures.retryAfter(client); wait > 0 {
 		return authLimited, wait

@@ -1,4 +1,4 @@
-package artwork
+package collection
 
 import (
 	"crypto/sha256"
@@ -11,8 +11,8 @@ func TestBuildContentNameUsesDigestAndBoundsComponent(t *testing.T) {
 	t.Parallel()
 	digest := sha256.Sum256([]byte("encoded artwork"))
 	name := BuildContentName(strings.Repeat("Vacation / café ", 30)+".JPEG", digest, ".JPEG", 8)
-	if len(name) > MaxNameBytes {
-		t.Fatalf("name length = %d, want <= %d: %q", len(name), MaxNameBytes, name)
+	if len(name) > maxNameBytes {
+		t.Fatalf("name length = %d, want <= %d: %q", len(name), maxNameBytes, name)
 	}
 	if !strings.HasSuffix(name, "--"+hex.EncodeToString(digest[:8])+".jpeg") {
 		t.Fatalf("content name = %q", name)
@@ -30,7 +30,7 @@ func TestBuildContentNameClampsDigestLengthAndExtension(t *testing.T) {
 		t.Fatalf("short content name = %q", short)
 	}
 	full := BuildContentName("art.png", digest, ".png", 99)
-	if !strings.HasSuffix(full, "--"+hex.EncodeToString(digest[:])+".png") || len(full) > MaxNameBytes {
+	if !strings.HasSuffix(full, "--"+hex.EncodeToString(digest[:])+".png") || len(full) > maxNameBytes {
 		t.Fatalf("full content name = %q", full)
 	}
 }
@@ -47,7 +47,7 @@ func TestIsSupportedExtension(t *testing.T) {
 		{extension: ".gif"},
 		{extension: ""},
 	} {
-		if got := IsSupportedExtension(test.extension); got != test.want {
+		if got := isSupportedExtension(test.extension); got != test.want {
 			t.Errorf("IsSupportedExtension(%q) = %v, want %v", test.extension, got, test.want)
 		}
 	}

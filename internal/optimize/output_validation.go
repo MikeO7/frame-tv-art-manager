@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
@@ -24,7 +24,7 @@ func availableContentName(ctx context.Context, request contentNameRequest) (stri
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		candidate := artwork.BuildContentName(request.label, request.digest, request.extension, digestBytes)
+		candidate := collection.BuildContentName(request.label, request.digest, request.extension, digestBytes)
 		if candidate == request.currentName {
 			return candidate, nil
 		}
@@ -77,8 +77,8 @@ func fileDigest(ctx context.Context, path string) ([sha256.Size]byte, error) {
 	return [sha256.Size]byte(hash.Sum(nil)), nil
 }
 
-// ValidateImage verifies that the complete encoded pixel stream decodes.
-func ValidateImage(ctx context.Context, path string) error {
+// validateImage verifies that the complete encoded pixel stream decodes.
+func validateImage(ctx context.Context, path string) error {
 	_, _, err := decodeImageOutput(ctx, path)
 	return err
 }
