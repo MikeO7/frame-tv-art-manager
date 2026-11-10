@@ -227,7 +227,7 @@ func readPNGColorData(reader io.Reader) (embeddedColorData, error) {
 				return embeddedColorData{}, fmt.Errorf("read PNG cICP chunk: %w", err)
 			}
 			result.description = pngCICPMetadata
-			if payload[0] == 9 && payload[2] == 0 && payload[3] == 1 && (payload[1] == 16 || payload[1] == 18) {
+			if hdrPrimariesSupported(payload[0]) && payload[2] == 0 && payload[3] == 1 && (payload[1] == 16 || payload[1] == 18) {
 				result.description = "PNG cICP HDR"
 				result.hdr = &hdrMetadata{primaries: payload[0], transfer: payload[1]}
 			}
@@ -483,18 +483,19 @@ func toneMapHDRToSDR(src image.Image, metadata hdrMetadata, sourcePeak, targetPe
 				float64(pixel.G) / 65535,
 				float64(pixel.B) / 65535,
 			}
-			linear := [3]float64{}
-			for channel := range 3 {
-				if metadata.transfer == 16 {
+			var mapped [3]float64
+			if metadata.transfer == 16 {
+				linear := [3]float64{}
+				for channel := range 3 {
 					linear[channel] = pqEOTF(encoded[channel]) * 10_000 / sourcePeak
-				} else {
-					linear[channel] = hlgEOTF(encoded[channel])
 				}
+				mapped = bt2446MethodA(linear, sourcePeak, targetPeak)
+			} else {
+				// HLG is display-referred here at its nominal 1000-nit peak,
+				// whatever peak a PQ source would be mastered to.
+				mapped = bt2446MethodA(hlgEOTF(encoded), hlgNominalPeakNits, targetPeak)
 			}
-			mapped := bt2446MethodA(linear, sourcePeak, targetPeak)
-			if metadata.primaries == 9 {
-				mapped = bt2020ToBT709(mapped)
-			}
+			mapped = hdrPrimariesToBT709(metadata.primaries, mapped)
 			dst.SetRGBA(x-bounds.Min.X, y-bounds.Min.Y, rgbaFromFloat(mapped, uint8(pixel.A>>8)))
 		}
 	}
@@ -508,11 +509,17 @@ func bt2446MethodA(linear [3]float64, sourcePeak, targetPeak float64) [3]float64
 	if luma <= 1e-9 {
 		return [3]float64{}
 	}
-	scale := mappedLuma / luma
+	// BT.2446-1 section 3: colour differences are scaled with the luma and
+	// the tone-mapped luma gives way to strong red, which keeps saturated
+	// colours inside the SDR range instead of clipping a channel.
+	chromaScale := mappedLuma / (1.1 * luma)
+	blueDifference := chromaScale * (gammaRGB[2] - luma) / 1.8814
+	redDifference := chromaScale * (gammaRGB[0] - luma) / 1.4746
+	adjustedLuma := mappedLuma - max(0.1*redDifference, 0)
 	return [3]float64{
-		math.Pow(clampUnit(gammaRGB[0]*scale), 2.4),
-		math.Pow(clampUnit(gammaRGB[1]*scale), 2.4),
-		math.Pow(clampUnit(gammaRGB[2]*scale), 2.4),
+		math.Pow(clampUnit(adjustedLuma+1.4746*redDifference), 2.4),
+		math.Pow(clampUnit(adjustedLuma-0.16455*blueDifference-0.57135*redDifference), 2.4),
+		math.Pow(clampUnit(adjustedLuma+1.8814*blueDifference), 2.4),
 	}
 }
 
@@ -539,15 +546,49 @@ func pqEOTF(value float64) float64 {
 	return math.Pow(max(power-c1, 0)/(c2-c3*power), 1/m1)
 }
 
-func hlgEOTF(value float64) float64 {
-	const a, b, c = 0.17883277, 0.28466892, 0.55991073
-	var scene float64
-	if value <= 0.5 {
-		scene = value * value / 3
-	} else {
-		scene = (math.Exp((value-c)/a) + b) / 12
+// hlgNominalPeakNits is the display peak at which the HLG system gamma is 1.2.
+const hlgNominalPeakNits = 1000
+
+// hlgEOTF returns display light for an HLG signal per BT.2100-2 Table 5. The
+// system gamma is applied to scene luminance and scales all three channels
+// alike; applying it to each channel would shift the hue of saturated colours.
+func hlgEOTF(encoded [3]float64) [3]float64 {
+	scene := [3]float64{hlgInverseOETF(encoded[0]), hlgInverseOETF(encoded[1]), hlgInverseOETF(encoded[2])}
+	luminance := 0.2627*scene[0] + 0.6780*scene[1] + 0.0593*scene[2]
+	if luminance <= 0 {
+		return [3]float64{}
 	}
-	return math.Pow(scene, 1.2)
+	gain := math.Pow(luminance, 0.2)
+	return [3]float64{gain * scene[0], gain * scene[1], gain * scene[2]}
+}
+
+func hlgInverseOETF(value float64) float64 {
+	const a, b, c = 0.17883277, 0.28466892, 0.55991073
+	if value <= 0.5 {
+		return value * value / 3
+	}
+	return (math.Exp((value-c)/a) + b) / 12
+}
+
+// hdrPrimariesSupported reports the H.273 colour primaries the tone mapper
+// can bring to BT.709: BT.709 itself, BT.2020, and Display P3.
+func hdrPrimariesSupported(primaries uint8) bool {
+	return primaries == 1 || primaries == 9 || primaries == 12
+}
+
+func hdrPrimariesToBT709(primaries uint8, v [3]float64) [3]float64 {
+	switch primaries {
+	case 9:
+		return bt2020ToBT709(v)
+	case 12:
+		return [3]float64{
+			1.2249*v[0] - 0.2247*v[1],
+			-0.0420*v[0] + 1.0419*v[1],
+			-0.0197*v[0] - 0.0786*v[1] + 1.0979*v[2],
+		}
+	default:
+		return v
+	}
 }
 
 func bt2020ToBT709(v [3]float64) [3]float64 {
@@ -558,9 +599,16 @@ func bt2020ToBT709(v [3]float64) [3]float64 {
 	}
 }
 
+// rgbaFromFloat encodes a straight linear colour as the premultiplied sRGB
+// sample image.RGBA holds.
 func rgbaFromFloat(linear [3]float64, alpha uint8) color.RGBA {
 	tables := srgbLookup()
-	return color.RGBA{R: tables.encode(linear[0]), G: tables.encode(linear[1]), B: tables.encode(linear[2]), A: alpha}
+	straight := color.NRGBA{R: tables.encode(linear[0]), G: tables.encode(linear[1]), B: tables.encode(linear[2]), A: alpha}
+	if alpha == 255 {
+		return color.RGBA(straight)
+	}
+	premultiplied, _ := color.RGBAModel.Convert(straight).(color.RGBA)
+	return premultiplied
 }
 
 func clampUnit(value float64) float64 { return math.Min(math.Max(value, 0), 1) }

@@ -18,6 +18,7 @@ func padOnBlur(src *image.RGBA, cfg Config) *image.RGBA {
 	srcBounds := src.Bounds()
 	width, height := containedSize(srcBounds.Dx(), srcBounds.Dy(), targetW, targetH, cfg.MaxUpscale)
 	scaled := resizeCrop(src, srcBounds, width, height, cfg.LinearLightResize)
+	scaled = sharpenResampled(scaled, cfg, float64(height)/float64(srcBounds.Dy()))
 	x, y := (targetW-width)/2, (targetH-height)/2
 	std_draw.Draw(bg, image.Rect(x, y, x+width, y+height), scaled, image.Point{}, std_draw.Over)
 	return bg

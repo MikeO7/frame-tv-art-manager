@@ -188,29 +188,38 @@ func TestCollageOutputExtensionIsOrderIndependentAndPreservesPNG(t *testing.T) {
 	}
 }
 
-func TestCreateCollageAppliesSharpenPerPanel(t *testing.T) {
+func TestCreateCollageSharpensEachPanelAtItsOwnScale(t *testing.T) {
 	t.Parallel()
-	input := image.NewRGBA(image.Rect(0, 0, 8, 8))
-	for x, value := range []uint8{60, 62, 70, 100, 150, 172, 180, 180} {
-		fillRGBA(input, image.Rect(x, 0, x+1, 8), color.RGBA{R: value, G: value, B: value, A: 255})
+	columns := func(values ...uint8) *image.RGBA {
+		input := image.NewRGBA(image.Rect(0, 0, len(values), len(values)))
+		for x, value := range values {
+			fillRGBA(input, image.Rect(x, 0, x+1, len(values)), color.RGBA{R: value, G: value, B: value, A: 255})
+		}
+		return input
 	}
 	cfg := DefaultConfig()
 	cfg.MaxWidth, cfg.MaxHeight = 16, 8
 	cfg.SmartCropEnabled = false
-	cfg.SharpenThreshold = 0
+	cfg.SharpenAmount, cfg.SharpenThreshold = 1, 0
 	cfg.PadStyle = padStyleBlur
-	output := renderCollage(input, input, collageRenderRequest{
-		ctx: context.Background(), cfg: cfg, logger: slog.New(slog.DiscardHandler),
-		rightSharpen: 1,
-	})
-	// Sharpening steepens the soft edge; the unsharpened left panel keeps it.
-	left := color.RGBAModel.Convert(output.At(3, 4)).(color.RGBA)
-	right := color.RGBAModel.Convert(output.At(11, 4)).(color.RGBA)
-	if left.R != 100 {
-		t.Fatalf("unsharpened left-panel edge = %d, want 100", left.R)
+	logger := slog.New(slog.DiscardHandler)
+	// The left source is shown 1:1 and is sharpened; the right is enlarged
+	// twice, which is past the point where sharpening adds anything.
+	native, enlarged := columns(60, 62, 70, 100, 150, 172, 180, 180), columns(60, 100, 150, 180)
+	output := renderCollage(native, enlarged, collageRenderRequest{ctx: context.Background(), cfg: cfg, logger: logger})
+	plainLeft := centerCropConfigured(context.Background(), native, 8, 8, cfg, logger)
+	plainRight := centerCropConfigured(context.Background(), enlarged, 8, 8, cfg, logger)
+	sharpened := false
+	for y := 1; y < 7; y++ {
+		for x := 2; x < 6; x++ {
+			sharpened = sharpened || output.RGBAAt(x, y) != plainLeft.RGBAAt(x, y)
+			if got, want := output.RGBAAt(8+x, y), plainRight.RGBAAt(x, y); got != want {
+				t.Fatalf("enlarged right panel pixel (%d,%d) = %v, want unsharpened %v", x, y, got, want)
+			}
+		}
 	}
-	if right.R >= left.R {
-		t.Fatalf("right-panel sharpened edge = %d, want darker than left %d", right.R, left.R)
+	if !sharpened {
+		t.Fatal("the 1:1 left panel was not sharpened")
 	}
 }
 
@@ -556,7 +565,7 @@ func imageFromPattern(width, height int) *image.RGBA {
 	return img
 }
 
-func TestProcessCollagesReturnsPairFailureWithoutChangingFiles(t *testing.T) {
+func TestProcessCollagesLeavesAnOversizedPairAndKeepsGoing(t *testing.T) {
 	dir := t.TempDir()
 	writeTestImage(t, filepath.Join(dir, "upload_a.jpg"), 8, 12)
 	writeTestImage(t, filepath.Join(dir, "upload_b.jpg"), 8, 12)
@@ -570,12 +579,18 @@ func TestProcessCollagesReturnsPairFailureWithoutChangingFiles(t *testing.T) {
 	cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
 	cfg.MaxWorkingBytes = 1
 	pass := testPass(dir, cfg)
-	err := pass.processCollages(context.Background(), localFiles)
-	if err == nil || !strings.Contains(err.Error(), "working set") {
-		t.Fatalf("processCollages() = %v, want working-set failure", err)
+	// A pair too large to render together is not a failed pass: it would
+	// otherwise stop every other file from being optimized, every cycle.
+	if err := pass.processCollages(context.Background(), localFiles); err != nil {
+		t.Fatalf("processCollages() = %v, want the oversized pair skipped", err)
 	}
 	if pass.optimized != 0 || len(pass.renames) != 0 || len(localFiles) != 2 {
-		t.Fatalf("count=%d renames=%v files=%v, want failed pair left in place", pass.optimized, pass.renames, localFiles)
+		t.Fatalf("count=%d renames=%v files=%v, want the pair left in place", pass.optimized, pass.renames, localFiles)
+	}
+	for name := range localFiles {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("portrait %s was not left in place: %v", name, err)
+		}
 	}
 }
 

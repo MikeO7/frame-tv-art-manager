@@ -17,12 +17,12 @@ func applyCanvasTexture(src *image.RGBA, intensity int) *image.RGBA {
 	dst := image.NewRGBA(bounds)
 	std_draw.Draw(dst, bounds, src, bounds.Min, std_draw.Src)
 
-	runPixelRows(1, height-1, func(_, startY, endY int) {
+	runPixelRows(0, height, func(_, startY, endY int) {
 		//nolint:gosec // startY is a positive row offset, conversion is mathematically safe
 		state := uint32(startY + 42) // Seed based on row
 		for y := startY; y < endY; y++ {
 			offset := y * src.Stride
-			for x := 1; x < width-1; x++ {
+			for x := range width {
 				processCanvasPixel(src, dst, offset+x*4, x, y, &state, opacity)
 			}
 		}
@@ -65,16 +65,17 @@ func calculateScharrImpasto(src *image.RGBA, x, y int) float64 {
 	stride := src.Stride
 	pix := src.Pix
 
-	// Pre-calculate row offsets.
-	// Since 1 <= y < height-1 and 1 <= x < width-1, no bounds checking is needed.
-	rowPrev := (y - 1) * stride
+	// Neighbours beyond the image repeat its edge, so the outermost pixels
+	// are textured like the rest instead of forming a plain one-pixel frame.
+	bounds := src.Bounds()
+	rowPrev := max(y-1, 0) * stride
 	rowCurr := y * stride
-	rowNext := (y + 1) * stride
+	rowNext := min(y+1, bounds.Dy()-1) * stride
 
 	// Column offsets in bytes
-	colPrev := (x - 1) * 4
+	colPrev := max(x-1, 0) * 4
 	colCurr := x * 4
-	colNext := (x + 1) * 4
+	colNext := min(x+1, bounds.Dx()-1) * 4
 
 	idx00 := rowPrev + colPrev
 	idx10 := rowPrev + colCurr

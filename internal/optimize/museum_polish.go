@@ -24,7 +24,13 @@ func rollOffHighlight(value float32) float32 {
 
 // polishPixel rolls off highlights to a paper white and adds paper grain noise to a pixel.
 func polishPixel(r, g, b float32, state *uint32) (uint8, uint8, uint8) {
-	r, g, b = rollOffHighlight(r), rollOffHighlight(g), rollOffHighlight(b)
+	// The brightest channel is rolled off and the others follow in
+	// proportion, which keeps the hue of bright colours; rolling each channel
+	// off alone pulls warm highlights toward yellow-green.
+	if brightest := max(r, g, b); brightest > highlightKnee {
+		scale := rollOffHighlight(brightest) / brightest
+		r, g, b = r*scale, g*scale, b*scale
+	}
 
 	avg := (r + g + b) * 0.33333333
 	r = r*0.92 + avg*0.08

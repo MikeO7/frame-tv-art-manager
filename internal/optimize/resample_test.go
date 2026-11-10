@@ -1,7 +1,6 @@
 package optimize
 
 import (
-	"encoding/binary"
 	"image"
 	"math"
 	"testing"
@@ -9,45 +8,90 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// referenceLinearResize is the previous golang.org/x/image/draw RGBA64
-// linear-light implementation, retained to bound the replacement's drift.
-func referenceLinearResize(src *image.RGBA, crop image.Rectangle, targetWidth, targetHeight int) *image.RGBA {
-	linearSource := image.NewRGBA64(image.Rect(0, 0, crop.Dx(), crop.Dy()))
-	for y := 0; y < crop.Dy(); y++ {
-		for x := 0; x < crop.Dx(); x++ {
-			sourceOffset := src.PixOffset(crop.Min.X+x, crop.Min.Y+y)
-			destinationOffset := y*linearSource.Stride + x*8
-			alpha := src.Pix[sourceOffset+3]
-			alpha16 := uint16(alpha) * 257
-			for channel := 0; channel < 3; channel++ {
-				encoded := 0.0
-				if alpha > 0 {
-					encoded = min(float64(src.Pix[sourceOffset+channel])/float64(alpha), 1)
-				}
-				linear := srgbDecode(encoded) * float64(alpha16)
-				binary.BigEndian.PutUint16(linearSource.Pix[destinationOffset+channel*2:], uint16(math.Round(linear)))
-			}
-			binary.BigEndian.PutUint16(linearSource.Pix[destinationOffset+6:], alpha16)
+// referenceTaps returns the normalized Catmull-Rom taps of one output index,
+// placed and broadened as golang.org/x/image/draw does.
+func referenceTaps(index, sourceSize, destinationSize int) (int, []float64) {
+	scale := float64(sourceSize) / float64(destinationSize)
+	stretch := max(scale, 1)
+	center := (float64(index)+0.5)*scale - 0.5
+	first := max(int(math.Floor(center-2*stretch)), 0)
+	end := min(int(math.Ceil(center+2*stretch)), sourceSize)
+	weights := make([]float64, 0, end-first)
+	total := 0.0
+	for coordinate := first; coordinate < end; coordinate++ {
+		weight := catmullRom(math.Abs(center-float64(coordinate)) / stretch)
+		weights = append(weights, weight)
+		total += weight
+	}
+	for tap := range weights {
+		weights[tap] /= total
+	}
+	return first, weights
+}
+
+// referenceFilter applies taps to samples and limits the result to the range
+// of the samples under the kernel's positive lobe.
+func referenceFilter(weights []float64, sample func(tap int) float64) float64 {
+	sum, lowest, highest := 0.0, math.Inf(1), math.Inf(-1)
+	for tap, weight := range weights {
+		value := sample(tap)
+		sum += weight * value
+		if weight > positiveLobeWeight {
+			lowest, highest = min(lowest, value), max(highest, value)
 		}
 	}
-	linearOutput := image.NewRGBA64(image.Rect(0, 0, targetWidth, targetHeight))
-	draw.CatmullRom.Scale(linearOutput, linearOutput.Bounds(), linearSource, linearSource.Bounds(), draw.Src, nil)
-	output := image.NewRGBA(linearOutput.Bounds())
-	for y := 0; y < targetHeight; y++ {
-		for x := 0; x < targetWidth; x++ {
-			sourceOffset := y*linearOutput.Stride + x*8
-			destinationOffset := y*output.Stride + x*4
-			alpha16 := binary.BigEndian.Uint16(linearOutput.Pix[sourceOffset+6:])
-			alpha8 := uint8((uint32(alpha16) + 128) / 257)
-			for channel := 0; channel < 3; channel++ {
-				premultiplied := binary.BigEndian.Uint16(linearOutput.Pix[sourceOffset+channel*2:])
-				linear := 0.0
-				if alpha16 > 0 {
-					linear = min(float64(premultiplied)/float64(alpha16), 1)
+	return min(max(sum, lowest), highest)
+}
+
+// referenceLinearResize is a direct float64 statement of the resize: separable
+// Catmull-Rom over premultiplied linear light, ring-limited per pass.
+func referenceLinearResize(src *image.RGBA, crop image.Rectangle, targetWidth, targetHeight int) *image.RGBA {
+	linear := make([][resampleChannels]float64, crop.Dx()*crop.Dy())
+	for y := range crop.Dy() {
+		for x := range crop.Dx() {
+			offset := src.PixOffset(crop.Min.X+x, crop.Min.Y+y)
+			alpha := float64(src.Pix[offset+3])
+			pixel := &linear[y*crop.Dx()+x]
+			pixel[3] = alpha / 255
+			for channel := range 3 {
+				if alpha > 0 {
+					pixel[channel] = srgbDecode(min(float64(src.Pix[offset+channel])/alpha, 1)) * pixel[3]
 				}
-				output.Pix[destinationOffset+channel] = clampByte(srgbEncode(linear) * float64(alpha8))
 			}
-			output.Pix[destinationOffset+3] = alpha8
+		}
+	}
+	rows := make([][resampleChannels]float64, targetWidth*crop.Dy())
+	for x := range targetWidth {
+		first, weights := referenceTaps(x, crop.Dx(), targetWidth)
+		for y := range crop.Dy() {
+			for channel := range resampleChannels {
+				rows[y*targetWidth+x][channel] = referenceFilter(weights, func(tap int) float64 {
+					return linear[y*crop.Dx()+first+tap][channel]
+				})
+			}
+		}
+	}
+	output := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	for y := range targetHeight {
+		first, weights := referenceTaps(y, crop.Dy(), targetHeight)
+		for x := range targetWidth {
+			var pixel [resampleChannels]float64
+			for channel := range resampleChannels {
+				pixel[channel] = referenceFilter(weights, func(tap int) float64 {
+					return rows[(first+tap)*targetWidth+x][channel]
+				})
+			}
+			offset := output.PixOffset(x, y)
+			alpha16 := math.Round(min(max(pixel[3], 0), 1) * 0xffff)
+			if alpha16 == 0 {
+				continue
+			}
+			alpha8 := math.Floor((alpha16 + 128) / 257)
+			for channel := range 3 {
+				straight := min(max(pixel[channel], 0)/(alpha16/0xffff), 1)
+				output.Pix[offset+channel] = clampByte(srgbEncode(straight) * alpha8)
+			}
+			output.Pix[offset+3] = uint8(alpha8)
 		}
 	}
 	return output
@@ -78,7 +122,7 @@ func resampleFixture(width, height int, translucent bool) *image.RGBA {
 	return img
 }
 
-func TestResampleLinearMatchesPreviousImplementation(t *testing.T) {
+func TestResampleLinearMatchesReference(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
@@ -104,7 +148,7 @@ func TestResampleLinearMatchesPreviousImplementation(t *testing.T) {
 			got := resampleLinear(src, test.crop, test.targetW, test.targetH, test.workers)
 			for index := range want.Pix {
 				if delta := int(got.Pix[index]) - int(want.Pix[index]); delta < -1 || delta > 1 {
-					t.Fatalf("sample %d = %d, previous implementation %d", index, got.Pix[index], want.Pix[index])
+					t.Fatalf("sample %d = %d, reference %d", index, got.Pix[index], want.Pix[index])
 				}
 			}
 		})
@@ -247,5 +291,52 @@ func TestResizeCropGammaPathUsesKernelScale(t *testing.T) {
 		if got.Pix[index] != want.Pix[index] {
 			t.Fatalf("gamma-space sample %d = %d, want %d", index, got.Pix[index], want.Pix[index])
 		}
+	}
+}
+
+func TestResampleLinearDoesNotRingBesideEdges(t *testing.T) {
+	t.Parallel()
+	const dark, bright = 60, 255
+	tests := []struct {
+		name             string
+		width, height    int
+		targetW, targetH int
+		isBright         func(x, y int) bool
+	}{
+		{name: "vertical edge upscaled 2x", width: 64, height: 16, targetW: 128, targetH: 32, isBright: func(x, _ int) bool { return x >= 32 }},
+		{name: "horizontal edge upscaled 1.5x", width: 16, height: 64, targetW: 24, targetH: 96, isBright: func(_, y int) bool { return y >= 32 }},
+		{name: "one pixel line upscaled 2x", width: 65, height: 16, targetW: 130, targetH: 32, isBright: func(x, _ int) bool { return x == 32 }},
+		{name: "vertical edge downscaled", width: 201, height: 40, targetW: 100, targetH: 20, isBright: func(x, _ int) bool { return x >= 100 }},
+		{name: "corner downscaled", width: 1000, height: 600, targetW: 384, targetH: 230, isBright: func(x, y int) bool { return x >= 500 && y >= 300 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			src := image.NewRGBA(image.Rect(0, 0, test.width, test.height))
+			for y := range test.height {
+				for x := range test.width {
+					level := uint8(dark)
+					if test.isBright(x, y) {
+						level = bright
+					}
+					offset := src.PixOffset(x, y)
+					src.Pix[offset], src.Pix[offset+1], src.Pix[offset+2], src.Pix[offset+3] = level, level, level, 255
+				}
+			}
+			got := resampleLinear(src, src.Bounds(), test.targetW, test.targetH, 3)
+			brightSeen := false
+			for index, value := range got.Pix {
+				if index%4 == 3 {
+					continue
+				}
+				if value < dark {
+					t.Fatalf("sample %d = %d, darker than the darkest source tone %d", index, value, dark)
+				}
+				brightSeen = brightSeen || value > 200
+			}
+			if !brightSeen {
+				t.Fatal("the bright side of the edge was lost")
+			}
+		})
 	}
 }

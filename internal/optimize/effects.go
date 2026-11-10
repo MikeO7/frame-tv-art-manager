@@ -23,8 +23,33 @@ func toRGBA(img image.Image) *image.RGBA {
 	}
 	bounds := img.Bounds()
 	rgba := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	switch deep := img.(type) {
+	case *image.NRGBA64, *image.RGBA64, *image.Gray16:
+		if wide, ok := deep.(image.RGBA64Image); ok {
+			roundSixteenBit(rgba, wide, bounds)
+			return rgba
+		}
+	}
 	std_draw.Draw(rgba, rgba.Bounds(), img, bounds.Min, std_draw.Src)
 	return rgba
+}
+
+// roundSixteenBit narrows 16-bit samples to the nearest 8-bit value. The
+// standard draw path drops the low byte instead, which biases dark tones down
+// and bright tones up by most of a level.
+func roundSixteenBit(dst *image.RGBA, src image.RGBA64Image, bounds image.Rectangle) {
+	narrow := func(value uint16) uint8 {
+		return uint8((uint32(value)*255 + 32767) / 65535) //nolint:gosec // the quotient is 0..255
+	}
+	runPixelRows(0, bounds.Dy(), func(_, startY, endY int) {
+		for y := startY; y < endY; y++ {
+			row := dst.Pix[y*dst.Stride : y*dst.Stride+bounds.Dx()*4]
+			for x := range bounds.Dx() {
+				pixel := src.RGBA64At(bounds.Min.X+x, bounds.Min.Y+y)
+				row[x*4], row[x*4+1], row[x*4+2], row[x*4+3] = narrow(pixel.R), narrow(pixel.G), narrow(pixel.B), narrow(pixel.A)
+			}
+		}
+	})
 }
 
 //nolint:revive // explicit crop policy values keep this allocation-free scoring seam small
@@ -100,6 +125,14 @@ func sharpen(src *image.RGBA, amount float64, threshold int) *image.RGBA {
 	return dst
 }
 
+// sharpenResampled sharpens an image that was just resampled by scale. It is
+// applied to each picture at the scale that picture was actually resized by,
+// before it is placed on a mat or background: the scale that would fill the
+// frame says nothing about a padded picture.
+func sharpenResampled(img *image.RGBA, cfg Config, scale float64) *image.RGBA {
+	return sharpen(img, sharpenAmountForScale(cfg.SharpenAmount, scale), cfg.SharpenThreshold)
+}
+
 // lumaPlane returns encoded Rec. 709 luminance in 0..1 for every pixel.
 func lumaPlane(src *image.RGBA) []float32 {
 	width, height := src.Bounds().Dx(), src.Bounds().Dy()
@@ -136,13 +169,18 @@ func casDelta(center, north, south, west, east, peak, minimumRange float32) floa
 // they contain no new detail, so sharpening only exaggerates interpolation
 // and compression artifacts.
 func scaleAwareSharpenAmount(amount float64, sourceWidth, sourceHeight, targetWidth, targetHeight int) float64 {
-	if amount <= 0 || sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0 {
+	if sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0 {
 		return 0
 	}
-	scale := max(
-		float64(targetWidth)/float64(sourceWidth),
-		float64(targetHeight)/float64(sourceHeight),
-	)
+	return sharpenAmountForScale(amount, fillScale(sourceWidth, sourceHeight, targetWidth, targetHeight))
+}
+
+// sharpenAmountForScale is scaleAwareSharpenAmount for a known resampling
+// scale.
+func sharpenAmountForScale(amount, scale float64) float64 {
+	if amount <= 0 || scale <= 0 {
+		return 0
+	}
 	factor := 1.0
 	switch {
 	case scale < 1:

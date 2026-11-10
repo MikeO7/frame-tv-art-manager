@@ -66,8 +66,8 @@ func rewriteImage(
 	return nil
 }
 
-// transformDecoded applies color normalization, orientation, the frame fit,
-// sharpening, and museum effects to a decoded image. It is the pixel half of
+// transformDecoded applies color normalization, orientation, the frame fit
+// with its sharpening, and museum effects to a decoded image. It is the pixel half of
 // rewriteImage and is shared with in-memory previews.
 //
 //nolint:revive // the transform inputs mirror rewriteImage exactly
@@ -87,8 +87,6 @@ func transformDecoded(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		amount := scaleAwareSharpenAmount(cfg.SharpenAmount, sourceW, sourceH, cfg.MaxWidth, cfg.MaxHeight)
-		rgba = sharpen(rgba, amount, cfg.SharpenThreshold)
 	}
 	if cfg.MuseumModeEnabled {
 		rgba = applyMuseumMode(rgba, cfg.MuseumModeIntensity)

@@ -2,6 +2,7 @@ package optimize
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -75,6 +76,10 @@ func decodedBytesPerPixel(model color.Model) int64 {
 	}
 }
 
+// errWorkingSetLimit marks an image, or pair of images, too large to
+// transform within the configured memory budget.
+var errWorkingSetLimit = errors.New("image working set exceeds the memory limit")
+
 func validateWorkingSet(input workingInput, cfg Config) error {
 	estimatedBytes := estimatedWorkingBytes(input, cfg)
 	maxBytes := cfg.MaxWorkingBytes
@@ -83,8 +88,8 @@ func validateWorkingSet(input workingInput, cfg Config) error {
 	}
 	if estimatedBytes > maxBytes {
 		return fmt.Errorf(
-			"estimated image working set %d MiB exceeds %d MiB limit",
-			(estimatedBytes+(1024*1024-1))/(1024*1024), maxBytes/(1024*1024),
+			"estimated image working set %d MiB exceeds %d MiB limit: %w",
+			(estimatedBytes+(1024*1024-1))/(1024*1024), maxBytes/(1024*1024), errWorkingSetLimit,
 		)
 	}
 	return nil

@@ -14,6 +14,10 @@ import (
 // linear-light working set no longer scales with the source height.
 const resampleBandBudget = 8 << 20
 
+// positiveLobeWeight separates the kernel's positive lobe from the rounding
+// noise left where it crosses zero, one source sample from the centre.
+const positiveLobeWeight = 1e-6
+
 // resampleChannels is the float32 premultiplied linear RGBA sample width.
 const resampleChannels = 4
 
@@ -28,6 +32,11 @@ func resizeCrop(src *image.RGBA, crop image.Rectangle, targetWidth, targetHeight
 
 // linearResample is one separable Catmull-Rom resize performed in
 // premultiplied linear light with float32 accumulation.
+//
+// Each pass limits its result to the range of the source samples under the
+// kernel's positive lobe. The negative lobes still sharpen, but they cannot
+// push a sample past its neighbours: in linear light that undershoot is small,
+// yet once encoded it turns dark tones beside a bright edge black.
 type linearResample struct {
 	src         *image.RGBA
 	crop        image.Rectangle
@@ -75,6 +84,8 @@ func resampleLinear(src *image.RGBA, crop image.Rectangle, targetWidth, targetHe
 type resampleScratch struct {
 	rows        []float32
 	accumulator []float32
+	lowest      []float32
+	highest     []float32
 }
 
 // outputRowsPerBand sizes a band so its intermediate rows fit the budget. A
@@ -99,8 +110,11 @@ func (job *linearResample) renderBand(firstRow, endRow int, scratch *resampleScr
 	scratch.rows = scratch.rows[:needed]
 	if cap(scratch.accumulator) < rowSamples {
 		scratch.accumulator = make([]float32, rowSamples)
+		scratch.lowest = make([]float32, rowSamples)
+		scratch.highest = make([]float32, rowSamples)
 	}
 	accumulator := scratch.accumulator[:rowSamples]
+	lowest, highest := scratch.lowest[:rowSamples], scratch.highest[:rowSamples]
 	for sourceRow := firstSource; sourceRow < endSource; sourceRow++ {
 		offset := (sourceRow - firstSource) * rowSamples
 		job.filterRow(sourceRow, scratch.rows[offset:offset+rowSamples])
@@ -115,6 +129,21 @@ func (job *linearResample) renderBand(firstRow, endRow int, scratch *resampleScr
 				accumulator[index] += weight * value
 			}
 		}
+		coreFirst, coreEnd := job.vertical.core(row)
+		offset := (start + coreFirst - firstSource) * rowSamples
+		copy(lowest, scratch.rows[offset:offset+rowSamples])
+		copy(highest, lowest)
+		for tap := coreFirst + 1; tap < coreEnd; tap++ {
+			offset := (start + tap - firstSource) * rowSamples
+			line := scratch.rows[offset : offset+rowSamples]
+			for index, value := range line {
+				lowest[index] = min(lowest[index], value)
+				highest[index] = max(highest[index], value)
+			}
+		}
+		for index, value := range accumulator {
+			accumulator[index] = min(max(value, lowest[index]), highest[index])
+		}
 		job.writeRow(row, accumulator)
 	}
 }
@@ -126,10 +155,22 @@ func (job *linearResample) filterRow(sourceRow int, output []float32) {
 	decode := &job.tables.decode32
 	for x := range job.horizontal.start {
 		start, weights := job.horizontal.taps(x)
+		coreFirst, coreEnd := job.horizontal.core(x)
+		coreTaps := uint(coreEnd - coreFirst)
 		var red, green, blue, alpha float32
+		lowRed, lowGreen, lowBlue, lowAlpha := uint8(255), uint8(255), uint8(255), uint8(255)
+		var highRed, highGreen, highBlue uint8
 		offset := start * 4
-		for _, weight := range weights {
+		for tap, weight := range weights {
 			sample := pixels[offset : offset+4 : offset+4]
+			// Opaque samples under the positive lobe are ranged as bytes,
+			// since decoding is monotonic.
+			if uint(tap-coreFirst) < coreTaps {
+				lowRed, highRed = min(lowRed, sample[0]), max(highRed, sample[0])
+				lowGreen, highGreen = min(lowGreen, sample[1]), max(highGreen, sample[1])
+				lowBlue, highBlue = min(lowBlue, sample[2]), max(highBlue, sample[2])
+				lowAlpha = min(lowAlpha, sample[3])
+			}
 			switch sample[3] {
 			case 255:
 				red += weight * decode[sample[0]]
@@ -146,8 +187,35 @@ func (job *linearResample) filterRow(sourceRow int, output []float32) {
 			}
 			offset += 4
 		}
-		output[x*4], output[x*4+1], output[x*4+2], output[x*4+3] = red, green, blue, alpha
+		if lowAlpha == 255 {
+			output[x*4] = min(max(red, decode[lowRed]), decode[highRed])
+			output[x*4+1] = min(max(green, decode[lowGreen]), decode[highGreen])
+			output[x*4+2] = min(max(blue, decode[lowBlue]), decode[highBlue])
+			output[x*4+3] = 1
+			continue
+		}
+		low, high := translucentRange(pixels[(start+coreFirst)*4 : (start+coreEnd)*4])
+		output[x*4] = min(max(red, low[0]), high[0])
+		output[x*4+1] = min(max(green, low[1]), high[1])
+		output[x*4+2] = min(max(blue, low[2]), high[2])
+		output[x*4+3] = min(max(alpha, low[3]), high[3])
 	}
+}
+
+// translucentRange returns the lowest and highest premultiplied linear sample
+// of each channel.
+func translucentRange(pixels []uint8) (low, high [resampleChannels]float32) {
+	low = [resampleChannels]float32{math.MaxFloat32, math.MaxFloat32, math.MaxFloat32, math.MaxFloat32}
+	for offset := 0; offset+3 < len(pixels); offset += 4 {
+		var linear [resampleChannels]float32
+		if sample := pixels[offset : offset+4 : offset+4]; sample[3] != 0 {
+			linear = decodePremultiplied(sample)
+		}
+		for channel, value := range linear {
+			low[channel], high[channel] = min(low[channel], value), max(high[channel], value)
+		}
+	}
+	return low, high
 }
 
 // decodePremultiplied converts a translucent premultiplied sRGB sample to
@@ -194,6 +262,10 @@ type resampleAxis struct {
 	start   []int
 	offset  []int
 	weights []float32
+	// coreFirst and coreEnd bound, per index, the taps under the kernel's
+	// positive lobe, relative to start.
+	coreFirst []int32
+	coreEnd   []int32
 }
 
 func newResampleAxis(sourceSize, destinationSize int) resampleAxis {
@@ -215,9 +287,15 @@ func newResampleAxis(sourceSize, destinationSize int) resampleAxis {
 			total += weight
 		}
 		axis.start[index] = first
-		for _, weight := range taps {
+		coreFirst, coreEnd := len(taps), 0
+		for tap, weight := range taps {
 			axis.weights = append(axis.weights, float32(weight/total))
+			if weight > positiveLobeWeight {
+				coreFirst, coreEnd = min(coreFirst, tap), tap+1
+			}
 		}
+		axis.coreFirst = append(axis.coreFirst, int32(coreFirst)) //nolint:gosec // bounded by the tap count
+		axis.coreEnd = append(axis.coreEnd, int32(coreEnd))
 		axis.offset[index+1] = len(axis.weights)
 	}
 	return axis
@@ -253,6 +331,10 @@ func catmullRom(distance float64) float64 {
 
 func (axis resampleAxis) taps(index int) (int, []float32) {
 	return axis.start[index], axis.weights[axis.offset[index]:axis.offset[index+1]]
+}
+
+func (axis resampleAxis) core(index int) (first, end int) {
+	return int(axis.coreFirst[index]), int(axis.coreEnd[index])
 }
 
 func (axis resampleAxis) maxTaps() int {

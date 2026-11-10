@@ -38,7 +38,7 @@ const (
 	pngICCMetadata        = "PNG iCCP"
 	pngCICPMetadata       = "PNG cICP"
 	portraitModeCollage   = "collage"
-	transformRevision     = "frame-image-v10"
+	transformRevision     = "frame-image-v11"
 )
 
 type Config struct {
