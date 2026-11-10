@@ -46,7 +46,7 @@ func (c *connection) recvLoop() {
 
 		// Route d2d service messages to pending requests.
 		// Support both dot-notation and underscore-notation used by different models.
-		if resp.Event == EventD2DServiceMessageEvent || resp.Event == EventD2DServiceMessage {
+		if resp.Event == eventD2DServiceMessageEvent || resp.Event == eventD2DServiceMessage {
 			c.routeD2DEvent(resp.Data)
 		}
 	}

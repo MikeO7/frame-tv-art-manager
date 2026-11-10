@@ -10,10 +10,10 @@ var pngSignature = [8]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a} //nolint
 
 const pngChunkEnd = "IEND"
 
-// ReadOrientation reads the EXIF orientation tag from an image file if available.
+// readOrientation reads the EXIF orientation tag from an image file if available.
 //
 //nolint:gocognit // custom EXIF marker scan with raw JPEG bounds checks
-func ReadOrientation(r io.Reader) (int, error) {
+func readOrientation(r io.Reader) (int, error) {
 	var buf [4]byte
 	if _, err := io.ReadFull(r, buf[:2]); err != nil {
 		return 1, err
@@ -51,10 +51,10 @@ func ReadOrientation(r io.Reader) (int, error) {
 	return 1, nil
 }
 
-// ReadPNGOrientation reads the standardized PNG eXIf chunk when present.
+// readPNGOrientation reads the standardized PNG eXIf chunk when present.
 //
 //nolint:gocognit // streaming chunk framing and optional Exif prefix are one bounds-checked parser
-func ReadPNGOrientation(r io.Reader) (int, error) {
+func readPNGOrientation(r io.Reader) (int, error) {
 	var signature [8]byte
 	if _, err := io.ReadFull(r, signature[:]); err != nil {
 		return 1, err

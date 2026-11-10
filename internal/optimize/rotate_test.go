@@ -55,7 +55,7 @@ func TestRotateImageMatchesEXIFOrientations(t *testing.T) {
 		for orientation := 1; orientation <= 8; orientation++ {
 			t.Run(source.name+"/"+string(rune('0'+orientation)), func(t *testing.T) {
 				t.Parallel()
-				assertOriented(t, source.img, RotateImage(source.img, orientation), orientation)
+				assertOriented(t, source.img, rotateImage(source.img, orientation), orientation)
 			})
 		}
 	}
@@ -90,7 +90,7 @@ func TestRotateImageConvertsNonRGBAAndKeepsUnknownOrientations(t *testing.T) {
 	t.Parallel()
 	gray := image.NewGray(image.Rect(0, 0, 3, 2))
 	gray.Pix = []uint8{1, 2, 3, 4, 5, 6}
-	rotated := RotateImage(gray, 6)
+	rotated := rotateImage(gray, 6)
 	if rotated.Bounds() != image.Rect(0, 0, 2, 3) {
 		t.Fatalf("rotated gray bounds = %v", rotated.Bounds())
 	}
@@ -98,12 +98,12 @@ func TestRotateImageConvertsNonRGBAAndKeepsUnknownOrientations(t *testing.T) {
 		t.Fatalf("rotated gray (0,0) = %d, want bottom-left source value 4", pixel.Y)
 	}
 	for _, orientation := range []int{0, 1, 9, -3} {
-		if RotateImage(gray, orientation) != image.Image(gray) {
+		if rotateImage(gray, orientation) != image.Image(gray) {
 			t.Fatalf("orientation %d did not return the source image", orientation)
 		}
 	}
 	empty := image.NewRGBA(image.Rect(0, 0, 0, 4))
-	if got := RotateImage(empty, 6).Bounds(); got != image.Rect(0, 0, 4, 0) {
+	if got := rotateImage(empty, 6).Bounds(); got != image.Rect(0, 0, 4, 0) {
 		t.Fatalf("empty rotation bounds = %v", got)
 	}
 }

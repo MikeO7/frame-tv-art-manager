@@ -17,7 +17,7 @@ const (
 
 type pendingSourceDownload struct {
 	prepared preparedDownload
-	image    SourceImage
+	image    sourceImage
 	tracker  downloadTracker
 }
 
@@ -27,12 +27,12 @@ type SourceLoader interface {
 }
 
 // Ensure Loader implements SourceLoader.
-var _ SourceLoader = (*Loader)(nil)
+var _ SourceLoader = (*loader)(nil)
 
 // Sync reads the sources file and downloads any new images. Returns the
 // number of newly downloaded images. Skips URLs that have already been
 // downloaded.
-func (l *Loader) Sync(ctx context.Context, snapshot collection.Snapshot) (int, error) {
+func (l *loader) Sync(ctx context.Context, snapshot collection.Snapshot) (int, error) {
 	if l.disabled() {
 		return 0, nil
 	}
@@ -93,7 +93,7 @@ func (l *Loader) Sync(ctx context.Context, snapshot collection.Snapshot) (int, e
 	return downloaded, errors.Join(cycleErrors...)
 }
 
-func (l *Loader) resetSourceState(snapshot collection.Snapshot) {
+func (l *loader) resetSourceState(snapshot collection.Snapshot) {
 	l.sourceOrigins = make(map[string]struct{})
 	l.collectionSize = len(snapshot.Items)
 	for _, item := range snapshot.Items {
@@ -106,14 +106,14 @@ func (l *Loader) resetSourceState(snapshot collection.Snapshot) {
 	}
 }
 
-func (l *Loader) disabled() bool {
+func (l *loader) disabled() bool {
 	return l.sourcesFile == "" || l.dryRun
 }
 
 // syncLine resolves and downloads all images for one sources-file line.
 //
 //nolint:funlen,gocognit // Bounded batching keeps download cleanup, cancellation, and committed counts in one ordered pass.
-func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
+func (l *loader) syncLine(ctx context.Context, line string) (int, error) {
 	provider := l.resolveProvider(line)
 	if provider == nil {
 		return 0, errors.New("no provider found for source")
@@ -190,7 +190,7 @@ func (l *Loader) syncLine(ctx context.Context, line string) (int, error) {
 }
 
 //nolint:gocognit // File ownership and ordered import results are handled together to keep cleanup auditable.
-func (l *Loader) importSourceBatch(ctx context.Context, pending []pendingSourceDownload) (int, error) {
+func (l *loader) importSourceBatch(ctx context.Context, pending []pendingSourceDownload) (int, error) {
 	if l.importer == nil {
 		return 0, errors.New("source collection importer is required")
 	}

@@ -239,7 +239,7 @@ func TestBuildPlanDeterministicAndDigestBased(t *testing.T) {
 		CollectionGeneration: snap.Generation, ConfirmedAt: testTime,
 	}
 
-	plan, err := BuildPlan(snap, observation, state, Policy{})
+	plan, err := buildPlan(snap, observation, state, Policy{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestBuildPlanDeterministicAndDigestBased(t *testing.T) {
 			t.Fatal("planner deleted the last-known-good image")
 		}
 	}
-	second, err := BuildPlan(snap, observation, cloneState(state), Policy{})
+	second, err := buildPlan(snap, observation, cloneState(state), Policy{})
 	if err != nil || !slices.Equal(plan.Commands, second.Commands) {
 		t.Fatalf("planner is not deterministic: %#v / %#v / %v", plan, second, err)
 	}
@@ -270,14 +270,14 @@ func TestBuildPlanPrunesAndOrdersCommands(t *testing.T) {
 		Digest: missingDigest, ContentID: "gone", Name: "gone.jpg",
 		CollectionGeneration: snap.Generation, ConfirmedAt: testTime,
 	}
-	plan, err := BuildPlan(snap, observation, state, Policy{RemoveUnknown: true, Power: PowerOff})
+	plan, err := buildPlan(snap, observation, state, Policy{RemoveUnknown: true, Power: PowerOff})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(plan.PruneBindings, []string{missingDigest}) {
 		t.Fatalf("prune = %v", plan.PruneBindings)
 	}
-	want := []CommandKind{CommandUpload, CommandDeleteUnknown, CommandPowerOff}
+	want := []CommandKind{CommandUpload, CommandDeleteUnknown, commandPowerOff}
 	got := make([]CommandKind, len(plan.Commands))
 	for index := range plan.Commands {
 		got[index] = plan.Commands[index].Kind
@@ -353,15 +353,15 @@ func TestRunHandlesAppliedUploadWhenTVReusesContentID(t *testing.T) {
 				Digest: oldDigest, ContentID: "reused-content", Name: oldItem.Name,
 				CollectionGeneration: digestHex("old-generation"), ConfirmedAt: testTime,
 			}
-			pending := Pending{
+			pending := pending{
 				OperationID: "operation", CycleID: "previous-cycle", CollectionGen: desiredSnapshot.Generation,
 				PolicyFingerprint: sha256.Sum256([]byte("policy")),
-				InventoryBefore:   InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-				Command: CommandIntent{
+				InventoryBefore:   inventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+				Command: commandIntent{
 					Kind: CommandUpload, Digest: newDigest, Name: newItem.Name, Path: newItem.Path,
 					FileType: newItem.Type, Size: newItem.Size, Matte: defaultMatte,
 				},
-				Phase: PhaseApplied,
+				Phase: phaseApplied,
 				Receipt: &ReceiptSummary{
 					CommandID: "upload", Outcome: samsung.OutcomeApplied,
 					ContentID: "reused-content", CompletedAt: testTime,
@@ -439,7 +439,7 @@ func TestUnknownOutcomeIsObservedAndNeverRetried(t *testing.T) {
 	}
 	service := newTestService(t, directory, Policy{Power: PowerOff})
 	result, err := service.Run(context.Background(), Request{CycleID: "cycle", TV: adapter, Snapshot: snapshot()})
-	if !errors.Is(err, ErrRecoveryRequired) || result.State.Pending == nil || result.State.Pending.Phase != PhaseOutcomeUnknown {
+	if !errors.Is(err, ErrRecoveryRequired) || result.State.Pending == nil || result.State.Pending.Phase != phaseOutcomeUnknown {
 		t.Fatalf("result = %#v, error = %v", result, err)
 	}
 	if adapter.applyCalls != 1 {
@@ -469,30 +469,30 @@ func TestResolvePendingMatrix(t *testing.T) {
 	}
 	tests := []struct {
 		name        string
-		pending     Pending
+		pending     pending
 		observation samsung.Observation
 		resolved    bool
 		wantBinding bool
 	}{
 		{
 			name: "delete absent applied", observation: knownObservation(samsung.PowerStateOn), resolved: true,
-			pending: Pending{Command: CommandIntent{Kind: CommandDeleteOwned, Digest: digest, ContentID: "content"}, Phase: PhaseOutcomeUnknown},
+			pending: pending{Command: commandIntent{Kind: CommandDeleteOwned, Digest: digest, ContentID: "content"}, Phase: phaseOutcomeUnknown},
 		},
 		{
 			name: "delete present not applied", observation: observationPresent, resolved: true, wantBinding: true,
-			pending: Pending{Command: CommandIntent{Kind: CommandDeleteOwned, Digest: digest, ContentID: "content"}, Phase: PhaseOutcomeUnknown},
+			pending: pending{Command: commandIntent{Kind: CommandDeleteOwned, Digest: digest, ContentID: "content"}, Phase: phaseOutcomeUnknown},
 		},
 		{
 			name: "upload positive correlated", observation: observationPresent, resolved: true, wantBinding: true,
-			pending: Pending{
-				Command: CommandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, Phase: PhaseApplied,
+			pending: pending{
+				Command: commandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, Phase: phaseApplied,
 				CollectionGen: base.Bindings[digest].CollectionGeneration,
 				Receipt:       &ReceiptSummary{Outcome: samsung.OutcomeApplied, ContentID: "content"},
 			},
 		},
 		{
 			name: "upload uncorrelated blocked", observation: observationPresent, resolved: false, wantBinding: true,
-			pending: Pending{Command: CommandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, Phase: PhaseOutcomeUnknown},
+			pending: pending{Command: commandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, Phase: phaseOutcomeUnknown},
 		},
 	}
 	for _, test := range tests {
@@ -521,7 +521,7 @@ func TestStateStoreRejectsCorruptionModesAndUnknownPersistence(t *testing.T) {
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	identity := TVIdentity{Address: "192.0.2.10", Model: "model"}
+	identity := tvIdentity{Address: "192.0.2.10", Model: "model"}
 	state := initialState(identity)
 	store := newStateStore(directory)
 	if err := store.save(context.Background(), state); err != nil {
@@ -581,7 +581,7 @@ func TestStateStoreRejectsOversizedStateBeforeAllocation(t *testing.T) {
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	identity := TVIdentity{Address: "192.0.2.10", Model: "model"}
+	identity := tvIdentity{Address: "192.0.2.10", Model: "model"}
 	store := newStateStore(directory)
 	path := store.path(identity)
 	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
@@ -614,7 +614,7 @@ func TestValidationFailsClosed(t *testing.T) {
 			return err
 		}},
 		{"state version", func() error { broken := state; broken.Version = 99; return validateState(broken, identity) }},
-		{"state identity", func() error { return validateState(state, TVIdentity{Address: "other", Model: "model"}) }},
+		{"state identity", func() error { return validateState(state, tvIdentity{Address: "other", Model: "model"}) }},
 		{"nil maps", func() error { broken := state; broken.Bindings = nil; return validateState(broken, identity) }},
 		{"invalid policy", func() error { return validatePolicy(Policy{Brightness: SettingPolicy{Mode: PolicySet, Value: 101}}) }},
 	}
@@ -653,14 +653,14 @@ func TestIntentValidationAndCapabilityMapping(t *testing.T) {
 	previousSlideshow := samsung.SlideshowSetting{Interval: 1, Kind: samsung.SlideshowShuffle}
 	desiredSlideshow := samsung.SlideshowSetting{Interval: 2, Kind: samsung.SlideshowSequential}
 	digest := digestHex("art")
-	valid := []CommandIntent{
+	valid := []commandIntent{
 		{Kind: CommandUpload, Digest: digest, Name: "art.jpg", Path: "/art/art.jpg", FileType: collection.FileTypeJPEG, Size: 3, Matte: defaultMatte},
 		{Kind: CommandDeleteOwned, Digest: digest, ContentID: "content"},
 		{Kind: CommandDeleteUnknown, ContentID: "content", RemoveUnknownApproved: true},
-		{Kind: CommandSelect, ContentID: "content"},
-		{Kind: CommandSlideshow, PreviousSlideshow: &previousSlideshow, DesiredSlideshow: &desiredSlideshow},
+		{Kind: commandSelect, ContentID: "content"},
+		{Kind: commandSlideshow, PreviousSlideshow: &previousSlideshow, DesiredSlideshow: &desiredSlideshow},
 		{Kind: CommandBrightness, PreviousValue: &previous, DesiredValue: &desired},
-		{Kind: CommandPowerOff},
+		{Kind: commandPowerOff},
 		{Kind: CommandWake},
 	}
 	for _, intent := range valid {
@@ -668,12 +668,12 @@ func TestIntentValidationAndCapabilityMapping(t *testing.T) {
 			t.Errorf("validate %s: %v", intent.Kind, err)
 		}
 	}
-	invalid := []CommandIntent{
+	invalid := []commandIntent{
 		{Kind: CommandUpload},
 		{Kind: CommandDeleteOwned},
 		{Kind: CommandDeleteUnknown, ContentID: "content"},
-		{Kind: CommandSelect},
-		{Kind: CommandSlideshow},
+		{Kind: commandSelect},
+		{Kind: commandSlideshow},
 		{Kind: CommandBrightness},
 		{Kind: "future"},
 	}
@@ -703,7 +703,7 @@ func TestIntentValidationAndCapabilityMapping(t *testing.T) {
 	} else if _, ok := command.(samsung.Upload); !ok {
 		t.Fatalf("upload mapping type = %T", command)
 	}
-	if _, err := samsungCommand(CommandIntent{Kind: "future"}); !errors.Is(err, ErrUnsupportedIntent) {
+	if _, err := samsungCommand(commandIntent{Kind: "future"}); !errors.Is(err, ErrUnsupportedIntent) {
 		t.Fatalf("unknown mapping error = %v", err)
 	}
 }
@@ -717,11 +717,11 @@ func TestValidationStateBranches(t *testing.T) {
 		Digest: digest, ContentID: "content", Name: "art.jpg",
 		CollectionGeneration: generation, ConfirmedAt: testTime,
 	}
-	validPending := Pending{
+	validPending := pending{
 		OperationID: "operation", CycleID: "cycle", CollectionGen: generation,
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
-		InventoryBefore:   InventoryFingerprint{Digest: sha256.Sum256([]byte("inventory"))},
-		Command:           CommandIntent{Kind: CommandPowerOff}, Phase: PhasePrepared,
+		InventoryBefore:   inventoryFingerprint{Digest: sha256.Sum256([]byte("inventory"))},
+		Command:           commandIntent{Kind: commandPowerOff}, Phase: phasePrepared,
 	}
 	tests := []struct {
 		name   string
@@ -738,11 +738,11 @@ func TestValidationStateBranches(t *testing.T) {
 			changed.ConfirmedAt = time.Time{}
 			state.Bindings[digest] = changed
 		}},
-		{"bad tombstone key", func(state *State) { state.Tombstones["wrong"] = Tombstone{ContentID: "content", RecordedAt: testTime} }},
+		{"bad tombstone key", func(state *State) { state.Tombstones["wrong"] = tombstone{ContentID: "content", RecordedAt: testTime} }},
 		{"bad tombstone digest", func(state *State) {
-			state.Tombstones["content"] = Tombstone{ContentID: "content", Digest: "bad", RecordedAt: testTime}
+			state.Tombstones["content"] = tombstone{ContentID: "content", Digest: "bad", RecordedAt: testTime}
 		}},
-		{"bad capacity", func(state *State) { state.Capacity = CapacityEvidence{Known: true, Maximum: -1} }},
+		{"bad capacity", func(state *State) { state.Capacity = capacityEvidence{Known: true, Maximum: -1} }},
 		{"bad last generation", func(state *State) { state.LastCollectionGen = "bad" }},
 		{"pending IDs", func(state *State) { pending := validPending; pending.OperationID = ""; state.Pending = &pending }},
 		{"pending fingerprint", func(state *State) {
@@ -752,7 +752,7 @@ func TestValidationStateBranches(t *testing.T) {
 		}},
 		{"pending phase", func(state *State) { pending := validPending; pending.Phase = 99; state.Pending = &pending }},
 		{"pending command", func(state *State) { pending := validPending; pending.Command.Kind = "bad"; state.Pending = &pending }},
-		{"applied no receipt", func(state *State) { pending := validPending; pending.Phase = PhaseApplied; state.Pending = &pending }},
+		{"applied no receipt", func(state *State) { pending := validPending; pending.Phase = phaseApplied; state.Pending = &pending }},
 		{"prepared receipt", func(state *State) {
 			pending := validPending
 			pending.Receipt = &ReceiptSummary{Outcome: samsung.OutcomeApplied}
@@ -770,7 +770,7 @@ func TestValidationStateBranches(t *testing.T) {
 		})
 	}
 	applied := validPending
-	applied.Phase = PhaseApplied
+	applied.Phase = phaseApplied
 	applied.Receipt = &ReceiptSummary{CommandID: "command", Outcome: samsung.OutcomeApplied, CompletedAt: testTime}
 	state := initialState(identity)
 	state.Pending = &applied
@@ -786,24 +786,24 @@ func TestResolvePendingRemainingCommands(t *testing.T) {
 	base := initialState(identity)
 	tests := []struct {
 		name        string
-		command     CommandIntent
-		phase       Phase
+		command     commandIntent
+		phase       phase
 		observation samsung.Observation
 		resolved    bool
 	}{
-		{"power prepared on", CommandIntent{Kind: CommandPowerOff}, PhasePrepared, on, true},
-		{"power unknown off", CommandIntent{Kind: CommandPowerOff}, PhaseOutcomeUnknown, off, true},
-		{"wake prepared off", CommandIntent{Kind: CommandWake}, PhasePrepared, off, true},
-		{"wake unknown on", CommandIntent{Kind: CommandWake}, PhaseOutcomeUnknown, on, true},
-		{"select unknown clears", CommandIntent{Kind: CommandSelect, ContentID: "content"}, PhaseOutcomeUnknown, on, true},
-		{"slideshow blocked", CommandIntent{Kind: CommandSlideshow}, PhaseOutcomeUnknown, on, false},
-		{"brightness blocked", CommandIntent{Kind: CommandBrightness}, PhaseOutcomeUnknown, on, false},
-		{"invalid blocked", CommandIntent{Kind: "invalid"}, PhaseOutcomeUnknown, on, false},
+		{"power prepared on", commandIntent{Kind: commandPowerOff}, phasePrepared, on, true},
+		{"power unknown off", commandIntent{Kind: commandPowerOff}, phaseOutcomeUnknown, off, true},
+		{"wake prepared off", commandIntent{Kind: CommandWake}, phasePrepared, off, true},
+		{"wake unknown on", commandIntent{Kind: CommandWake}, phaseOutcomeUnknown, on, true},
+		{"select unknown clears", commandIntent{Kind: commandSelect, ContentID: "content"}, phaseOutcomeUnknown, on, true},
+		{"slideshow blocked", commandIntent{Kind: commandSlideshow}, phaseOutcomeUnknown, on, false},
+		{"brightness blocked", commandIntent{Kind: CommandBrightness}, phaseOutcomeUnknown, on, false},
+		{"invalid blocked", commandIntent{Kind: "invalid"}, phaseOutcomeUnknown, on, false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			state := cloneState(base)
-			state.Pending = &Pending{Command: test.command, Phase: test.phase}
+			state.Pending = &pending{Command: test.command, Phase: test.phase}
 			got, err := resolvePending(state, test.observation, testTime)
 			if (err == nil) != test.resolved {
 				t.Fatalf("state = %#v, error = %v", got, err)
@@ -820,11 +820,11 @@ func TestHandleReceiptNotAppliedInvalidAndPersistence(t *testing.T) {
 	observation := knownObservation(samsung.PowerStateOn)
 	identity, _ := identityFromObservation(observation)
 	state := initialState(identity)
-	state.Pending = &Pending{
+	state.Pending = &pending{
 		OperationID: "operation", CycleID: "cycle", CollectionGen: digestHex("generation"),
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
-		InventoryBefore:   InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-		Command:           CommandIntent{Kind: CommandPowerOff}, Phase: PhasePrepared,
+		InventoryBefore:   inventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+		Command:           commandIntent{Kind: commandPowerOff}, Phase: phasePrepared,
 	}
 	concrete := newTestService(t, directory, Policy{}).(*service)
 	for _, outcome := range []samsung.Outcome{samsung.OutcomeNotAttempted, samsung.OutcomeNotApplied} {
@@ -953,7 +953,7 @@ func TestBuildPlanDeletionAndRenameCases(t *testing.T) {
 		Digest: obsoleteDigest, ContentID: "obsolete-id", Name: "obsolete.jpg",
 		CollectionGeneration: snap.Generation, ConfirmedAt: testTime,
 	}
-	plan, err := BuildPlan(snap, observation, state, Policy{})
+	plan, err := buildPlan(snap, observation, state, Policy{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1012,7 +1012,7 @@ func TestObservationSnapshotAndRequestValidationBranches(t *testing.T) {
 }
 
 func TestStateDecodeDirectoryAndFileSafetyBranches(t *testing.T) {
-	identity := TVIdentity{Address: "192.0.2.10", Model: "model"}
+	identity := tvIdentity{Address: "192.0.2.10", Model: "model"}
 	state := initialState(identity)
 	data, err := encodeState(state)
 	if err != nil {
@@ -1026,7 +1026,7 @@ func TestStateDecodeDirectoryAndFileSafetyBranches(t *testing.T) {
 	if _, err := decodeState(unknown, identity); err == nil {
 		t.Fatal("unknown field accepted")
 	}
-	if _, err := decodeState(data, TVIdentity{Address: "other", Model: "model"}); err == nil {
+	if _, err := decodeState(data, tvIdentity{Address: "other", Model: "model"}); err == nil {
 		t.Fatal("wrong identity accepted")
 	}
 
@@ -1081,14 +1081,14 @@ func TestRunExistingNoPendingAndBlockedPending(t *testing.T) {
 		t.Fatalf("no-pending recovery = %#v, error = %v", recovery, err)
 	}
 
-	state.Pending = &Pending{
+	state.Pending = &pending{
 		OperationID: "operation", CycleID: "cycle", CollectionGen: digestHex("generation"),
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
-		InventoryBefore:   InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-		Command: CommandIntent{
+		InventoryBefore:   inventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+		Command: commandIntent{
 			Kind: CommandUpload, Digest: digestHex("art"), Name: "art.jpg", Path: "/art/art.jpg", FileType: collection.FileTypeJPEG, Size: 3, Matte: defaultMatte,
 		},
-		Phase: PhaseOutcomeUnknown,
+		Phase: phaseOutcomeUnknown,
 	}
 	state.Revision++
 	if err := store.save(context.Background(), state); err != nil {
@@ -1130,7 +1130,7 @@ func TestExecuteAndPersistenceFailureBranches(t *testing.T) {
 	concrete := newTestService(t, directory, Policy{}).(*service)
 	concrete.ids = failingIDs{}
 	if _, _, err := concrete.execute(context.Background(), executionInput{
-		request: request, state: state, observation: observation, intent: CommandIntent{Kind: CommandPowerOff},
+		request: request, state: state, observation: observation, intent: commandIntent{Kind: commandPowerOff},
 	}); err == nil {
 		t.Fatal("operation ID failure was ignored")
 	}
@@ -1170,17 +1170,17 @@ func TestPlannerPendingAllowEmptyAndPolicyHelpers(t *testing.T) {
 		Digest: digest, ContentID: "obsolete", Name: "obsolete.jpg",
 		CollectionGeneration: digestHex("generation"), ConfirmedAt: testTime,
 	}
-	plan, err := BuildPlan(snapshot(), observation, state, Policy{AllowEmpty: true})
+	plan, err := buildPlan(snapshot(), observation, state, Policy{AllowEmpty: true})
 	if err != nil || len(plan.Commands) != 1 || plan.Commands[0].Kind != CommandDeleteOwned {
 		t.Fatalf("allow-empty plan = %#v, error = %v", plan, err)
 	}
-	state.Pending = &Pending{
+	state.Pending = &pending{
 		OperationID: "operation", CycleID: "cycle", CollectionGen: digestHex("generation"),
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
-		InventoryBefore:   InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-		Command:           CommandIntent{Kind: CommandPowerOff}, Phase: PhasePrepared,
+		InventoryBefore:   inventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+		Command:           commandIntent{Kind: commandPowerOff}, Phase: phasePrepared,
 	}
-	if _, err := BuildPlan(snapshot(), observation, state, Policy{}); !errors.Is(err, ErrRecoveryRequired) {
+	if _, err := buildPlan(snapshot(), observation, state, Policy{}); !errors.Is(err, ErrRecoveryRequired) {
 		t.Fatalf("pending plan error = %v", err)
 	}
 	concrete := newTestService(t, filepath.Join(t.TempDir(), "state"), Policy{Power: PowerOff}).(*service)
@@ -1212,12 +1212,12 @@ func TestBuildPlanRejectsEveryUntrustedInputLayer(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := BuildPlan(test.snapshot, test.observation, test.state, test.policy); err == nil {
+			if _, err := buildPlan(test.snapshot, test.observation, test.state, test.policy); err == nil {
 				t.Fatal("unsafe planner input accepted")
 			}
 		})
 	}
-	for _, identity := range []TVIdentity{
+	for _, identity := range []tvIdentity{
 		{},
 		{Address: " 192.0.2.1", Model: "model"},
 		{Address: "192.0.2.1", Model: " model"},
@@ -1265,7 +1265,7 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
 
 func TestStateStoreFailureAndUnknownMismatchBranches(t *testing.T) {
-	identity := TVIdentity{Address: "192.0.2.10", Model: "model"}
+	identity := tvIdentity{Address: "192.0.2.10", Model: "model"}
 	state := initialState(identity)
 	writeFailure := newStateStore(filepath.Join(t.TempDir(), "write"))
 	writeFailure.replace = func(_ context.Context, _ string, _ fs.FileMode, write func(io.Writer) error) error {
@@ -1294,9 +1294,9 @@ func TestCloneStateDeepCopiesPendingPointers(t *testing.T) {
 	previousSlideshow := samsung.SlideshowSetting{Interval: 1, Kind: samsung.SlideshowShuffle}
 	desiredSlideshow := samsung.SlideshowSetting{Interval: 2, Kind: samsung.SlideshowSequential}
 	state := State{
-		Bindings: map[string]Binding{"a": {}}, Tombstones: map[string]Tombstone{"b": {}},
-		Pending: &Pending{
-			Command: CommandIntent{
+		Bindings: map[string]Binding{"a": {}}, Tombstones: map[string]tombstone{"b": {}},
+		Pending: &pending{
+			Command: commandIntent{
 				PreviousValue: &previous, DesiredValue: &desired,
 				PreviousSlideshow: &previousSlideshow, DesiredSlideshow: &desiredSlideshow,
 			},
@@ -1310,7 +1310,7 @@ func TestCloneStateDeepCopiesPendingPointers(t *testing.T) {
 	clone.Pending.Command.DesiredSlideshow.Interval = 9
 	clone.Pending.Receipt.CommandID = "changed"
 	clone.Bindings["a"] = Binding{ContentID: "changed"}
-	clone.Tombstones["b"] = Tombstone{ContentID: "changed"}
+	clone.Tombstones["b"] = tombstone{ContentID: "changed"}
 	if *state.Pending.Command.PreviousValue != 1 || *state.Pending.Command.DesiredValue != 2 ||
 		state.Pending.Command.PreviousSlideshow.Interval != 1 || state.Pending.Command.DesiredSlideshow.Interval != 2 ||
 		state.Pending.Receipt.CommandID != "receipt" || state.Bindings["a"].ContentID != "" || state.Tombstones["b"].ContentID != "" {
@@ -1326,11 +1326,11 @@ func TestRunRecoversPreparedIntentBeforePlanning(t *testing.T) {
 	observation := knownObservation(samsung.PowerStateOn)
 	identity, _ := identityFromObservation(observation)
 	state := initialState(identity)
-	state.Pending = &Pending{
+	state.Pending = &pending{
 		OperationID: "operation", CycleID: "old-cycle", CollectionGen: digestHex("generation"),
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
-		InventoryBefore:   InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-		Command:           CommandIntent{Kind: CommandPowerOff}, Phase: PhasePrepared,
+		InventoryBefore:   inventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+		Command:           commandIntent{Kind: commandPowerOff}, Phase: phasePrepared,
 	}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
@@ -1351,7 +1351,7 @@ func TestResolveRecoveryDryRunProjectsWithoutPersistence(t *testing.T) {
 	observation := knownObservation(samsung.PowerStateOn)
 	identity, _ := identityFromObservation(observation)
 	state := initialState(identity)
-	state.Pending = &Pending{Command: CommandIntent{Kind: CommandPowerOff}, Phase: PhasePrepared}
+	state.Pending = &pending{Command: commandIntent{Kind: commandPowerOff}, Phase: phasePrepared}
 	concrete := newTestService(t, directory, Policy{}).(*service)
 	resolved, err := concrete.resolveRecovery(context.Background(), "cycle", true, observation, state)
 	if err != nil || resolved.Pending != nil || resolved.Revision != state.Revision {
@@ -1370,14 +1370,14 @@ func TestAppliedUploadReceiptFoldsBinding(t *testing.T) {
 	observation := knownObservation(samsung.PowerStateOn)
 	identity, _ := identityFromObservation(observation)
 	state := initialState(identity)
-	state.Pending = &Pending{
+	state.Pending = &pending{
 		OperationID: "operation", CycleID: "cycle", CollectionGen: digestHex("generation"),
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
-		InventoryBefore:   InventoryFingerprint{Digest: observation.Inventory.Fingerprint},
-		Command: CommandIntent{
+		InventoryBefore:   inventoryFingerprint{Digest: observation.Inventory.Fingerprint},
+		Command: commandIntent{
 			Kind: CommandUpload, Digest: digestHex("art"), Name: "art.jpg", Path: "/art/art.jpg", FileType: collection.FileTypeJPEG, Size: 3, Matte: defaultMatte,
 		},
-		Phase: PhasePrepared,
+		Phase: phasePrepared,
 	}
 	concrete := newTestService(t, directory, Policy{}).(*service)
 	got, _, err := concrete.handleReceipt(context.Background(), state, observation, samsung.Receipt{
@@ -1420,11 +1420,11 @@ func TestPlannerRandomizedDeterminismProperty(t *testing.T) {
 			}
 		}
 		policy := Policy{RemoveUnknown: random.Intn(2) == 0, AllowEmpty: random.Intn(2) == 0}
-		first, err := BuildPlan(snap, observation, state, policy)
+		first, err := buildPlan(snap, observation, state, policy)
 		if err != nil {
 			t.Fatalf("iteration %d: %v", iteration, err)
 		}
-		second, err := BuildPlan(snap, observation, cloneState(state), policy)
+		second, err := buildPlan(snap, observation, cloneState(state), policy)
 		if err != nil || !reflect.DeepEqual(first, second) {
 			t.Fatalf("iteration %d is nondeterministic: %#v / %#v / %v", iteration, first, second, err)
 		}
@@ -1477,7 +1477,7 @@ func TestRunMultiCommandUsesFreshAuthorizationAndConverges(t *testing.T) {
 	if !slices.Equal(adapter.commands, wantCommands) {
 		t.Fatalf("commands = %v, want %v", adapter.commands, wantCommands)
 	}
-	wantApplied := []CommandKind{CommandUpload, CommandSelect, CommandSlideshow, CommandBrightness, CommandPowerOff}
+	wantApplied := []CommandKind{CommandUpload, commandSelect, commandSlideshow, CommandBrightness, commandPowerOff}
 	if !slices.Equal(result.AppliedCommands, wantApplied) {
 		t.Fatalf("result applied commands = %v, want %v", result.AppliedCommands, wantApplied)
 	}
@@ -1520,25 +1520,25 @@ func TestFirmwareChangeRetainsBindingsAndRefreshesIdentity(t *testing.T) {
 
 func TestAppliedReceiptResolutionMatrix(t *testing.T) {
 	digest := digestHex("art")
-	base := State{Bindings: map[string]Binding{digest: {Digest: digest, ContentID: "content"}}, Tombstones: map[string]Tombstone{"content": {ContentID: "content"}}}
+	base := State{Bindings: map[string]Binding{digest: {Digest: digest, ContentID: "content"}}, Tombstones: map[string]tombstone{"content": {ContentID: "content"}}}
 	tests := []struct {
 		name     string
-		command  CommandIntent
+		command  commandIntent
 		receipt  ReceiptSummary
 		resolved bool
 	}{
-		{"upload", CommandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, ReceiptSummary{Outcome: samsung.OutcomeApplied, ContentID: "uploaded"}, true},
-		{"upload blank receipt", CommandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, false},
-		{"delete owned", CommandIntent{Kind: CommandDeleteOwned, Digest: digest, ContentID: "content"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
-		{"delete unknown", CommandIntent{Kind: CommandDeleteUnknown, ContentID: "content"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
-		{"select", CommandIntent{Kind: CommandSelect, ContentID: "content"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
-		{"wake", CommandIntent{Kind: CommandWake}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
-		{"invalid", CommandIntent{Kind: "invalid"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, false},
+		{"upload", commandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, ReceiptSummary{Outcome: samsung.OutcomeApplied, ContentID: "uploaded"}, true},
+		{"upload blank receipt", commandIntent{Kind: CommandUpload, Digest: digest, Name: "art.jpg"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, false},
+		{"delete owned", commandIntent{Kind: CommandDeleteOwned, Digest: digest, ContentID: "content"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
+		{"delete unknown", commandIntent{Kind: CommandDeleteUnknown, ContentID: "content"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
+		{"select", commandIntent{Kind: commandSelect, ContentID: "content"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
+		{"wake", commandIntent{Kind: CommandWake}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, true},
+		{"invalid", commandIntent{Kind: "invalid"}, ReceiptSummary{Outcome: samsung.OutcomeApplied}, false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			state := cloneState(base)
-			state.Pending = &Pending{Command: test.command, Receipt: &test.receipt, Phase: PhaseApplied, CollectionGen: digestHex("generation")}
+			state.Pending = &pending{Command: test.command, Receipt: &test.receipt, Phase: phaseApplied, CollectionGen: digestHex("generation")}
 			got, err := resolveAppliedReceipt(state, knownObservation(samsung.PowerStateOn), testTime)
 			if (err == nil) != test.resolved {
 				t.Fatalf("state = %#v, error = %v", got, err)
@@ -1550,8 +1550,8 @@ func TestAppliedReceiptResolutionMatrix(t *testing.T) {
 func TestSettingRecoveryReleasesOnAnyKnownValue(t *testing.T) {
 	previous := samsung.SlideshowSetting{Interval: 5, Kind: samsung.SlideshowShuffle}
 	desired := samsung.SlideshowSetting{Interval: 10, Kind: samsung.SlideshowSequential}
-	base := State{Bindings: map[string]Binding{}, Tombstones: map[string]Tombstone{}, Pending: &Pending{
-		Command: CommandIntent{Kind: CommandSlideshow, PreviousSlideshow: &previous, DesiredSlideshow: &desired},
+	base := State{Bindings: map[string]Binding{}, Tombstones: map[string]tombstone{}, Pending: &pending{
+		Command: commandIntent{Kind: commandSlideshow, PreviousSlideshow: &previous, DesiredSlideshow: &desired},
 	}}
 	tests := []struct {
 		name        string
@@ -1586,24 +1586,24 @@ func TestSettingRecoveryReleasesOnAnyKnownValue(t *testing.T) {
 
 func TestReceiptObservationAndCommandMappingBranches(t *testing.T) {
 	observation := knownObservation(samsung.PowerStateOn, "delete")
-	observation = receiptObservation(observation, CommandIntent{Kind: CommandDeleteOwned, ContentID: "delete"}, samsung.Receipt{CompletedAt: testTime})
+	observation = receiptObservation(observation, commandIntent{Kind: CommandDeleteOwned, ContentID: "delete"}, samsung.Receipt{CompletedAt: testTime})
 	if len(observation.Inventory.ContentIDs) != 0 {
 		t.Fatalf("delete projection = %v", observation.Inventory.ContentIDs)
 	}
-	observation = receiptObservation(observation, CommandIntent{Kind: CommandWake}, samsung.Receipt{CompletedAt: testTime})
+	observation = receiptObservation(observation, commandIntent{Kind: CommandWake}, samsung.Receipt{CompletedAt: testTime})
 	if observation.Power != samsung.PowerStateOn {
 		t.Fatal("wake receipt did not project power on")
 	}
-	if _, err := samsungCommand(CommandIntent{Kind: CommandUpload, Digest: "bad"}); err == nil {
+	if _, err := samsungCommand(commandIntent{Kind: CommandUpload, Digest: "bad"}); err == nil {
 		t.Fatal("invalid upload digest mapped to Samsung command")
 	}
 	previous, desired := 1, 2
 	previousSlideshow := samsung.SlideshowSetting{Interval: 1, Kind: samsung.SlideshowShuffle}
 	desiredSlideshow := samsung.SlideshowSetting{Interval: 2, Kind: samsung.SlideshowSequential}
-	intents := []CommandIntent{
+	intents := []commandIntent{
 		{Kind: CommandDeleteOwned, ContentID: "content"},
-		{Kind: CommandSelect, ContentID: "content"},
-		{Kind: CommandSlideshow, PreviousSlideshow: &previousSlideshow, DesiredSlideshow: &desiredSlideshow},
+		{Kind: commandSelect, ContentID: "content"},
+		{Kind: commandSlideshow, PreviousSlideshow: &previousSlideshow, DesiredSlideshow: &desiredSlideshow},
 		{Kind: CommandBrightness, PreviousValue: &previous, DesiredValue: &desired},
 		{Kind: CommandWake},
 	}

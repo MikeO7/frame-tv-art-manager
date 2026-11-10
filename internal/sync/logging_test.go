@@ -20,7 +20,7 @@ func TestTVFailureLogCarriesCompleteSamsungDiagnostics(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&output, nil)).With("cycle", 7)
 	retryAt := time.Date(2026, time.July, 15, 12, 30, 0, 0, time.UTC)
 	cause := errors.New("connection refused by television")
-	logTVOutcome(context.Background(), logger, TVSyncResult{
+	logTVOutcome(context.Background(), logger, tvSyncResult{
 		IP: "192.0.2.10", Model: "Frame", Status: statusBackoff, TotalImages: 4,
 	}, &samsung.Error{
 		Kind: samsung.ErrorKindBackoff, Operation: "observe", RequestID: "request-17", Code: 503,
@@ -52,18 +52,18 @@ func TestTVOutcomeLogClassifiesReconciliationAndGracefulStates(t *testing.T) {
 	tests := []struct {
 		name    string
 		ctx     context.Context
-		summary TVSyncResult
+		summary tvSyncResult
 		err     error
 		level   string
 		message string
 		kind    string
 	}{
-		{name: "complete", ctx: context.Background(), summary: TVSyncResult{Status: "ok"}, level: "INFO", message: "TV reconciliation completed"},
-		{name: "known skip", ctx: context.Background(), summary: TVSyncResult{Status: statusSkippedNotArtMode}, level: "INFO", message: "TV reconciliation skipped"},
-		{name: "recovery", ctx: context.Background(), summary: TVSyncResult{Status: statusRecoveryRequired}, err: reconcile.ErrRecoveryRequired, level: "ERROR", message: messageTVReconciliationFailed, kind: "recovery_required"},
-		{name: "persistence", ctx: context.Background(), summary: TVSyncResult{Status: statusPersistenceUnknown}, err: reconcile.ErrPersistenceUnknown, level: "ERROR", message: messageTVReconciliationFailed, kind: "persistence_unknown"},
-		{name: "unsupported", ctx: context.Background(), summary: TVSyncResult{Status: statusUnsupported}, err: reconcile.ErrUnsupportedIntent, level: "ERROR", message: messageTVReconciliationFailed, kind: statusUnsupported},
-		{name: "generic", ctx: context.Background(), summary: TVSyncResult{Status: "protocol error"}, err: errors.New("bad response"), level: "ERROR", message: messageTVReconciliationFailed, kind: "protocol_error"},
+		{name: "complete", ctx: context.Background(), summary: tvSyncResult{Status: "ok"}, level: "INFO", message: "TV reconciliation completed"},
+		{name: "known skip", ctx: context.Background(), summary: tvSyncResult{Status: statusSkippedNotArtMode}, level: "INFO", message: "TV reconciliation skipped"},
+		{name: "recovery", ctx: context.Background(), summary: tvSyncResult{Status: statusRecoveryRequired}, err: reconcile.ErrRecoveryRequired, level: "ERROR", message: messageTVReconciliationFailed, kind: "recovery_required"},
+		{name: "persistence", ctx: context.Background(), summary: tvSyncResult{Status: statusPersistenceUnknown}, err: reconcile.ErrPersistenceUnknown, level: "ERROR", message: messageTVReconciliationFailed, kind: "persistence_unknown"},
+		{name: "unsupported", ctx: context.Background(), summary: tvSyncResult{Status: statusUnsupported}, err: reconcile.ErrUnsupportedIntent, level: "ERROR", message: messageTVReconciliationFailed, kind: statusUnsupported},
+		{name: "generic", ctx: context.Background(), summary: tvSyncResult{Status: "protocol error"}, err: errors.New("bad response"), level: "ERROR", message: messageTVReconciliationFailed, kind: "protocol_error"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -85,7 +85,7 @@ func TestTVCancellationLogIsInformational(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var output bytes.Buffer
-	logTVOutcome(ctx, slog.New(slog.NewJSONHandler(&output, nil)), TVSyncResult{Status: statusCanceled}, &samsung.Error{
+	logTVOutcome(ctx, slog.New(slog.NewJSONHandler(&output, nil)), tvSyncResult{Status: statusCanceled}, &samsung.Error{
 		Kind: samsung.ErrorKindCanceled, Operation: "observe", Outcome: samsung.OutcomeNotAttempted,
 		Cause: context.Canceled,
 	})

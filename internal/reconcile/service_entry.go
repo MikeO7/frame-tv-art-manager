@@ -12,8 +12,8 @@ type service struct {
 	store       stateStore
 	legacy      legacyMappingStore
 	policy      Policy
-	clock       Clock
-	ids         IDSource
+	clock       clock
+	ids         idSource
 	logger      *slog.Logger
 	mutations   mutationExecution
 	capacityTTL time.Duration

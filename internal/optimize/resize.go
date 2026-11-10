@@ -170,9 +170,9 @@ func isOptimizableImage(extension string, cfg Config) bool {
 func readOrientationForExtension(ctx context.Context, reader io.Reader, extension string) (int, error) {
 	contextual := &contextReader{ctx: ctx, reader: reader}
 	if extension == extPNG {
-		return ReadPNGOrientation(contextual)
+		return readPNGOrientation(contextual)
 	}
-	return ReadOrientation(contextual)
+	return readOrientation(contextual)
 }
 
 func validateOptimizedPixels(ctx context.Context, file *os.File, expectedWidth, expectedHeight int) error {

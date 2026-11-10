@@ -36,7 +36,7 @@ type manifestItem struct {
 	Key          string         `json:"key,omitempty"`
 	SourceKeys   []string       `json:"source_keys,omitempty"`
 	TransformKey string         `json:"transform_key,omitempty"`
-	Derivative   DerivativeKind `json:"derivative,omitempty"`
+	Derivative   derivativeKind `json:"derivative,omitempty"`
 	Originals    []string       `json:"originals,omitempty"`
 }
 

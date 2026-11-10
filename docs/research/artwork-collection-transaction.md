@@ -141,7 +141,7 @@ validation/deduplication but are not source-pruned.
 
 The scanner admits only regular, non-symlink files with supported extensions;
 the shared extension allowlist is currently JPEG/JPG/PNG
-([identity.go](../../internal/artwork/identity.go#L11-L27)). It rejects every
+([content_name.go](../../internal/collection/content_name.go)). It rejects every
 reserved name and the entire private control directory before hashing or
 decoding. This preserves the repository invariant that `mattes.json`, journals,
 manifests, staging files, AppleDouble files, and future control artifacts are

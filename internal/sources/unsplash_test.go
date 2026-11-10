@@ -48,7 +48,7 @@ func TestUnsplashResolveSendsVersionAndRequestsBoundedRendition(t *testing.T) {
 	if images[0].TrackURL != "https://api.unsplash.example/photos/abc/download" {
 		t.Errorf("track URL = %q", images[0].TrackURL)
 	}
-	want := Attribution{
+	want := attribution{
 		Provider: "unsplash", Title: "A lake", Artist: "Jo",
 		SourceURL: "https://unsplash.com/photos/abc?" + unsplashReferral, License: unsplashLicense,
 	}

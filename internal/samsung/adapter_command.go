@@ -164,7 +164,7 @@ func commandName(command Command) string {
 }
 
 func commandError(operation string, outcome Outcome, cause error) *Error {
-	kind := ErrorKindNotAuthorized
+	kind := errorKindNotAuthorized
 	retryable := false
 	switch outcome {
 	case OutcomeUnknown:
@@ -177,12 +177,12 @@ func commandError(operation string, outcome Outcome, cause error) *Error {
 	case OutcomeNotAttempted:
 		if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 			kind = ErrorKindCanceled
-		} else if !errors.Is(cause, ErrNotAuthorized) {
+		} else if !errors.Is(cause, errNotAuthorized) {
 			kind = ErrorKindInvalidResponse
 			retryable = true
 		}
 	case OutcomeApplied:
-		kind = ErrorKindNone
+		kind = errorKindNone
 	}
 	return &Error{Kind: kind, Operation: operation, Retryable: retryable, Outcome: outcome, Cause: cause}
 }

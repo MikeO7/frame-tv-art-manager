@@ -77,13 +77,13 @@ func (a *adapter) authorizeCommand(
 		authorization.inventoryFingerprint == a.runtime.InventoryFingerprint
 	if !valid {
 		a.stateMu.Unlock()
-		return nil, commandError("authorize command", OutcomeNotAttempted, ErrNotAuthorized)
+		return nil, commandError("authorize command", OutcomeNotAttempted, errNotAuthorized)
 	}
 	a.stateMu.Unlock()
 	transport, ok := a.transport.(mutationTransport)
 	if !ok {
 		return nil, &Error{
-			Kind: ErrorKindUnsupported, Operation: "authorize command", Outcome: OutcomeNotAttempted,
+			Kind: errorKindUnsupported, Operation: "authorize command", Outcome: OutcomeNotAttempted,
 			Cause: errors.New("samsung mutation transport is unavailable"),
 		}
 	}
@@ -150,7 +150,7 @@ func (a *adapter) freshCommandGuard(
 		return Inventory{}, err
 	}
 	if inventory.Fingerprint != authorization.inventoryFingerprint {
-		return Inventory{}, ErrNotAuthorized
+		return Inventory{}, errNotAuthorized
 	}
 	if err := guardCommandFacts(ctx, transport, inventory, command); err != nil {
 		return Inventory{}, err
@@ -182,12 +182,12 @@ func (a *adapter) guardActiveTV(
 	}
 	if wake {
 		if state.Power != PowerStateOff || !a.canWake() {
-			return ErrNotAuthorized
+			return errNotAuthorized
 		}
 		return nil
 	}
 	if state.Power != PowerStateOn || state.ArtMode != ArtModeOn {
-		return ErrNotAuthorized
+		return errNotAuthorized
 	}
 	return nil
 }
@@ -196,11 +196,11 @@ func guardCommandFacts(ctx context.Context, transport mutationTransport, invento
 	switch value := command.(type) {
 	case Delete:
 		if !slices.Contains(inventory.ContentIDs, strings.TrimSpace(value.ContentID)) {
-			return ErrNotAuthorized
+			return errNotAuthorized
 		}
 	case Select:
 		if !slices.Contains(inventory.ContentIDs, strings.TrimSpace(value.ContentID)) {
-			return ErrNotAuthorized
+			return errNotAuthorized
 		}
 	case ConfigureSlideshow:
 		current, readErr := transport.Slideshow(ctx)
@@ -208,7 +208,7 @@ func guardCommandFacts(ctx context.Context, transport mutationTransport, invento
 			return fmt.Errorf("read slideshow: %w", readErr)
 		}
 		if current != value.Previous {
-			return ErrNotAuthorized
+			return errNotAuthorized
 		}
 	case ConfigureBrightness:
 		current, readErr := transport.Brightness(ctx)
@@ -216,7 +216,7 @@ func guardCommandFacts(ctx context.Context, transport mutationTransport, invento
 			return fmt.Errorf("read brightness: %w", readErr)
 		}
 		if current.Value != value.PreviousValue || value.Value < current.Min || value.Value > current.Max {
-			return ErrNotAuthorized
+			return errNotAuthorized
 		}
 	}
 	return nil
@@ -239,7 +239,7 @@ func executeMutation(ctx context.Context, transport mutationTransport, command p
 	case PowerOff:
 		return "", transport.PowerOff(ctx)
 	default:
-		return "", ErrNotAuthorized
+		return "", errNotAuthorized
 	}
 }
 
@@ -280,7 +280,7 @@ func (a *adapter) verifyPostcondition(
 	case PowerOff:
 		return a.powerOutcome(ctx, PowerStateOff)
 	default:
-		return OutcomeNotAttempted, ErrNotAuthorized
+		return OutcomeNotAttempted, errNotAuthorized
 	}
 }
 
@@ -343,7 +343,7 @@ func slideshowOutcome(actual, previous, desired SlideshowSetting, err error) (Ou
 
 type operationalState struct {
 	Power     PowerState
-	ArtMode   ArtModeState
+	ArtMode   artModeState
 	connected bool
 }
 
@@ -355,7 +355,7 @@ type operationalState struct {
 // once the screen is dark, including when the motion or light sensor put Art
 // Mode to sleep, so they are off without asking: selecting a picture would
 // light the screen again.
-func (a *adapter) readPowerState(ctx context.Context, device DeviceInfo, dryRun bool) (operationalState, error) {
+func (a *adapter) readPowerState(ctx context.Context, device deviceInfo, dryRun bool) (operationalState, error) {
 	rawPower := strings.TrimSpace(device.PowerState)
 	power, known := parseDevicePowerState(rawPower)
 	if !known {
@@ -369,7 +369,7 @@ func (a *adapter) readPowerState(ctx context.Context, device DeviceInfo, dryRun 
 		return operationalState{Power: PowerStateOff}, nil
 	}
 	if err := a.transport.Connect(ctx, dryRun); err != nil {
-		if standby && !errors.Is(err, ErrUnauthorized) && ctx.Err() == nil {
+		if standby && !errors.Is(err, errUnauthorized) && ctx.Err() == nil {
 			return operationalState{Power: PowerStateOff}, nil
 		}
 		return operationalState{}, err
@@ -388,7 +388,7 @@ func (a *adapter) readPowerState(ctx context.Context, device DeviceInfo, dryRun 
 		if standby {
 			power = PowerStateOff
 		}
-		return operationalState{Power: power, ArtMode: ArtModeOff, connected: true}, nil
+		return operationalState{Power: power, ArtMode: artModeOff, connected: true}, nil
 	default:
 		return operationalState{}, fmt.Errorf("unrecognized art mode %q", artMode)
 	}
@@ -477,7 +477,7 @@ const firstYearShowingArtInStandby = 25
 // standbyMayShowArt reports whether a TV in REST standby may still be showing
 // art. The model code starts with the two-digit model year; a TV whose year
 // is unknown is asked over the art channel, as a 2025+ Frame is.
-func standbyMayShowArt(device DeviceInfo) bool {
+func standbyMayShowArt(device deviceInfo) bool {
 	prefix, _, found := strings.Cut(strings.TrimSpace(device.Model), "_")
 	if !found || len(prefix) != 2 {
 		return true

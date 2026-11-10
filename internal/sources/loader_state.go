@@ -52,7 +52,7 @@ const (
 type sourceState struct {
 	Version      int                         `json:"version"`
 	Resolutions  map[string]cachedResolution `json:"resolutions"`
-	Attributions map[string]Attribution      `json:"attributions"`
+	Attributions map[string]attribution      `json:"attributions"`
 }
 
 // cachedResolution is the last-known-good resolution of one source line and
@@ -64,14 +64,14 @@ type cachedResolution struct {
 	ExpiresAt   time.Time     `json:"expires_at"`
 	NextAttempt time.Time     `json:"next_attempt"`
 	Failures    int           `json:"failures,omitempty"`
-	Images      []SourceImage `json:"images"`
+	Images      []sourceImage `json:"images"`
 }
 
 func newSourceState() *sourceState {
 	return &sourceState{
 		Version:      sourceStateVersion,
 		Resolutions:  make(map[string]cachedResolution),
-		Attributions: make(map[string]Attribution),
+		Attributions: make(map[string]attribution),
 	}
 }
 
@@ -84,7 +84,7 @@ func sourceStatePath(artworkDir string) string {
 
 // ReadAttributions returns the recorded credits for source artwork in the
 // collection rooted at artworkDir, ordered by Source Origin.
-func ReadAttributions(ctx context.Context, artworkDir string) ([]Attribution, error) {
+func ReadAttributions(ctx context.Context, artworkDir string) ([]attribution, error) {
 	state, err := readSourceState(ctx, sourceStatePath(artworkDir))
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func ReadAttributions(ctx context.Context, artworkDir string) ([]Attribution, er
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	attributions := make([]Attribution, 0, len(keys))
+	attributions := make([]attribution, 0, len(keys))
 	for _, key := range keys {
 		attributions = append(attributions, state.Attributions[key])
 	}
@@ -126,7 +126,7 @@ func readSourceState(ctx context.Context, path string) (*sourceState, error) {
 		state.Resolutions = make(map[string]cachedResolution)
 	}
 	if state.Attributions == nil {
-		state.Attributions = make(map[string]Attribution)
+		state.Attributions = make(map[string]attribution)
 	}
 	return state, nil
 }
@@ -135,7 +135,7 @@ var errSourceStateUnreadable = errors.New("source state is unreadable")
 
 // ensureState loads the durable state once per process and removes
 // temporary downloads abandoned by an interrupted earlier run.
-func (l *Loader) ensureState(ctx context.Context) error {
+func (l *loader) ensureState(ctx context.Context) error {
 	if l.state != nil {
 		return nil
 	}
@@ -153,7 +153,7 @@ func (l *Loader) ensureState(ctx context.Context) error {
 	return nil
 }
 
-func (l *Loader) removeStaleDownloads() {
+func (l *loader) removeStaleDownloads() {
 	matches, err := filepath.Glob(filepath.Join(os.TempDir(), sourceDownloadPattern))
 	if err != nil {
 		l.logger.Warn("list stale source downloads failed", "error", err)
@@ -179,7 +179,7 @@ func (l *Loader) removeStaleDownloads() {
 // resolve returns a source line's images, reusing a fresh cached resolution
 // and keeping the last-known-good resolution when the provider fails or is
 // backing off. Lines that need no network (direct URLs) are never cached.
-func (l *Loader) resolve(ctx context.Context, provider SourceProvider, line string) ([]SourceImage, error) {
+func (l *loader) resolve(ctx context.Context, provider sourceProvider, line string) ([]sourceImage, error) {
 	now := l.now()
 	expiry := resolutionExpiry(provider.Name(), line, now)
 	if expiry.IsZero() || l.state == nil {
@@ -264,7 +264,7 @@ func sourceLineKey(line string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func (l *Loader) recordAttribution(originKey string, attribution Attribution) {
+func (l *loader) recordAttribution(originKey string, attribution attribution) {
 	if l.state == nil || attribution.Provider == "" {
 		return
 	}
@@ -278,7 +278,7 @@ func (l *Loader) recordAttribution(originKey string, attribution Attribution) {
 // persistState drops resolutions of lines no longer configured and credits
 // for artwork no longer in the collection, then publishes the control file
 // transactionally when anything changed.
-func (l *Loader) persistState(ctx context.Context, lines []string) error {
+func (l *loader) persistState(ctx context.Context, lines []string) error {
 	if l.state == nil || l.statePath == "" {
 		return nil
 	}

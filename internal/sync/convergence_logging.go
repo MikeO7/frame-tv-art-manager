@@ -35,7 +35,7 @@ func (engine *convergenceEngine) logFailedCycle(
 	logger.LogAttrs(ctx, slog.LevelError, "sync cycle failed", attrs...)
 }
 
-func logTVOutcome(ctx context.Context, logger *slog.Logger, summary TVSyncResult, err error) {
+func logTVOutcome(ctx context.Context, logger *slog.Logger, summary tvSyncResult, err error) {
 	attrs := tvOutcomeAttrs(summary)
 	if err == nil {
 		message := "TV reconciliation completed"
@@ -58,7 +58,7 @@ func logTVOutcome(ctx context.Context, logger *slog.Logger, summary TVSyncResult
 	logger.LogAttrs(ctx, level, message, attrs...)
 }
 
-func tvOutcomeAttrs(summary TVSyncResult) []slog.Attr {
+func tvOutcomeAttrs(summary tvSyncResult) []slog.Attr {
 	attrs := []slog.Attr{
 		slog.String("tv", summary.IP),
 		slog.String("model", summary.Model),
@@ -127,7 +127,7 @@ func reconciliationFailureKind(status string, err error) string {
 	}
 }
 
-func countFailedTVs(summaries []TVSyncResult) int {
+func countFailedTVs(summaries []tvSyncResult) int {
 	failed := 0
 	for _, summary := range summaries {
 		if summary.ErrorMessage != "" {

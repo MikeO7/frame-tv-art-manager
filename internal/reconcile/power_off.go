@@ -21,13 +21,13 @@ func (s *service) powerOffAfterFailure(
 ) (Result, error) {
 	policy := s.effectivePolicy(request.Policy)
 	if policy.Power != PowerOff || request.DryRun || request.TV == nil ||
-		result.powerOffAttempted || slices.Contains(result.AppliedCommands, CommandPowerOff) ||
+		result.powerOffAttempted || slices.Contains(result.AppliedCommands, commandPowerOff) ||
 		result.State.Version == 0 || result.State.Pending != nil || errors.Is(runErr, ErrPersistenceUnknown) {
 		return result, runErr
 	}
 	observation, err := request.TV.Observe(ctx, samsung.ObserveRequest{
 		CycleID: request.CycleID, CollectionGeneration: request.Snapshot.Generation,
-		Required: requiredCapabilities(CommandIntent{Kind: CommandPowerOff}),
+		Required: requiredCapabilities(commandIntent{Kind: commandPowerOff}),
 	})
 	if err != nil {
 		return result, errors.Join(runErr, fmt.Errorf("observe TV for scheduled power-off: %w", err))
@@ -42,7 +42,7 @@ func (s *service) powerOffAfterFailure(
 	}
 	state, observation, err := s.execute(ctx, executionInput{
 		request: request, policy: policy, state: result.State, observation: observation,
-		intent: CommandIntent{Kind: CommandPowerOff},
+		intent: commandIntent{Kind: commandPowerOff},
 	})
 	result.State, result.Observation = cloneState(state), observation
 	if err != nil {
@@ -51,6 +51,6 @@ func (s *service) powerOffAfterFailure(
 	s.logger.Warn("scheduled power-off ran after an earlier command failed",
 		"cycle_id", request.CycleID, "error", runErr)
 	result.Applied++
-	result.AppliedCommands = append(result.AppliedCommands, CommandPowerOff)
+	result.AppliedCommands = append(result.AppliedCommands, commandPowerOff)
 	return result, runErr
 }

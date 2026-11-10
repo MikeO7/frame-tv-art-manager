@@ -14,7 +14,7 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-func validateIdentity(identity TVIdentity) error {
+func validateIdentity(identity tvIdentity) error {
 	if strings.TrimSpace(identity.Address) == "" || strings.TrimSpace(identity.Model) == "" {
 		return errors.New("known TV address and model are required")
 	}
@@ -25,11 +25,11 @@ func validateIdentity(identity TVIdentity) error {
 	return nil
 }
 
-func identityFromObservation(observation samsung.Observation) (TVIdentity, error) {
+func identityFromObservation(observation samsung.Observation) (tvIdentity, error) {
 	if !observation.TV.Known {
-		return TVIdentity{}, errors.New("TV identity is unknown")
+		return tvIdentity{}, errors.New("TV identity is unknown")
 	}
-	identity := TVIdentity{
+	identity := tvIdentity{
 		Address:         strings.TrimSpace(observation.TV.Address),
 		Model:           strings.TrimSpace(observation.TV.Model),
 		FirmwareVersion: strings.TrimSpace(observation.TV.FirmwareVersion),
@@ -39,7 +39,7 @@ func identityFromObservation(observation samsung.Observation) (TVIdentity, error
 }
 
 //nolint:gocognit // State validation intentionally checks the complete durable schema.
-func validateState(state State, expected TVIdentity) error {
+func validateState(state State, expected tvIdentity) error {
 	if state.Version != stateVersion {
 		return fmt.Errorf("unsupported reconciliation state version %d", state.Version)
 	}
@@ -88,7 +88,7 @@ func validateState(state State, expected TVIdentity) error {
 		if err := validatePending(*parked); err != nil {
 			return fmt.Errorf("unresolved upload: %w", err)
 		}
-		if parked.Command.Kind != CommandUpload || parked.Phase == PhaseApplied {
+		if parked.Command.Kind != CommandUpload || parked.Phase == phaseApplied {
 			return errors.New("unresolved upload must be an upload without a positive receipt")
 		}
 	}
@@ -117,7 +117,7 @@ func validateStateEvidence(state State) error {
 	return nil
 }
 
-func validateCapacityEvidence(capacity CapacityEvidence) error {
+func validateCapacityEvidence(capacity capacityEvidence) error {
 	if capacity.Known && (capacity.Maximum < 0 || capacity.ObservedAt.IsZero()) {
 		return errors.New("known capacity evidence is invalid")
 	}
@@ -130,7 +130,7 @@ func validateCapacityEvidence(capacity CapacityEvidence) error {
 	return nil
 }
 
-func sameStableTV(left, right TVIdentity) bool {
+func sameStableTV(left, right tvIdentity) bool {
 	if left.DeviceID != "" && right.DeviceID != "" {
 		return left.DeviceID == right.DeviceID && left.Model == right.Model
 	}
@@ -153,40 +153,40 @@ func validateBinding(key string, binding Binding) error {
 	return nil
 }
 
-func validatePending(pending Pending) error {
+func validatePending(pending pending) error {
 	if strings.TrimSpace(pending.OperationID) == "" || strings.TrimSpace(pending.CycleID) == "" {
 		return errors.New("pending operation and cycle IDs are required")
 	}
 	if !validPendingFingerprints(pending) {
 		return errors.New("pending operation fingerprints are invalid")
 	}
-	if pending.Phase < PhasePrepared || pending.Phase > PhaseApplied {
+	if pending.Phase < phasePrepared || pending.Phase > phaseApplied {
 		return fmt.Errorf("pending operation has invalid phase %d", pending.Phase)
 	}
 	if err := validateIntent(pending.Command); err != nil {
 		return fmt.Errorf("pending operation command: %w", err)
 	}
-	if pending.Phase == PhaseApplied {
+	if pending.Phase == phaseApplied {
 		if pending.Receipt == nil || pending.Receipt.Outcome != samsung.OutcomeApplied ||
 			strings.TrimSpace(pending.Receipt.CommandID) == "" || pending.Receipt.CompletedAt.IsZero() {
 			return errors.New("applied pending operation requires a positive receipt")
 		}
 	} else if pending.Receipt != nil {
-		if pending.Phase != PhaseOutcomeUnknown || pending.Receipt.Outcome != samsung.OutcomeUnknown {
+		if pending.Phase != phaseOutcomeUnknown || pending.Receipt.Outcome != samsung.OutcomeUnknown {
 			return errors.New("receipt is incompatible with pending phase")
 		}
 	}
 	return nil
 }
 
-func validPendingFingerprints(pending Pending) bool {
+func validPendingFingerprints(pending pending) bool {
 	if !validDigest(pending.CollectionGen) || pending.PolicyFingerprint == ([sha256.Size]byte{}) {
 		return false
 	}
 	return pending.Command.Kind == CommandWake || pending.InventoryBefore.Digest != ([sha256.Size]byte{})
 }
 
-func validateIntent(intent CommandIntent) error {
+func validateIntent(intent commandIntent) error {
 	switch intent.Kind {
 	case CommandUpload:
 		if !validDigest(intent.Digest) || filepath.IsAbs(intent.Name) || filepath.Base(intent.Name) != intent.Name ||
@@ -204,11 +204,11 @@ func validateIntent(intent CommandIntent) error {
 		if strings.TrimSpace(intent.ContentID) == "" || !intent.RemoveUnknownApproved {
 			return errors.New("unknown deletion requires content ID and explicit approval")
 		}
-	case CommandSelect:
+	case commandSelect:
 		if err := validateSelectIntent(intent); err != nil {
 			return err
 		}
-	case CommandSlideshow:
+	case commandSlideshow:
 		if intent.PreviousSlideshow == nil || intent.DesiredSlideshow == nil ||
 			!intent.PreviousSlideshow.Valid() || !intent.DesiredSlideshow.Valid() {
 			return errors.New("slideshow intent requires known valid previous and desired settings")
@@ -217,7 +217,7 @@ func validateIntent(intent CommandIntent) error {
 		if intent.PreviousValue == nil || intent.DesiredValue == nil {
 			return errors.New("setting intent requires known previous and desired values")
 		}
-	case CommandPowerOff, CommandWake:
+	case commandPowerOff, CommandWake:
 		// No command-specific payload.
 	default:
 		return fmt.Errorf("unknown command kind %q", intent.Kind)
@@ -256,29 +256,29 @@ func validateSnapshot(snapshot collection.Snapshot) error {
 
 // validateObservation proves the observation is a complete, trustworthy TV
 // Inventory and returns the TV identity it carries.
-func validateObservation(observation samsung.Observation) (TVIdentity, error) {
+func validateObservation(observation samsung.Observation) (tvIdentity, error) {
 	identity, err := identityFromObservation(observation)
 	if err != nil {
-		return TVIdentity{}, err
+		return tvIdentity{}, err
 	}
 	if !observation.Inventory.Known {
-		return TVIdentity{}, errors.New("TV inventory is unknown")
+		return tvIdentity{}, errors.New("TV inventory is unknown")
 	}
 	if strings.TrimSpace(observation.Inventory.CategoryID) == "" || observation.Inventory.ObservedAt.IsZero() {
-		return TVIdentity{}, errors.New("TV inventory evidence is incomplete")
+		return tvIdentity{}, errors.New("TV inventory evidence is incomplete")
 	}
 	ids := observation.Inventory.ContentIDs
 	for index, id := range ids {
 		if id == "" || id != strings.TrimSpace(id) || (index > 0 && ids[index-1] >= id) {
-			return TVIdentity{}, errors.New("TV inventory IDs must be nonblank, sorted, and unique")
+			return tvIdentity{}, errors.New("TV inventory IDs must be nonblank, sorted, and unique")
 		}
 	}
 	canonical, err := json.Marshal(ids)
 	if err != nil {
-		return TVIdentity{}, fmt.Errorf("encode TV inventory fingerprint: %w", err)
+		return tvIdentity{}, fmt.Errorf("encode TV inventory fingerprint: %w", err)
 	}
 	if sha256.Sum256(canonical) != observation.Inventory.Fingerprint {
-		return TVIdentity{}, errors.New("TV inventory fingerprint does not match its content IDs")
+		return tvIdentity{}, errors.New("TV inventory fingerprint does not match its content IDs")
 	}
 	return identity, nil
 }
@@ -288,7 +288,7 @@ func validDigest(value string) bool {
 	return err == nil && len(decoded) == sha256.Size && value == strings.ToLower(value)
 }
 
-func validateSelectIntent(intent CommandIntent) error {
+func validateSelectIntent(intent commandIntent) error {
 	if strings.TrimSpace(intent.ContentID) == "" || (intent.Digest != "" && !validDigest(intent.Digest)) || intent.Round < 0 {
 		return errors.New("selection requires content ID and a valid digest and round")
 	}

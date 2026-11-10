@@ -29,7 +29,7 @@ func TestObservedProtocolFixtureContract(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse fixture content list: %v", err)
 			}
-			want := []ArtContent{{ContentID: "MY_F0001", CategoryID: contractCategoryID}}
+			want := []artContent{{ContentID: "MY_F0001", CategoryID: contractCategoryID}}
 			if len(content) != len(want) || content[0] != want[0] {
 				t.Fatalf("content fixture = %+v, want %+v", content, want)
 			}
@@ -52,7 +52,7 @@ func TestObservedProtocolFixtureContract(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse mixed-category content list: %v", err)
 		}
-		want := []ArtContent{
+		want := []artContent{
 			{ContentID: "MY_F0011", CategoryID: contractCategoryID},
 			{ContentID: "MY_F0010", CategoryID: contractCategoryID},
 		}
@@ -68,7 +68,7 @@ func TestObservedProtocolFixtureContract(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse artmode settings: %v", err)
 		}
-		if reading != (BrightnessReading{Value: 0, Min: 0, Max: 10}) {
+		if reading != (brightnessReading{Value: 0, Min: 0, Max: 10}) {
 			t.Fatalf("brightness reading = %+v", reading)
 		}
 	})

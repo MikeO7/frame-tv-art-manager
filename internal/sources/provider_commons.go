@@ -97,7 +97,7 @@ func (p *commonsProvider) CanHandle(line string) bool {
 	return strings.HasPrefix(line, providerCommons+":")
 }
 
-func (p *commonsProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *commonsProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
 		return nil, errors.New("invalid commons format; use commons:potd, commons:featured, or commons:search:<query>")
@@ -132,7 +132,7 @@ func (p *commonsProvider) Resolve(ctx context.Context, line string) ([]SourceIma
 	if err != nil {
 		return nil, err
 	}
-	images := make([]SourceImage, 0, len(pages))
+	images := make([]sourceImage, 0, len(pages))
 	for _, page := range pages {
 		if image, ok := p.image(page); ok {
 			images = append(images, image)
@@ -172,17 +172,17 @@ func (p *commonsProvider) query(ctx context.Context, params url.Values) ([]commo
 // 1920-pixel one. Images no wider than 3840 are served as their original.
 // A file without a license name is skipped because its credit could not be
 // given.
-func (p *commonsProvider) image(page commonsPage) (SourceImage, bool) {
+func (p *commonsProvider) image(page commonsPage) (sourceImage, bool) {
 	if len(page.ImageInfo) == 0 {
-		return SourceImage{}, false
+		return sourceImage{}, false
 	}
 	info := page.ImageInfo[0]
 	license := plainText(info.ExtMetadata.LicenseShortName.Value)
 	switch {
 	case license == "", max(info.Width, info.Height) < minUsefulLongEdge:
-		return SourceImage{}, false
+		return sourceImage{}, false
 	case info.Mime != sourceMediaTypeJPEG && info.Mime != sourceMediaTypePNG && info.Mime != "image/tiff":
-		return SourceImage{}, false
+		return sourceImage{}, false
 	}
 	primary := info.ThumbURL
 	if primary == "" {
@@ -201,7 +201,7 @@ func (p *commonsProvider) image(page commonsPage) (SourceImage, bool) {
 		}
 	}
 	if len(urls) == 0 {
-		return SourceImage{}, false
+		return sourceImage{}, false
 	}
 	// The file name is stable, unlike its descriptive metadata, so it labels
 	// the identity.
@@ -214,8 +214,8 @@ func (p *commonsProvider) image(page commonsPage) (SourceImage, bool) {
 	if artist == "" {
 		artist = plainText(info.ExtMetadata.Credit.Value)
 	}
-	return SourceImage{
+	return sourceImage{
 		URL: urls[0], Fallbacks: urls[1:], Identity: sourceIdentity(p.Name(), page.Title, fileName),
-		Attribution: Attribution{Provider: p.Name(), Title: title, Artist: artist, SourceURL: info.DescriptionURL, License: license},
+		Attribution: attribution{Provider: p.Name(), Title: title, Artist: artist, SourceURL: info.DescriptionURL, License: license},
 	}, true
 }

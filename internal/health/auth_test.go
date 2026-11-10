@@ -23,7 +23,7 @@ type fakeClock struct{ now time.Time }
 
 func (c *fakeClock) Now() time.Time { return c.now }
 
-func authTestServer(t *testing.T, token string) (*Server, *fakeClock) {
+func authTestServer(t *testing.T, token string) (*server, *fakeClock) {
 	t.Helper()
 	cfg := testConfig(0, true, t.TempDir())
 	cfg.UploadToken = token

@@ -22,8 +22,8 @@ import (
 	"math/bits"
 )
 
-// DefaultQuality is the quality used when Encode receives nil options.
-const DefaultQuality = 75
+// defaultQuality is the quality used when Encode receives nil options.
+const defaultQuality = 75
 
 // Subsampling selects how chroma is sampled relative to luma.
 type Subsampling int
@@ -166,7 +166,7 @@ func newEncoder(w io.Writer, m image.Image, o *Options) (*encoder, error) {
 	if _, ok := m.(*image.Gray); ok {
 		e.nComponent = 1
 	}
-	quality := DefaultQuality
+	quality := defaultQuality
 	if o != nil {
 		quality = min(max(o.Quality, 1), 100)
 		e.subsampling = o.Subsampling

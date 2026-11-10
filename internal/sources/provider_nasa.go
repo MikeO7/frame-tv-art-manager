@@ -86,7 +86,7 @@ func (p *nasaProvider) CanHandle(line string) bool {
 	return strings.HasPrefix(line, "nasa:")
 }
 
-func (p *nasaProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *nasaProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
 		return nil, errors.New("invalid nasa format")
@@ -106,7 +106,7 @@ func (p *nasaProvider) Resolve(ctx context.Context, line string) ([]SourceImage,
 
 // resolveAPOD resolves today's Astronomy Picture of the Day. Days whose entry
 // is a video or another non-image medium resolve to no images.
-func (p *nasaProvider) resolveAPOD(ctx context.Context) ([]SourceImage, error) {
+func (p *nasaProvider) resolveAPOD(ctx context.Context) ([]sourceImage, error) {
 	apiURL := fmt.Sprintf("%s/planetary/apod?api_key=%s", p.BaseURL, url.QueryEscape(p.apiKey))
 	var apod apodResponse
 	if err := p.fetchJSON(ctx, apiURL, "nasa apod api", &apod); err != nil {
@@ -114,7 +114,7 @@ func (p *nasaProvider) resolveAPOD(ctx context.Context) ([]SourceImage, error) {
 	}
 	if apod.Type != mediaTypeImage {
 		p.logger.Info("skipping astronomy picture of the day that is not an image", "media_type", apod.Type)
-		return []SourceImage{}, nil
+		return []sourceImage{}, nil
 	}
 	var candidates []string
 	for _, candidate := range []string{apod.HDURL, apod.URL} {
@@ -124,16 +124,16 @@ func (p *nasaProvider) resolveAPOD(ctx context.Context) ([]SourceImage, error) {
 	}
 	if len(candidates) == 0 {
 		p.logger.Info("skipping astronomy picture of the day without a JPEG or PNG image")
-		return []SourceImage{}, nil
+		return []sourceImage{}, nil
 	}
 	artist := strings.Join(strings.Fields(apod.Copyright), " ")
 	license := nasaPublicDomain
 	if artist != "" {
 		license = "Copyright " + artist
 	}
-	return []SourceImage{{
+	return []sourceImage{{
 		URL: candidates[0], Fallbacks: candidates[1:], Identity: sourceURLIdentity(p.Name(), candidates[0]),
-		Attribution: Attribution{
+		Attribution: attribution{
 			Provider: p.Name(), Title: apod.Title, Artist: artist, SourceURL: apodPageURL(apod.Date), License: license,
 		},
 	}}, nil
@@ -152,7 +152,7 @@ func apodPageURL(date string) string {
 // searchLibrary resolves the first image-library search results. An item
 // whose asset manifest cannot be read is skipped; the search fails only when
 // every manifest failed.
-func (p *nasaProvider) searchLibrary(ctx context.Context, query string) ([]SourceImage, error) {
+func (p *nasaProvider) searchLibrary(ctx context.Context, query string) ([]sourceImage, error) {
 	searchURL := fmt.Sprintf("%s/search?q=%s&media_type=image", p.SearchURL, url.QueryEscape(query))
 	var result struct {
 		Collection struct {
@@ -164,7 +164,7 @@ func (p *nasaProvider) searchLibrary(ctx context.Context, query string) ([]Sourc
 	}
 
 	items := result.Collection.Items[:min(len(result.Collection.Items), nasaMaxSearchItems)]
-	images := make([]SourceImage, 0, len(items))
+	images := make([]sourceImage, 0, len(items))
 	var failures []error
 	for index, item := range items {
 		image, ok, err := p.libraryImage(ctx, item)
@@ -188,10 +188,10 @@ func (p *nasaProvider) searchLibrary(ctx context.Context, query string) ([]Sourc
 
 // libraryImage selects the original rendition with the large rendition as its
 // fallback when the original exceeds the download or pixel caps.
-func (p *nasaProvider) libraryImage(ctx context.Context, item nasaLibraryItem) (SourceImage, bool, error) {
+func (p *nasaProvider) libraryImage(ctx context.Context, item nasaLibraryItem) (sourceImage, bool, error) {
 	var manifest []string
 	if err := p.fetchJSON(ctx, item.Href, "nasa asset manifest api", &manifest); err != nil {
-		return SourceImage{}, false, err
+		return sourceImage{}, false, err
 	}
 	var original, large string
 	for _, asset := range manifest {
@@ -209,9 +209,9 @@ func (p *nasaProvider) libraryImage(ctx context.Context, item nasaLibraryItem) (
 		}
 	}
 	if len(candidates) == 0 {
-		return SourceImage{}, false, nil
+		return sourceImage{}, false, nil
 	}
-	attribution := Attribution{Provider: p.Name(), License: nasaLibraryLicense}
+	attribution := attribution{Provider: p.Name(), License: nasaLibraryLicense}
 	if len(item.Data) > 0 {
 		data := item.Data[0]
 		attribution.Title = data.Title
@@ -220,7 +220,7 @@ func (p *nasaProvider) libraryImage(ctx context.Context, item nasaLibraryItem) (
 			attribution.SourceURL = "https://images.nasa.gov/details/" + url.PathEscape(data.NASAID)
 		}
 	}
-	return SourceImage{
+	return sourceImage{
 		URL: candidates[0], Fallbacks: candidates[1:], Identity: sourceURLIdentity(p.Name(), candidates[0]),
 		Attribution: attribution,
 	}, true, nil

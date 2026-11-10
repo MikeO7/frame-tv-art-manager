@@ -42,7 +42,7 @@ func (resolver *mapResolver) LookupNetIP(_ context.Context, _, host string) ([]n
 // loopbackOrPublic admits the httptest server while keeping every other
 // private range blocked, so tests exercise the real policy.
 func loopbackOrPublic(addr netip.Addr) bool {
-	return addr.IsLoopback() || PublicAddress(addr)
+	return addr.IsLoopback() || publicAddress(addr)
 }
 
 type imageServer struct {
@@ -84,7 +84,7 @@ func TestPublicAddress(t *testing.T) {
 		"::ffff:10.0.0.1": false, "::ffff:8.8.8.8": true, "64:ff9b::a00:1": false, "2002:a00:1::1": false,
 		"2001:db8::1": false,
 	} {
-		if got := PublicAddress(netip.MustParseAddr(address)); got != want {
+		if got := publicAddress(netip.MustParseAddr(address)); got != want {
 			t.Fatalf("PublicAddress(%s) = %t, want %t", address, got, want)
 		}
 	}
@@ -103,7 +103,7 @@ func TestFetcherDownloadsImagesOverHTTPS(t *testing.T) {
 		},
 	})
 	resolver := &mapResolver{answers: map[string][]string{"example.com": {"127.0.0.1"}}}
-	fetcher := NewFetcher(FetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool})
+	fetcher := newFetcher(fetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool})
 	for _, path := range []string{"/art.jpg", "/hop"} {
 		data, err := fetcher.Fetch(context.Background(), server.link(path), 1<<20)
 		if err != nil || string(data) != string(jpegBytes) {
@@ -145,7 +145,7 @@ func TestFetcherRejectsUnsafeLinks(t *testing.T) {
 		"mixed.test":    {"8.8.8.8", "192.168.1.1"},
 		"rebind.test":   {"127.0.0.1"},
 	}}
-	fetcher := NewFetcher(FetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool})
+	fetcher := newFetcher(fetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool})
 	tests := []struct {
 		name string
 		link string
@@ -192,7 +192,7 @@ func TestFetcherChecksTheDialedAddressNotJustTheName(t *testing.T) {
 	// loopback listener, as a rebinding or hijacked route would.
 	resolver := &mapResolver{answers: map[string][]string{"example.com": {"8.8.8.8"}}}
 	dialer := &net.Dialer{}
-	fetcher := NewFetcher(FetcherOptions{
+	fetcher := newFetcher(fetcherOptions{
 		Resolver: resolver, RootCAs: server.pool,
 		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			return dialer.DialContext(ctx, network, server.server.Listener.Addr().String())
@@ -215,7 +215,7 @@ func TestAddArtworkFromURLAndSSRFRejection(t *testing.T) {
 	})
 	resolver := &mapResolver{answers: map[string][]string{"example.com": {"127.0.0.1"}, "router.test": {"192.168.0.1"}}}
 	fixture := newFixture(t, fixtureOptions{
-		fetcher: NewFetcher(FetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool}),
+		fetcher: newFetcher(fetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool}),
 	})
 	var added addArtworkOutput
 	fixture.call(t, "add_artwork", map[string]any{

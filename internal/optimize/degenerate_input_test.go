@@ -105,7 +105,7 @@ func absDiff(left, right uint8) int {
 }
 
 func TestReadOrientationTreatsUnsetValueAsUpright(t *testing.T) {
-	got, err := ReadOrientation(bytes.NewReader(exifJPEG(binary.LittleEndian, 3, 0)))
+	got, err := readOrientation(bytes.NewReader(exifJPEG(binary.LittleEndian, 3, 0)))
 	if err != nil || got != 1 {
 		t.Fatalf("ReadOrientation() = (%d, %v), want (1, nil)", got, err)
 	}

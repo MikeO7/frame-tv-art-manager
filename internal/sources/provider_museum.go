@@ -156,8 +156,8 @@ func museumObjectIdentity(provider, objectID string) string {
 }
 
 // candidateImages returns the downloadable sources behind search candidates.
-func candidateImages(candidates []Candidate) []SourceImage {
-	images := make([]SourceImage, 0, len(candidates))
+func candidateImages(candidates []Candidate) []sourceImage {
+	images := make([]sourceImage, 0, len(candidates))
 	for _, candidate := range candidates {
 		images = append(images, candidate.image)
 	}

@@ -75,10 +75,10 @@ func (t *protocolTransport) artAPIMajor(ctx context.Context, conn *connection) i
 }
 
 // Brightness reads the Art Mode brightness and the range the TV reports.
-func (t *protocolTransport) Brightness(ctx context.Context) (BrightnessReading, error) {
+func (t *protocolTransport) Brightness(ctx context.Context) (brightnessReading, error) {
 	conn, err := t.activeConnection()
 	if err != nil {
-		return BrightnessReading{}, err
+		return brightnessReading{}, err
 	}
 	if major := t.artAPIMajor(ctx, conn); major == 0 || major >= 4 {
 		response, settingsErr := t.sendWithTimeout(ctx, conn, requestArtModeSettings, nil, t.probeTimeout())
@@ -86,22 +86,22 @@ func (t *protocolTransport) Brightness(ctx context.Context) (BrightnessReading, 
 			return parseArtModeBrightness(response.DataRaw)
 		}
 		if major >= 4 && !errors.Is(settingsErr, ErrArtAPIError) {
-			return BrightnessReading{}, settingsErr
+			return brightnessReading{}, settingsErr
 		}
 	}
 	response, err := t.sendOnConnection(ctx, conn, requestGetBrightness, newRequestID(), nil)
 	if err != nil {
-		return BrightnessReading{}, err
+		return brightnessReading{}, err
 	}
 	return newBrightnessReading(string(response.Value), string(response.Min), string(response.Max))
 }
 
 // parseArtModeBrightness extracts the brightness item from the
 // get_artmode_settings list, which arrives as an encoded JSON string.
-func parseArtModeBrightness(raw json.RawMessage) (BrightnessReading, error) {
+func parseArtModeBrightness(raw json.RawMessage) (brightnessReading, error) {
 	data := parsePolyString(raw)
 	if data == "" {
-		return BrightnessReading{}, errors.New("artmode settings are absent")
+		return brightnessReading{}, errors.New("artmode settings are absent")
 	}
 	var items []struct {
 		Item  string         `json:"item"`
@@ -110,35 +110,35 @@ func parseArtModeBrightness(raw json.RawMessage) (BrightnessReading, error) {
 		Max   protocolString `json:"max"`
 	}
 	if err := json.Unmarshal([]byte(data), &items); err != nil {
-		return BrightnessReading{}, fmt.Errorf("parse artmode settings: %w", err)
+		return brightnessReading{}, fmt.Errorf("parse artmode settings: %w", err)
 	}
 	for _, item := range items {
 		if item.Item == settingItemBrightness {
 			return newBrightnessReading(string(item.Value), string(item.Min), string(item.Max))
 		}
 	}
-	return BrightnessReading{}, errors.New("artmode settings omit brightness")
+	return brightnessReading{}, errors.New("artmode settings omit brightness")
 }
 
-func newBrightnessReading(value, minimum, maximum string) (BrightnessReading, error) {
-	reading := BrightnessReading{Max: defaultBrightnessMax}
+func newBrightnessReading(value, minimum, maximum string) (brightnessReading, error) {
+	reading := brightnessReading{Max: defaultBrightnessMax}
 	var err error
 	if reading.Value, err = strconv.Atoi(strings.TrimSpace(value)); err != nil {
-		return BrightnessReading{}, fmt.Errorf("invalid brightness value %q", value)
+		return brightnessReading{}, fmt.Errorf("invalid brightness value %q", value)
 	}
 	if strings.TrimSpace(minimum) != "" {
 		if reading.Min, err = strconv.Atoi(strings.TrimSpace(minimum)); err != nil {
-			return BrightnessReading{}, fmt.Errorf("invalid brightness minimum %q", minimum)
+			return brightnessReading{}, fmt.Errorf("invalid brightness minimum %q", minimum)
 		}
 	}
 	if strings.TrimSpace(maximum) != "" {
 		if reading.Max, err = strconv.Atoi(strings.TrimSpace(maximum)); err != nil {
-			return BrightnessReading{}, fmt.Errorf("invalid brightness maximum %q", maximum)
+			return brightnessReading{}, fmt.Errorf("invalid brightness maximum %q", maximum)
 		}
 	}
 	if reading.Min < 0 || reading.Max > 100 || reading.Min >= reading.Max ||
 		reading.Value < reading.Min || reading.Value > reading.Max {
-		return BrightnessReading{}, fmt.Errorf("brightness %d is outside the reported range %d-%d",
+		return brightnessReading{}, fmt.Errorf("brightness %d is outside the reported range %d-%d",
 			reading.Value, reading.Min, reading.Max)
 	}
 	return reading, nil
@@ -224,7 +224,7 @@ func (t *protocolTransport) slideshowRequest(
 		// A write that may have reached the TV is never retried under another
 		// name; only an explicit rejection proves it was not applied.
 		if ctx.Err() != nil || (mutation && !errors.Is(err, ErrArtAPIError)) ||
-			(!mutation && !errors.Is(err, ErrArtAPIError) && !errors.Is(err, ErrTimeout)) {
+			(!mutation && !errors.Is(err, ErrArtAPIError) && !errors.Is(err, errTimeout)) {
 			return nil, err
 		}
 	}

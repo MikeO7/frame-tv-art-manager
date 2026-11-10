@@ -19,7 +19,7 @@ func (s *service) handleReceipt(
 		return s.handleAppliedReceipt(ctx, state, observation, receipt)
 	case samsung.OutcomeUnknown:
 		state.Revision++
-		state.Pending.Phase = PhaseOutcomeUnknown
+		state.Pending.Phase = phaseOutcomeUnknown
 		state.Pending.Receipt = receiptSummary(receipt)
 		if err := s.store.save(context.WithoutCancel(ctx), state); err != nil {
 			return state, observation, errors.Join(ErrRecoveryRequired, applyErr, err)
@@ -41,12 +41,12 @@ func (s *service) handleAppliedReceipt(
 	updatedObservation := receiptObservation(observation, state.Pending.Command, receipt)
 	if state.Pending.Command.Kind == CommandUpload {
 		if state.Capacity.Probe {
-			state.Capacity = CapacityEvidence{}
+			state.Capacity = capacityEvidence{}
 		}
 		state.Capacity.Shortfalls = 0
 	}
 	state.Revision++
-	state.Pending.Phase = PhaseApplied
+	state.Pending.Phase = phaseApplied
 	state.Pending.Receipt = receiptSummary(receipt)
 	if err := s.store.save(ctx, state); err != nil {
 		return state, observation, err
@@ -73,7 +73,7 @@ func (s *service) handleDefiniteRejection(
 	commandKind := state.Pending.Command.Kind
 	previous := state.Capacity
 	if previous.Probe && commandKind == CommandUpload {
-		state.Capacity = CapacityEvidence{}
+		state.Capacity = capacityEvidence{}
 	}
 	state.Pending = nil
 	storageFull := commandKind == CommandUpload && receipt.Outcome == samsung.OutcomeNotApplied &&

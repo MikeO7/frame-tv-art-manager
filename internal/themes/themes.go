@@ -15,9 +15,9 @@ import (
 	"unicode/utf8"
 )
 
-// FileName is the control file inside the Artwork Collection's private
+// fileName is the control file inside the Artwork Collection's private
 // control directory that stores themed collections.
-const FileName = "collections.json"
+const fileName = "collections.json"
 
 const (
 	fileVersion          = 1
@@ -92,11 +92,11 @@ type File struct {
 // ErrNotFound reports a collection that does not exist.
 var ErrNotFound = errors.New("collection not found")
 
-// ErrExists reports a collection name that is already taken.
-var ErrExists = errors.New("collection already exists")
+// errExists reports a collection name that is already taken.
+var errExists = errors.New("collection already exists")
 
-// Empty returns the document used when no collections file exists.
-func Empty() File {
+// empty returns the document used when no collections file exists.
+func empty() File {
 	return File{Version: fileVersion, Collections: []Collection{}}
 }
 
@@ -160,7 +160,7 @@ func NewCollection(name, description string, exclusive bool, activation Activati
 // Add appends collection, rejecting a duplicate slug.
 func (file *File) Add(collection Collection) error {
 	if slices.ContainsFunc(file.Collections, func(existing Collection) bool { return existing.Slug == collection.Slug }) {
-		return fmt.Errorf("%w: %q", ErrExists, collection.Name)
+		return fmt.Errorf("%w: %q", errExists, collection.Name)
 	}
 	if len(file.Collections) >= maxCollections {
 		return fmt.Errorf("at most %d collections are supported", maxCollections)

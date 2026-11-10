@@ -10,9 +10,9 @@ import (
 // summaryBoxWidth is the number of runes between the box's side borders.
 const summaryBoxWidth = 50
 
-// CycleSummary holds the per-cycle metrics rendered by LogCycleSummary,
+// cycleSummary holds the per-cycle metrics rendered by LogCycleSummary,
 // bundling the many report inputs into a single cohesive value.
-type CycleSummary struct {
+type cycleSummary struct {
 	CycleNum        int
 	StartTime       time.Time
 	SyncIntervalMin int
@@ -20,12 +20,12 @@ type CycleSummary struct {
 	FromSources     int
 	Optimized       int
 	FailedTVs       int
-	TVs             []TVSyncResult
+	TVs             []tvSyncResult
 	Warnings        []string
 }
 
-// LogCycleSummary renders and logs a formatted sync cycle summary box to structured logs.
-func LogCycleSummary(logger *slog.Logger, s CycleSummary) {
+// logCycleSummary renders and logs a formatted sync cycle summary box to structured logs.
+func logCycleSummary(logger *slog.Logger, s cycleSummary) {
 	elapsed := time.Since(s.StartTime).Round(time.Millisecond)
 	nextSync := time.Now().Add(time.Duration(s.SyncIntervalMin) * time.Minute)
 
@@ -87,7 +87,7 @@ func renderSummaryBox(sections [][]string) string {
 	return sb.String()
 }
 
-func tvSummaryLines(tv TVSyncResult) []string {
+func tvSummaryLines(tv tvSyncResult) []string {
 	name := tv.IP
 	if tv.Model != "" {
 		name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)

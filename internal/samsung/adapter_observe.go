@@ -15,13 +15,13 @@ func (a *adapter) observeReachable(
 	ctx context.Context,
 	observation Observation,
 	request ObserveRequest,
-	device DeviceInfo,
+	device deviceInfo,
 	connectionGeneration uint64,
 ) (Observation, error) {
-	observation.Connection = ConnectionConnecting
+	observation.Connection = connectionConnecting
 	state, err := a.readPowerState(ctx, device, request.DryRun)
-	if errors.Is(err, ErrGateFailed) {
-		observation.Connection = ConnectionDisconnected
+	if errors.Is(err, errGateFailed) {
+		observation.Connection = connectionDisconnected
 		observation.Disposition = DispositionBlockedQuietGate
 		return a.settleObservation(observation, request), nil
 	}
@@ -30,7 +30,7 @@ func (a *adapter) observeReachable(
 	}
 	observation.Power = state.Power
 	observation.ArtMode = state.ArtMode
-	observation.Connection = ConnectionDisconnected
+	observation.Connection = connectionDisconnected
 	if state.connected {
 		observation.Connection = ConnectionReady
 	}
@@ -40,7 +40,7 @@ func (a *adapter) observeReachable(
 	if state.Power == PowerStateOff {
 		return a.knownPowerOffObservation(observation, request, connectionGeneration), nil
 	}
-	if state.ArtMode == ArtModeOff {
+	if state.ArtMode == artModeOff {
 		observation.Disposition = DispositionBlockedNotArtMode
 		return a.settleObservation(observation, request), nil
 	}
@@ -164,7 +164,7 @@ func (a *adapter) observeMutationCapabilities(
 		}
 		probe.support(&observation.Capabilities, SupportUnsupported)
 		if request.Required&probe.capability != 0 || errors.Is(err, context.Canceled) ||
-			errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrNotConnected) {
+			errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errNotConnected) {
 			return err
 		}
 		a.logger.Warn("TV did not answer an optional setting; leaving it unmanaged this cycle",

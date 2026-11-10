@@ -72,7 +72,7 @@ func (p *pixabayProvider) CanHandle(line string) bool {
 	return strings.HasPrefix(line, "pixabay:")
 }
 
-func (p *pixabayProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *pixabayProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
 		return nil, errors.New("invalid pixabay format")
@@ -109,7 +109,7 @@ func (p *pixabayProvider) Resolve(ctx context.Context, line string) ([]SourceIma
 	return p.images(photos), nil
 }
 
-func (p *pixabayProvider) resolvePhoto(ctx context.Context, photoID string) ([]SourceImage, error) {
+func (p *pixabayProvider) resolvePhoto(ctx context.Context, photoID string) ([]sourceImage, error) {
 	page, err := p.fetchPage(ctx, url.Values{"id": {photoID}})
 	if err != nil {
 		return nil, err
@@ -156,8 +156,8 @@ func (p *pixabayProvider) fetchPage(ctx context.Context, query url.Values) (pixa
 // images converts hits to source images, preferring the highest resolution
 // the API key may access. Pixabay download URLs are temporary, so identity
 // is derived from the stable photo ID.
-func (p *pixabayProvider) images(hits []pixabayPhoto) []SourceImage {
-	images := make([]SourceImage, 0, len(hits))
+func (p *pixabayProvider) images(hits []pixabayPhoto) []sourceImage {
+	images := make([]sourceImage, 0, len(hits))
 	for _, hit := range hits {
 		var candidates []string
 		for _, candidate := range []string{hit.ImageURL, hit.FullHDURL, hit.LargeImageURL} {
@@ -170,9 +170,9 @@ func (p *pixabayProvider) images(hits []pixabayPhoto) []SourceImage {
 			continue
 		}
 		id := strconv.Itoa(hit.ID)
-		images = append(images, SourceImage{
+		images = append(images, sourceImage{
 			URL: candidates[0], Fallbacks: candidates[1:], Identity: sourceIdentity(p.Name(), "photo:"+id, "photo-"+id),
-			Attribution: Attribution{
+			Attribution: attribution{
 				Provider: p.Name(), Title: hit.Tags, Artist: hit.User, SourceURL: hit.PageURL, License: pixabayLicense,
 			},
 		})

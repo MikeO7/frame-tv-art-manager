@@ -19,8 +19,8 @@ const (
 	searchProviderTimeout = 20 * time.Second
 )
 
-// ArtSearch finds public-domain works in museum collections.
-type ArtSearch interface {
+// artSearch finds public-domain works in museum collections.
+type artSearch interface {
 	Search(context.Context, sources.SearchQuery) (sources.SearchResult, error)
 	Providers() []string
 }

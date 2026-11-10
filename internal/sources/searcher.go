@@ -13,14 +13,14 @@ import (
 )
 
 const (
-	// DefaultSearchLimit is the number of candidates Search returns when
+	// defaultSearchLimit is the number of candidates Search returns when
 	// SearchQuery.Limit is zero.
-	DefaultSearchLimit = 20
-	// MaxSearchLimit is the most candidates one Search returns.
-	MaxSearchLimit = 100
-	// DefaultSearchProviderTimeout bounds each provider's share of a Search
+	defaultSearchLimit = 20
+	// maxSearchLimit is the most candidates one Search returns.
+	maxSearchLimit = 100
+	// defaultSearchProviderTimeout bounds each provider's share of a Search
 	// when SearchQuery.ProviderTimeout is zero.
-	DefaultSearchProviderTimeout = 30 * time.Second
+	defaultSearchProviderTimeout = 30 * time.Second
 
 	museumProviderName = "museum"
 )
@@ -65,7 +65,7 @@ type Candidate struct {
 	// work, for example "met:object:436524".
 	SourceLine string `json:"source_line"`
 
-	image SourceImage
+	image sourceImage
 }
 
 // ProviderFailure reports a provider that could not contribute to a search.
@@ -89,17 +89,17 @@ type candidateSearcher interface {
 	searchCandidates(ctx context.Context, query string, limit int) ([]Candidate, error)
 }
 
-// ArtSearcher searches the public-domain museum collections (Art Institute
+// artSearcher searches the public-domain museum collections (Art Institute
 // of Chicago, The Met, Cleveland Museum of Art, and SMK) at once. It is safe
 // for concurrent use.
-type ArtSearcher struct {
+type artSearcher struct {
 	logger    *slog.Logger
 	searchers []candidateSearcher
 }
 
 // NewArtSearcher returns a searcher whose providers send their API requests
 // through client; a nil client gets a client with a 30-second timeout.
-func NewArtSearcher(client *http.Client, logger *slog.Logger) *ArtSearcher {
+func NewArtSearcher(client *http.Client, logger *slog.Logger) *artSearcher {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -111,12 +111,12 @@ func NewArtSearcher(client *http.Client, logger *slog.Logger) *ArtSearcher {
 	return newArtSearcher(logger, artic, met, cleveland, smk)
 }
 
-func newArtSearcher(logger *slog.Logger, searchers ...candidateSearcher) *ArtSearcher {
-	return &ArtSearcher{logger: logger, searchers: searchers}
+func newArtSearcher(logger *slog.Logger, searchers ...candidateSearcher) *artSearcher {
+	return &artSearcher{logger: logger, searchers: searchers}
 }
 
 // Providers returns the provider names Search can query, in merge order.
-func (s *ArtSearcher) Providers() []string {
+func (s *artSearcher) Providers() []string {
 	names := make([]string, 0, len(s.searchers))
 	for _, searcher := range s.searchers {
 		names = append(names, searcher.Name())
@@ -130,7 +130,7 @@ func (s *ArtSearcher) Providers() []string {
 // the same artist from another collection) are dropped. Provider failures are
 // reported in the result; the error is non-nil only for an invalid query, a
 // cancelled ctx, or when every selected provider failed.
-func (s *ArtSearcher) Search(ctx context.Context, query SearchQuery) (SearchResult, error) {
+func (s *artSearcher) Search(ctx context.Context, query SearchQuery) (SearchResult, error) {
 	text := strings.TrimSpace(query.Text)
 	if text == "" {
 		return SearchResult{}, errors.New("search text is required")
@@ -141,12 +141,12 @@ func (s *ArtSearcher) Search(ctx context.Context, query SearchQuery) (SearchResu
 	}
 	limit := query.Limit
 	if limit <= 0 {
-		limit = DefaultSearchLimit
+		limit = defaultSearchLimit
 	}
-	limit = min(limit, MaxSearchLimit)
+	limit = min(limit, maxSearchLimit)
 	timeout := query.ProviderTimeout
 	if timeout <= 0 {
-		timeout = DefaultSearchProviderTimeout
+		timeout = defaultSearchProviderTimeout
 	}
 
 	lists := make([][]Candidate, len(selected))
@@ -181,7 +181,7 @@ func (s *ArtSearcher) Search(ctx context.Context, query SearchQuery) (SearchResu
 	return result, nil
 }
 
-func (s *ArtSearcher) selected(names []string) ([]candidateSearcher, error) {
+func (s *artSearcher) selected(names []string) ([]candidateSearcher, error) {
 	if len(names) == 0 {
 		return s.searchers, nil
 	}
@@ -238,11 +238,11 @@ func normalizedText(value string) string {
 // museumProvider resolves "museum:search:<query>" lines by searching every
 // public-domain museum collection at once.
 type museumProvider struct {
-	searcher *ArtSearcher
+	searcher *artSearcher
 	logger   *slog.Logger
 }
 
-func newMuseumProvider(searcher *ArtSearcher, logger *slog.Logger) *museumProvider {
+func newMuseumProvider(searcher *artSearcher, logger *slog.Logger) *museumProvider {
 	return &museumProvider{searcher: searcher, logger: logger}
 }
 
@@ -257,7 +257,7 @@ func (p *museumProvider) CanHandle(line string) bool {
 // Resolve keeps the works found by healthy providers when others fail; it
 // fails only when every provider failed, so the loader keeps the line's
 // last-known-good resolution.
-func (p *museumProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *museumProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 || parts[1] != cmdSearch {
 		return nil, errors.New("unknown museum type; use museum:search:<query>")
@@ -265,7 +265,7 @@ func (p *museumProvider) Resolve(ctx context.Context, line string) ([]SourceImag
 	if len(parts) < 3 || strings.TrimSpace(parts[2]) == "" {
 		return nil, errors.New("museum search requires a query: museum:search:query")
 	}
-	result, err := p.searcher.Search(ctx, SearchQuery{Text: parts[2], Limit: DefaultSearchLimit})
+	result, err := p.searcher.Search(ctx, SearchQuery{Text: parts[2], Limit: defaultSearchLimit})
 	if err != nil {
 		return nil, err
 	}

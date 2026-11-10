@@ -11,7 +11,7 @@ import (
 // from a get_content_list reply. TVs return every category in one list, and
 // favorites (MY-C0004) or Art Store items (MY-C0008) repeat or add content IDs,
 // so other categories are filtered out rather than treated as an anomaly.
-func parseUploadedContent(raw json.RawMessage) ([]ArtContent, error) {
+func parseUploadedContent(raw json.RawMessage) ([]artContent, error) {
 	if len(raw) == 0 || strings.TrimSpace(string(raw)) == jsonNull {
 		return nil, errors.New("content list is absent")
 	}
@@ -23,14 +23,14 @@ func parseUploadedContent(raw json.RawMessage) ([]ArtContent, error) {
 		}
 		data = []byte(encoded)
 	}
-	var content []ArtContent
+	var content []artContent
 	if err := json.Unmarshal(data, &content); err != nil {
 		return nil, fmt.Errorf("parse content list: %w", err)
 	}
 	if content == nil {
 		return nil, errors.New("content list is not an explicit array")
 	}
-	user := make([]ArtContent, 0, len(content))
+	user := make([]artContent, 0, len(content))
 	seen := make(map[string]struct{}, len(content))
 	for _, item := range content {
 		item.ContentID = strings.TrimSpace(item.ContentID)

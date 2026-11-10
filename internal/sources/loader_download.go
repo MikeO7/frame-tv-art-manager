@@ -28,7 +28,7 @@ type preparedDownload struct {
 	written   int64
 }
 
-func (l *Loader) checkExisting(identity string) bool {
+func (l *loader) checkExisting(identity string) bool {
 	_, exists := l.sourceOrigins["source:"+identity]
 	return exists
 }
@@ -36,7 +36,7 @@ func (l *Loader) checkExisting(identity string) bool {
 // prepareImage downloads the preferred rendition, falling back to the next
 // one whenever a candidate cannot be fetched or fails validation (for example
 // because it exceeds the size or pixel caps).
-func (l *Loader) prepareImage(ctx context.Context, img SourceImage) (preparedDownload, error) {
+func (l *loader) prepareImage(ctx context.Context, img sourceImage) (preparedDownload, error) {
 	var failures []error
 	for _, candidate := range append([]string{img.URL}, img.Fallbacks...) {
 		prepared, err := l.prepareDownload(ctx, candidate, img.Identity+extJPG, img.Identity)
@@ -51,7 +51,7 @@ func (l *Loader) prepareImage(ctx context.Context, img SourceImage) (preparedDow
 	return preparedDownload{}, errors.Join(failures...)
 }
 
-func (l *Loader) prepareDownload(ctx context.Context, url, filename, identity string) (preparedDownload, error) {
+func (l *loader) prepareDownload(ctx context.Context, url, filename, identity string) (preparedDownload, error) {
 	l.logger.Info("downloading source image", "url", truncateURL(url), "file", filename)
 
 	resp, err := l.fetch(ctx, url)
@@ -132,7 +132,7 @@ func validateDownloadedImage(path, extension string) error {
 // fetch performs a validated HTTP GET, rejecting non-HTTP(S) schemes, non-200
 // responses, and oversized Content-Length up front. On success it returns an
 // open response whose body the caller must close; on error the body is closed.
-func (l *Loader) fetch(ctx context.Context, url string) (*http.Response, error) {
+func (l *loader) fetch(ctx context.Context, url string) (*http.Response, error) {
 	parsedURL, err := neturl.Parse(url)
 	if err != nil {
 		return nil, errors.New("invalid source URL format")
@@ -170,7 +170,7 @@ func (l *Loader) fetch(ctx context.Context, url string) (*http.Response, error) 
 }
 
 // resolveDownloadName rewrites filename to match the response's image extension.
-func (l *Loader) resolveDownloadName(resp *http.Response, url, filename string) string {
+func (l *loader) resolveDownloadName(resp *http.Response, url, filename string) string {
 	ext := extensionFromResponse(resp, url)
 	if ext == "" || strings.HasSuffix(filename, ext) {
 		return filename
@@ -182,7 +182,7 @@ func (l *Loader) resolveDownloadName(resp *http.Response, url, filename string) 
 // downloadToTemp streams the (already size-guarded) response body into a
 // private temporary file outside the Artwork Collection and returns its path
 // and byte count. Only the Collection Store can publish the final artwork.
-func (l *Loader) downloadToTemp(resp *http.Response) (string, int64, error) {
+func (l *loader) downloadToTemp(resp *http.Response) (string, int64, error) {
 	out, err := os.CreateTemp("", sourceDownloadPattern)
 	if err != nil {
 		return "", 0, fmt.Errorf("create temp file: %w", err)

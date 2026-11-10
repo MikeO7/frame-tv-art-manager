@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/artwork"
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
@@ -69,7 +69,7 @@ func TestOptimizeFile(t *testing.T) {
 	}
 
 	// Check if file still exists and is valid
-	if err := ValidateImage(context.Background(), filepath.Join(tmpDir, newName)); err != nil {
+	if err := validateImage(context.Background(), filepath.Join(tmpDir, newName)); err != nil {
 		t.Errorf("optimized image is invalid: %v", err)
 	}
 }
@@ -129,7 +129,7 @@ func TestValidateImageRejectsHeaderValidTruncatedJPEG(t *testing.T) {
 	if err := os.WriteFile(path, truncated, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateImage(context.Background(), path); err == nil {
+	if err := validateImage(context.Background(), path); err == nil {
 		t.Fatal("ValidateImage() accepted a truncated pixel stream")
 	}
 }
@@ -188,7 +188,7 @@ func TestOptimizeFileMuseumMode(t *testing.T) {
 	if !museumMod {
 		t.Error("expected modified to be true with museum mode")
 	}
-	if err := ValidateImage(context.Background(), filepath.Join(tmpDir, museumName)); err != nil {
+	if err := validateImage(context.Background(), filepath.Join(tmpDir, museumName)); err != nil {
 		t.Errorf("museum mode output is invalid: %v", err)
 	}
 
@@ -213,7 +213,7 @@ func TestOptimizeFileMuseumMode(t *testing.T) {
 	if normalMod || normalName != filepath.Base(path2) {
 		t.Errorf("exact image without effects = (%q, %v), want unchanged", normalName, normalMod)
 	}
-	if err := ValidateImage(context.Background(), filepath.Join(tmpDir, normalName)); err != nil {
+	if err := validateImage(context.Background(), filepath.Join(tmpDir, normalName)); err != nil {
 		t.Errorf("normal mode output is invalid: %v", err)
 	}
 }
@@ -257,7 +257,7 @@ func TestMoveToContentNameKeepsMatchingName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	current := artwork.BuildContentName("upload.jpg", digest, extJPG, 8)
+	current := collection.BuildContentName("upload.jpg", digest, extJPG, 8)
 	if err := os.Rename(source, filepath.Join(dir, current)); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestOptimizeFileFastPathVerifiesDecodedDimensions(t *testing.T) {
 	if _, err := output.Seek(0, 0); err != nil {
 		t.Fatalf("seek output: %v", err)
 	}
-	if orientation, err := ReadOrientation(output); err != nil || orientation != 1 {
+	if orientation, err := readOrientation(output); err != nil || orientation != 1 {
 		t.Fatalf("output orientation = (%d, %v), want canonical orientation 1", orientation, err)
 	}
 }
@@ -340,7 +340,7 @@ func TestOptimizeFileAppliesOrientationBeforeExactSizeDecision(t *testing.T) {
 	if _, err := output.Seek(0, 0); err != nil {
 		t.Fatalf("seek output: %v", err)
 	}
-	if orientation, err := ReadOrientation(output); err != nil || orientation != 1 {
+	if orientation, err := readOrientation(output); err != nil || orientation != 1 {
 		t.Fatalf("output orientation = (%d, %v), want canonical orientation 1", orientation, err)
 	}
 }
@@ -378,7 +378,7 @@ func TestMoveToContentNamePreservesExistingOperatorDestination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	destinationName := artwork.BuildContentName("source.jpg", digest, extJPG, 8)
+	destinationName := collection.BuildContentName("source.jpg", digest, extJPG, 8)
 	destination := filepath.Join(directory, destinationName)
 	if err := os.WriteFile(destination, []byte("operator bytes"), 0o644); err != nil {
 		t.Fatal(err)

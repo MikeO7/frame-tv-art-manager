@@ -31,7 +31,7 @@ func testConfig(port int, uploadEnabled bool, artworkDir string) *config.Config 
 	}
 }
 
-func newTestServer(t *testing.T, cfg *config.Config, status *Status) *Server {
+func newTestServer(t *testing.T, cfg *config.Config, status *Status) *server {
 	t.Helper()
 	var importer collection.Store
 	if cfg != nil && cfg.UploadEnabled {

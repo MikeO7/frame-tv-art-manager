@@ -19,13 +19,13 @@ const (
 	PowerStateOff
 )
 
-// ArtModeState is an observed Art Mode fact. Its zero value is unknown.
-type ArtModeState uint8
+// artModeState is an observed Art Mode fact. Its zero value is unknown.
+type artModeState uint8
 
 const (
-	ArtModeUnknown ArtModeState = iota
+	ArtModeUnknown artModeState = iota
 	ArtModeOn
-	ArtModeOff
+	artModeOff
 )
 
 // Support records whether a capability has been observed. Its zero value is
@@ -38,15 +38,15 @@ const (
 	SupportUnsupported
 )
 
-// ConnectionState describes the read-only adapter connection lifecycle.
-type ConnectionState uint8
+// connectionState describes the read-only adapter connection lifecycle.
+type connectionState uint8
 
 const (
-	ConnectionDisconnected ConnectionState = iota
-	ConnectionConnecting
+	connectionDisconnected connectionState = iota
+	connectionConnecting
 	ConnectionReady
-	ConnectionBackingOff
-	ConnectionAuthRequired
+	connectionBackingOff
+	connectionAuthRequired
 )
 
 // Disposition states whether an observation is usable for planning. Unknown
@@ -167,9 +167,9 @@ type Authorization struct {
 // received during one read-only observation.
 type Observation struct {
 	TV         TVIdentity
-	Connection ConnectionState
+	Connection connectionState
 	Power      PowerState
-	ArtMode    ArtModeState
+	ArtMode    artModeState
 	Inventory  Inventory
 	Slideshow  SlideshowObservation
 	Brightness SettingObservation
@@ -203,15 +203,15 @@ type SettingObservation struct {
 	ObservedAt time.Time
 }
 
-// BrightnessReading is one Art Mode brightness read with the TV's range.
-type BrightnessReading struct {
+// brightnessReading is one Art Mode brightness read with the TV's range.
+type brightnessReading struct {
 	Value int
 	Min   int
 	Max   int
 }
 
 // Clamp limits value to the TV's reported range.
-func (reading BrightnessReading) Clamp(value int) int {
+func (reading brightnessReading) Clamp(value int) int {
 	return min(max(value, reading.Min), reading.Max)
 }
 
@@ -246,8 +246,8 @@ type Adapter interface {
 	Close(context.Context) error
 }
 
-// Clock provides deterministic operational time without package globals.
-type Clock interface {
+// clock provides deterministic operational time without package globals.
+type clock interface {
 	Now() time.Time
 }
 
@@ -271,7 +271,7 @@ type Config struct {
 
 // Dependencies contains operational dependencies shared by one adapter.
 type Dependencies struct {
-	Clock  Clock
+	Clock  clock
 	Random io.Reader
 	Logger *slog.Logger
 }
@@ -335,7 +335,7 @@ type artMutationTransport interface {
 type settingMutationTransport interface {
 	Slideshow(context.Context) (SlideshowSetting, error)
 	ConfigureSlideshow(context.Context, SlideshowSetting) error
-	Brightness(context.Context) (BrightnessReading, error)
+	Brightness(context.Context) (brightnessReading, error)
 	ConfigureBrightness(context.Context, int) error
 }
 

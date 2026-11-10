@@ -63,7 +63,7 @@ func TestClevelandResolvePrefersPanelSizedCC0Renditions(t *testing.T) {
 	if images[1].URL != "https://cdn.example/11_full.jpg" || strings.Join(images[1].Fallbacks, ",") != "https://cdn.example/11_print.jpg" {
 		t.Errorf("wide renditions = %s %v, want the covering full JPEG then print", images[1].URL, images[1].Fallbacks)
 	}
-	want := Attribution{
+	want := attribution{
 		Provider: providerCleveland, Title: "Snow Landscape", Artist: "Yosa Buson (Japanese, 1716–1783)",
 		SourceURL: "https://clevelandart.org/art/1997.111", License: publicDomainCC0,
 	}

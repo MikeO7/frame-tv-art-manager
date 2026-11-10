@@ -21,7 +21,7 @@ func (f downloadRoundTripper) RoundTrip(request *http.Request) (*http.Response, 
 
 // newDownloadTestLoader isolates the process temporary directory so tests can
 // prove rejected downloads leave no temporary files behind.
-func newDownloadTestLoader(t *testing.T, response func(*http.Request) *http.Response) (*Loader, string, string) {
+func newDownloadTestLoader(t *testing.T, response func(*http.Request) *http.Response) (*loader, string, string) {
 	t.Helper()
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)

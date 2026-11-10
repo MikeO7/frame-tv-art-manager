@@ -21,7 +21,7 @@ func (c *fakeClock) Now() time.Time { return c.now }
 
 type scriptedObservationTransport struct {
 	connectErr     error
-	device         DeviceInfo
+	device         deviceInfo
 	deviceErr      error
 	artMode        string
 	artModes       []string
@@ -39,7 +39,7 @@ func (t *scriptedObservationTransport) Connect(context.Context, bool) error {
 	return t.connectErr
 }
 
-func (t *scriptedObservationTransport) DeviceInfo(context.Context) (DeviceInfo, error) {
+func (t *scriptedObservationTransport) DeviceInfo(context.Context) (deviceInfo, error) {
 	return t.device, t.deviceErr
 }
 
@@ -199,7 +199,7 @@ func TestAdapterObserveKnownOffStatesAreSafeSkips(t *testing.T) {
 			wantDisposition: DispositionBlockedPowerOff, wantArtModeCalls: 1,
 		},
 		{
-			name: "standby refusing the art channel", power: stringStandby, connectErr: ErrConnectionFailure,
+			name: "standby refusing the art channel", power: stringStandby, connectErr: errConnectionFailure,
 			wantDisposition: DispositionBlockedPowerOff,
 		},
 	}
@@ -296,7 +296,7 @@ func TestAdapterKnownOffAuthorizesOnlyExactSupportedWake(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(applyErr, ErrNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.wakeCalls != 0 {
+			if !errors.Is(applyErr, errNotAuthorized) || receipt.Outcome != OutcomeNotAttempted || transport.wakeCalls != 0 {
 				t.Fatalf("unsupported wake receipt/error/calls = %#v/%v/%d", receipt, applyErr, transport.wakeCalls)
 			}
 		})
@@ -368,7 +368,7 @@ func TestAdapterApplyAlwaysRejectsWithoutIO(t *testing.T) {
 	connectCalls := transport.connectCalls
 
 	receipt, err := adapter.Apply(context.Background(), observation.Authorization, Wake{})
-	if !errors.Is(err, ErrNotAuthorized) {
+	if !errors.Is(err, errNotAuthorized) {
 		t.Fatalf("Apply() error = %v, want not authorized", err)
 	}
 	if receipt.Outcome != OutcomeNotAttempted || transport.connectCalls != connectCalls {
@@ -389,17 +389,17 @@ func TestAdapterCloseInvalidatesObservationAuthority(t *testing.T) {
 	if transport.closeCalls != 1 {
 		t.Fatalf("close calls = %d", transport.closeCalls)
 	}
-	if _, err := adapter.Apply(context.Background(), observation.Authorization, Wake{}); !errors.Is(err, ErrNotAuthorized) {
+	if _, err := adapter.Apply(context.Background(), observation.Authorization, Wake{}); !errors.Is(err, errNotAuthorized) {
 		t.Fatalf("Apply() after close error = %v", err)
 	}
-	if _, err := adapter.Observe(context.Background(), ObserveRequest{}); !errors.Is(err, ErrNotConnected) {
+	if _, err := adapter.Observe(context.Background(), ObserveRequest{}); !errors.Is(err, errNotConnected) {
 		t.Fatalf("Observe() after close error = %v", err)
 	}
 }
 
 func eligibleObservationTransport(inventory json.RawMessage) *scriptedObservationTransport {
 	return &scriptedObservationTransport{
-		device: DeviceInfo{
+		device: deviceInfo{
 			ModelName:      "QN55LS03D",
 			FrameTVSupport: stringTrue,
 			PowerState:     "on",
@@ -409,7 +409,7 @@ func eligibleObservationTransport(inventory json.RawMessage) *scriptedObservatio
 	}
 }
 
-func newTestAdapter(t *testing.T, clock Clock, transport observationTransport) *adapter {
+func newTestAdapter(t *testing.T, clock clock, transport observationTransport) *adapter {
 	t.Helper()
 	tokenPath := filepath.Join(t.TempDir(), "token.txt")
 	adapter, err := newAdapter(Config{

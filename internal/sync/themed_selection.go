@@ -88,7 +88,7 @@ func (engine *convergenceEngine) requestCycle() bool {
 
 // recordPlacements remembers which Owned Artwork the latest observation of a
 // TV confirmed. An unobserved TV keeps its previous placements.
-func (engine *convergenceEngine) recordPlacements(summary TVSyncResult) {
+func (engine *convergenceEngine) recordPlacements(summary tvSyncResult) {
 	if summary.OnTV == nil {
 		return
 	}

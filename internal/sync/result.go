@@ -8,9 +8,9 @@ const (
 	statusSkippedNotArtMode = "skipped (not art mode)"
 )
 
-// TVSyncResult is the operator-facing projection of one TV reconciliation.
+// tvSyncResult is the operator-facing projection of one TV reconciliation.
 // Durable mutation and recovery details remain owned by package reconcile.
-type TVSyncResult struct {
+type tvSyncResult struct {
 	IP           string
 	Model        string
 	Status       string

@@ -15,7 +15,7 @@ func TestStateFollowsTheTVByDeviceID(t *testing.T) {
 	t.Parallel()
 	directory := filepath.Join(t.TempDir(), "state")
 	store := newStateStore(directory)
-	legacy := TVIdentity{Address: "192.0.2.10", Model: "QN55LS03"}
+	legacy := tvIdentity{Address: "192.0.2.10", Model: "QN55LS03"}
 	state := initialState(legacy)
 	state.Bindings[digestHex("art")] = Binding{
 		Digest: digestHex("art"), ContentID: "MY_F0001", Name: "art.jpg",
@@ -43,11 +43,11 @@ func TestStateFollowsTheTVByDeviceID(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		identity TVIdentity
+		identity tvIdentity
 		wantKept bool
 	}{
-		{name: "new address, same TV", identity: TVIdentity{Address: "192.0.2.77", Model: "QN55LS03", DeviceID: "uuid:frame"}, wantKept: true},
-		{name: "same address, another TV", identity: TVIdentity{Address: "192.0.2.10", Model: "QN55LS03", DeviceID: "uuid:other"}},
+		{name: "new address, same TV", identity: tvIdentity{Address: "192.0.2.77", Model: "QN55LS03", DeviceID: "uuid:frame"}, wantKept: true},
+		{name: "same address, another TV", identity: tvIdentity{Address: "192.0.2.10", Model: "QN55LS03", DeviceID: "uuid:other"}},
 	}
 	for _, test := range tests {
 		got, exists, err := store.load(context.Background(), test.identity)

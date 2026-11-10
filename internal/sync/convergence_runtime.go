@@ -59,7 +59,7 @@ func (runtime *convergenceRuntime) run(
 	snapshot collectionpkg.Snapshot,
 	policy reconcile.Policy,
 	dryRun bool,
-) (TVSyncResult, error) {
+) (tvSyncResult, error) {
 	result, err := runtime.reconciler.Run(ctx, reconcile.Request{
 		CycleID: cycleID, TV: runtime.adapter, Snapshot: snapshot, Policy: policy, DryRun: dryRun,
 	})
@@ -118,9 +118,9 @@ func (runtime *convergenceRuntime) close(ctx context.Context) error {
 	return nil
 }
 
-func convergenceSummary(address string, result reconcile.Result) TVSyncResult {
+func convergenceSummary(address string, result reconcile.Result) tvSyncResult {
 	observation := result.Observation
-	summary := TVSyncResult{
+	summary := tvSyncResult{
 		IP: address, Model: observation.TV.Model,
 		ArtMode:     observation.ArtMode == samsung.ArtModeOn,
 		TotalImages: len(observation.Inventory.ContentIDs),

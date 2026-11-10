@@ -109,7 +109,7 @@ func TestCatalogPassRenamesImage(t *testing.T) {
 	if rename := pass.renames[0]; rename.OldName != oldName || rename.NewName == oldName {
 		t.Fatalf("unexpected rename: %v", rename)
 	}
-	if err := ValidateImage(context.Background(), filepath.Join(dir, pass.renames[0].NewName)); err != nil {
+	if err := validateImage(context.Background(), filepath.Join(dir, pass.renames[0].NewName)); err != nil {
 		t.Fatalf("renamed output invalid: %v", err)
 	}
 }
@@ -131,7 +131,7 @@ func TestCollagePipelineJPEGAndPNG(t *testing.T) {
 			if filepath.Ext(name) != ext {
 				t.Fatalf("output extension = %q, want %q", filepath.Ext(name), ext)
 			}
-			if err := ValidateImage(context.Background(), filepath.Join(dir, name)); err != nil {
+			if err := validateImage(context.Background(), filepath.Join(dir, name)); err != nil {
 				t.Fatalf("collage invalid: %v", err)
 			}
 			for _, source := range []string{f1, f2} {

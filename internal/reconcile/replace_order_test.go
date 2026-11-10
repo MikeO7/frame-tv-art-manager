@@ -44,7 +44,7 @@ func reencodedLibrary(t *testing.T, count int, inventory ...string) (collection.
 	return snap, observation, state
 }
 
-func commandKinds(commands []CommandIntent) []CommandKind {
+func commandKinds(commands []commandIntent) []CommandKind {
 	kinds := make([]CommandKind, len(commands))
 	for index, command := range commands {
 		kinds[index] = command.Kind
@@ -55,7 +55,7 @@ func commandKinds(commands []CommandIntent) []CommandKind {
 func TestBuildPlanUploadsReplacementsBeforeRemovingOutdatedArt(t *testing.T) {
 	tests := []struct {
 		name      string
-		capacity  CapacityEvidence
+		capacity  capacityEvidence
 		inventory []string
 		want      []CommandKind
 	}{
@@ -69,7 +69,7 @@ func TestBuildPlanUploadsReplacementsBeforeRemovingOutdatedArt(t *testing.T) {
 		},
 		{
 			name:     "free slot is filled before any removal",
-			capacity: CapacityEvidence{Known: true, Maximum: 4, ObservedAt: testTime},
+			capacity: capacityEvidence{Known: true, Maximum: 4, ObservedAt: testTime},
 			want: []CommandKind{
 				CommandUpload,
 				CommandDeleteOwned, CommandDeleteOwned,
@@ -77,12 +77,12 @@ func TestBuildPlanUploadsReplacementsBeforeRemovingOutdatedArt(t *testing.T) {
 		},
 		{
 			name:     "full TV removes outdated art only to make room",
-			capacity: CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime},
+			capacity: capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime},
 			want:     []CommandKind{CommandDeleteOwned, CommandDeleteOwned},
 		},
 		{
 			name:      "slot freed by a removal is refilled next",
-			capacity:  CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime},
+			capacity:  capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime},
 			inventory: []string{"old-a.jpg", "old-b.jpg"},
 			want:      []CommandKind{CommandUpload, CommandDeleteOwned},
 		},
@@ -91,7 +91,7 @@ func TestBuildPlanUploadsReplacementsBeforeRemovingOutdatedArt(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			snap, observation, state := reencodedLibrary(t, 3, test.inventory...)
 			state.Capacity = test.capacity
-			plan, err := BuildPlan(snap, observation, state, Policy{})
+			plan, err := buildPlan(snap, observation, state, Policy{})
 			if err != nil {
 				t.Fatal(err)
 			}

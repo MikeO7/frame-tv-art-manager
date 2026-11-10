@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func New(config Config, dependencies Dependencies, options ...Option) (Service, error) {
+func New(config Config, dependencies Dependencies, options ...option) (Service, error) {
 	config.Policy = normalizePolicy(config.Policy)
 	directory := filepath.Clean(strings.TrimSpace(config.StateDirectory))
 	if directory == "." || !filepath.IsAbs(directory) {

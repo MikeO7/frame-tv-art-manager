@@ -38,7 +38,7 @@ func TestStoreMissingFileIsEmpty(t *testing.T) {
 	if err != nil || len(file.Collections) != 0 || file.Version != fileVersion {
 		t.Fatalf("Load() = %+v, %v, want empty document", file, err)
 	}
-	if store.Path() != filepath.Join(root, ".frame-tv-art-manager", FileName) {
+	if store.Path() != filepath.Join(root, ".frame-tv-art-manager", fileName) {
 		t.Fatalf("Path() = %q", store.Path())
 	}
 }

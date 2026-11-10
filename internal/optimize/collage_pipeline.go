@@ -36,7 +36,7 @@ func (p *catalogPass) processCollagePair(ctx context.Context, f1, f2 string) (st
 		return collageName, fmt.Errorf("remove second collage source: %w", err)
 	}
 
-	p.renames = append(p.renames, Rename{OldName: f1, NewName: collageName}, Rename{OldName: f2, NewName: collageName})
+	p.renames = append(p.renames, rename{OldName: f1, NewName: collageName}, rename{OldName: f2, NewName: collageName})
 	p.recordLineage(collageName, p.inputs[f1].Digest, p.inputs[f2].Digest)
 	return collageName, nil
 }

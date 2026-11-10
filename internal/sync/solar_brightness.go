@@ -1,8 +1,8 @@
-// Package brightness provides solar-based brightness calculation for
-// Samsung Frame TVs. It computes sun elevation using a simplified solar
-// position algorithm and maps it to a brightness value using the
-// Kasten-Young atmospheric attenuation model.
-package brightness
+package sync
+
+// Solar brightness computes sun elevation using a simplified solar position
+// algorithm and maps it to a brightness value using the Kasten-Young
+// atmospheric attenuation model.
 
 import (
 	"errors"
@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// ErrSolarDisabled is returned when solar calculations are disabled or not configured.
-var ErrSolarDisabled = errors.New("solar calculation disabled")
+// errSolarDisabled is returned when solar calculations are disabled or not configured.
+var errSolarDisabled = errors.New("solar calculation disabled")
 
 // sunElevation calculates the sun's elevation angle in degrees for a given
 // geographic position and time. Uses a simplified solar position algorithm
@@ -119,10 +119,10 @@ func irradianceAt(elevation float64) float64 {
 	return math.Pow(0.7, math.Pow(airMass, 0.678))
 }
 
-// CalculateAt returns the solar brightness for an explicit instant.
-func CalculateAt(location *SolarLocation, minVal, maxVal int, now time.Time) (*int, error) {
+// solarBrightnessAt returns the solar brightness for an explicit instant.
+func solarBrightnessAt(location *solarLocation, minVal, maxVal int, now time.Time) (*int, error) {
 	if location == nil || location.Latitude == nil || location.Longitude == nil {
-		return nil, ErrSolarDisabled
+		return nil, errSolarDisabled
 	}
 
 	loc, err := time.LoadLocation(location.Timezone)
@@ -136,24 +136,24 @@ func CalculateAt(location *SolarLocation, minVal, maxVal int, now time.Time) (*i
 	return &b, nil
 }
 
-// SolarLocation represents the geographic and timezone parameters for solar calculation.
-type SolarLocation struct {
+// solarLocation represents the geographic and timezone parameters for solar calculation.
+type solarLocation struct {
 	Latitude  *float64
 	Longitude *float64
 	Timezone  string
 }
 
-// TargetOptions contains deterministic brightness policy inputs.
-type TargetOptions struct {
-	Location *SolarLocation
+// brightnessTarget contains deterministic brightness policy inputs.
+type brightnessTarget struct {
+	Location *solarLocation
 	Min      int
 	Max      int
 	Manual   *int
 	Now      time.Time
 }
 
-// GetTargetValueAt calculates the target brightness for an explicit instant.
-func GetTargetValueAt(options TargetOptions, logger *slog.Logger) *int {
+// targetBrightnessAt calculates the target brightness for an explicit instant.
+func targetBrightnessAt(options brightnessTarget, logger *slog.Logger) *int {
 	if b := trySolarBrightnessAt(options.Location, options.Min, options.Max, logger, options.Now); b != nil {
 		return b
 	}
@@ -169,14 +169,14 @@ func GetTargetValueAt(options TargetOptions, logger *slog.Logger) *int {
 }
 
 func trySolarBrightnessAt(
-	loc *SolarLocation,
+	loc *solarLocation,
 	minVal, maxVal int,
 	logger *slog.Logger,
 	now time.Time,
 ) *int {
-	b, err := CalculateAt(loc, minVal, maxVal, now)
+	b, err := solarBrightnessAt(loc, minVal, maxVal, now)
 	if err != nil {
-		if !errors.Is(err, ErrSolarDisabled) && logger != nil {
+		if !errors.Is(err, errSolarDisabled) && logger != nil {
 			logger.Warn("solar brightness calculation failed", "error", err)
 		}
 		return nil

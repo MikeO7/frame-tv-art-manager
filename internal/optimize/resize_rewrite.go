@@ -80,7 +80,7 @@ func transformDecoded(
 	logger *slog.Logger,
 	filename string,
 ) (*image.RGBA, error) {
-	rgba := toRGBA(RotateImage(normalizeColor(img, colorData, cfg, logger, filename), orientation))
+	rgba := toRGBA(rotateImage(normalizeColor(img, colorData, cfg, logger, filename), orientation))
 	sourceW, sourceH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
 	if sourceW != cfg.MaxWidth || sourceH != cfg.MaxHeight {
 		rgba = fitImage(ctx, rgba, cfg, logger)

@@ -14,7 +14,7 @@ import (
 // handleHealth returns a simple 200 OK with basic status, or 503 when the
 // most recent sync cycle failed. It is unauthenticated, so it carries only
 // coarse state; error text and TV details are on /status.
-func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	snapshot := s.status.snapshot()
 
 	healthy := snapshot.Lifecycle == lifecycleReady && snapshot.SyncCount > 0 && snapshot.LastSyncOK
@@ -27,7 +27,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 // syncFields returns the sync-state fields shared by /health and /status.
 // They reveal no error text, addresses, or file names.
-func (s *Server) syncFields(snapshot statusSnapshot, status string) map[string]any {
+func (s *server) syncFields(snapshot statusSnapshot, status string) map[string]any {
 	return map[string]any{
 		fieldStatus:       status,
 		fieldUptime:       s.now().Sub(snapshot.StartedAt).Round(time.Second).String(),
@@ -41,7 +41,7 @@ func (s *Server) syncFields(snapshot statusSnapshot, status string) map[string]a
 
 // handleLive reports only process liveness. It deliberately does not claim the
 // application is ready to reconcile a TV.
-func (s *Server) handleLive(w http.ResponseWriter, _ *http.Request) {
+func (s *server) handleLive(w http.ResponseWriter, _ *http.Request) {
 	snapshot := s.status.snapshot()
 	code := http.StatusOK
 	state := statusOK
@@ -59,7 +59,7 @@ func (s *Server) handleLive(w http.ResponseWriter, _ *http.Request) {
 // errors withheld. Credits are public and appear in both views. Without a
 // token the endpoint stays fully open, matching the unauthenticated upload
 // endpoint.
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	redact := false
 	if s.cfg != nil && s.cfg.UploadToken != "" {
 		result, wait := s.authenticate(r)

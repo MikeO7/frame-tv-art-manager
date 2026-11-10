@@ -15,13 +15,13 @@ const (
 	defaultCapacityTTL      = 24 * time.Hour
 )
 
-// Option configures stateful reconciliation execution without expanding the
+// option configures stateful reconciliation execution without expanding the
 // pure planning policy.
-type Option func(*runtimeConfiguration) error
+type option func(*runtimeConfiguration) error
 
 // WithMutationPacing configures the context-cancellable delay between
 // consecutive mutation attempts. Zero disables pacing.
-func WithMutationPacing(delay time.Duration) Option {
+func WithMutationPacing(delay time.Duration) option {
 	return func(configuration *runtimeConfiguration) error {
 		if delay < 0 || delay > maximumMutationPacing {
 			return fmt.Errorf("mutation pacing must be between 0 and %s", maximumMutationPacing)
@@ -33,7 +33,7 @@ func WithMutationPacing(delay time.Duration) Option {
 
 // WithMutationAttempts configures the maximum number of attempts for a
 // command that is unequivocally reported as not attempted. One disables retry.
-func WithMutationAttempts(attempts int) Option {
+func WithMutationAttempts(attempts int) option {
 	return func(configuration *runtimeConfiguration) error {
 		if attempts < 1 || attempts > maximumMutationAttempts {
 			return fmt.Errorf("mutation attempts must be between 1 and %d", maximumMutationAttempts)
@@ -71,7 +71,7 @@ type runtimeConfiguration struct {
 	capacityTTL time.Duration
 }
 
-func newRuntimeConfiguration(options []Option) (runtimeConfiguration, error) {
+func newRuntimeConfiguration(options []option) (runtimeConfiguration, error) {
 	configuration := runtimeConfiguration{
 		mutations:   mutationExecution{attempts: 1, waiter: timerMutationWaiter{}},
 		capacityTTL: defaultCapacityTTL,

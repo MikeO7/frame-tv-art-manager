@@ -16,7 +16,7 @@ import (
 func TestSourceProviderResolutionContract(t *testing.T) {
 	t.Parallel()
 
-	providers := []SourceProvider{
+	providers := []sourceProvider{
 		newUnsplashProvider("", slog.Default()),
 		newNasaProvider("", slog.Default()),
 		newArticProvider(slog.Default()),
@@ -87,7 +87,7 @@ func TestSourceProvidersResolveSuccessfulResponses(t *testing.T) {
 	pixabay.client, pixabay.BaseURL = server.Client(), server.URL
 
 	tests := []struct {
-		provider SourceProvider
+		provider sourceProvider
 		line     string
 	}{
 		{unsplash, "unsplash:photo:u1"},

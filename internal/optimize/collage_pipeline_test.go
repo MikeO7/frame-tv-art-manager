@@ -346,7 +346,7 @@ func TestProcessCollagePairRecordsBothSourceRenames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("processCollagePair() = %v", err)
 	}
-	want := []Rename{{OldName: "upload_a.jpg", NewName: name}, {OldName: "upload_b.jpg", NewName: name}}
+	want := []rename{{OldName: "upload_a.jpg", NewName: name}, {OldName: "upload_b.jpg", NewName: name}}
 	if !slices.Equal(pass.renames, want) {
 		t.Fatalf("renames = %v, want %v", pass.renames, want)
 	}
@@ -395,7 +395,7 @@ func TestProcessCollagePair_FallbacksUnknownExtensionToJPEG(t *testing.T) {
 	if filepath.Ext(name) != extJPG {
 		t.Fatalf("expected fallback extension %s, got %s", extJPG, filepath.Ext(name))
 	}
-	if err := ValidateImage(context.Background(), filepath.Join(dir, name)); err != nil {
+	if err := validateImage(context.Background(), filepath.Join(dir, name)); err != nil {
 		t.Fatalf("output image invalid: %v", err)
 	}
 }

@@ -24,7 +24,7 @@ const (
 
 // LoadWithWarnings reads and validates the process environment and returns
 // compatibility warnings for the composition root to report.
-func LoadWithWarnings() (*Config, []Warning, error) {
+func LoadWithWarnings() (*Config, []warning, error) {
 	return LoadEnviron(os.Environ())
 }
 

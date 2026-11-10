@@ -33,8 +33,8 @@ const (
 	shortDigestHx = 12
 )
 
-// Instructions is the workflow the server describes to connecting assistants.
-const Instructions = "This server manages the artwork shown on Samsung Frame TVs. It does not generate images: " +
+// instructions is the workflow the server describes to connecting assistants.
+const instructions = "This server manages the artwork shown on Samsung Frame TVs. It does not generate images: " +
 	"create them with your own image tools, then use these tools to put them on the TV.\n\n" +
 	"Workflow:\n" +
 	"1. Call get_display_spec first. Generate images to that spec: landscape 16:9 at the largest size your " +
@@ -54,8 +54,8 @@ const Instructions = "This server manages the artwork shown on Samsung Frame TVs
 	"everyday rotation. Art that belongs only to inactive collections is hidden. Removing art from a collection " +
 	"or deleting a collection never deletes image files."
 
-// Artwork is the Artwork Collection and Sync Cycle authority the tools use.
-type Artwork interface {
+// artwork is the artwork Collection and Sync Cycle authority the tools use.
+type artwork interface {
 	Prepare(context.Context, collection.PrepareRequest) (collection.Snapshot, error)
 	Import(context.Context, collection.ImportRequest) (collection.Snapshot, error)
 	RenderPreview(context.Context, collection.Item) (*image.RGBA, error)
@@ -63,8 +63,8 @@ type Artwork interface {
 	RequestSync() bool
 }
 
-// StatusSource reports service and per-TV health.
-type StatusSource interface {
+// statusSource reports service and per-TV health.
+type statusSource interface {
 	Report() health.Report
 }
 
@@ -72,13 +72,13 @@ type StatusSource interface {
 type Options struct {
 	Config  *config.Config
 	Logger  *slog.Logger
-	Artwork Artwork
+	Artwork artwork
 	Themes  *themes.Store
-	Status  StatusSource
+	Status  statusSource
 	// Fetcher downloads image links. Nil uses a public-internet-only Fetcher.
-	Fetcher *Fetcher
+	Fetcher *fetcher
 	// Searcher finds public-domain museum art. Nil omits the search tool.
-	Searcher ArtSearch
+	Searcher artSearch
 	// Now is the clock used for activation rules. Nil uses time.Now.
 	Now func() time.Time
 	// Version is reported to clients during initialization.
@@ -88,11 +88,11 @@ type Options struct {
 type service struct {
 	cfg      *config.Config
 	logger   *slog.Logger
-	artwork  Artwork
+	artwork  artwork
 	themes   *themes.Store
-	status   StatusSource
-	fetcher  *Fetcher
-	searcher ArtSearch
+	status   statusSource
+	fetcher  *fetcher
+	searcher artSearch
 	now      func() time.Time
 	location *time.Location
 }
@@ -116,7 +116,7 @@ func NewHandler(options Options) (http.Handler, error) {
 	}
 	svc.logger = svc.logger.With("component", "mcp")
 	if svc.fetcher == nil {
-		svc.fetcher = NewFetcher(FetcherOptions{})
+		svc.fetcher = newFetcher(fetcherOptions{})
 	}
 	if svc.now == nil {
 		svc.now = time.Now
@@ -126,7 +126,7 @@ func NewHandler(options Options) (http.Handler, error) {
 		version = "dev"
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: serverName, Title: serverTitle, Version: version},
-		&mcp.ServerOptions{Instructions: Instructions})
+		&mcp.ServerOptions{Instructions: instructions})
 	svc.register(server)
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		Stateless:    true,

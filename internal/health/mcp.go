@@ -13,7 +13,7 @@ import (
 // refused before credentials are checked, a client over its failed-sign-in
 // budget is refused before its token is compared, and only a request bearing
 // MCP_TOKEN reaches the handler.
-func (s *Server) mcpEndpoint() http.Handler {
+func (s *server) mcpEndpoint() http.Handler {
 	authenticated := http.NotFoundHandler()
 	if s.mcp != nil {
 		authenticated = auth.RequireBearerToken(s.verifyMCPToken, &auth.RequireBearerTokenOptions{
@@ -40,7 +40,7 @@ func (s *Server) mcpEndpoint() http.Handler {
 // verifyMCPToken compares the presented bearer token with MCP_TOKEN in
 // constant time. A wrong token counts against the client's failure budget;
 // the token itself is never logged.
-func (s *Server) verifyMCPToken(_ context.Context, token string, request *http.Request) (*auth.TokenInfo, error) {
+func (s *server) verifyMCPToken(_ context.Context, token string, request *http.Request) (*auth.TokenInfo, error) {
 	if subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.MCPToken)) == 1 {
 		return &auth.TokenInfo{}, nil
 	}

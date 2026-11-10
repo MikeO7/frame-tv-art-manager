@@ -45,17 +45,17 @@ const (
 	userAgent = "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)"
 )
 
-// Loader reads a sources file and downloads any images that aren't
+// loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
-type Loader struct {
+type loader struct {
 	dryRun            bool
 	sourcesFile       string
 	logger            *slog.Logger
 	client            *http.Client
-	providers         []SourceProvider
+	providers         []sourceProvider
 	maxImages         int
 	maxSizeMB         int
-	importer          CollectionImporter
+	importer          collectionImporter
 	sourceOrigins     map[string]struct{}
 	collectionSize    int
 	lastSourcesDigest [sha256.Size]byte
@@ -67,10 +67,10 @@ type Loader struct {
 	now               func() time.Time
 }
 
-// CollectionImporter is the narrow collection seam used to transactionally
+// collectionImporter is the narrow collection seam used to transactionally
 // publish validated source downloads. The source module never writes a final
 // artwork path directly.
-type CollectionImporter interface {
+type collectionImporter interface {
 	ImportBatch(context.Context, []collection.ImportRequest) (collection.Snapshot, error)
 }
 
@@ -78,12 +78,12 @@ type CollectionImporter interface {
 func NewLoader(
 	cfg *config.Config,
 	logger *slog.Logger,
-	importer CollectionImporter,
-) *Loader {
+	importer collectionImporter,
+) *loader {
 	// The museum search line shares the museum providers, so their request
 	// pacing, rate-limit windows, and object caches apply to both.
 	artic, met, cleveland, smk := newArticProvider(logger), newMetProvider(logger), newClevelandProvider(logger), newSMKProvider(logger)
-	providers := []SourceProvider{
+	providers := []sourceProvider{
 		newUnsplashProvider(cfg.UnsplashAccessKey, logger),
 		newNasaProvider(cfg.NasaAPIKey, logger),
 		artic,
@@ -97,7 +97,7 @@ func NewLoader(
 		newDirectProvider(),
 	}
 
-	return &Loader{
+	return &loader{
 		dryRun:      cfg.DryRun,
 		sourcesFile: cfg.SourcesFile,
 		maxImages:   cfg.MaxArtworkImages,
@@ -115,7 +115,7 @@ func NewLoader(
 }
 
 // resolveProvider returns the first provider that can handle a source line.
-func (l *Loader) resolveProvider(line string) SourceProvider {
+func (l *loader) resolveProvider(line string) sourceProvider {
 	for _, p := range l.providers {
 		if p.CanHandle(line) {
 			return p
@@ -125,7 +125,7 @@ func (l *Loader) resolveProvider(line string) SourceProvider {
 }
 
 // loadSources reads the sources file (TXT or YAML) and returns a list of source strings.
-func (l *Loader) loadSources(ctx context.Context) ([]string, error) {
+func (l *loader) loadSources(ctx context.Context) ([]string, error) {
 	data, err := l.readSourcesManifest(ctx)
 	if err != nil || data == nil {
 		return nil, err
@@ -191,7 +191,7 @@ func parseYamlSources(data []byte) ([]string, error) {
 	return nil, fmt.Errorf("invalid YAML sources format (expected 'providers:' map or 'sources:' list)")
 }
 
-func (l *Loader) readSourcesManifest(ctx context.Context) ([]byte, error) {
+func (l *loader) readSourcesManifest(ctx context.Context) ([]byte, error) {
 	// The sources file is read-only input, so a symlink (Kubernetes ConfigMap,
 	// Docker config) is followed; it is never a durable write target.
 	data, err := durablefs.ReadStable(ctx, l.sourcesFile, durablefs.StableReadOptions{

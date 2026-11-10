@@ -62,7 +62,7 @@ func TestSMKResolveRequestsPanelSizedIIIFRenditions(t *testing.T) {
 			t.Errorf("image %d = %s %v, want %s %v", index, images[index].URL, images[index].Fallbacks, test.url, test.fallbacks)
 		}
 	}
-	want := Attribution{
+	want := attribution{
 		Provider: providerSMK, Title: "The Fall of the Titans", Artist: "Cornelis Cornelisz. van Haarlem",
 		SourceURL: "https://open.smk.dk/artwork/image/KMS1", License: smkLicense,
 	}

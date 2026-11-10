@@ -12,12 +12,12 @@ import (
 
 type environment struct {
 	values   map[string]string
-	warnings []Warning
+	warnings []warning
 	errs     []error
 }
 
-// Warning reports a compatibility fallback without echoing the supplied value.
-type Warning struct {
+// warning reports a compatibility fallback without echoing the supplied value.
+type warning struct {
 	Variable string
 	Fallback string
 	Message  string
@@ -25,7 +25,7 @@ type Warning struct {
 
 // LoadEnviron parses a supplied process environment without reading or
 // mutating global process state.
-func LoadEnviron(environ []string) (*Config, []Warning, error) {
+func LoadEnviron(environ []string) (*Config, []warning, error) {
 	env := environment{values: make(map[string]string, len(environ))}
 	for _, entry := range environ {
 		key, value, ok := strings.Cut(entry, "=")
@@ -41,7 +41,7 @@ func LoadEnviron(environ []string) (*Config, []Warning, error) {
 	sort.Slice(env.warnings, func(i, j int) bool {
 		return env.warnings[i].Variable < env.warnings[j].Variable
 	})
-	return cfg, append([]Warning(nil), env.warnings...), nil
+	return cfg, append([]warning(nil), env.warnings...), nil
 }
 
 //nolint:funlen // keeping the complete environment schema together makes defaults auditable
@@ -321,5 +321,5 @@ func (env *environment) convertLegacyBrightness(variable string, value *int) {
 }
 
 func (env *environment) warn(variable, fallback, message string) {
-	env.warnings = append(env.warnings, Warning{Variable: variable, Fallback: fallback, Message: message})
+	env.warnings = append(env.warnings, warning{Variable: variable, Fallback: fallback, Message: message})
 }

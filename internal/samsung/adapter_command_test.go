@@ -44,9 +44,9 @@ func TestCommandPolicyCoversEveryCommandAndFailureOutcome(t *testing.T) {
 		{name: "protocol rejection", outcome: OutcomeNotApplied, cause: ErrArtAPIError, wantKind: ErrorKindProtocol},
 		{name: "storage full", outcome: OutcomeNotApplied, cause: ErrStorageFull, wantKind: ErrorKindStorageFull},
 		{name: "canceled before write", outcome: OutcomeNotAttempted, cause: context.Canceled, wantKind: ErrorKindCanceled},
-		{name: "unauthorized before write", outcome: OutcomeNotAttempted, cause: ErrNotAuthorized, wantKind: ErrorKindNotAuthorized},
+		{name: "unauthorized before write", outcome: OutcomeNotAttempted, cause: errNotAuthorized, wantKind: errorKindNotAuthorized},
 		{name: "invalid command before write", outcome: OutcomeNotAttempted, cause: errors.New("bad command"), wantKind: ErrorKindInvalidResponse, retryable: true},
-		{name: "success", outcome: OutcomeApplied, wantKind: ErrorKindNone},
+		{name: "success", outcome: OutcomeApplied, wantKind: errorKindNone},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -37,7 +37,7 @@ func boundState(t *testing.T, observation samsung.Observation, snap collection.S
 	return state
 }
 
-func commandSummary(commands []CommandIntent) []string {
+func commandSummary(commands []commandIntent) []string {
 	summary := make([]string, 0, len(commands))
 	for _, command := range commands {
 		switch command.Kind {
@@ -63,7 +63,7 @@ func TestBuildPlanRotation(t *testing.T) {
 		name        string
 		policy      Policy
 		confirmed   time.Time
-		capacity    CapacityEvidence
+		capacity    capacityEvidence
 		lastShown   map[string]time.Time
 		wantCmds    []string
 		wantLimited bool
@@ -78,7 +78,7 @@ func TestBuildPlanRotation(t *testing.T) {
 		{
 			name:        "rotation disabled reports storage limit",
 			confirmed:   aged,
-			capacity:    CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
+			capacity:    capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
 			wantCmds:    []string{},
 			wantLimited: true,
 		},
@@ -86,7 +86,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			name:      "aged artwork swaps for never shown artwork",
 			policy:    Policy{Rotation: testRotation},
 			confirmed: aged,
-			capacity:  CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
+			capacity:  capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
 			wantCmds: []string{
 				"delete-owned:" + firstContentByDigest(a, b), "upload:" + firstByDigest(c, d).Name,
 				"delete-owned:" + secondContentByDigest(a, b), "upload:" + secondByDigest(c, d).Name,
@@ -97,7 +97,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			name:       "young artwork waits for its interval",
 			policy:     Policy{Rotation: testRotation},
 			confirmed:  testTime.Add(-time.Hour),
-			capacity:   CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
+			capacity:   capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
 			wantCmds:   []string{},
 			wantStatus: RotationStatus{Active: true, Waiting: 2, NextAt: testTime.Add(testRotation - time.Hour)},
 		},
@@ -105,7 +105,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			name:      "recently removed artwork does not return immediately",
 			policy:    Policy{Rotation: testRotation},
 			confirmed: aged,
-			capacity:  CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
+			capacity:  capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
 			lastShown: map[string]time.Time{
 				itemDigest(c): testTime.Add(-time.Hour), itemDigest(d): testTime.Add(-2 * time.Hour),
 			},
@@ -116,7 +116,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			name:      "artwork away longest returns first",
 			policy:    Policy{Rotation: testRotation},
 			confirmed: aged,
-			capacity:  CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
+			capacity:  capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime},
 			lastShown: map[string]time.Time{
 				itemDigest(c): testTime.Add(-testRotation), itemDigest(d): testTime.Add(-2 * testRotation),
 			},
@@ -130,7 +130,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			name:      "free slot fills before rotating",
 			policy:    Policy{Rotation: testRotation},
 			confirmed: aged,
-			capacity:  CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime},
+			capacity:  capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime},
 			wantCmds: []string{
 				"upload:" + firstByDigest(c, d).Name,
 				"delete-owned:" + firstContentByDigest(a, b), "upload:" + secondByDigest(c, d).Name,
@@ -141,7 +141,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			name:        "capacity probe never rotates",
 			policy:      Policy{Rotation: testRotation},
 			confirmed:   aged,
-			capacity:    CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Probe: true},
+			capacity:    capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Probe: true},
 			wantCmds:    []string{"upload:" + firstByDigest(c, d).Name},
 			wantLimited: true,
 		},
@@ -149,7 +149,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			name:        "repeated shortfalls pause rotation",
 			policy:      Policy{Rotation: testRotation},
 			confirmed:   aged,
-			capacity:    CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime, Shortfalls: maximumShortfalls},
+			capacity:    capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime, Shortfalls: maximumShortfalls},
 			wantCmds:    []string{},
 			wantLimited: true,
 		},
@@ -160,7 +160,7 @@ func TestBuildPlanRotation(t *testing.T) {
 			state := boundState(t, full, snap, map[string]collection.Item{"id-a": a, "id-b": b}, test.confirmed)
 			state.Capacity = test.capacity
 			state.LastShown = test.lastShown
-			plan, err := BuildPlan(snap, full, state, test.policy)
+			plan, err := buildPlan(snap, full, state, test.policy)
 			if err != nil {
 				t.Fatalf("BuildPlan() error = %v", err)
 			}
@@ -182,13 +182,13 @@ func TestBuildPlanRotationKeepsLastOwnedArtwork(t *testing.T) {
 	snap := snapshot(a, waiting)
 	observation := knownObservation(samsung.PowerStateOn, "id-a", "unknown")
 	state := boundState(t, observation, snap, map[string]collection.Item{"id-a": a}, testTime.Add(-testRotation))
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 
-	plan, err := BuildPlan(snap, observation, state, Policy{Rotation: testRotation})
+	plan, err := buildPlan(snap, observation, state, Policy{Rotation: testRotation})
 	if err != nil || len(plan.Commands) != 0 || !plan.CapacityLimited || plan.Rotation.Active {
 		t.Fatalf("plan = %+v, err = %v; want last owned artwork preserved", plan, err)
 	}
-	plan, err = BuildPlan(snap, observation, state, Policy{Rotation: testRotation, AllowEmpty: true})
+	plan, err = buildPlan(snap, observation, state, Policy{Rotation: testRotation, AllowEmpty: true})
 	if err != nil || !slices.Equal(commandSummary(plan.Commands), []string{"delete-owned:id-a", "upload:w.jpg"}) {
 		t.Fatalf("allow-empty plan = %+v, err = %v; want swap", plan.Commands, err)
 	}
@@ -223,14 +223,14 @@ func TestRotationPolicyValidation(t *testing.T) {
 func TestStateValidationRejectsInvalidRotationEvidence(t *testing.T) {
 	t.Parallel()
 
-	identity := TVIdentity{Address: "192.0.2.10", Model: "model"}
+	identity := tvIdentity{Address: "192.0.2.10", Model: "model"}
 	tests := map[string]func(*State){
 		"blank history time":    func(state *State) { state.LastShown = map[string]time.Time{digestHex("x"): {}} },
 		"malformed history key": func(state *State) { state.LastShown = map[string]time.Time{"bad": testTime} },
 		"negative shortfalls": func(state *State) {
-			state.Capacity = CapacityEvidence{Known: true, ObservedAt: testTime, Shortfalls: -1}
+			state.Capacity = capacityEvidence{Known: true, ObservedAt: testTime, Shortfalls: -1}
 		},
-		"shortfalls without max": func(state *State) { state.Capacity = CapacityEvidence{Shortfalls: 1} },
+		"shortfalls without max": func(state *State) { state.Capacity = capacityEvidence{Shortfalls: 1} },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -246,10 +246,10 @@ func TestStateValidationRejectsInvalidRotationEvidence(t *testing.T) {
 
 func TestRotationStatePersistsAndClones(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
-	identity := TVIdentity{Address: "192.0.2.10", Model: "model"}
+	identity := tvIdentity{Address: "192.0.2.10", Model: "model"}
 	state := initialState(identity)
 	state.LastShown = map[string]time.Time{digestHex("shown"): testTime}
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Shortfalls: 2}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Shortfalls: 2}
 	store := newStateStore(directory)
 	if err := store.save(context.Background(), state); err != nil {
 		t.Fatal(err)
@@ -273,7 +273,7 @@ func TestRunRotatesAgedArtworkAndRecordsHistory(t *testing.T) {
 	afterDelete := knownObservation(samsung.PowerStateOn)
 	afterUpload := knownObservation(samsung.PowerStateOn, "id-b")
 	state := boundState(t, full, snap, map[string]collection.Item{"id-a": a}, testTime.Add(-testRotation))
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestRunAbsorbsFirstStorageFullIntoRotation(t *testing.T) {
 	if err != nil || result.Status != StatusComplete || adapter.applyCalls != 1 {
 		t.Fatalf("Run() = %+v, %v, apply calls = %d; want storage full absorbed", result, err, adapter.applyCalls)
 	}
-	wantCapacity := CapacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
+	wantCapacity := capacityEvidence{Known: true, Maximum: 2, ObservedAt: testTime}
 	if result.State.Capacity != wantCapacity || !result.Rotation.Active || result.Rotation.Waiting != 1 {
 		t.Fatalf("capacity = %+v rotation = %+v", result.State.Capacity, result.Rotation)
 	}
@@ -355,7 +355,7 @@ func TestStorageFullBelowCapacityCountsShortfallsUntilUploadSucceeds(t *testing.
 	snap := snapshot(a, b, c)
 	observation := knownObservation(samsung.PowerStateOn, "id-a", "id-b")
 	state := boundState(t, observation, snap, map[string]collection.Item{"id-a": a, "id-b": b}, testTime)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Shortfalls: 1}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Shortfalls: 1}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestStorageFullBelowCapacityCountsShortfallsUntilUploadSucceeds(t *testing.
 	}
 
 	state = result.State
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Shortfalls: 2}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 3, ObservedAt: testTime, Shortfalls: 2}
 	state.Revision++
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {
 		t.Fatal(err)
@@ -395,7 +395,7 @@ func TestRunRecordsHistoryForArtworkRemovedOutsideTheManager(t *testing.T) {
 	snap := snapshot(a, gone)
 	before := knownObservation(samsung.PowerStateOn, "id-a", "id-gone")
 	state := boundState(t, before, snap, map[string]collection.Item{"id-a": a, "id-gone": gone}, testTime)
-	state.Capacity = CapacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
+	state.Capacity = capacityEvidence{Known: true, Maximum: 1, ObservedAt: testTime}
 	stale := digestHex("removed-from-collection")
 	state.LastShown = map[string]time.Time{stale: testTime}
 	if err := newStateStore(directory).save(context.Background(), state); err != nil {

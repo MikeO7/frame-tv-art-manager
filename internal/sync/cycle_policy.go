@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MikeO7/frame-tv-art-manager/internal/brightness"
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/reconcile"
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
@@ -40,13 +39,13 @@ func convergencePolicy(
 		policy.Power, policy.WakeBoundary = reconcile.PowerOff, time.Time{}
 	}
 	policy.Show, policy.Slideshow = pictureChangePolicy(cfg)
-	location := (*brightness.SolarLocation)(nil)
+	location := (*solarLocation)(nil)
 	if cfg.SolarEnabled {
-		location = &brightness.SolarLocation{
+		location = &solarLocation{
 			Latitude: cfg.Latitude, Longitude: cfg.Longitude, Timezone: cfg.Timezone,
 		}
 	}
-	if target := brightness.GetTargetValueAt(brightness.TargetOptions{
+	if target := targetBrightnessAt(brightnessTarget{
 		Location: location, Min: cfg.BrightnessMin, Max: cfg.BrightnessMax,
 		Manual: cfg.ManualBrightness, Now: now,
 	}, logger); target != nil {

@@ -14,18 +14,18 @@ func TestOperatorErrorNamesAreStableAndExhaustive(t *testing.T) {
 		value ErrorKind
 		want  string
 	}{
-		{ErrorKindNone, "none"},
+		{errorKindNone, "none"},
 		{ErrorKindCanceled, "canceled"},
 		{ErrorKindBackoff, "backoff"},
 		{ErrorKindUnreachable, "unreachable"},
 		{ErrorKindTimeout, "timeout"},
 		{ErrorKindUnauthorized, "unauthorized"},
 		{ErrorKindProtocol, "protocol"},
-		{ErrorKindUnsupported, "unsupported"},
+		{errorKindUnsupported, "unsupported"},
 		{ErrorKindInvalidResponse, "invalid_response"},
 		{ErrorKindStorageFull, "storage_full"},
-		{ErrorKindNotAuthorized, "not_authorized"},
-		{ErrorKindPersistence, "persistence"},
+		{errorKindNotAuthorized, "not_authorized"},
+		{errorKindPersistence, "persistence"},
 		{ErrorKindOutcomeUnknown, "outcome_unknown"},
 		{ErrorKind(255), "unknown(255)"},
 	}

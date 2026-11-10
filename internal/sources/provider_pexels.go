@@ -106,7 +106,7 @@ func (p *pexelsProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]p
 	return result.Photos, nil
 }
 
-func (p *pexelsProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *pexelsProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
 		return nil, errors.New("invalid pexels format")
@@ -146,7 +146,7 @@ func (p *pexelsProvider) Resolve(ctx context.Context, line string) ([]SourceImag
 }
 
 // resolvePhoto retrieves a single photo by its ID.
-func (p *pexelsProvider) resolvePhoto(ctx context.Context, photoID string) ([]SourceImage, error) {
+func (p *pexelsProvider) resolvePhoto(ctx context.Context, photoID string) ([]sourceImage, error) {
 	var photo pexelsPhoto
 	if err := p.fetchJSON(ctx, fmt.Sprintf("%s/v1/photos/%s", p.BaseURL, url.PathEscape(photoID)), &photo); err != nil {
 		return nil, err
@@ -155,12 +155,12 @@ func (p *pexelsProvider) resolvePhoto(ctx context.Context, photoID string) ([]So
 	if !ok {
 		return nil, errors.New("pexels photo has no downloadable image")
 	}
-	return []SourceImage{image}, nil
+	return []sourceImage{image}, nil
 }
 
 // images keeps every photo with a usable original and skips the rest.
-func (p *pexelsProvider) images(photos []pexelsPhoto) []SourceImage {
-	images := make([]SourceImage, 0, len(photos))
+func (p *pexelsProvider) images(photos []pexelsPhoto) []sourceImage {
+	images := make([]sourceImage, 0, len(photos))
 	for _, photo := range photos {
 		if image, ok := p.image(photo); ok {
 			images = append(images, image)
@@ -175,19 +175,19 @@ func (p *pexelsProvider) images(photos []pexelsPhoto) []SourceImage {
 // original, which is frequently larger than the download and pixel caps.
 // The identity stays derived from the original URL so it is independent of
 // the rendition size.
-func (p *pexelsProvider) image(photo pexelsPhoto) (SourceImage, bool) {
+func (p *pexelsProvider) image(photo pexelsPhoto) (sourceImage, bool) {
 	if photo.Src.Original == "" {
-		return SourceImage{}, false
+		return sourceImage{}, false
 	}
 	params := map[string]string{"auto": "compress", "cs": "tinysrgb"}
 	maps.Copy(params, coverQuery(photo.Width, photo.Height))
 	primary, err := withQuery(photo.Src.Original, params)
 	if err != nil {
-		return SourceImage{}, false
+		return sourceImage{}, false
 	}
-	image := SourceImage{
+	image := sourceImage{
 		URL: primary, Identity: sourceURLIdentity(p.Name(), photo.Src.Original),
-		Attribution: Attribution{
+		Attribution: attribution{
 			Provider: p.Name(), Title: photo.Alt, Artist: photo.Photographer,
 			SourceURL: photo.URL, License: pexelsLicense,
 		},

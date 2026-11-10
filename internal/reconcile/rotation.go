@@ -198,10 +198,10 @@ func snapshotDigests(snapshot collection.Snapshot) map[string]struct{} {
 
 // storageFullCapacity records a storage-full rejection. A rejection while the
 // TV held fewer items than the recorded maximum counts as a shortfall.
-func storageFullCapacity(previous CapacityEvidence, inventory int, now time.Time) CapacityEvidence {
+func storageFullCapacity(previous capacityEvidence, inventory int, now time.Time) capacityEvidence {
 	shortfalls := previous.Shortfalls
 	if previous.Known && !previous.Probe && inventory < previous.Maximum {
 		shortfalls++
 	}
-	return CapacityEvidence{Known: true, Maximum: inventory, ObservedAt: now, Shortfalls: shortfalls}
+	return capacityEvidence{Known: true, Maximum: inventory, ObservedAt: now, Shortfalls: shortfalls}
 }

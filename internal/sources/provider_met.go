@@ -89,7 +89,7 @@ func (p *metProvider) fetchJSON(ctx context.Context, apiURL string, out any) err
 	}, out)
 }
 
-func (p *metProvider) Resolve(ctx context.Context, line string) ([]SourceImage, error) {
+func (p *metProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
 		return nil, errors.New("invalid met format; use met:search:<query> or met:object:<id>")
@@ -119,7 +119,7 @@ func (p *metProvider) Resolve(ctx context.Context, line string) ([]SourceImage, 
 		if !ok {
 			return nil, errors.New("met object is not public domain or has no open-access image")
 		}
-		return []SourceImage{candidate.image}, nil
+		return []sourceImage{candidate.image}, nil
 	default:
 		return nil, errors.New("unknown met type")
 	}
@@ -217,13 +217,13 @@ func (p *metProvider) candidate(object metObject) (Candidate, bool) {
 	if link == "" {
 		link = "https://www.metmuseum.org/art/collection/search/" + id
 	}
-	attribution := Attribution{
+	attribution := attribution{
 		Provider: p.Name(), Title: plainText(object.Title), Artist: plainText(object.ArtistDisplayName),
 		SourceURL: link, License: publicDomainCC0,
 	}
 	return Candidate{
 		Provider: p.Name(), ID: id, Title: attribution.Title, Artist: attribution.Artist, Date: plainText(object.ObjectDate),
 		ImageURL: object.PrimaryImage, License: publicDomainCC0, Link: link, SourceLine: providerMet + ":" + cmdObject + ":" + id,
-		image: SourceImage{URL: object.PrimaryImage, Identity: museumObjectIdentity(p.Name(), id), Attribution: attribution},
+		image: sourceImage{URL: object.PrimaryImage, Identity: museumObjectIdentity(p.Name(), id), Attribution: attribution},
 	}, true
 }

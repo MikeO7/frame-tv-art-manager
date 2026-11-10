@@ -36,7 +36,7 @@ func NewStore(artworkDir string, dryRun bool) (*Store, error) {
 		return nil, errors.New("themed collections need an absolute, canonical artwork directory")
 	}
 	return &Store{
-		path: collection.ControlPath(artworkDir, FileName), dryRun: dryRun, mutation: make(chan struct{}, 1),
+		path: collection.ControlPath(artworkDir, fileName), dryRun: dryRun, mutation: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -55,14 +55,14 @@ func (store *Store) Load(ctx context.Context) (File, error) {
 		MaxBytes: maxFileBytes, RequiredMode: 0o600,
 	})
 	if errors.Is(err, fs.ErrNotExist) {
-		return Empty(), nil
+		return empty(), nil
 	}
 	if err != nil {
-		return File{}, fmt.Errorf("read %s: %w", FileName, err)
+		return File{}, fmt.Errorf("read %s: %w", fileName, err)
 	}
 	file, err := decode(data)
 	if err != nil {
-		return File{}, fmt.Errorf("decode %s: %w", FileName, err)
+		return File{}, fmt.Errorf("decode %s: %w", fileName, err)
 	}
 	return file, nil
 }
@@ -98,7 +98,7 @@ func (store *Store) Update(ctx context.Context, change func(*File) error) (File,
 	}
 	encoded, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
-		return File{}, fmt.Errorf("encode %s: %w", FileName, err)
+		return File{}, fmt.Errorf("encode %s: %w", fileName, err)
 	}
 	if err := ensureControlDirectory(filepath.Dir(store.path)); err != nil {
 		return File{}, err
@@ -107,7 +107,7 @@ func (store *Store) Update(ctx context.Context, change func(*File) error) (File,
 		_, writeErr := writer.Write(append(encoded, '\n'))
 		return writeErr
 	}); err != nil {
-		return File{}, fmt.Errorf("persist %s: %w", FileName, err)
+		return File{}, fmt.Errorf("persist %s: %w", fileName, err)
 	}
 	return file, nil
 }

@@ -28,8 +28,8 @@ const (
 	FitUnchanged FitMode = "unchanged"
 )
 
-// Fit describes how an image of a given size will be placed in the frame.
-type Fit struct {
+// fit describes how an image of a given size will be placed in the frame.
+type fit struct {
 	Mode FitMode
 	// Scale is the factor applied to the artwork's pixels; above 1 is upscaling.
 	Scale float64
@@ -39,18 +39,18 @@ type Fit struct {
 
 // DescribeFit predicts the frame placement for a width x height image under
 // cfg without decoding pixels. It mirrors planFit and the pad renderers.
-func DescribeFit(width, height int, cfg Config) Fit {
+func DescribeFit(width, height int, cfg Config) fit {
 	if width <= 0 || height <= 0 || cfg.MaxWidth <= 0 || cfg.MaxHeight <= 0 {
-		return Fit{Mode: FitUnchanged, Scale: 1}
+		return fit{Mode: FitUnchanged, Scale: 1}
 	}
 	if !cfg.Enabled {
-		return Fit{Mode: FitUnchanged, Scale: 1}
+		return fit{Mode: FitUnchanged, Scale: 1}
 	}
 	if width == cfg.MaxWidth && height == cfg.MaxHeight {
-		return Fit{Mode: FitExact, Scale: 1}
+		return fit{Mode: FitExact, Scale: 1}
 	}
 	if planFit(width, height, cfg) == fitCrop {
-		return Fit{
+		return fit{
 			Mode:        FitCrop,
 			Scale:       fillScale(width, height, cfg.MaxWidth, cfg.MaxHeight),
 			CropPercent: croppedFraction(width, height, cfg.MaxWidth, cfg.MaxHeight) * 100,
@@ -58,7 +58,7 @@ func DescribeFit(width, height int, cfg Config) Fit {
 	}
 	if cfg.PadStyle == padStyleBlur {
 		containedWidth, _ := containedSize(width, height, cfg.MaxWidth, cfg.MaxHeight, cfg.MaxUpscale)
-		return Fit{Mode: FitBlur, Scale: float64(containedWidth) / float64(width)}
+		return fit{Mode: FitBlur, Scale: float64(containedWidth) / float64(width)}
 	}
 	mode := FitMat
 	if height > width && cfg.PortraitMode == portraitModeCollage {
@@ -66,7 +66,7 @@ func DescribeFit(width, height int, cfg Config) Fit {
 	}
 	boxWidth, boxHeight := matBox(cfg, 1)
 	_, containedHeight := containedSize(width, height, boxWidth, boxHeight, cfg.MaxUpscale)
-	return Fit{Mode: mode, Scale: float64(containedHeight) / float64(height)}
+	return fit{Mode: mode, Scale: float64(containedHeight) / float64(height)}
 }
 
 // PreviewInput identifies one artwork file to render as the TV will show it.

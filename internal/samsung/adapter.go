@@ -25,7 +25,7 @@ func (wallClock) Now() time.Time { return time.Now() }
 
 type observationTransport interface {
 	Connect(context.Context, bool) error
-	DeviceInfo(context.Context) (DeviceInfo, error)
+	DeviceInfo(context.Context) (deviceInfo, error)
 	ArtMode(context.Context) (string, error)
 	Inventory(context.Context) (json.RawMessage, error)
 	Close(context.Context) error
@@ -35,7 +35,7 @@ type observationTransport interface {
 // and runtime status for one TV. Callers depend on the narrow Adapter contract.
 type adapter struct {
 	config    Config
-	clock     Clock
+	clock     clock
 	random    io.Reader
 	logger    *slog.Logger
 	transport observationTransport
@@ -135,7 +135,7 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 	now := a.clock.Now()
 	observation := Observation{
 		TV:          TVIdentity{Address: a.config.Address},
-		Connection:  ConnectionDisconnected,
+		Connection:  connectionDisconnected,
 		ObservedAt:  now,
 		Disposition: DispositionUnsafeUnknown,
 	}
@@ -145,7 +145,7 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 	consecutiveFailures := a.runtime.ConsecutiveFailures
 	a.stateMu.Unlock()
 	if closed {
-		return observation, fmt.Errorf("observe closed adapter: %w", ErrNotConnected)
+		return observation, fmt.Errorf("observe closed adapter: %w", errNotConnected)
 	}
 	if err := ctx.Err(); err != nil {
 		return a.failObservation(ctx, observation, request, operationObserve, err)
@@ -154,7 +154,7 @@ func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observat
 	// A wake request only reads REST and sends Wake-on-LAN, so backoff from
 	// earlier unreachable observations never delays a scheduled wake.
 	if now.Before(nextAttemptAt) && !wakeOnly {
-		observation.Connection = ConnectionBackingOff
+		observation.Connection = connectionBackingOff
 		observation.Disposition = DispositionBlockedBackoff
 		err := &Error{
 			Kind:                ErrorKindBackoff,
@@ -260,7 +260,7 @@ func (a *adapter) failObservation(
 		return cloneObservation(observation), typed
 	}
 	if typed.Kind == ErrorKindUnauthorized {
-		observation.Connection = ConnectionAuthRequired
+		observation.Connection = connectionAuthRequired
 	} else if typed.Retryable {
 		a.stateMu.Lock()
 		a.runtime.ConsecutiveFailures++
@@ -296,12 +296,12 @@ func classifyObservationError(ctx context.Context, operation string, cause error
 	case errors.Is(cause, context.Canceled), errors.Is(cause, context.DeadlineExceeded):
 		kind = ErrorKindCanceled
 		retryable = false
-	case errors.Is(cause, ErrUnauthorized):
+	case errors.Is(cause, errUnauthorized):
 		kind = ErrorKindUnauthorized
 		retryable = false
-	case errors.Is(cause, ErrTimeout):
+	case errors.Is(cause, errTimeout):
 		kind = ErrorKindTimeout
-	case errors.Is(cause, ErrConnectionFailure), errors.Is(cause, ErrNotConnected):
+	case errors.Is(cause, errConnectionFailure), errors.Is(cause, errNotConnected):
 		kind = ErrorKindUnreachable
 	}
 	var typed *Error

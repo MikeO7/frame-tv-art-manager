@@ -37,16 +37,16 @@ type Config struct {
 }
 
 type Dependencies struct {
-	Clock  Clock
-	IDs    IDSource
+	Clock  clock
+	IDs    idSource
 	Logger *slog.Logger
 }
 
-type Clock interface {
+type clock interface {
 	Now() time.Time
 }
 
-type IDSource interface {
+type idSource interface {
 	NewID() (string, error)
 }
 
@@ -120,12 +120,12 @@ type Policy struct {
 	WakeBoundary time.Time
 }
 
-// ShowOrder is the order in which the manager changes the picture on screen.
-type ShowOrder uint8
+// showOrder is the order in which the manager changes the picture on screen.
+type showOrder uint8
 
 const (
 	// ShowShuffle shows every picture once, in a new random order each round.
-	ShowShuffle ShowOrder = iota
+	ShowShuffle showOrder = iota
 	// ShowSequential shows pictures in name order and wraps around.
 	ShowSequential
 )
@@ -135,13 +135,13 @@ const (
 // firmware, so the manager selects each picture itself.
 type ShowPolicy struct {
 	Interval time.Duration
-	Order    ShowOrder
+	Order    showOrder
 }
 
-type PolicyMode uint8
+type policyMode uint8
 
 const (
-	PolicyPreserve PolicyMode = iota
+	PolicyPreserve policyMode = iota
 	PolicyDisable
 	PolicySet
 	// PolicyAdjust changes a slideshow only while the TV already plays one: a
@@ -158,27 +158,25 @@ const (
 	// PowerOn wakes a TV only after it has been positively observed as off.
 	// Unknown power state never authorizes a wake attempt.
 	PowerOn
-	// WakeWhenKnownOff names the fail-closed behavior implemented by PowerOn.
-	WakeWhenKnownOff = PowerOn
 )
 
 type SettingPolicy struct {
-	Mode  PolicyMode
+	Mode  policyMode
 	Value int
 }
 
 // SlideshowPolicy preserves both the interval and Samsung playback kind.
 type SlideshowPolicy struct {
-	Mode    PolicyMode
+	Mode    policyMode
 	Setting samsung.SlideshowSetting
 }
 
-type Phase uint8
+type phase uint8
 
 const (
-	PhasePrepared Phase = iota + 1
-	PhaseOutcomeUnknown
-	PhaseApplied
+	phasePrepared phase = iota + 1
+	phaseOutcomeUnknown
+	phaseApplied
 )
 
 type CommandKind string
@@ -187,14 +185,14 @@ const (
 	CommandUpload        CommandKind = "upload"
 	CommandDeleteOwned   CommandKind = "delete-owned"
 	CommandDeleteUnknown CommandKind = "delete-unknown"
-	CommandSelect        CommandKind = "select"
-	CommandSlideshow     CommandKind = "slideshow"
+	commandSelect        CommandKind = "select"
+	commandSlideshow     CommandKind = "slideshow"
 	CommandBrightness    CommandKind = "brightness"
-	CommandPowerOff      CommandKind = "power-off"
+	commandPowerOff      CommandKind = "power-off"
 	CommandWake          CommandKind = "wake"
 )
 
-type CommandIntent struct {
+type commandIntent struct {
 	Kind                  CommandKind               `json:"kind"`
 	Digest                string                    `json:"digest,omitempty"`
 	ContentID             string                    `json:"content_id,omitempty"`
@@ -219,11 +217,11 @@ type Plan struct {
 	InventoryFingerprint [sha256.Size]byte
 	CapacityLimited      bool
 	Rotation             RotationStatus
-	Commands             []CommandIntent
+	Commands             []commandIntent
 	PruneBindings        []string
 }
 
-type TVIdentity struct {
+type tvIdentity struct {
 	Address         string `json:"address"`
 	Model           string `json:"model"`
 	FirmwareVersion string `json:"firmware_version,omitempty"`
@@ -241,13 +239,13 @@ type Binding struct {
 	ConfirmedAt          time.Time `json:"confirmed_at"`
 }
 
-type Tombstone struct {
+type tombstone struct {
 	Digest     string    `json:"digest,omitempty"`
 	ContentID  string    `json:"content_id"`
 	RecordedAt time.Time `json:"recorded_at"`
 }
 
-type CapacityEvidence struct {
+type capacityEvidence struct {
 	Known      bool      `json:"known"`
 	Maximum    int       `json:"maximum,omitempty"`
 	ObservedAt time.Time `json:"observed_at,omitempty"`
@@ -258,7 +256,7 @@ type CapacityEvidence struct {
 	Shortfalls int `json:"shortfalls,omitempty"`
 }
 
-type InventoryFingerprint struct {
+type inventoryFingerprint struct {
 	Digest [sha256.Size]byte `json:"digest"`
 }
 
@@ -269,14 +267,14 @@ type ReceiptSummary struct {
 	CompletedAt time.Time       `json:"completed_at"`
 }
 
-type Pending struct {
+type pending struct {
 	OperationID       string               `json:"operation_id"`
 	CycleID           string               `json:"cycle_id"`
 	CollectionGen     string               `json:"collection_generation"`
 	PolicyFingerprint [sha256.Size]byte    `json:"policy_fingerprint"`
-	InventoryBefore   InventoryFingerprint `json:"inventory_before"`
-	Command           CommandIntent        `json:"command"`
-	Phase             Phase                `json:"phase"`
+	InventoryBefore   inventoryFingerprint `json:"inventory_before"`
+	Command           commandIntent        `json:"command"`
+	Phase             phase                `json:"phase"`
 	Receipt           *ReceiptSummary      `json:"receipt,omitempty"`
 	// PreparedAt and InventoryBeforeIDs let an upload whose outcome is unknown
 	// be proven from later inventory. Both are absent in older state files.
@@ -286,22 +284,22 @@ type Pending struct {
 
 type State struct {
 	Version    int                  `json:"version"`
-	TV         TVIdentity           `json:"tv"`
+	TV         tvIdentity           `json:"tv"`
 	Revision   uint64               `json:"revision"`
 	Bindings   map[string]Binding   `json:"bindings"`
-	Tombstones map[string]Tombstone `json:"tombstones"`
-	Capacity   CapacityEvidence     `json:"capacity"`
+	Tombstones map[string]tombstone `json:"tombstones"`
+	Capacity   capacityEvidence     `json:"capacity"`
 	// LastShown records when desired artwork last left the TV, keyed by digest.
 	// Rotation uses it to bring back the artwork that has been away longest.
 	LastShown              map[string]time.Time `json:"last_shown,omitempty"`
 	LegacyMigrationPending bool                 `json:"legacy_migration_pending,omitempty"`
-	Pending                *Pending             `json:"pending,omitempty"`
+	Pending                *pending             `json:"pending,omitempty"`
 	// UnresolvedUpload is an upload whose outcome is still unknown. It blocks
 	// artwork changes until inventory proves the outcome, while settings and
 	// power control keep running.
-	UnresolvedUpload *Pending `json:"unresolved_upload,omitempty"`
+	UnresolvedUpload *pending `json:"unresolved_upload,omitempty"`
 	// Display records the pictures the manager has put on screen.
-	Display           *DisplayState `json:"display,omitempty"`
+	Display           *displayState `json:"display,omitempty"`
 	LastCompleteCycle string        `json:"last_complete_cycle_id,omitempty"`
 	LastCollectionGen string        `json:"last_collection_generation,omitempty"`
 	Checksum          string        `json:"checksum"`

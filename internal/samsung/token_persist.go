@@ -19,7 +19,7 @@ func persistAuthenticationToken(ctx context.Context, path, token string) error {
 	directory := filepath.Dir(path)
 	if err := ensureAuthenticationTokenDirectory(directory); err != nil {
 		return &Error{
-			Kind: ErrorKindPersistence, Operation: "secure token directory",
+			Kind: errorKindPersistence, Operation: "secure token directory",
 			Outcome: OutcomeNotAttempted, Cause: err,
 		}
 	}
@@ -88,7 +88,7 @@ func inspectOrCreateTokenDirectory(directory string) (os.FileInfo, error) {
 }
 
 func tokenPersistenceError(err error) error {
-	kind := ErrorKindPersistence
+	kind := errorKindPersistence
 	outcome := OutcomeNotAttempted
 	if errors.Is(err, durablefs.ErrOutcomeUnknown) {
 		kind = ErrorKindOutcomeUnknown

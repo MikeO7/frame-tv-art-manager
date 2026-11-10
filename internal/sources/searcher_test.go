@@ -37,7 +37,7 @@ func fakeCandidate(provider, id, title, artist string) Candidate {
 	return Candidate{
 		Provider: provider, ID: id, Title: title, Artist: artist, License: publicDomainCC0,
 		SourceLine: provider + ":object:" + id,
-		image:      SourceImage{URL: "https://images.example/" + provider + "/" + id + ".jpg", Identity: museumObjectIdentity(provider, id)},
+		image:      sourceImage{URL: "https://images.example/" + provider + "/" + id + ".jpg", Identity: museumObjectIdentity(provider, id)},
 	}
 }
 
@@ -85,11 +85,11 @@ func TestArtSearcherMergesRoundRobinAndDedupes(t *testing.T) {
 	if _, err := searcher.Search(context.Background(), SearchQuery{Text: " waves "}); err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
-	if first.gotQuery != "waves" || first.gotLimit != DefaultSearchLimit {
+	if first.gotQuery != "waves" || first.gotLimit != defaultSearchLimit {
 		t.Errorf("provider saw query %q limit %d, want trimmed text and the default limit", first.gotQuery, first.gotLimit)
 	}
-	if _, err := searcher.Search(context.Background(), SearchQuery{Text: "x", Limit: 1000}); err != nil || first.gotLimit != MaxSearchLimit {
-		t.Errorf("Search(limit 1000) passed limit %d, want %d", first.gotLimit, MaxSearchLimit)
+	if _, err := searcher.Search(context.Background(), SearchQuery{Text: "x", Limit: 1000}); err != nil || first.gotLimit != maxSearchLimit {
+		t.Errorf("Search(limit 1000) passed limit %d, want %d", first.gotLimit, maxSearchLimit)
 	}
 }
 

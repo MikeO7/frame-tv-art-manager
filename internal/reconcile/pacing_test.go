@@ -28,7 +28,7 @@ func TestTimerMutationWaiterHonorsCancellation(t *testing.T) {
 	}
 }
 
-func withMutationWaiter(waiter mutationWaiter) Option {
+func withMutationWaiter(waiter mutationWaiter) option {
 	return func(configuration *runtimeConfiguration) error {
 		configuration.mutations.waiter = waiter
 		return nil
@@ -103,7 +103,7 @@ func TestMutationPacingPersistsNextPendingBeforeWaitingAndNeverWaitsAfterLast(t 
 		t.Fatalf("load state during pacing = %+v, %v, exists=%v", persisted, loadErr, exists)
 	}
 	if persisted.Pending == nil || persisted.Pending.Command.Kind != CommandDeleteUnknown ||
-		persisted.Pending.Command.ContentID != "unknown-2" || persisted.Pending.Phase != PhasePrepared {
+		persisted.Pending.Command.ContentID != "unknown-2" || persisted.Pending.Phase != phasePrepared {
 		t.Fatalf("persisted state during pacing = %+v", persisted)
 	}
 	adapter.mu.Lock()
@@ -428,7 +428,7 @@ func TestMutationRetryStopsAtConfiguredAttemptLimit(t *testing.T) {
 func TestMutationExecutionOptions(t *testing.T) {
 	tests := []struct {
 		name   string
-		option Option
+		option option
 	}{
 		{name: "negative pacing", option: WithMutationPacing(-time.Nanosecond)},
 		{name: "excessive pacing", option: WithMutationPacing(maximumMutationPacing + time.Nanosecond)},

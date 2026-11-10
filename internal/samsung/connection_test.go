@@ -81,8 +81,8 @@ func newTestConnection(t *testing.T, host string, port int, endpoint string) *co
 func TestConnectionOpenPersistsTokenAndCorrelatesResponses(t *testing.T) {
 	t.Parallel()
 	handshake := [][]byte{
-		wsFrame(t, EventChannelConnect, map[string]string{"token": "test-token-123"}),
-		wsFrame(t, EventChannelReady, map[string]string{}),
+		wsFrame(t, eventChannelConnect, map[string]string{"token": "test-token-123"}),
+		wsFrame(t, eventChannelReady, map[string]string{}),
 	}
 	host, port := newWebSocketTV(t, handshake, func(ctx context.Context, conn *websocket.Conn) {
 		_, raw, err := conn.Read(ctx)
@@ -101,8 +101,8 @@ func TestConnectionOpenPersistsTokenAndCorrelatesResponses(t *testing.T) {
 		}
 		frames := [][]byte{
 			[]byte("not json"),
-			wsFrame(t, EventD2DServiceMessage, map[string]string{"request_id": "someone-else", keyValue: stringOff}),
-			wsFrame(t, EventD2DServiceMessageEvent, string(inner)),
+			wsFrame(t, eventD2DServiceMessage, map[string]string{"request_id": "someone-else", keyValue: stringOff}),
+			wsFrame(t, eventD2DServiceMessageEvent, string(inner)),
 		}
 		for _, frame := range frames {
 			if err := conn.Write(ctx, websocket.MessageText, frame); err != nil {
@@ -147,7 +147,7 @@ func TestConnectionOpenPersistsTokenAndCorrelatesResponses(t *testing.T) {
 	if conn.IsAlive() {
 		t.Fatal("connection is alive after CloseContext()")
 	}
-	if err := conn.Send(ctx, payload); !errors.Is(err, ErrNotConnected) {
+	if err := conn.Send(ctx, payload); !errors.Is(err, errNotConnected) {
 		t.Fatalf("Send() after close error = %v, want ErrNotConnected", err)
 	}
 	if err := conn.CloseContext(ctx); err != nil {
@@ -170,9 +170,9 @@ func unrelatedEvents(t *testing.T, count int) [][]byte {
 
 func TestConnectionOpenSkipsUnrelatedHandshakeEvents(t *testing.T) {
 	t.Parallel()
-	handshake := append(unrelatedEvents(t, 2), wsFrame(t, EventChannelConnect, map[string]any{"token": 123456789}))
+	handshake := append(unrelatedEvents(t, 2), wsFrame(t, eventChannelConnect, map[string]any{"token": 123456789}))
 	handshake = append(handshake, unrelatedEvents(t, 3)...)
-	handshake = append(handshake, wsFrame(t, EventChannelReady, map[string]string{}))
+	handshake = append(handshake, wsFrame(t, eventChannelReady, map[string]string{}))
 	host, port := newWebSocketTV(t, handshake, nil)
 	conn := newTestConnection(t, host, port, endpointArtApp)
 	if err := conn.Open(context.Background()); err != nil {
@@ -188,7 +188,7 @@ func TestConnectionOpenSkipsUnrelatedHandshakeEvents(t *testing.T) {
 func TestConnectionOpenRejectsInvalidHandshakes(t *testing.T) {
 	t.Parallel()
 	connect := func(t *testing.T) []byte {
-		return wsFrame(t, EventChannelConnect, map[string]string{})
+		return wsFrame(t, eventChannelConnect, map[string]string{})
 	}
 	tests := []struct {
 		name      string
@@ -200,17 +200,17 @@ func TestConnectionOpenRejectsInvalidHandshakes(t *testing.T) {
 		{
 			name: "unauthorized", endpoint: endpointRemoteControl,
 			handshake: func(t *testing.T) [][]byte { return [][]byte{wsFrame(t, "ms.channel.unauthorized", nil)} },
-			wantErr:   ErrUnauthorized,
+			wantErr:   errUnauthorized,
 		},
 		{
 			name: "pairing timeout", endpoint: endpointRemoteControl,
 			handshake: func(t *testing.T) [][]byte { return [][]byte{wsFrame(t, "ms.channel.timeOut", nil)} },
-			wantErr:   ErrTimeout,
+			wantErr:   errTimeout,
 		},
 		{
 			name: "only unrelated events", endpoint: endpointRemoteControl,
 			handshake: func(t *testing.T) [][]byte { return unrelatedEvents(t, maxHandshakeEvents) },
-			wantErr:   ErrConnectionFailure,
+			wantErr:   errConnectionFailure,
 		},
 		{
 			name: "malformed handshake", endpoint: endpointRemoteControl,
@@ -222,7 +222,7 @@ func TestConnectionOpenRejectsInvalidHandshakes(t *testing.T) {
 			handshake: func(t *testing.T) [][]byte {
 				return append([][]byte{connect(t)}, unrelatedEvents(t, maxHandshakeEvents)...)
 			},
-			wantErr: ErrConnectionFailure,
+			wantErr: errConnectionFailure,
 		},
 		{
 			name: "art app malformed ready", endpoint: endpointArtApp,
@@ -270,14 +270,14 @@ func TestConnectionOpenFailsWhenTVUnreachable(t *testing.T) {
 
 func TestConnectionPendingRequestsFailWhenUnansweredOrClosed(t *testing.T) {
 	t.Parallel()
-	handshake := [][]byte{wsFrame(t, EventChannelConnect, map[string]string{})}
+	handshake := [][]byte{wsFrame(t, eventChannelConnect, map[string]string{})}
 	host, port := newWebSocketTV(t, handshake, nil)
 	conn := newTestConnection(t, host, port, endpointRemoteControl)
 	if err := conn.Open(context.Background()); err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
 
-	if _, err := conn.SendAndWait(context.Background(), []byte(`{}`), "unanswered", 10*time.Millisecond); !errors.Is(err, ErrTimeout) {
+	if _, err := conn.SendAndWait(context.Background(), []byte(`{}`), "unanswered", 10*time.Millisecond); !errors.Is(err, errTimeout) {
 		t.Fatalf("SendAndWait() error = %v, want ErrTimeout", err)
 	}
 	canceled, cancel := context.WithCancel(context.Background())
@@ -390,8 +390,8 @@ func TestExtractAndSaveTokenIgnoresEmptyTokensAndReportsPersistenceFailure(t *te
 func TestConnectionDeadSocketFailsWaitersAndReportsDead(t *testing.T) {
 	t.Parallel()
 	handshake := [][]byte{
-		wsFrame(t, EventChannelConnect, map[string]string{"token": "token"}),
-		wsFrame(t, EventChannelReady, map[string]string{}),
+		wsFrame(t, eventChannelConnect, map[string]string{"token": "token"}),
+		wsFrame(t, eventChannelReady, map[string]string{}),
 	}
 	drop := make(chan struct{})
 	host, port := newWebSocketTV(t, handshake, func(_ context.Context, conn *websocket.Conn) {
@@ -420,7 +420,7 @@ func TestConnectionDeadSocketFailsWaitersAndReportsDead(t *testing.T) {
 	if conn.IsAlive() {
 		t.Fatal("dead socket still reported alive")
 	}
-	if _, _, err := conn.registerPending("request-2"); !errors.Is(err, ErrNotConnected) {
+	if _, _, err := conn.registerPending("request-2"); !errors.Is(err, errNotConnected) {
 		t.Fatalf("registerPending() after death error = %v, want ErrNotConnected", err)
 	}
 }

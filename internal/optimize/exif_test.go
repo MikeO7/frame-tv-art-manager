@@ -59,7 +59,7 @@ func TestReadPNGOrientationEXIFChunk(t *testing.T) {
 	raw := encoded.Bytes()
 	const afterIHDR = 33
 	withExif := append(append(append([]byte(nil), raw[:afterIHDR]...), chunk.Bytes()...), raw[afterIHDR:]...)
-	orientation, err := ReadPNGOrientation(bytes.NewReader(withExif))
+	orientation, err := readPNGOrientation(bytes.NewReader(withExif))
 	if err != nil || orientation != 6 {
 		t.Fatalf("ReadPNGOrientation() = (%d, %v), want (6, nil)", orientation, err)
 	}
@@ -75,7 +75,7 @@ func TestReadOrientationEXIFVariants(t *testing.T) {
 		{name: "big endian short", order: binary.BigEndian, orientation: 8},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ReadOrientation(bytes.NewReader(exifJPEG(tt.order, 3, tt.orientation)))
+			got, err := readOrientation(bytes.NewReader(exifJPEG(tt.order, 3, tt.orientation)))
 			if err != nil || got != int(tt.orientation) {
 				t.Fatalf("ReadOrientation() = (%d, %v), want %d", got, err, tt.orientation)
 			}
@@ -111,7 +111,7 @@ func TestReadOrientationRejectsMalformedJPEG(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := ReadOrientation(bytes.NewReader(tt.data))
+			got, err := readOrientation(bytes.NewReader(tt.data))
 			if err == nil || !strings.Contains(err.Error(), tt.want) || got != 1 {
 				t.Fatalf("ReadOrientation() = (%d, %v), want (1, error containing %q)", got, err, tt.want)
 			}
@@ -138,7 +138,7 @@ func TestReadOrientationDefaultsToUprightWithoutEXIF(t *testing.T) {
 		}(),
 	}
 	for name, data := range tests {
-		if got, err := ReadOrientation(bytes.NewReader(data)); err != nil || got != 1 {
+		if got, err := readOrientation(bytes.NewReader(data)); err != nil || got != 1 {
 			t.Errorf("%s: ReadOrientation() = (%d, %v), want (1, nil)", name, got, err)
 		}
 	}
@@ -161,12 +161,12 @@ func TestReadPNGOrientationRejectsMalformedChunks(t *testing.T) {
 		"truncated chunk CRC": appendPNGChunkBytes(pngSignature[:], "text", []byte{1}, false),
 	}
 	for name, payload := range cases {
-		if orientation, err := ReadPNGOrientation(bytes.NewReader(payload)); err == nil || orientation != 1 {
+		if orientation, err := readPNGOrientation(bytes.NewReader(payload)); err == nil || orientation != 1 {
 			t.Errorf("ReadPNGOrientation(%s) = (%d, %v), want (1, error)", name, orientation, err)
 		}
 	}
 	iend := appendPNGChunkBytes(pngSignature[:], pngChunkEnd, nil, true)
-	if orientation, err := ReadPNGOrientation(bytes.NewReader(iend)); err != nil || orientation != 1 {
+	if orientation, err := readPNGOrientation(bytes.NewReader(iend)); err != nil || orientation != 1 {
 		t.Fatalf("ReadPNGOrientation(IEND) = %d, %v", orientation, err)
 	}
 }

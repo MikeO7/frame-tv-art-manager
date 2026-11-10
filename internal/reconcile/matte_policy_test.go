@@ -61,7 +61,7 @@ func TestMatteOverridesSelectExactArtworkAndStableFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("identityFromObservation() error = %v", err)
 	}
-	plan, err := BuildPlan(snapshot(a, b), observation, initialState(identity), firstPolicy)
+	plan, err := buildPlan(snapshot(a, b), observation, initialState(identity), firstPolicy)
 	if err != nil {
 		t.Fatalf("BuildPlan() error = %v", err)
 	}

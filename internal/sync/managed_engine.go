@@ -11,20 +11,19 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 	"github.com/MikeO7/frame-tv-art-manager/internal/health"
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
-	"github.com/MikeO7/frame-tv-art-manager/internal/resources"
 	"github.com/MikeO7/frame-tv-art-manager/internal/themes"
 )
 
-// ManagedEngine owns the authoritative artwork collection used by both Sync
+// managedEngine owns the authoritative artwork collection used by both Sync
 // Cycles and operator imports. Keeping construction here prevents the store and
 // the engine from being configured with different roots or collection limits.
-type ManagedEngine struct {
+type managedEngine struct {
 	cfg        *config.Config
 	logger     *slog.Logger
 	engine     *convergenceEngine
-	collection ArtworkCollection
+	collection artworkCollection
 	themes     *themes.Store
-	limits     *resources.Controller
+	limits     *transformGate
 }
 
 // NewManagedEngine constructs the complete synchronization boundary from one
@@ -34,7 +33,7 @@ func NewManagedEngine(
 	cfg *config.Config,
 	logger *slog.Logger,
 	healthStatus *health.Status,
-) (*ManagedEngine, error) {
+) (*managedEngine, error) {
 	if cfg == nil {
 		return nil, errors.New("managed sync engine configuration is required")
 	}
@@ -53,7 +52,7 @@ func NewManagedEngine(
 	if err != nil {
 		return nil, fmt.Errorf("construct themed collections: %w", err)
 	}
-	limits := resources.NewDefaultController()
+	limits := newTransformGate()
 	artwork, err := newLocalCollection(cfg, logger, healthStatus, store, limits)
 	if err != nil {
 		return nil, fmt.Errorf("construct artwork collection preparation: %w", err)
@@ -63,32 +62,32 @@ func NewManagedEngine(
 		return nil, fmt.Errorf("construct cached reconciliation engine: %w", err)
 	}
 	engine.themes = themeStore
-	return &ManagedEngine{
+	return &managedEngine{
 		cfg: cfg, logger: logger, engine: engine, collection: artwork, themes: themeStore, limits: limits,
 	}, nil
 }
 
 // Themes is the themed collections store whose rules every Sync Cycle applies.
-func (engine *ManagedEngine) Themes() *themes.Store {
+func (engine *managedEngine) Themes() *themes.Store {
 	return engine.themes
 }
 
 // RequestSync asks for an early Sync Cycle. Repeated requests collapse into
 // one pending cycle and never run concurrently with another cycle. It reports
 // whether this call queued a new request.
-func (engine *ManagedEngine) RequestSync() bool {
+func (engine *managedEngine) RequestSync() bool {
 	return engine.engine.requestCycle()
 }
 
 // Placements maps each artwork digest to the TVs whose latest observed
 // inventory held it.
-func (engine *ManagedEngine) Placements() map[string][]string {
+func (engine *managedEngine) Placements() map[string][]string {
 	return engine.engine.placementsByDigest()
 }
 
 // RenderPreview renders item in memory as the TV will show it, sharing the
 // transform admission limit with collection optimization. It writes nothing.
-func (engine *ManagedEngine) RenderPreview(ctx context.Context, item collectionpkg.Item) (*image.RGBA, error) {
+func (engine *managedEngine) RenderPreview(ctx context.Context, item collectionpkg.Item) (*image.RGBA, error) {
 	cfg := engine.cfg.OptimizeOptions()
 	input := optimize.PreviewInput{
 		Path: item.Path,
@@ -96,10 +95,7 @@ func (engine *ManagedEngine) RenderPreview(ctx context.Context, item collectionp
 			item.Width == cfg.MaxWidth && item.Height == cfg.MaxHeight,
 	}
 	var rendered *image.RGBA
-	err := engine.limits.Run(ctx, resources.Request{
-		Class: resources.Interactive, Mode: "preview",
-		InputPixels: int64(item.Width) * int64(item.Height), InputBytes: item.Size,
-	}, func(runCtx context.Context) error {
+	err := engine.limits.run(ctx, true, func(runCtx context.Context) error {
 		var renderErr error
 		rendered, renderErr = optimize.RenderPreview(runCtx, input, cfg, engine.logger)
 		return renderErr
@@ -112,7 +108,7 @@ func (engine *ManagedEngine) RenderPreview(ctx context.Context, item collectionp
 
 // Prepare returns a verified snapshot while sharing mutation authority with
 // cycle preparation and imports.
-func (engine *ManagedEngine) Prepare(
+func (engine *managedEngine) Prepare(
 	ctx context.Context,
 	request collectionpkg.PrepareRequest,
 ) (collectionpkg.Snapshot, error) {
@@ -120,7 +116,7 @@ func (engine *ManagedEngine) Prepare(
 }
 
 // Import transactionally publishes artwork through the engine's collection.
-func (engine *ManagedEngine) Import(
+func (engine *managedEngine) Import(
 	ctx context.Context,
 	request collectionpkg.ImportRequest,
 ) (collectionpkg.Snapshot, error) {
@@ -128,11 +124,11 @@ func (engine *ManagedEngine) Import(
 }
 
 // RunLoop executes Sync Cycles until ctx is canceled.
-func (engine *ManagedEngine) RunLoop(ctx context.Context) error {
+func (engine *managedEngine) RunLoop(ctx context.Context) error {
 	return engine.engine.RunLoop(ctx)
 }
 
 // Close releases every cached per-TV adapter. It is safe to call repeatedly.
-func (engine *ManagedEngine) Close(ctx context.Context) error {
+func (engine *managedEngine) Close(ctx context.Context) error {
 	return engine.engine.Close(ctx)
 }

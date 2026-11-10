@@ -8,8 +8,8 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
 
-// Selection is the artwork chosen for display on one calendar day.
-type Selection struct {
+// selection is the artwork chosen for display on one calendar day.
+type selection struct {
 	// Items is the selected subset, in the snapshot's order.
 	Items []collection.Item
 	// Active lists the slugs of collections active today, in file order.
@@ -52,9 +52,9 @@ func (file File) Memberships(items []collection.Item) [][]string {
 //     members of active collections are selected.
 //   - Otherwise the everyday pool plus members of active collections is
 //     selected.
-func Select(file File, items []collection.Item, now time.Time) Selection {
+func Select(file File, items []collection.Item, now time.Time) selection {
 	active := make(map[string]bool, len(file.Collections))
-	selection := Selection{Active: []string{}}
+	selection := selection{Active: []string{}}
 	for _, themed := range file.Collections {
 		if themed.Activation.ActiveAt(now) {
 			active[themed.Slug] = true
