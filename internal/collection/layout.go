@@ -43,17 +43,33 @@ func inspectOptionalDirectory(path string) (bool, error) {
 }
 
 func ensureLayout(root string) error {
-	for _, target := range []struct {
-		path string
-		mode fs.FileMode
-	}{
-		{path: root, mode: 0o755},
-		{path: filepath.Join(root, controlDirectory), mode: 0o700},
-		{path: filepath.Join(root, controlDirectory, stagingName), mode: 0o700},
+	// The artwork directory belongs to the operator, who may share it
+	// group-writable over SMB or NFS: its mode is chosen only when this store
+	// creates it. The control directories are private and repaired to 0700.
+	if err := ensureArtworkRoot(root); err != nil {
+		return err
+	}
+	for _, path := range []string{
+		filepath.Join(root, controlDirectory),
+		filepath.Join(root, controlDirectory, stagingName),
 	} {
-		if err := ensureDirectory(target.path, target.mode); err != nil {
+		if err := ensureDirectory(path, 0o700); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func ensureArtworkRoot(root string) error {
+	info, err := os.Lstat(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return ensureDirectory(root, 0o755)
+	}
+	if err != nil {
+		return fmt.Errorf("inspect directory %s: %w", root, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("path %s must be a non-symlink directory", root)
 	}
 	return nil
 }

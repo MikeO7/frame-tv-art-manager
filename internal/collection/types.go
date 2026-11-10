@@ -73,7 +73,12 @@ type ApplyRequest struct {
 	Directory string
 	Origins   map[string]Origin
 	Metadata  map[string]ItemMetadata
-	DryRun    bool
+	// Baseline is the snapshot Directory was rendered from. When set, only
+	// artwork that Baseline listed with its current bytes can be deleted:
+	// artwork added or changed in the collection since then is kept as it is.
+	// A nil Baseline declares Directory the complete collection.
+	Baseline *Snapshot
+	DryRun   bool
 }
 
 // ItemMetadata carries stable logical identity across a staged namespace or

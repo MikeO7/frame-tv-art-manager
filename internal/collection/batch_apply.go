@@ -2,6 +2,7 @@ package collection
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -59,7 +60,7 @@ func (s *store) planApply(ctx context.Context, request ApplyRequest) ([]Item, ba
 	if err != nil {
 		return nil, batchPlan{}, fmt.Errorf("inventory staged collection: %w", err)
 	}
-	plan, err := buildBatchPlan(current, staged)
+	plan, err := buildBatchPlan(current, staged, request.Baseline)
 	if err != nil {
 		return nil, batchPlan{}, err
 	}
@@ -190,7 +191,7 @@ func (s *store) scanApplyEntry(
 	return item, nil
 }
 
-func buildBatchPlan(current, staged []Item) (batchPlan, error) {
+func buildBatchPlan(current, staged []Item, baseline *Snapshot) (batchPlan, error) {
 	old := make(map[string]Item, len(current))
 	next := make(map[string]Item, len(staged))
 	for _, item := range current {
@@ -208,12 +209,32 @@ func buildBatchPlan(current, staged []Item) (batchPlan, error) {
 			plan.changes = append(plan.changes, Change{Kind: ChangeAdded, Name: item.Name})
 		}
 	}
+	rendered := renderedFrom(baseline)
 	for _, item := range current {
-		if _, exists := next[item.Name]; !exists {
-			plan.deletions = append(plan.deletions, item)
-			plan.changes = append(plan.changes, Change{Kind: ChangeMissing, Name: item.Name})
+		if _, exists := next[item.Name]; exists {
+			continue
 		}
+		// The stage never saw artwork that arrived or changed after its
+		// baseline, so its absence from the stage is not a decision to delete.
+		if digest, known := rendered[item.Name]; baseline != nil && (!known || digest != item.Digest) {
+			plan.items = append(plan.items, item)
+			continue
+		}
+		plan.deletions = append(plan.deletions, item)
+		plan.changes = append(plan.changes, Change{Kind: ChangeMissing, Name: item.Name})
 	}
+	sortItems(plan.items)
 	sort.Slice(plan.changes, func(i, j int) bool { return plan.changes[i].Name < plan.changes[j].Name })
 	return plan, nil
+}
+
+func renderedFrom(baseline *Snapshot) map[string][sha256.Size]byte {
+	if baseline == nil {
+		return nil
+	}
+	rendered := make(map[string][sha256.Size]byte, len(baseline.Items))
+	for _, item := range baseline.Items {
+		rendered[item.Name] = item.Digest
+	}
+	return rendered
 }

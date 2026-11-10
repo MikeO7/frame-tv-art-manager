@@ -246,3 +246,37 @@ func assertTestFile(t *testing.T, path, want string) {
 		t.Fatalf("contents %s = %q, want %q", path, data, want)
 	}
 }
+
+func TestEnsureLayoutLeavesOperatorArtworkDirectoryModeAlone(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "art")
+	if err := os.Mkdir(root, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	// Mkdir is subject to the umask; a shared folder is set explicitly.
+	if err := os.Chmod(root, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	control := filepath.Join(root, controlDirectory)
+	if err := os.Mkdir(control, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureLayout(root); err != nil {
+		t.Fatalf("ensure layout: %v", err)
+	}
+	for path, want := range map[string]os.FileMode{root: 0o775, control: 0o700} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("%s mode = %o, want %o", path, got, want)
+		}
+	}
+	file := filepath.Join(t.TempDir(), "file")
+	if err := writeTestFile(file); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureLayout(file); err == nil {
+		t.Fatal("regular file accepted as artwork directory")
+	}
+}
