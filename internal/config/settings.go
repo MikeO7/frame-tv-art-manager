@@ -196,8 +196,7 @@ func (env *environment) parseRequiredValues(cfg *Config) error {
 	if cfg.ManualBrightness != nil {
 		env.rescaleLegacyBrightness("BRIGHTNESS", cfg.ManualBrightness)
 	}
-	env.rescaleLegacyBrightness("BRIGHTNESS_MIN", &cfg.BrightnessMin)
-	env.rescaleLegacyBrightness("BRIGHTNESS_MAX", &cfg.BrightnessMax)
+	env.rescaleLegacyBrightnessRange(&cfg.BrightnessMin, &cfg.BrightnessMax)
 	latitude, hasLatitude, err := env.optionalDecimal("LOCATION_LATITUDE")
 	if err != nil {
 		return err
@@ -288,10 +287,32 @@ func (env *environment) present(key string) bool {
 // converted proportionally, so an existing setup keeps starting.
 const legacyMaxBrightness = 50
 
+func onLegacyBrightnessScale(value int) bool {
+	return value > maxFrameBrightness && value <= legacyMaxBrightness
+}
+
 func (env *environment) rescaleLegacyBrightness(variable string, value *int) {
-	if *value <= maxFrameBrightness || *value > legacyMaxBrightness {
-		return
+	if onLegacyBrightnessScale(*value) {
+		env.convertLegacyBrightness(variable, value)
 	}
+}
+
+// rescaleLegacyBrightnessRange converts the solar range as a pair: one bound
+// on the old scale puts the other explicitly set bound on it too, even when
+// that bound is small enough to pass for a current value.
+func (env *environment) rescaleLegacyBrightnessRange(minimum, maximum *int) {
+	legacy := onLegacyBrightnessScale(*minimum) || onLegacyBrightnessScale(*maximum)
+	for _, bound := range []struct {
+		variable string
+		value    *int
+	}{{"BRIGHTNESS_MIN", minimum}, {"BRIGHTNESS_MAX", maximum}} {
+		if onLegacyBrightnessScale(*bound.value) || (legacy && env.present(bound.variable) && *bound.value >= 0) {
+			env.convertLegacyBrightness(bound.variable, bound.value)
+		}
+	}
+}
+
+func (env *environment) convertLegacyBrightness(variable string, value *int) {
 	scaled := (*value*maxFrameBrightness + legacyMaxBrightness/2) / legacyMaxBrightness
 	env.warn(variable, strconv.Itoa(scaled), fmt.Sprintf(
 		"%s=%d is on the old 0-%d scale; Frame TVs use 0-%d, so %d is used. Set %s=%d to silence this warning",

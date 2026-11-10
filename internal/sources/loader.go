@@ -168,6 +168,11 @@ func parseYamlSources(data []byte) ([]string, error) {
 	if urls, ok := decodeProviderSources(data); ok {
 		return urls, nil
 	}
+	// A file holding only comments, like the generated starter, lists nothing.
+	var document any
+	if err := yaml.Unmarshal(data, &document); err == nil && document == nil {
+		return nil, nil
+	}
 
 	// Try to parse as a structured map with a "sources" key (classic list)
 	var structured struct {

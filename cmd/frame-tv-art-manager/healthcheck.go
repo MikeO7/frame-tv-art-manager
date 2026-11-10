@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -28,13 +29,18 @@ func runHealthCheck(path string) {
 }
 
 func performEndpointCheck(path string) error {
+	port := healthCheckPort()
+	if port == 0 {
+		// HEALTH_PORT=0 turns the server off, so there is nothing to probe.
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf("http://127.0.0.1:%d%s", healthCheckPort(), path),
+		"http://"+net.JoinHostPort(healthCheckHost(), strconv.Itoa(port))+path,
 		nil,
 	)
 	if err != nil {
@@ -59,6 +65,22 @@ func performEndpointCheck(path string) error {
 		return fmt.Errorf("health check returned status: %q", status.Status)
 	}
 	return nil
+}
+
+// healthCheckHost is the address the server listens on, or loopback when it
+// listens on every interface.
+func healthCheckHost() string {
+	address := net.ParseIP(os.Getenv("HEALTH_BIND_ADDRESS"))
+	switch {
+	case address == nil:
+		return "127.0.0.1"
+	case address.IsUnspecified() && address.To4() == nil:
+		return "::1"
+	case address.IsUnspecified():
+		return "127.0.0.1"
+	default:
+		return address.String()
+	}
 }
 
 func healthCheckPort() int {

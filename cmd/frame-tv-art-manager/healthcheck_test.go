@@ -149,3 +149,32 @@ func TestHealthcheckFlagExitsWithProbeResult(t *testing.T) {
 		})
 	}
 }
+
+func TestEndpointCheckPassesWhenHealthServerIsOff(t *testing.T) {
+	t.Setenv("HEALTH_PORT", "0")
+	if err := performEndpointCheck("/health"); err != nil {
+		t.Fatalf("performEndpointCheck() error = %v, want nil with the server turned off", err)
+	}
+}
+
+func TestHealthCheckHostFollowsBindAddress(t *testing.T) {
+	tests := []struct {
+		bind string
+		want string
+	}{
+		{bind: "", want: "127.0.0.1"},
+		{bind: "0.0.0.0", want: "127.0.0.1"},
+		{bind: "::", want: "::1"},
+		{bind: "192.0.2.7", want: "192.0.2.7"},
+		{bind: "::1", want: "::1"},
+		{bind: "not-an-address", want: "127.0.0.1"},
+	}
+	for _, test := range tests {
+		t.Run(test.bind, func(t *testing.T) {
+			t.Setenv("HEALTH_BIND_ADDRESS", test.bind)
+			if got := healthCheckHost(); got != test.want {
+				t.Fatalf("healthCheckHost() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

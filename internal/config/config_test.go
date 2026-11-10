@@ -126,6 +126,18 @@ func TestLoadEnvironRescalesLegacyBrightness(t *testing.T) {
 			name: "legacy solar range", environ: []string{"BRIGHTNESS_MIN=15", "BRIGHTNESS_MAX=45"},
 			minimum: 3, maximum: 9, warnedVariables: []string{"BRIGHTNESS_MAX", "BRIGHTNESS_MIN"}, expectManualIsNone: true,
 		},
+		{
+			name: "legacy solar range with a small minimum", environ: []string{"BRIGHTNESS_MIN=8", "BRIGHTNESS_MAX=30"},
+			minimum: 2, maximum: 6, warnedVariables: []string{"BRIGHTNESS_MAX", "BRIGHTNESS_MIN"}, expectManualIsNone: true,
+		},
+		{
+			name: "legacy solar range at both scale edges", environ: []string{"BRIGHTNESS_MIN=10", "BRIGHTNESS_MAX=50"},
+			minimum: 2, maximum: 10, warnedVariables: []string{"BRIGHTNESS_MAX", "BRIGHTNESS_MIN"}, expectManualIsNone: true,
+		},
+		{
+			name: "legacy maximum keeps the default minimum", environ: []string{"BRIGHTNESS_MAX=40"},
+			minimum: 2, maximum: 8, warnedVariables: []string{"BRIGHTNESS_MAX"}, expectManualIsNone: true,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
