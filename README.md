@@ -845,10 +845,22 @@ manager didn't upload. See [artwork rotation](#when-the-tv-is-full-artwork-rotat
 **Status says `recovery required`.** An upload or delete was interrupted
 before the manager could confirm the result, for example by a restart
 mid-transfer. To avoid duplicates or wrong deletions, that TV is paused until
-the result can be confirmed. If it doesn't clear on later syncs, stop the
+the result can be confirmed. An upload that still can't be confirmed after 24
+hours is given up on: syncing resumes, and the picture may be uploaded again.
+If the status doesn't clear on later syncs, stop the
 container and delete that TV's `tv_*_reconciliation.json` file in the tokens
 folder. The manager then forgets which art it uploaded: existing art stays on
 the TV as if you had added it, and your collection is uploaded again.
+
+**A picture in the folder never reaches the TV.** A file that can't be read as
+a JPEG or PNG is left where it is, named in a log warning, and skipped; it no
+longer blocks other uploads or downloads. A picture too large to prepare within
+`IMAGE_MAX_WORKING_MEMORY_MB` is also left as it is.
+
+**An online source keeps failing.** A source that fails is retried with
+growing waits, up to a day, and its pictures already downloaded stay. A
+mistake in the sources file or a missing API key is checked again on the next
+sync, so a correction takes effect straight away.
 
 **Permission errors on `/data`.** See the ownership notes in the
 [quick start](#quick-start-with-docker-compose).

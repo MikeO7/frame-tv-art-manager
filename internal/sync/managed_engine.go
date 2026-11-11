@@ -44,6 +44,7 @@ func NewManagedEngine(
 		Root:           cfg.ArtworkDir,
 		MaxItems:       cfg.MaxArtworkImages,
 		MaxImportBytes: int64(cfg.MaxLocalFileSizeMB) << 20,
+		Logger:         logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct authoritative collection: %w", err)

@@ -4,7 +4,7 @@ GOLANGCI_LINT_VERSION := 2.15.0
 GOVULNCHECK_VERSION := 1.9.0
 ACTIONLINT_VERSION := 1.7.12
 PRE_COMMIT_VERSION := 4.7.0
-COVERAGE_THRESHOLD ?= 90
+COVERAGE_THRESHOLD ?= 91
 GO_TEST_FLAGS ?= -shuffle=on
 
 GOLANGCI_LINT := $(or $(wildcard $(shell go env GOPATH)/bin/golangci-lint),$(shell command -v golangci-lint 2>/dev/null),golangci-lint)
