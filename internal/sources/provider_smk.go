@@ -44,7 +44,6 @@ func newSMKProvider(logger *slog.Logger) *smkProvider {
 type smkArtwork struct {
 	ObjectNumber string `json:"object_number"`
 	PublicDomain bool   `json:"public_domain"`
-	HasImage     bool   `json:"has_image"`
 	IIIFID       string `json:"image_iiif_id"`
 	Native       string `json:"image_native"`
 	Width        int    `json:"image_width"`

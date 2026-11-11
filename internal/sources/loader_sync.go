@@ -142,9 +142,10 @@ func (l *loader) syncLine(ctx context.Context, line string) (int, error) {
 		if len(pending) == 0 {
 			return nil
 		}
-		added, err := l.importSourceBatch(ctx, pending)
+		added, rejected, err := l.importPending(ctx, pending)
 		discard()
 		count += added
+		downloadErrors = append(downloadErrors, rejected...)
 		return err
 	}
 	for _, img := range images {
@@ -153,6 +154,10 @@ func (l *loader) syncLine(ctx context.Context, line string) (int, error) {
 			return count, err
 		}
 		if l.checkExisting(img.Identity) {
+			continue
+		}
+		if l.downloadBackingOff("source:" + img.Identity) {
+			l.logger.Debug("skipping source image that failed earlier until its retry is due", "identity", img.Identity)
 			continue
 		}
 		if l.maxImages > 0 && l.collectionSize+len(pending) >= l.maxImages {
@@ -165,6 +170,7 @@ func (l *loader) syncLine(ctx context.Context, line string) (int, error) {
 				discard()
 				return count, ctx.Err()
 			}
+			l.recordDownloadFailure("source:"+img.Identity, dErr)
 			l.logger.Warn("source download failed", "url", truncateURL(img.URL), "error", dErr)
 			downloadErrors = append(downloadErrors, dErr)
 			continue
@@ -187,6 +193,40 @@ func (l *loader) syncLine(ctx context.Context, line string) (int, error) {
 		return count, errors.Join(append(downloadErrors, err)...)
 	}
 	return count, errors.Join(downloadErrors...)
+}
+
+// importPending imports a batch of downloads. When the collection refuses the
+// batch because of one download (invalid artwork) or because it is full, the
+// downloads are imported one at a time so the valid ones are kept. It returns
+// the count added, the errors of individually rejected downloads, and any
+// error that stops the source line.
+func (l *loader) importPending(ctx context.Context, pending []pendingSourceDownload) (int, []error, error) {
+	added, err := l.importSourceBatch(ctx, pending)
+	invalid := errors.Is(err, collection.ErrInvalidImport)
+	separable := len(pending) > 1 && errors.Is(err, collection.ErrCollectionFull)
+	if err == nil || !invalid && !separable {
+		return added, nil, err
+	}
+	if len(pending) == 1 {
+		l.recordDownloadFailure(pending[0].prepared.originKey, err)
+		return added, []error{err}, nil
+	}
+	l.logger.Warn("collection refused a source import batch; importing its downloads one at a time",
+		"downloads", len(pending), "error", err)
+	var rejected []error
+	for index := range pending {
+		one, err := l.importSourceBatch(ctx, pending[index:index+1])
+		added += one
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, collection.ErrInvalidImport) {
+			return added, rejected, err
+		}
+		l.recordDownloadFailure(pending[index].prepared.originKey, err)
+		rejected = append(rejected, err)
+	}
+	return added, rejected, nil
 }
 
 //nolint:gocognit // File ownership and ordered import results are handled together to keep cleanup auditable.
@@ -232,6 +272,7 @@ func (l *loader) importSourceBatch(ctx context.Context, pending []pendingSourceD
 		//nolint:gosec // exact slice lengths are checked before this paired ordered walk
 		download := pending[index]
 		l.sourceOrigins[download.prepared.originKey] = struct{}{}
+		l.clearDownloadFailure(download.prepared.originKey)
 		l.recordAttribution(download.prepared.originKey, download.image.Attribution)
 		if change.Kind != collection.ChangeAdded {
 			continue

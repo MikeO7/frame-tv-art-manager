@@ -38,9 +38,6 @@ const (
 	cmdSearch = "search"
 
 	bytesPerMB = 1 << 20
-	// defaultDownloadCapBytes bounds a single download when no explicit
-	// MAX_DOWNLOAD_SIZE_MB limit is configured, guarding against runaway bodies.
-	defaultDownloadCapBytes = 100 * bytesPerMB
 
 	userAgent = "FrameTVArtManager/1.0 (https://github.com/MikeO7/frame-tv-art-manager)"
 )
@@ -48,12 +45,14 @@ const (
 // loader reads a sources file and downloads any images that aren't
 // already present in the artwork directory.
 type loader struct {
-	dryRun            bool
-	sourcesFile       string
-	logger            *slog.Logger
-	client            *http.Client
-	providers         []sourceProvider
-	maxImages         int
+	dryRun      bool
+	sourcesFile string
+	logger      *slog.Logger
+	client      *http.Client
+	providers   []sourceProvider
+	maxImages   int
+	// maxSizeMB bounds one download. Configuration validates
+	// MAX_DOWNLOAD_SIZE_MB to 1..100, so it is always positive.
 	maxSizeMB         int
 	importer          collectionImporter
 	sourceOrigins     map[string]struct{}

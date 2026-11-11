@@ -128,7 +128,7 @@ func TestPrepareDownloadStagesPrivateTemporaryFileWithDetectedExtension(t *testi
 
 func TestResolveDownloadNameUsesDetectedExtension(t *testing.T) {
 	t.Parallel()
-	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.New(slog.DiscardHandler))
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.New(slog.DiscardHandler))
 	response := &http.Response{Header: http.Header{"Content-Type": []string{"image/png"}}}
 	if name := loader.resolveDownloadName(response, "https://example.test/same", "source.jpg"); name != "source.png" {
 		t.Fatalf("resolveDownloadName() = %q, want source.png", name)

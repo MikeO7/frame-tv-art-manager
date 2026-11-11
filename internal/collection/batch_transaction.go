@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,8 +31,7 @@ type stagedBytes func(context.Context, Item) ([]byte, error)
 // revalidating that its bytes still match the inventoried item.
 func stagedDirectory(directory string) stagedBytes {
 	return func(ctx context.Context, item Item) ([]byte, error) {
-		input, err := readStableBatchSource(ctx, filepath.Join(directory, item.Name), item)
-		return input.data, err
+		return readStableBatchSource(ctx, filepath.Join(directory, item.Name), item)
 	}
 }
 
@@ -55,7 +56,7 @@ func (s *store) commitBatch(ctx context.Context, plan batchPlan, read stagedByte
 	if err := writeJournal(ctx, s.root, tx); err != nil {
 		return abandonBatchIntent(cleanupCtx, s.root, fmt.Errorf("publish batch transaction intent: %w", err))
 	}
-	return recoverBatchTransaction(ctx, s.root, tx)
+	return recoverBatchTransaction(ctx, s.root, tx, s.logger)
 }
 
 // abandonBatchIntent removes the staged artwork of a journal that was never
@@ -70,6 +71,14 @@ func abandonBatchIntent(ctx context.Context, root string, intentErr error) error
 }
 
 func (s *store) stageBatchAddition(ctx context.Context, item Item, index int, read stagedBytes) (transactionEffect, error) {
+	// The inventory leaves out invalid files the manifest does not record, so
+	// a name it reports free can still be taken. Publication never replaces a
+	// file, and refusing here keeps the collision out of the journal.
+	if _, err := os.Lstat(item.Path); err == nil {
+		return transactionEffect{}, fmt.Errorf("artwork name %s is taken by a file outside the inventory", item.Name)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return transactionEffect{}, fmt.Errorf("inspect artwork destination %s: %w", item.Name, err)
+	}
 	data, err := read(ctx, item)
 	if err != nil {
 		return transactionEffect{}, err
@@ -87,30 +96,36 @@ func (s *store) stageBatchAddition(ctx context.Context, item Item, index int, re
 	return transactionEffect{Stage: stage, Final: item.Path, Digest: digest}, nil
 }
 
-func readStableBatchSource(ctx context.Context, path string, expected Item) (validatedImage, error) {
+// readStableBatchSource returns the bytes of one staged addition after
+// confirming they are still the bytes the stage inventory fully validated:
+// the same length and digest. Decoding them again would prove nothing more.
+func readStableBatchSource(ctx context.Context, path string, expected Item) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("read staged artwork %s: %w", expected.Name, err)
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		return validatedImage{}, fmt.Errorf("inspect staged artwork %s: %w", expected.Name, err)
+		return nil, fmt.Errorf("inspect staged artwork %s: %w", expected.Name, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return validatedImage{}, fmt.Errorf("staged artwork %s is not a regular non-symlink file", expected.Name)
+		return nil, fmt.Errorf("staged artwork %s is not a regular non-symlink file", expected.Name)
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return validatedImage{}, fmt.Errorf("open staged artwork %s: %w", expected.Name, err)
+		return nil, fmt.Errorf("open staged artwork %s: %w", expected.Name, err)
 	}
-	input, readErr := readAndValidate(ctx, file, expected.Name, info.Size(), int64(expected.Width)*int64(expected.Height))
+	data, readErr := readBounded(file, expected.Size)
 	closeErr := file.Close()
 	if readErr != nil || closeErr != nil {
-		return validatedImage{}, fmt.Errorf("read staged artwork %s: %w", expected.Name, errors.Join(readErr, closeErr))
+		return nil, fmt.Errorf("read staged artwork %s: %w", expected.Name, errors.Join(readErr, closeErr))
 	}
-	if input.digest != expected.Digest || input.typeID != expected.Type || input.width != expected.Width || input.height != expected.Height {
-		return validatedImage{}, fmt.Errorf("staged artwork %s changed after inventory", expected.Name)
+	if int64(len(data)) != expected.Size || sha256.Sum256(data) != expected.Digest {
+		return nil, fmt.Errorf("staged artwork %s changed after inventory", expected.Name)
 	}
-	return input, nil
+	return data, nil
 }
 
-func recoverBatchTransaction(ctx context.Context, root string, tx transaction) error {
+func recoverBatchTransaction(ctx context.Context, root string, tx transaction, logger *slog.Logger) error {
 	for _, effect := range tx.Additions {
 		expected, _ := hex.DecodeString(effect.Digest)
 		if err := recoverBatchAddition(ctx, effect, expected); err != nil {
@@ -126,13 +141,19 @@ func recoverBatchTransaction(ctx context.Context, root string, tx transaction) e
 		if err != nil {
 			return err
 		}
-		if state == digestMismatch {
-			return fmt.Errorf("refuse to delete changed artwork %s", filepath.Base(effect.Final))
-		}
-		if state == digestMatch {
+		switch state {
+		case digestMismatch:
+			// The file was edited after the deletion was planned. It is never
+			// deleted, and refusing the whole transaction would block the
+			// collection for good: the manifest no longer lists it, so the next
+			// Prepare adopts the edited bytes as operator artwork.
+			logger.Warn("Kept artwork that changed before its planned deletion",
+				"name", filepath.Base(effect.Final))
+		case digestMatch:
 			if err := durablefs.Remove(ctx, effect.Final); err != nil {
 				return fmt.Errorf("delete replaced artwork %s: %w", filepath.Base(effect.Final), err)
 			}
+		case digestAbsent:
 		}
 	}
 	if err := durablefs.Remove(ctx, journalPath(root)); err != nil {

@@ -4,20 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"slices"
+	"time"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/durablefs"
 )
 
 const (
 	defaultMaxImportBytes int64 = 50 << 20
-	defaultMaxPixels      int64 = 40_000_000
+	maxPixels             int64 = 40_000_000
+	// orphanTemporaryAge is how long an interrupted write's temporary file is
+	// left alone, so a write still in progress beside it is never disturbed.
+	orphanTemporaryAge = time.Hour
 )
 
 type store struct {
 	root           string
 	maxItems       int
 	maxImportBytes int64
-	maxPixels      int64
+	logger         *slog.Logger
 	mutation       chan struct{}
 }
 
@@ -28,20 +35,20 @@ func New(cfg Config) (Store, error) {
 	if !filepath.IsAbs(cfg.Root) {
 		return nil, fmt.Errorf("collection root %q is not absolute", cfg.Root)
 	}
-	if cfg.MaxItems < 0 || cfg.MaxImportBytes < 0 || cfg.MaxPixels < 0 {
+	if cfg.MaxItems < 0 || cfg.MaxImportBytes < 0 {
 		return nil, errors.New("collection limits must not be negative")
 	}
 	if cfg.MaxImportBytes == 0 {
 		cfg.MaxImportBytes = defaultMaxImportBytes
 	}
-	if cfg.MaxPixels == 0 {
-		cfg.MaxPixels = defaultMaxPixels
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
 	}
 	return &store{
 		root:           filepath.Clean(cfg.Root),
 		maxItems:       cfg.MaxItems,
 		maxImportBytes: cfg.MaxImportBytes,
-		maxPixels:      cfg.MaxPixels,
+		logger:         cfg.Logger,
 		mutation:       make(chan struct{}, 1),
 	}, nil
 }
@@ -96,6 +103,17 @@ func (s *store) ImportBatch(ctx context.Context, requests []ImportRequest) (Snap
 	}
 	if dryRun {
 		return buildSnapshot(s.root, items, plan.changes, nil, true), nil
+	}
+	return s.commitImports(ctx, items, plan, data)
+}
+
+// commitImports publishes a planned import batch and returns the snapshot
+// verified from the committed bytes.
+func (s *store) commitImports(ctx context.Context, items []Item, plan batchPlan, data map[string][]byte) (Snapshot, error) {
+	if len(plan.additions) == 0 && slices.EqualFunc(items, plan.items, itemEqual) {
+		// Every request repeated committed artwork: the inventory just verified
+		// from disk is already the answer and there is nothing to write.
+		return buildSnapshot(s.root, items, plan.changes, nil, false), nil
 	}
 	if err := ensureLayout(s.root); err != nil {
 		return Snapshot{}, fmt.Errorf("prepare collection layout: %w", err)
@@ -167,7 +185,7 @@ func (s *store) validateRequest(ctx context.Context, request ImportRequest) (val
 	if err != nil {
 		return validatedImage{}, err
 	}
-	input, err := readAndValidate(ctx, request.Reader, request.Hint, limit, s.pixelLimit(request.Policy))
+	input, err := readAndValidate(ctx, request.Reader, request.Hint, limit, maxPixels)
 	if err != nil {
 		return validatedImage{}, fmt.Errorf("%w: %w", ErrInvalidImport, err)
 	}
@@ -183,8 +201,14 @@ func (s *store) recover(ctx context.Context, dryRun bool) error {
 	if dryRun {
 		return rejectActiveTransaction(ctx, s.root)
 	}
-	if err := recoverTransaction(ctx, s.root); err != nil {
+	if err := recoverTransaction(ctx, s.root, s.logger); err != nil {
 		return fmt.Errorf("recover collection: %w", err)
+	}
+	control := filepath.Join(s.root, controlDirectory)
+	for _, directory := range []string{control, filepath.Join(control, stagingName)} {
+		if err := durablefs.RemoveStaleTemporaries(ctx, directory, orphanTemporaryAge); err != nil {
+			return fmt.Errorf("clean interrupted collection writes: %w", err)
+		}
 	}
 	return nil
 }
@@ -213,7 +237,7 @@ func (s *store) verifyCommitted(ctx context.Context, expected []Item, changes []
 }
 
 func (s *store) limits() inventoryLimits {
-	return inventoryLimits{maxBytes: s.maxImportBytes, maxPixels: s.maxPixels}
+	return inventoryLimits{maxBytes: s.maxImportBytes, maxPixels: maxPixels}
 }
 
 func (s *store) acquire(ctx context.Context) error {
@@ -237,13 +261,6 @@ func (s *store) importLimit(requested int64) (int64, error) {
 		return s.maxImportBytes, nil
 	}
 	return requested, nil
-}
-
-func (s *store) pixelLimit(policy policy) int64 {
-	if policy.MaxPixels > 0 && policy.MaxPixels < s.maxPixels {
-		return policy.MaxPixels
-	}
-	return s.maxPixels
 }
 
 func verifyExpected(expected, committed []Item) error {
