@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"math"
 	neturl "net/url"
@@ -79,6 +80,26 @@ type sourceProvider interface {
 // each download of a resolved image.
 type downloadTracker interface {
 	TrackDownload(ctx context.Context, trackURL string) error
+}
+
+// sourceConfigError marks a failure the operator has to correct: a missing API
+// key or a source line that cannot be parsed. Asking the provider again later
+// cannot fix it, so it is never scheduled for a retry; it is reported every
+// cycle until the configuration changes. Every other resolution failure is
+// treated as a provider failure and backed off.
+type sourceConfigError struct {
+	message string
+}
+
+func (e *sourceConfigError) Error() string { return e.message }
+
+func configError(format string, args ...any) error {
+	return &sourceConfigError{message: fmt.Sprintf(format, args...)}
+}
+
+func isSourceConfigError(err error) bool {
+	var configuration *sourceConfigError
+	return errors.As(err, &configuration)
 }
 
 // sourceIdentity returns an order-independent provider identity. stableKey is

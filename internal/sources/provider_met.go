@@ -92,7 +92,7 @@ func (p *metProvider) fetchJSON(ctx context.Context, apiURL string, out any) err
 func (p *metProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
-		return nil, errors.New("invalid met format; use met:search:<query> or met:object:<id>")
+		return nil, configError("invalid met format; use met:search:<query> or met:object:<id>")
 	}
 	switch parts[1] {
 	case cmdSearch:
@@ -109,7 +109,7 @@ func (p *metProvider) Resolve(ctx context.Context, line string) ([]sourceImage, 
 	case cmdObject:
 		id, err := strconv.Atoi(parts[2])
 		if err != nil || id <= 0 {
-			return nil, errors.New("met object requires a numeric object ID")
+			return nil, configError("met object requires a numeric object ID")
 		}
 		object, err := p.object(ctx, id)
 		if err != nil {
@@ -121,7 +121,7 @@ func (p *metProvider) Resolve(ctx context.Context, line string) ([]sourceImage, 
 		}
 		return []sourceImage{candidate.image}, nil
 	default:
-		return nil, errors.New("unknown met type")
+		return nil, configError("unknown met type")
 	}
 }
 

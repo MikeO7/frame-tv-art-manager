@@ -187,7 +187,7 @@ func TestLoaderKeepsLastKnownGoodResolutionAndBacksOff(t *testing.T) {
 
 func TestLoaderBacksOffUnresolvedSourcesWithoutRequests(t *testing.T) {
 	fixture := newStateFixture(t, "pexels:curated\n")
-	fixture.provider.err = &providerError{message: "provider offline"}
+	fixture.provider.err = errors.New("provider offline")
 	loader := fixture.loader(t)
 
 	if _, err := loader.Sync(context.Background(), collection.Snapshot{}); err == nil || !strings.Contains(err.Error(), "provider offline") {

@@ -2,7 +2,6 @@ package sources
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -100,7 +99,7 @@ func (p *commonsProvider) CanHandle(line string) bool {
 func (p *commonsProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
-		return nil, errors.New("invalid commons format; use commons:potd, commons:featured, or commons:search:<query>")
+		return nil, configError("invalid commons format; use commons:potd, commons:featured, or commons:search:<query>")
 	}
 	params := url.Values{}
 	switch parts[1] {
@@ -119,14 +118,14 @@ func (p *commonsProvider) Resolve(ctx context.Context, line string) ([]sourceIma
 		params.Set("gcmlimit", strconv.Itoa(commonsListLimit))
 	case cmdSearch:
 		if len(parts) < 3 || strings.TrimSpace(parts[2]) == "" {
-			return nil, errors.New("commons search requires a query: commons:search:query")
+			return nil, configError("commons search requires a query: commons:search:query")
 		}
 		params.Set("generator", "search")
 		params.Set("gsrsearch", "incategory:"+commonsFeaturedCategory+" "+strings.TrimSpace(parts[2]))
 		params.Set("gsrnamespace", "6")
 		params.Set("gsrlimit", strconv.Itoa(commonsListLimit))
 	default:
-		return nil, errors.New("unknown commons type")
+		return nil, configError("unknown commons type")
 	}
 	pages, err := p.query(ctx, params)
 	if err != nil {

@@ -109,7 +109,7 @@ func (p *pexelsProvider) fetchPhotoList(ctx context.Context, apiURL string) ([]p
 func (p *pexelsProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
-		return nil, errors.New("invalid pexels format")
+		return nil, configError("invalid pexels format")
 	}
 	argument := ""
 	if len(parts) == 3 {
@@ -121,23 +121,23 @@ func (p *pexelsProvider) Resolve(ctx context.Context, line string) ([]sourceImag
 	switch parts[1] {
 	case cmdSearch:
 		if argument == "" {
-			return nil, errors.New("pexels search requires a query")
+			return nil, configError("pexels search requires a query")
 		}
 		photos, err = p.fetchPhotoList(ctx, fmt.Sprintf("%s/v1/search?query=%s&per_page=%d", p.BaseURL, url.QueryEscape(argument), pexelsListSize))
 	case "curated":
 		photos, err = p.fetchPhotoList(ctx, fmt.Sprintf("%s/v1/curated?per_page=%d", p.BaseURL, pexelsListSize))
 	case "collection":
 		if argument == "" {
-			return nil, errors.New("pexels collection requires an ID")
+			return nil, configError("pexels collection requires an ID")
 		}
 		photos, err = p.fetchCollection(ctx, argument)
 	case cmdPhoto:
 		if argument == "" {
-			return nil, errors.New("pexels photo requires an ID")
+			return nil, configError("pexels photo requires an ID")
 		}
 		return p.resolvePhoto(ctx, argument)
 	default:
-		return nil, errors.New("unknown pexels type")
+		return nil, configError("unknown pexels type")
 	}
 	if err != nil {
 		return nil, err

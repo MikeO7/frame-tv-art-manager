@@ -189,8 +189,8 @@ func (l *loader) removeStaleDownloads() {
 // resolve returns a source line's images, reusing a fresh cached resolution
 // and keeping the last-known-good resolution when the provider fails or is
 // backing off. Lines that need no network (direct URLs) are never cached.
-// Only provider, network, and rate-limit failures are scheduled for a later
-// retry: a configuration or source-format error is returned every time, so
+// Every failure is scheduled for a later retry except one marked as a
+// configuration or source-format error, which is returned every time so that
 // correcting it takes effect on the next cycle.
 func (l *loader) resolve(ctx context.Context, provider sourceProvider, line string) ([]sourceImage, error) {
 	now := l.now()
@@ -213,7 +213,7 @@ func (l *loader) resolve(ctx context.Context, provider sourceProvider, line stri
 
 	images, err := provider.Resolve(ctx, line)
 	if err != nil {
-		if ctx.Err() != nil || !isProviderFailure(err) {
+		if ctx.Err() != nil || isSourceConfigError(err) {
 			return nil, err
 		}
 		entry.Provider = provider.Name()
