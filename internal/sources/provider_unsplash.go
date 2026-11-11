@@ -135,11 +135,11 @@ func (p *unsplashProvider) TrackDownload(ctx context.Context, downloadLocation s
 
 func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	if p.accessKey == "" {
-		return nil, errors.New("UNSPLASH_ACCESS_KEY not configured")
+		return nil, configError("UNSPLASH_ACCESS_KEY not configured")
 	}
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
-		return nil, errors.New("invalid unsplash format")
+		return nil, configError("invalid unsplash format")
 	}
 
 	var photos []unsplashPhoto
@@ -157,7 +157,7 @@ func (p *unsplashProvider) Resolve(ctx context.Context, line string) ([]sourceIm
 		}
 		photos = []unsplashPhoto{photo}
 	default:
-		return nil, errors.New("unknown unsplash type")
+		return nil, configError("unknown unsplash type")
 	}
 
 	images := make([]sourceImage, 0, len(photos))

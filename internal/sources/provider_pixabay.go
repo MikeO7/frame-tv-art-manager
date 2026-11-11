@@ -75,7 +75,7 @@ func (p *pixabayProvider) CanHandle(line string) bool {
 func (p *pixabayProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
-		return nil, errors.New("invalid pixabay format")
+		return nil, configError("invalid pixabay format")
 	}
 	argument := ""
 	if len(parts) == 3 {
@@ -86,21 +86,21 @@ func (p *pixabayProvider) Resolve(ctx context.Context, line string) ([]sourceIma
 	switch parts[1] {
 	case cmdSearch:
 		if argument == "" {
-			return nil, errors.New("pixabay search requires a query")
+			return nil, configError("pixabay search requires a query")
 		}
 		query.Set("q", truncateRunes(argument, pixabayMaxQueryRunes))
 	case "editors_choice":
 		query.Set("editors_choice", "true")
 	case cmdPhoto:
 		if argument == "" {
-			return nil, errors.New("pixabay photo requires an ID")
+			return nil, configError("pixabay photo requires an ID")
 		}
 		return p.resolvePhoto(ctx, argument)
 	case "user":
-		return nil, errors.New("pixabay user sources are not supported because the Pixabay API cannot filter by user; " +
+		return nil, configError("pixabay user sources are not supported because the Pixabay API cannot filter by user; " +
 			"use pixabay:photo:<id> or pixabay:search:<query>")
 	default:
-		return nil, errors.New("unknown pixabay type")
+		return nil, configError("unknown pixabay type")
 	}
 	photos, err := p.fetchAllPages(ctx, query)
 	if err != nil {

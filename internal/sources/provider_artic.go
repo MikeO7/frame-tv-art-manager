@@ -76,7 +76,7 @@ func (p *articProvider) CanHandle(line string) bool {
 func (p *articProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
-		return nil, errors.New("invalid art_institute_of_chicago format")
+		return nil, configError("invalid art_institute_of_chicago format")
 	}
 	switch parts[1] {
 	case cmdSearch:
@@ -84,7 +84,7 @@ func (p *articProvider) Resolve(ctx context.Context, line string) ([]sourceImage
 	case cmdPhoto:
 		return p.resolvePhoto(ctx, parts[2])
 	default:
-		return nil, errors.New("unknown artic type")
+		return nil, configError("unknown artic type")
 	}
 }
 

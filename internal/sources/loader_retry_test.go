@@ -23,61 +23,65 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/config"
 )
 
-func TestProviderFailuresAreToldApartFromConfigurationErrors(t *testing.T) {
+func TestOnlyMarkedConfigurationErrorsSkipTheBackoff(t *testing.T) {
 	t.Parallel()
-	fetch := func(t *testing.T, handler http.HandlerFunc) error {
-		t.Helper()
-		server := newIPv4TestServer(t, handler)
-		var out struct{}
-		return fetchProviderJSON(context.Background(), providerJSONRequest{
-			client: server.Client(), gate: newRateGate(), provider: providerPexels, url: server.URL,
-			maxBytes: 1 << 10, statusLabel: "pexels api", decodeLabel: "pexels",
-		}, &out)
-	}
-	unreachable := newIPv4TestServer(t, http.NotFoundHandler())
-	unreachableURL := unreachable.URL
-	unreachable.Close()
-	_, unsplashErr := newUnsplashProvider("", discardLogger()).Resolve(context.Background(), "unsplash:photo:abc")
-	_, formatErr := newPexelsProvider("key", discardLogger()).Resolve(context.Background(), "pexels:")
+	failing := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/objects/") {
+			_, _ = w.Write([]byte(`{"objectID":7,"isPublicDomain":false}`))
+			return
+		}
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	met := newTestMetProvider(failing.URL)
+	pexels := newPexelsProvider("key", discardLogger())
+	pexels.BaseURL = failing.URL
+	logger := discardLogger()
+	museum := newMuseumProvider(newArtSearcher(logger, met), logger)
 
 	tests := []struct {
-		name      string
-		err       error
-		retryable bool
+		name          string
+		provider      sourceProvider
+		line          string
+		configuration bool
 	}{
-		{name: "http status", retryable: true, err: fetch(t, func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusBadGateway)
-		})},
-		{name: "rate limit", retryable: true, err: fetch(t, func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusTooManyRequests)
-		})},
-		{name: "undecodable response", retryable: true, err: fetch(t, func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("<html>maintenance</html>"))
-		})},
-		{name: "network", retryable: true, err: fetchProviderJSON(context.Background(), providerJSONRequest{
-			client: http.DefaultClient, gate: newRateGate(), provider: providerPexels, url: unreachableURL,
-			maxBytes: 1 << 10, statusLabel: "pexels api", decodeLabel: "pexels",
-		}, &struct{}{})},
-		{name: "wrapped provider failure", retryable: true, err: fmt.Errorf("met search: %w",
-			errors.Join(&providerError{message: "met api error: 500"}))},
-		{name: "missing api key", err: unsplashErr},
-		{name: "malformed source", err: formatErr},
+		{name: "missing api key", provider: newUnsplashProvider("", logger), line: "unsplash:photo:abc", configuration: true},
+		{name: "malformed unsplash line", provider: newUnsplashProvider("key", logger), line: "unsplash:photo", configuration: true},
+		{name: "unknown unsplash type", provider: newUnsplashProvider("key", logger), line: "unsplash:album:1", configuration: true},
+		{name: "malformed pexels line", provider: pexels, line: "pexels:", configuration: true},
+		{name: "pexels search without query", provider: pexels, line: "pexels:search:", configuration: true},
+		{name: "unknown pixabay type", provider: newPixabayProvider("key", logger), line: "pixabay:album:1", configuration: true},
+		{name: "unsupported pixabay user", provider: newPixabayProvider("key", logger), line: "pixabay:user:ann", configuration: true},
+		{name: "malformed nasa line", provider: newNasaProvider("key", logger), line: "nasa", configuration: true},
+		{name: "unknown met type", provider: met, line: "met:gallery:1", configuration: true},
+		{name: "non-numeric met object", provider: met, line: "met:object:abc", configuration: true},
+		{name: "unsupported met filter", provider: met, line: "met:search:cats?colour=red", configuration: true},
+		{name: "unknown commons type", provider: newCommonsProvider(logger), line: "commons:gallery", configuration: true},
+		{name: "unknown cleveland type", provider: newClevelandProvider(logger), line: "cleveland:gallery:1", configuration: true},
+		{name: "unknown smk type", provider: newSMKProvider(logger), line: "smk:gallery:1", configuration: true},
+		{name: "unknown artic type", provider: newArticProvider(logger), line: "art_institute_of_chicago:gallery:1", configuration: true},
+		{name: "museum search without query", provider: museum, line: "museum:search:", configuration: true},
+		{name: "http status", provider: pexels, line: "pexels:curated"},
+		{name: "content answer", provider: met, line: "met:object:7"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.err == nil {
-				t.Fatal("expected a failure to classify")
+			_, err := tc.provider.Resolve(context.Background(), tc.line)
+			if err == nil {
+				t.Fatal("expected a resolution failure to classify")
 			}
-			if got := isProviderFailure(tc.err); got != tc.retryable {
-				t.Fatalf("isProviderFailure(%v) = %t, want %t", tc.err, got, tc.retryable)
+			if got := isSourceConfigError(err); got != tc.configuration {
+				t.Fatalf("isSourceConfigError(%v) = %t, want %t", err, got, tc.configuration)
 			}
 		})
+	}
+	if !isSourceConfigError(fmt.Errorf("met search: %w", errors.Join(configError("search requires a query")))) {
+		t.Fatal("a wrapped configuration error lost its mark")
 	}
 }
 
 func TestLoaderRetriesConfigurationErrorsWithoutBackoff(t *testing.T) {
 	fixture := newStateFixture(t, "pexels:curated\n")
-	fixture.provider.err = errors.New("PEXELS_API_KEY not configured")
+	fixture.provider.err = configError("PEXELS_API_KEY not configured")
 	loader := fixture.loader(t)
 
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -98,13 +102,45 @@ func TestLoaderRetriesConfigurationErrorsWithoutBackoff(t *testing.T) {
 	if downloaded, err := fixture.loader(t).Sync(context.Background(), collection.Snapshot{}); err != nil || downloaded != 1 {
 		t.Fatalf("Sync() after the fix = (%d, %v), want an immediate download", downloaded, err)
 	}
+}
 
-	// A configuration error does not fall back to the last-known-good
-	// resolution either: it is reported until it is corrected.
-	fixture.now = fixture.now.Add(sourceResolutionTTL + time.Minute)
-	fixture.provider.err = errors.New("PEXELS_API_KEY not configured")
-	if _, err := fixture.loader(t).Sync(context.Background(), collection.Snapshot{}); err == nil {
-		t.Fatal("Sync() hid a configuration error behind the cached resolution")
+func TestLoaderBacksOffUnmarkedErrorsAndKeepsTheCachedResolution(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "unforeseen error", err: errors.New("unexpected end of JSON input")},
+		{name: "content answer", err: errors.New("met object is not public domain or has no open-access image")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newStateFixture(t, "pexels:curated\n")
+			loader := fixture.loader(t)
+			first, err := loader.Sync(context.Background(), collection.Snapshot{})
+			if err != nil || first != 1 {
+				t.Fatalf("first Sync() = (%d, %v)", first, err)
+			}
+			fixture.now = fixture.now.Add(sourceResolutionTTL + time.Minute)
+			failedAt := fixture.now
+			fixture.provider.err = tc.err
+
+			// The failure is absorbed: the cached resolution is used.
+			if _, err := loader.Sync(context.Background(), collection.Snapshot{}); err != nil {
+				t.Fatalf("Sync() with a failing provider = %v, want the last-known-good resolution", err)
+			}
+			entry := readStateFile(t, fixture.artworkDir).Resolutions[sourceLineKey("pexels:curated")]
+			if !entry.Resolved || entry.Failures != 1 || len(entry.Images) != 1 ||
+				!entry.NextAttempt.Equal(failedAt.Add(minFailureBackoff)) {
+				t.Fatalf("cached resolution after failure = %+v, want it kept with a backoff", entry)
+			}
+			fixture.now = failedAt.Add(minFailureBackoff / 2)
+			if _, err := fixture.loader(t).Sync(context.Background(), collection.Snapshot{}); err != nil {
+				t.Fatalf("Sync() during backoff = %v", err)
+			}
+			if calls := fixture.provider.calls.Load(); calls != 2 {
+				t.Fatalf("provider resolutions = %d, want no request during backoff", calls)
+			}
+		})
 	}
 }
 

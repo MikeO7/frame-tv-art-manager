@@ -1,8 +1,6 @@
 package sources
 
 import (
-	"errors"
-	"fmt"
 	"html"
 	neturl "net/url"
 	"regexp"
@@ -48,20 +46,20 @@ func searchArgument(argument string, allowed ...string) (string, neturl.Values, 
 	if hasFilters {
 		parsed, err := neturl.ParseQuery(rawFilters)
 		if err != nil {
-			return "", nil, fmt.Errorf("parse search filters: %w", err)
+			return "", nil, configError("parse search filters: %v", err)
 		}
 		for name := range parsed {
 			if !slices.Contains(allowed, name) {
 				if len(allowed) == 0 {
-					return "", nil, fmt.Errorf("search filter %q is not supported; this provider takes no filters", name)
+					return "", nil, configError("search filter %q is not supported; this provider takes no filters", name)
 				}
-				return "", nil, fmt.Errorf("search filter %q is not supported; use one of %s", name, strings.Join(allowed, ", "))
+				return "", nil, configError("search filter %q is not supported; use one of %s", name, strings.Join(allowed, ", "))
 			}
 		}
 		filters = parsed
 	}
 	if query == "" && len(filters) == 0 {
-		return "", nil, errors.New("search requires a query or at least one filter")
+		return "", nil, configError("search requires a query or at least one filter")
 	}
 	return query, filters, nil
 }

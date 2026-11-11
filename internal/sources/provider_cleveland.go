@@ -79,7 +79,7 @@ func (p *clevelandProvider) fetchJSON(ctx context.Context, apiURL string, out an
 func (p *clevelandProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
-		return nil, errors.New("invalid cleveland format; use cleveland:search:<query> or cleveland:object:<id>")
+		return nil, configError("invalid cleveland format; use cleveland:search:<query> or cleveland:object:<id>")
 	}
 	switch parts[1] {
 	case cmdSearch:
@@ -107,7 +107,7 @@ func (p *clevelandProvider) Resolve(ctx context.Context, line string) ([]sourceI
 		}
 		return []sourceImage{candidate.image}, nil
 	default:
-		return nil, errors.New("unknown cleveland type")
+		return nil, configError("unknown cleveland type")
 	}
 }
 

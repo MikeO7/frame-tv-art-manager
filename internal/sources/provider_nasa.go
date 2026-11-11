@@ -89,18 +89,18 @@ func (p *nasaProvider) CanHandle(line string) bool {
 func (p *nasaProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 {
-		return nil, errors.New("invalid nasa format")
+		return nil, configError("invalid nasa format")
 	}
 	switch parts[1] {
 	case apodCommand:
 		return p.resolveAPOD(ctx)
 	case cmdSearch:
 		if len(parts) < 3 || parts[2] == "" {
-			return nil, errors.New("nasa search requires a query: nasa:search:query")
+			return nil, configError("nasa search requires a query: nasa:search:query")
 		}
 		return p.searchLibrary(ctx, parts[2])
 	default:
-		return nil, errors.New("unknown nasa type")
+		return nil, configError("unknown nasa type")
 	}
 }
 
