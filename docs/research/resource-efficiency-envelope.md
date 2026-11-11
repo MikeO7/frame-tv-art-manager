@@ -25,7 +25,7 @@ Use the Go runtime's default `GOMAXPROCS`. Go 1.25 and newer derive that default
 from a container CPU limit when it is lower than the machine's logical CPU
 count, and update it if the limit changes. An explicit `GOMAXPROCS` remains an
 operator override ([Go container-aware `GOMAXPROCS`][go-gomaxprocs]). This
-repository builds with Go 1.27.3, so the container-aware behavior applies.
+repository builds with Go 1.27.4, so the container-aware behavior applies.
 
 Recommended initial controls:
 
