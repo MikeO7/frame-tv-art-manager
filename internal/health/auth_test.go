@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,9 +57,9 @@ func TestAuthFailuresAreRateLimitedPerClient(t *testing.T) {
 			t.Fatalf("wrong attempt %d status = %d, want 401", attempt, code)
 		}
 	}
-	limited := serve(statusRequest("192.0.2.50", "frame", testUploadToken))
+	limited := serve(statusRequest("192.0.2.50", "frame", "wrong"))
 	if limited.Code != http.StatusTooManyRequests {
-		t.Fatalf("valid credentials during lockout status = %d, want 429", limited.Code)
+		t.Fatalf("wrong credentials beyond the budget status = %d, want 429", limited.Code)
 	}
 	if retry, err := strconv.Atoi(limited.Header().Get("Retry-After")); err != nil || retry < 1 || retry > 60 {
 		t.Fatalf("Retry-After = %q, want 1..60 seconds", limited.Header().Get("Retry-After"))
@@ -66,18 +67,72 @@ func TestAuthFailuresAreRateLimitedPerClient(t *testing.T) {
 	upload := httptest.NewRecorder()
 	uploadRequest := httptest.NewRequest(http.MethodGet, "http://frame.local/upload", nil)
 	uploadRequest.RemoteAddr = "192.0.2.50:40001"
-	uploadRequest.SetBasicAuth("frame", testUploadToken)
+	uploadRequest.SetBasicAuth("frame", "another-guess")
 	server.HandleUpload(upload, uploadRequest)
 	if upload.Code != http.StatusTooManyRequests {
-		t.Fatalf("upload during lockout status = %d, want 429", upload.Code)
+		t.Fatalf("wrong upload credentials during lockout status = %d, want 429 on every route", upload.Code)
 	}
 
-	if code := serve(statusRequest("192.0.2.51", "frame", testUploadToken)).Code; code != http.StatusOK {
-		t.Fatalf("another client status = %d, want 200", code)
+	if code := serve(statusRequest("192.0.2.51", "frame", "wrong")).Code; code != http.StatusUnauthorized {
+		t.Fatalf("another client status = %d, want its own budget (401)", code)
 	}
 	clock.now = clock.now.Add(authFailureWindow)
-	if code := serve(statusRequest("192.0.2.50", "frame", testUploadToken)).Code; code != http.StatusOK {
-		t.Fatalf("status after the window = %d, want 200", code)
+	if code := serve(statusRequest("192.0.2.50", "frame", "wrong")).Code; code != http.StatusUnauthorized {
+		t.Fatalf("wrong credentials after the window = %d, want a fresh budget (401)", code)
+	}
+}
+
+func TestValidCredentialsAreNeverLockedOut(t *testing.T) {
+	t.Parallel()
+	server, _ := authTestServer(t, testUploadToken)
+	for attempt := 0; attempt < authFailureLimit*3; attempt++ {
+		response := httptest.NewRecorder()
+		server.handleStatus(response, statusRequest("192.0.2.50", "frame", "wrong"))
+	}
+	status := httptest.NewRecorder()
+	server.handleStatus(status, statusRequest("192.0.2.50", "frame", testUploadToken))
+	if status.Code != http.StatusOK || strings.Contains(status.Body.String(), `"redacted"`) {
+		t.Fatalf("valid credentials after wrong guesses from the same address = %d %s, want the full 200 status",
+			status.Code, status.Body.String())
+	}
+	upload := httptest.NewRecorder()
+	uploadRequest := authedUpload(http.MethodGet, "http://frame.local/upload", nil)
+	uploadRequest.RemoteAddr = "192.0.2.50:40001"
+	server.HandleUpload(upload, uploadRequest)
+	if upload.Code != http.StatusOK {
+		t.Fatalf("valid upload credentials after wrong guesses = %d, want 200", upload.Code)
+	}
+	anonymous := httptest.NewRecorder()
+	server.handleStatus(anonymous, statusRequest("192.0.2.50", "", ""))
+	if anonymous.Code != http.StatusOK {
+		t.Fatalf("anonymous status from a limited address = %d, want the redacted 200", anonymous.Code)
+	}
+}
+
+func TestParallelWrongCredentialsShareOneBudget(t *testing.T) {
+	t.Parallel()
+	server, _ := authTestServer(t, testUploadToken)
+	const guesses = authFailureLimit * 20
+	codes := make(chan int, guesses)
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	for range guesses {
+		group.Go(func() {
+			<-start
+			response := httptest.NewRecorder()
+			server.handleStatus(response, statusRequest("192.0.2.80", "frame", "wrong"))
+			codes <- response.Code
+		})
+	}
+	close(start)
+	group.Wait()
+	close(codes)
+	counts := map[int]int{}
+	for code := range codes {
+		counts[code]++
+	}
+	if counts[http.StatusUnauthorized] != authFailureLimit || counts[http.StatusTooManyRequests] != guesses-authFailureLimit {
+		t.Fatalf("parallel wrong guesses = %v, want exactly %d judged (401) and the rest refused (429)", counts, authFailureLimit)
 	}
 }
 
@@ -101,7 +156,7 @@ func TestAuthLimiterMemoryIsBounded(t *testing.T) {
 	limiter := newAuthLimiter(clock.Now)
 	for index := 0; index < authTrackedClients+50; index++ {
 		clock.now = clock.now.Add(time.Millisecond)
-		limiter.recordFailure(fmt.Sprintf("client-%d", index))
+		limiter.failure(fmt.Sprintf("client-%d", index))
 	}
 	if len(limiter.failures) > authTrackedClients {
 		t.Fatalf("tracked clients = %d, want at most %d", len(limiter.failures), authTrackedClients)
@@ -110,9 +165,9 @@ func TestAuthLimiterMemoryIsBounded(t *testing.T) {
 		t.Fatal("the oldest client window was not evicted")
 	}
 	clock.now = clock.now.Add(authFailureWindow)
-	limiter.recordFailure("late")
-	if wait := limiter.retryAfter("client-60"); wait != 0 {
-		t.Fatalf("expired window retryAfter = %v, want 0", wait)
+	limiter.failure("late")
+	if wait := limiter.failure("client-60"); wait != 0 {
+		t.Fatalf("failure in an expired window must wait %v, want 0", wait)
 	}
 }
 
@@ -168,7 +223,7 @@ func TestStatusRedactsDetailsForAnonymousCallers(t *testing.T) {
 
 func TestUploadStreamsMultipartFileAfterOtherFields(t *testing.T) {
 	t.Parallel()
-	server, _ := authTestServer(t, "")
+	server, _ := authTestServer(t, testUploadToken)
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	if err := writer.WriteField("note", "from the phone"); err != nil {
@@ -184,7 +239,7 @@ func TestUploadStreamsMultipartFileAfterOtherFields(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "http://frame.local/upload", &body)
+	request := authedUpload(http.MethodPost, "http://frame.local/upload", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()
 	server.HandleUpload(response, request)
@@ -203,7 +258,7 @@ func TestUploadReportsFullCollectionAsConflict(t *testing.T) {
 	server := NewServer(testConfig(0, true, directory), NewStatus(), silentLogger(), store)
 	post := func(image []byte) *httptest.ResponseRecorder {
 		response := httptest.NewRecorder()
-		server.HandleUpload(response, httptest.NewRequest(http.MethodPost, "http://frame.local/upload", bytes.NewReader(image)))
+		server.HandleUpload(response, authedUpload(http.MethodPost, "http://frame.local/upload", bytes.NewReader(image)))
 		return response
 	}
 	if response := post(encodedTestImage(t, "png")); response.Code != http.StatusOK {
@@ -218,11 +273,12 @@ func TestUploadReportsFullCollectionAsConflict(t *testing.T) {
 func TestUploadSpoolIsRemovedAfterImport(t *testing.T) {
 	spoolDirectory := t.TempDir()
 	t.Setenv("TMPDIR", spoolDirectory)
-	server, _ := authTestServer(t, "")
-	for _, body := range [][]byte{encodedTestImage(t, "png"), []byte("not an image"), oversizedJPEG()} {
+	server, _ := authTestServer(t, testUploadToken)
+	server.cfg.MaxDownloadSizeMB = 1
+	for _, body := range [][]byte{encodedTestImage(t, "png"), []byte("not an image"), oversizedJPEG(), {}} {
 		response := httptest.NewRecorder()
-		server.HandleUpload(response, httptest.NewRequest(http.MethodPost, "http://frame.local/upload", bytes.NewReader(body)))
-		if response.Code != http.StatusOK && response.Code != http.StatusBadRequest {
+		server.HandleUpload(response, authedUpload(http.MethodPost, "http://frame.local/upload", bytes.NewReader(body)))
+		if response.Code != http.StatusOK && response.Code != http.StatusBadRequest && response.Code != http.StatusRequestEntityTooLarge {
 			t.Fatalf("upload status = %d: %s", response.Code, response.Body.String())
 		}
 	}
@@ -237,7 +293,7 @@ func TestUploadSpoolIsRemovedAfterImport(t *testing.T) {
 
 func TestSpoolUploadReportsInterruptedBody(t *testing.T) {
 	t.Parallel()
-	request := httptest.NewRequest(http.MethodPost, "http://frame.local/upload", io.MultiReader(
+	request := authedUpload(http.MethodPost, "http://frame.local/upload", io.MultiReader(
 		strings.NewReader("partial"), errorReader{},
 	))
 	_, err := spoolUpload(request)

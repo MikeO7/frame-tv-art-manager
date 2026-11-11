@@ -94,16 +94,38 @@ func TestMCPEndpointRateLimitsWrongTokens(t *testing.T) {
 			t.Fatalf("wrong attempt %d status = %d, want 401", attempt, code)
 		}
 	}
-	limited := serve("192.0.2.61", "Bearer "+testMCPToken)
+	limited := serve("192.0.2.61", "Bearer another-guess")
 	if limited.Code != http.StatusTooManyRequests || limited.Header().Get("Retry-After") == "" || *reached != 0 {
-		t.Fatalf("limited client status = %d retry %q reached %d, want 429 before the token is compared",
+		t.Fatalf("wrong token beyond the budget status = %d retry %q reached %d, want 429",
 			limited.Code, limited.Header().Get("Retry-After"), *reached)
 	}
-	if code := serve("192.0.2.62", "Bearer "+testMCPToken).Code; code != http.StatusAccepted {
-		t.Fatalf("other client status = %d, want its own budget", code)
+	if code := serve("192.0.2.61", "").Code; code != http.StatusUnauthorized {
+		t.Fatalf("limited client without a token status = %d, want the ordinary 401", code)
 	}
-	if code := serve("192.0.2.61", "").Code; code != http.StatusTooManyRequests {
-		t.Fatalf("limited client without token status = %d, want 429", code)
+	if code := serve("192.0.2.61", "Bearer "+testMCPToken).Code; code != http.StatusAccepted || *reached != 1 {
+		t.Fatalf("correct token after wrong guesses from the same address = %d reached %d, want 202", code, *reached)
+	}
+	if code := serve("192.0.2.62", "Bearer guess").Code; code != http.StatusUnauthorized {
+		t.Fatalf("other client status = %d, want its own budget (401)", code)
+	}
+}
+
+func TestMCPCrossOriginRequestsDoNotSpendTheFailureBudget(t *testing.T) {
+	t.Parallel()
+	server, _ := mcpTestServer(t, true)
+	endpoint := server.mcpEndpoint()
+	crossSite := map[string]string{"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"}
+	for range authFailureLimit * 2 {
+		response := httptest.NewRecorder()
+		endpoint.ServeHTTP(response, mcpRequest("192.0.2.63", "Bearer guess", crossSite))
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("cross-origin request status = %d, want 403", response.Code)
+		}
+	}
+	response := httptest.NewRecorder()
+	endpoint.ServeHTTP(response, mcpRequest("192.0.2.63", "Bearer guess", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("first direct wrong token = %d, want 401: a browser page must not spend the client's budget", response.Code)
 	}
 }
 

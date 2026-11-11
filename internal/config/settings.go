@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -114,6 +115,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		MuseumModeIntensity:            env.integer("IMAGE_MUSEUM_INTENSITY", 5),
 		HealthPort:                     env.integer("HEALTH_PORT", 8080),
 		HealthBindAddress:              env.str("HEALTH_BIND_ADDRESS", "0.0.0.0"),
+		HealthAllowedHosts:             hostNames(env.str("HEALTH_ALLOWED_HOSTS", "")),
 		UploadEnabled:                  env.boolean("UPLOAD_ENABLED", false),
 		UploadToken:                    env.str("UPLOAD_TOKEN", ""),
 		MCPEnabled:                     env.boolean("MCP_ENABLED", false),
@@ -160,6 +162,19 @@ func (env *environment) loadConfig() (*Config, error) {
 		cfg.AutoOnTime = ""
 	}
 	return cfg, nil
+}
+
+// hostNames splits a comma-separated list of host names, lower-casing each
+// and dropping blanks and a trailing root dot. An empty list is nil.
+func hostNames(raw string) []string {
+	var names []string
+	for _, name := range strings.Split(raw, ",") {
+		name = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+		if name != "" && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func safeDuration(value int, unit time.Duration) time.Duration {

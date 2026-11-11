@@ -3,6 +3,7 @@ package assistant
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image/jpeg"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/themes"
 )
 
@@ -260,5 +262,56 @@ func TestRemoveFromCollectionKeepsTheFile(t *testing.T) {
 		"collection": "Christmas", "artwork": added.Filename,
 	}); !strings.Contains(text, "is not in collection") {
 		t.Fatalf("second remove error = %q", text)
+	}
+}
+
+func TestUpdateCollectionReportsSuccessWhenTheSummaryCannotBeBuilt(t *testing.T) {
+	t.Parallel()
+	fixture := newFixture(t, fixtureOptions{})
+	fixture.call(t, "create_collection", map[string]any{"name": "Dutch Winter"}, nil)
+	fixture.artwork.failPrepare(errors.New("artwork folder is offline"))
+
+	var updated collectionChangeOutput
+	fixture.call(t, "update_collection", map[string]any{
+		"collection": "Dutch Winter", "activation": map[string]any{"mode": "always"},
+	}, &updated)
+	if updated.Collection.Slug != "dutch-winter" || updated.Collection.Activation.Mode != "always" || !updated.Collection.ActiveToday {
+		t.Fatalf("update_collection = %+v, want the saved schedule", updated)
+	}
+	if !strings.Contains(updated.Message, "change was saved") || !strings.Contains(updated.Message, "unavailable") {
+		t.Fatalf("message = %q, want it to say the change was saved and the summary is unavailable", updated.Message)
+	}
+	file, err := fixture.themes.Load(context.Background())
+	if err != nil || len(file.Collections) != 1 || file.Collections[0].Activation.Mode != themes.ModeAlways {
+		t.Fatalf("saved collections = %+v, %v; the reported change must be the live one", file, err)
+	}
+}
+
+func TestAddArtworkReportsSuccessWhenTheStoredImageCannotBeDescribed(t *testing.T) {
+	t.Parallel()
+	fixture := newFixture(t, fixtureOptions{})
+	fixture.artwork.importResult = func(snapshot collection.Snapshot) collection.Snapshot {
+		snapshot.Items = nil
+		return snapshot
+	}
+
+	var added addArtworkOutput
+	fixture.call(t, "add_artwork", map[string]any{
+		"collection": "Christmas", "image_base64": base64Of(paintedJPEG(t, 640, 360, 9)), "title": "Skaters",
+	}, &added)
+	if added.Collection != "christmas" || !added.CollectionCreated || added.AlreadyInCollection ||
+		!strings.HasPrefix(added.Filename, "skaters") || len(added.Digest) != 64 {
+		t.Fatalf("add_artwork = %+v, want the committed collection, filename, and digest", added)
+	}
+	if warnings := strings.Join(added.Warnings, " "); !strings.Contains(warnings, "was saved") || !strings.Contains(warnings, "unavailable") {
+		t.Fatalf("warnings = %q, want them to say the image was saved and its details are unavailable", warnings)
+	}
+	if names := folderArtwork(t, fixture.cfg.ArtworkDir); !slices.Equal(names, []string{added.Filename}) {
+		t.Fatalf("artwork folder = %v, want the stored %s", names, added.Filename)
+	}
+	var listed listArtworkOutput
+	fixture.call(t, "list_artwork", map[string]any{"collection": "christmas"}, &listed)
+	if listed.Total != 1 || listed.Artwork[0].Filename != added.Filename {
+		t.Fatalf("list_artwork = %+v, want the stored image in its collection", listed)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -23,12 +24,23 @@ func silentLogger() *slog.Logger {
 }
 
 func testConfig(port int, uploadEnabled bool, artworkDir string) *config.Config {
-	return &config.Config{
+	cfg := &config.Config{
 		HealthPort:        port,
 		UploadEnabled:     uploadEnabled,
 		ArtworkDir:        artworkDir,
 		MaxDownloadSizeMB: 20,
 	}
+	if uploadEnabled {
+		cfg.UploadToken = testUploadToken
+	}
+	return cfg
+}
+
+// authedUpload builds an /upload request carrying the test credentials.
+func authedUpload(method, target string, body io.Reader) *http.Request {
+	request := httptest.NewRequest(method, target, body)
+	request.SetBasicAuth(uploadUsername, testUploadToken)
+	return request
 }
 
 func newTestServer(t *testing.T, cfg *config.Config, status *Status) *server {
@@ -339,6 +351,154 @@ func TestStatusReportsSourceWarningWithoutFailingReadiness(t *testing.T) {
 		got, present := payload[fieldSourceWarning]
 		if response.Code != http.StatusOK || present != (test.wantText != "") || (present && got != test.wantText) {
 			t.Fatalf("%s: status %d, source warning %v (present %t)", test.name, response.Code, got, present)
+		}
+	}
+}
+
+func TestStatusReportsTheSameStateAsHealth(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		lifecycle string
+		syncs     []error
+		want      string
+	}{
+		{name: "ready after successful sync", lifecycle: lifecycleReady, syncs: []error{nil}, want: statusOK},
+		{name: "ready before first sync", lifecycle: lifecycleReady, want: statusError},
+		{name: "latest sync failed", lifecycle: lifecycleReady, syncs: []error{nil, errors.New("sync failed")}, want: statusError},
+		{name: "stopping", lifecycle: "stopping", syncs: []error{nil}, want: statusError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			status := NewStatus()
+			status.SetLifecycle(test.lifecycle)
+			for _, err := range test.syncs {
+				status.RecordSync(err == nil, err)
+			}
+			server := newTestServer(t, testConfig(0, false, ""), status)
+			health, detail := httptest.NewRecorder(), httptest.NewRecorder()
+			server.handleHealth(health, httptest.NewRequest(http.MethodGet, "/health", nil))
+			server.handleStatus(detail, httptest.NewRequest(http.MethodGet, "/status", nil))
+
+			healthState, detailState := decodeJSONResponse(t, health)[fieldStatus], decodeJSONResponse(t, detail)[fieldStatus]
+			if healthState != test.want || detailState != test.want {
+				t.Fatalf("/health status = %v, /status status = %v, want both %q", healthState, detailState, test.want)
+			}
+			if detail.Code != http.StatusOK {
+				t.Fatalf("/status code = %d, want 200 whatever the state", detail.Code)
+			}
+		})
+	}
+}
+
+func TestStatusReadsSourceAttributionsOnlyWhenTheFileChanges(t *testing.T) {
+	t.Parallel()
+	artworkDir := t.TempDir()
+	statePath := collection.ControlPath(artworkDir, sourceStateName)
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(artist string) {
+		t.Helper()
+		state := `{"version":1,"resolutions":{},"attributions":{"source:a":{"provider":"pexels","artist":"` + artist + `"}}}`
+		if err := os.WriteFile(statePath, []byte(state), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Ann")
+	cfg := testConfig(0, false, artworkDir)
+	cfg.SourcesFile = filepath.Join(t.TempDir(), "sources.yaml")
+	server := newTestServer(t, cfg, NewStatus())
+	reads := 0
+	read := server.attributions.read
+	server.attributions.read = func(ctx context.Context, directory string) (any, error) {
+		reads++
+		return read(ctx, directory)
+	}
+	artist := func() string {
+		t.Helper()
+		response := httptest.NewRecorder()
+		server.handleStatus(response, httptest.NewRequest(http.MethodGet, "/status", nil))
+		credits, _ := decodeJSONResponse(t, response)["attributions"].([]any)
+		if len(credits) != 1 {
+			t.Fatalf("attributions = %#v, want one credit", credits)
+		}
+		credit, _ := credits[0].(map[string]any)
+		name, _ := credit["artist"].(string)
+		return name
+	}
+
+	for request := 1; request <= 3; request++ {
+		if got := artist(); got != "Ann" {
+			t.Fatalf("request %d artist = %q, want Ann", request, got)
+		}
+	}
+	if reads != 1 {
+		t.Fatalf("state file read %d times for three requests, want 1", reads)
+	}
+
+	write("Joanna")
+	if got := artist(); got != "Joanna" || reads != 2 {
+		t.Fatalf("after a size change artist = %q with %d reads, want Joanna after 2", got, reads)
+	}
+
+	// Same size, different content and modification time.
+	write("Joseph")
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(statePath, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if got := artist(); got != "Joseph" || reads != 3 {
+		t.Fatalf("after a time change artist = %q with %d reads, want Joseph after 3", got, reads)
+	}
+	if got := artist(); got != "Joseph" || reads != 3 {
+		t.Fatalf("unchanged file artist = %q with %d reads, want Joseph still after 3", got, reads)
+	}
+}
+
+func TestAllowedHostsRefuseOtherHostNames(t *testing.T) {
+	t.Parallel()
+	mcp := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) })
+	newServer := func(allowed ...string) http.Handler {
+		cfg := testConfig(0, true, t.TempDir())
+		cfg.MCPEnabled, cfg.MCPToken, cfg.HealthAllowedHosts = true, testMCPToken, allowed
+		return NewServer(cfg, NewStatus(), silentLogger(), nil, WithMCP(mcp)).routes()
+	}
+	restricted, open := newServer("frame.example.com", "frame.lan"), newServer()
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{host: "frame.example.com", want: true},
+		{host: "FRAME.Example.com:8443", want: true},
+		{host: "frame.lan.", want: true},
+		{host: "localhost:8080", want: true},
+		{host: "192.168.1.20:8080", want: true},
+		{host: "127.0.0.1", want: true},
+		{host: "[::1]:8080", want: true},
+		{host: "[fd00::20]", want: true},
+		{host: "attacker.example", want: false},
+		{host: "attacker.example:8080", want: false},
+		{host: "frame.example.com.attacker.example", want: false},
+		{host: "notframe.lan", want: false},
+		{host: "", want: false},
+	}
+	for _, test := range tests {
+		for _, path := range []string{"/health", "/live", "/status", "/upload", "/mcp"} {
+			request := httptest.NewRequest(http.MethodGet, "http://unset.invalid"+path, nil)
+			request.Host = test.host
+			request.SetBasicAuth(uploadUsername, testUploadToken)
+			response := httptest.NewRecorder()
+			restricted.ServeHTTP(response, request)
+			if refused := response.Code == http.StatusMisdirectedRequest; refused == test.want {
+				t.Errorf("Host %q %s status = %d, want allowed %t", test.host, path, response.Code, test.want)
+			}
+			response = httptest.NewRecorder()
+			open.ServeHTTP(response, request)
+			if response.Code == http.StatusMisdirectedRequest {
+				t.Errorf("Host %q %s was refused with no HEALTH_ALLOWED_HOSTS", test.host, path)
+			}
 		}
 	}
 }

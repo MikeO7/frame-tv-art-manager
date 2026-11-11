@@ -27,7 +27,6 @@ import (
 const (
 	serverName    = "frame-tv-art-manager"
 	serverTitle   = "Frame TV Art Manager"
-	defaultMaxMB  = 20
 	requestSlack  = 1 << 20
 	base64Growth  = 4.0 / 3.0
 	shortDigestHx = 12
@@ -149,10 +148,7 @@ func (svc *service) register(server *mcp.Server) {
 
 // maxImageBytes is the per-image limit shared with the web uploader.
 func (svc *service) maxImageBytes() int64 {
-	if mb := svc.cfg.MaxDownloadSizeMB; mb > 0 {
-		return int64(mb) << 20
-	}
-	return defaultMaxMB << 20
+	return health.MaxUploadBytes(svc.cfg)
 }
 
 // maxRequestBytes admits one base64-encoded image at the size limit plus

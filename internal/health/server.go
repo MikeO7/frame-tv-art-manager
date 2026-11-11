@@ -11,7 +11,9 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -181,7 +183,12 @@ type server struct {
 	mu       sync.Mutex
 	now      func() time.Time
 	importer artworkImporter
-	imports  chan struct{}
+	// spools bounds how many uploads may be received to disk at once.
+	spools chan struct{}
+	// imports admits one upload at a time into the Artwork Collection.
+	imports chan struct{}
+	// attributions caches the parsed source credits shown by /status.
+	attributions *attributionCache
 	// authFailures rate-limits wrong UPLOAD_TOKEN and MCP_TOKEN guesses per
 	// client address.
 	authFailures *authLimiter
@@ -214,7 +221,8 @@ func NewServer(
 ) *server {
 	server := &server{
 		cfg: cfg, status: status, logger: logger, now: time.Now,
-		importer: importer, imports: make(chan struct{}, 1),
+		importer: importer, spools: make(chan struct{}, maxConcurrentSpools), imports: make(chan struct{}, 1),
+		attributions: newAttributionCache(),
 	}
 	server.authFailures = newAuthLimiter(func() time.Time { return server.now() })
 	for _, option := range options {
@@ -240,17 +248,9 @@ func (s *server) Bind(ctx context.Context) error {
 		return errors.New("MCP endpoint is enabled but no MCP handler was provided")
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/live", s.handleLive)
-	mux.HandleFunc("/ready", s.handleHealth)
-	mux.HandleFunc("/status", s.handleStatus)
-	mux.HandleFunc("/upload", s.HandleUpload)
-	mux.Handle("/mcp", s.mcpEndpoint())
-
 	server := &http.Server{
 		Addr:              net.JoinHostPort(s.cfg.HealthBindAddress, fmt.Sprintf("%d", s.cfg.HealthPort)),
-		Handler:           mux,
+		Handler:           s.routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       5 * time.Minute,
 		WriteTimeout:      5 * time.Minute,
@@ -266,6 +266,49 @@ func (s *server) Bind(ctx context.Context) error {
 	s.mu.Unlock()
 	s.logger.Info("health server bound", "address", listener.Addr().String())
 	return nil
+}
+
+// routes returns every endpoint behind the HEALTH_ALLOWED_HOSTS check.
+func (s *server) routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/live", s.handleLive)
+	mux.HandleFunc("/ready", s.handleHealth)
+	mux.HandleFunc("/status", s.handleStatus)
+	mux.HandleFunc("/upload", s.HandleUpload)
+	mux.Handle("/mcp", s.mcpEndpoint())
+	return s.requireAllowedHost(mux)
+}
+
+// requireAllowedHost refuses requests addressed to a host name the operator
+// did not list in HEALTH_ALLOWED_HOSTS. A DNS-rebinding page reaches the
+// server under the attacker's own name, so it is turned away before any
+// endpoint runs. IP literals and localhost cannot be rebound and always pass.
+// An empty list disables the check.
+func (s *server) requireAllowedHost(next http.Handler) http.Handler {
+	if s.cfg == nil || len(s.cfg.HealthAllowedHosts) == 0 {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := hostName(r.Host)
+		_, literalErr := netip.ParseAddr(name)
+		if name != "localhost" && literalErr != nil && !slices.Contains(s.cfg.HealthAllowedHosts, name) {
+			writeJSONError(w, http.StatusMisdirectedRequest, "Host is not allowed; add it to HEALTH_ALLOWED_HOSTS")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// hostName returns the lower-case host of a Host header or URL authority
+// without its port, IPv6 brackets, or trailing dot.
+func hostName(authority string) string {
+	host := authority
+	if split, _, err := net.SplitHostPort(authority); err == nil {
+		host = split
+	}
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	return strings.ToLower(strings.TrimSuffix(host, "."))
 }
 
 // Serve runs the already-bound server until shutdown.
