@@ -121,7 +121,8 @@ docker compose logs -f frame-tv-art-manager
 The image runs on `amd64`, `arm64`, and `armv7`. If the container can't write to
 `./data`, create the folders yourself with `mkdir -p data/artwork data/tokens`.
 To set the owner of the artwork and token folders, use `PUID` and `PGID`; the
-files inside are still written by the user the container runs as. To run as a non-root user instead,
+files inside are still written by the user the container runs as. If you set
+only one of the two, the other half of the ownership is left as it is. To run as a non-root user instead,
 own both folders yourself, add `user: "<uid>:<gid>"` to the service, and leave
 `PUID`/`PGID` unset.
 
@@ -181,7 +182,9 @@ walks through iPhone, iPad, and Mac setups; the repository keeps
 
 Point `ARTWORK_SOURCES_FILE` at a YAML file in your data folder, for example
 `ARTWORK_SOURCES_FILE=/data/sources.yaml`. If the file doesn't exist, a
-commented starter file is created for you.
+commented starter file is created for you, in the format its name calls for:
+a `providers:` map for `.yaml` or `.yml`, and one source per line for any
+other name.
 
 ```yaml
 providers:
@@ -260,7 +263,7 @@ used. The Picture of the Day changes at midnight UTC, so `commons:potd` adds one
 picture a day; `commons:search` only searches Featured Pictures.
 
 A plain list, a top-level `sources:` list, or a text file with one source per
-line (`#` for comments) also works. The sources file may be a symlink, so a
+line (`#` for comments, which need a line of their own) also works. The sources file may be a symlink, so a
 Kubernetes ConfigMap or Docker config mount works. Downloads go into your
 collection like any other file. If any source fails during a sync, nothing
 previously downloaded is removed. Removing a source from the file doesn't
@@ -503,7 +506,7 @@ The assistant is given these tools:
 | `get_display_spec` | The target size (3840×2160 by default), aspect ratio, formats, size limit, and how pictures that don't fit are cropped or matted, with prompt tips |
 | `search_public_domain_art` | Searches the Art Institute of Chicago, The Met, the Cleveland Museum of Art, and SMK for public-domain works |
 | `add_artwork` | Stores one JPEG or PNG (an `https` link or base64 data) in a collection, creating the collection if needed (a new collection starts off and exclusive, so nothing changes on the TV until you schedule it), and records its title, artist, license, and link |
-| `preview_artwork` | Shows a 960×540 preview of a picture exactly as it will be prepared for the TV; nothing is saved |
+| `preview_artwork` | Shows a 960×540 preview of a picture exactly as it will be prepared for the TV; nothing is saved. While the manager is preparing other images it answers with an error asking you to try again shortly, instead of waiting |
 | `list_artwork` | Lists stored pictures with their collections, whether today's rules show them, and which TVs hold them |
 | `list_collections`, `create_collection`, `update_collection`, `delete_collection` | Manage collections and their schedules |
 | `remove_from_collection` | Takes a picture out of a collection |
@@ -731,6 +734,8 @@ them, the manager leaves the TV's own settings alone.
   again. 2025 and newer Frames report the same state while showing art, so
   on those the manager asks the TV whether Art Mode is on.
   `SLIDESHOW_ENABLED=false` turns it off and leaves the picture to the TV.
+  An empty value (`SLIDESHOW_ENABLED=`) counts as unset, like every other
+  setting.
   The manager does this itself because, on current firmware, the TV's own
   slideshow of My Photos asks for an Art Store subscription: the TV accepts
   the setting but never changes the picture.
@@ -753,11 +758,14 @@ them, the manager leaves the TV's own settings alone.
   syncing artwork; that setting is left alone and a warning is logged.
 - **Nightly power-off.** `AUTO_OFF_TIME` (for example `22:00`, in
   `LOCATION_TIMEZONE`) turns off TVs that are showing art, and leaves TVs that
-  are in use alone. It keeps trying for `AUTO_OFF_GRACE_HOURS` (default 2).
+  are in use alone. It keeps trying for `AUTO_OFF_GRACE_HOURS` (default 2;
+  more than 0 and less than 24, because a longer window would keep the TV off
+  all day).
 - **Morning power-on.** `AUTO_ON_TIME` (for example `07:00`, in
   `LOCATION_TIMEZONE`) together with `TV_MAC` wakes a single TV once a day.
   The wake is sent on the first sync in the window that starts at
-  `AUTO_ON_TIME` and lasts `AUTO_ON_GRACE_HOURS` (default 2). It is sent only
+  `AUTO_ON_TIME` and lasts `AUTO_ON_GRACE_HOURS` (default 2; more than 0 and
+  less than 24). It is sent only
   if the TV is confirmed off, or has dropped off the network entirely (deep
   standby). If the TV is already on, or you turn it off again, it isn't woken
   again until the next day. Each day's wake is recorded in a `tv_*_wake.json`
@@ -768,6 +776,8 @@ them, the manager leaves the TV's own settings alone.
   `192.168.1.255`). Set `TV_WOL_BROADCAST` to send it to one other IPv4
   broadcast address instead. Broadcasts don't leave a Docker bridge network, so
   run the container with `network_mode: host` when you use Wake-on-LAN.
+- **Set your time zone.** Power times are read in `LOCATION_TIMEZONE`. If it
+  is unset they are read as UTC, and a startup warning says so.
 
 Network options for unusual setups:
 
@@ -776,6 +786,8 @@ Network options for unusual setups:
   firmware-dependent and off by default.
 - TLS verification is off because Frame TVs use self-signed certificates. Set
   `VERIFY_TLS=true` only if your TV's certificate can be verified.
+  `SKIP_TLS_VERIFY` was removed because it had no effect; if it is still set,
+  it is ignored and a startup warning is logged.
 
 ## Monitoring
 

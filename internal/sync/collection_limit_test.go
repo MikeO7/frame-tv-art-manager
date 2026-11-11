@@ -88,7 +88,7 @@ func TestPrepareCycleSyncsSubsetWithoutTouchingFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{ArtworkDir: artworkDir, MaxArtworkImages: 2}
-	manager := &localCollection{cfg: cfg, logger: slog.Default(), loader: fixedSourceLoader{}, store: store}
+	manager := &localCollection{cycle: make(chan struct{}, 1), limits: newTransformGate(), cfg: cfg, logger: slog.Default(), loader: fixedSourceLoader{}, store: store}
 
 	result, err := manager.prepareCycle(context.Background())
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // New validates and captures the dependencies required for one application
@@ -184,6 +185,10 @@ func (a *Application) shutdown(
 	return a.finishShutdown(shutdownCtx, server, completed, shutdownErr, false)
 }
 
+// timedOutCloseBudget is how long owned resources get to close after the
+// shutdown budget ran out.
+const timedOutCloseBudget = 5 * time.Second
+
 func (a *Application) finishShutdown(
 	ctx context.Context,
 	server HTTPServer,
@@ -193,11 +198,19 @@ func (a *Application) finishShutdown(
 ) error {
 	errs := childShutdownErrors(completed)
 	errs = append(errs, serverShutdownErrors(server, shutdownErr, timedOut)...)
+	closeCtx := ctx
 	if timedOut {
+		// The shutdown budget is spent, but owned resources still have to be
+		// released: give the closers a short budget of their own.
+		var cancel context.CancelFunc
+		closeCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), timedOutCloseBudget)
+		defer cancel()
+	}
+	closeErrs, closeTimedOut := a.closeResources(closeCtx)
+	if timedOut || closeTimedOut {
 		errs = append(errs, ErrShutdownTimeout)
 	}
-	errs = append(errs, a.closeResources(ctx)...)
-	return errors.Join(errs...)
+	return errors.Join(append(errs, closeErrs...)...)
 }
 
 func childShutdownErrors(completed map[childKind]error) []error {
@@ -228,10 +241,18 @@ func serverShutdownErrors(server HTTPServer, shutdownErr error, timedOut bool) [
 func (a *Application) startupFailure(runCtx context.Context, cause error) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(runCtx), a.shutdownTimeout)
 	defer cancel()
-	return errors.Join(cause, errors.Join(a.closeResources(ctx)...))
+	errs := []error{cause}
+	closeErrs, timedOut := a.closeResources(ctx)
+	if timedOut {
+		errs = append(errs, ErrShutdownTimeout)
+	}
+	return errors.Join(append(errs, closeErrs...)...)
 }
 
-func (a *Application) closeResources(ctx context.Context) []error {
+// closeResources closes every owned resource in order until ctx ends. It
+// reports whether ctx ended first, leaving ErrShutdownTimeout to the caller
+// so one shutdown reports it once.
+func (a *Application) closeResources(ctx context.Context) ([]error, bool) {
 	var errs []error
 	for index, closer := range a.closers {
 		if closer == nil {
@@ -241,11 +262,11 @@ func (a *Application) closeResources(ctx context.Context) []error {
 			errs = append(errs, fmt.Errorf("close resource %d: %w", index, err))
 		}
 		if err := ctx.Err(); err != nil {
-			errs = append(errs, fmt.Errorf("close resource %d: %w", index, errors.Join(ErrShutdownTimeout, err)))
-			return errs
+			errs = append(errs, fmt.Errorf("close resource %d: %w", index, err))
+			return errs, true
 		}
 	}
-	return errs
+	return errs, false
 }
 
 func unexpectedChildError(result childResult) error {

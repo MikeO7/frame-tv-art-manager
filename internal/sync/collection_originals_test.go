@@ -51,7 +51,7 @@ func newOriginalsCycle(t *testing.T) *originalsCycle {
 
 func (cycle *originalsCycle) run() collectionpkg.Snapshot {
 	cycle.t.Helper()
-	manager := &localCollection{cfg: cycle.cfg, logger: slog.Default(), loader: fixedSourceLoader{}, store: cycle.store}
+	manager := &localCollection{cycle: make(chan struct{}, 1), limits: newTransformGate(), cfg: cycle.cfg, logger: slog.Default(), loader: fixedSourceLoader{}, store: cycle.store}
 	result, err := manager.prepareCycle(context.Background())
 	if err != nil {
 		cycle.t.Fatalf("prepareCycle() error = %v", err)

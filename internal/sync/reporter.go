@@ -13,29 +13,33 @@ const summaryBoxWidth = 50
 // cycleSummary holds the per-cycle metrics rendered by logCycleSummary,
 // bundling the many report inputs into a single cohesive value.
 type cycleSummary struct {
-	CycleNum        int
-	StartTime       time.Time
-	SyncIntervalMin int
-	TotalLocal      int
-	FromSources     int
-	Optimized       int
-	FailedTVs       int
-	TVs             []tvSyncResult
-	Warnings        []string
+	CycleNum  int
+	StartTime time.Time
+	// NextSync is when the loop's timer starts the next cycle.
+	NextSync time.Time
+	// Location is the configured LOCATION_TIMEZONE, the clock every schedule
+	// uses, so the summary's times read the same as the operator's settings.
+	Location    *time.Location
+	TotalLocal  int
+	FromSources int
+	Optimized   int
+	FailedTVs   int
+	TVs         []tvSyncResult
+	Warnings    []string
 }
 
 // logCycleSummary renders and logs a formatted sync cycle summary box to structured logs.
 func logCycleSummary(logger *slog.Logger, s cycleSummary) {
 	elapsed := time.Since(s.StartTime).Round(time.Millisecond)
-	nextSync := time.Now().Add(time.Duration(s.SyncIntervalMin) * time.Minute)
+	nextSync := s.NextSync.In(s.Location)
 
-	sections := [][]string{{fmt.Sprintf("  Sync Cycle #%d - %s", s.CycleNum, time.Now().Format("2006-01-02 15:04:05"))}}
+	sections := [][]string{{fmt.Sprintf("  Sync Cycle #%d - %s", s.CycleNum, time.Now().In(s.Location).Format("2006-01-02 15:04:05 MST"))}}
 	for _, tv := range s.TVs {
-		sections = append(sections, tvSummaryLines(tv))
+		sections = append(sections, tvSummaryLines(tv, s.Location))
 	}
 	local := fmt.Sprintf("  Local:  %d files", s.TotalLocal)
 	if s.FromSources > 0 {
-		local += fmt.Sprintf(" │ %d from URLs", s.FromSources)
+		local += fmt.Sprintf(" │ %d from sources", s.FromSources)
 	}
 	if s.Optimized > 0 {
 		local += fmt.Sprintf(" │ %d optimized", s.Optimized)
@@ -87,7 +91,7 @@ func renderSummaryBox(sections [][]string) string {
 	return sb.String()
 }
 
-func tvSummaryLines(tv tvSyncResult) []string {
+func tvSummaryLines(tv tvSyncResult, location *time.Location) []string {
 	name := tv.IP
 	if tv.Model != "" {
 		name = fmt.Sprintf("%s (%s)", tv.IP, tv.Model)
@@ -103,7 +107,7 @@ func tvSummaryLines(tv tvSyncResult) []string {
 		if tv.Rotating {
 			rotation := fmt.Sprintf("    Rotation:   %d waiting", tv.ArtworkWaiting)
 			if !tv.NextRotation.IsZero() {
-				rotation += " │ next " + tv.NextRotation.Local().Format("Jan 2 15:04")
+				rotation += " │ next " + tv.NextRotation.In(location).Format("Jan 2 15:04")
 			}
 			lines = append(lines, rotation)
 		}

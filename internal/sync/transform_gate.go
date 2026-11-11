@@ -5,9 +5,10 @@ import (
 	"errors"
 )
 
-// errTransformsBusy refuses interactive work while every transform place is
-// taken.
-var errTransformsBusy = errors.New("image transforms are busy")
+// errTransformsBusy refuses interactive work while another transform is
+// running or every transform place is taken. Its text reaches the person who
+// asked, so it says what to do next.
+var errTransformsBusy = errors.New("another image is being processed right now; try again shortly")
 
 // One image transform runs at a time and two more may wait for it, which
 // bounds the process's peak image memory.
@@ -17,10 +18,10 @@ const (
 )
 
 // transformGate admits image transforms process-wide. Background work waits
-// for a place until its context ends; interactive work is refused at once
-// with errTransformsBusy when no place is free. An admitted transform then
-// waits its turn to run, so interactive work can still wait behind the
-// transform that is running.
+// for a place, and then for its turn to run, until its context ends.
+// Interactive work never waits: it is refused at once with errTransformsBusy
+// when no place is free or a transform is already running, so a preview is
+// never held behind a whole-collection optimization.
 type transformGate struct {
 	places  chan struct{}
 	running chan struct{}
@@ -36,23 +37,35 @@ func newTransformGate() *transformGate {
 // run calls transform once it is admitted, synchronously and at most once.
 func (g *transformGate) run(ctx context.Context, interactive bool, transform func(context.Context) error) error {
 	if interactive {
-		select {
-		case g.places <- struct{}{}:
-		default:
-			return errTransformsBusy
-		}
-	} else {
-		select {
-		case g.places <- struct{}{}:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+		return g.runNow(ctx, transform)
+	}
+	select {
+	case g.places <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 	defer func() { <-g.places }()
 	select {
 	case g.running <- struct{}{}:
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+	defer func() { <-g.running }()
+	return transform(ctx)
+}
+
+// runNow calls transform only if it can start immediately.
+func (g *transformGate) runNow(ctx context.Context, transform func(context.Context) error) error {
+	select {
+	case g.places <- struct{}{}:
+	default:
+		return errTransformsBusy
+	}
+	defer func() { <-g.places }()
+	select {
+	case g.running <- struct{}{}:
+	default:
+		return errTransformsBusy
 	}
 	defer func() { <-g.running }()
 	return transform(ctx)

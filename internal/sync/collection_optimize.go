@@ -14,10 +14,6 @@ func (c *localCollection) optimize(ctx context.Context, request optimize.StageRe
 		stage, err = optimize.StageCatalog(runCtx, request)
 		return err
 	}
-	if c.limits == nil {
-		err := run(ctx)
-		return stage, err
-	}
 	err := c.limits.run(ctx, false, run)
 	return stage, err
 }
