@@ -1,5 +1,9 @@
 # Recoverable Reconciliation mutations
 
+> Historical record: this document describes the code as it was when the
+> research was written. Files, line numbers, and identifiers it references
+> may have since moved or no longer exist.
+
 Research date: 2026-07-12
 
 ## Decision
@@ -23,10 +27,8 @@ contract ([durable-file-semantics.md](durable-file-semantics.md#decision),
 The current executor has no journal or outcome model. It retries any upload
 error, even after D2D transfer may have completed; performs TV deletion before
 mapping persistence; and discards display, brightness, slideshow, power, and
-capacity persistence failures ([execution.go](../../internal/sync/execution.go#L16-L70),
-[execution.go](../../internal/sync/execution.go#L83-L204),
-[execution.go](../../internal/sync/execution.go#L206-L307),
-[session.go](../../internal/sync/session.go#L187-L218)). Those paths cannot
+capacity persistence failures (`internal/sync/execution.go`,
+`internal/sync/session.go`). Those paths cannot
 distinguish not-applied from applied or unknown and therefore cannot safely
 retry after interruption.
 
@@ -64,7 +66,7 @@ display metadata, not identity. This fixes the existing filename-to-content-ID
 mapping, which can incorrectly transfer an old TV identity after optimization
 or collage changes the bytes
 ([artwork-collection-transaction.md](artwork-collection-transaction.md#snapshot-effects-for-reconciliation),
-[mapping.go](../../internal/sync/mapping.go#L13-L18)).
+`internal/sync/mapping.go`).
 
 ## Durable state
 
@@ -170,7 +172,7 @@ ID per durable intent so partial application has one recoverable postcondition.
 The adapter may optimize wire framing only if it can return an independently
 classified result for every ID; otherwise batching is unsafe. The current
 single `delete_image_list` call cannot establish which members applied after a
-lost response ([client_art.go](../../internal/samsung/client_art.go#L76-L96)).
+lost response (`internal/samsung/client_art.go`).
 
 ## Ordering and convergence
 
@@ -216,8 +218,7 @@ and reaches health. Metadata snapshots are optional telemetry only if their
 failure cannot affect planning or authority; otherwise they belong in the same
 error path. The current implementation logs and ignores capacity load/save and
 success-streak failures, including a dry-run path that may write capacity state
-([session.go](../../internal/sync/session.go#L187-L218),
-[session.go](../../internal/sync/session.go#L139-L153)).
+(`internal/sync/session.go`).
 
 ## Dry run, cancellation, and health
 

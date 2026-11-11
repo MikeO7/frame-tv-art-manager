@@ -1,5 +1,9 @@
 # Resource-efficiency envelope
 
+> Historical record: this document describes the code as it was when the
+> research was written. Files, line numbers, and identifiers it references
+> may have since moved or no longer exist.
+
 Status: decision-ready research, 2026-07-12
 
 ## Decision
@@ -107,16 +111,16 @@ The current controls are local rather than process-wide:
   Reducing only the catalog worker pool would leave this second transform path
   uncontrolled.
 - Catalog rebuild can hash with sixteen workers
-  ([`internal/sources/catalog_index.go`](../../internal/sources/catalog_index.go)).
+  (`internal/sources/catalog_index.go`).
 - TV reconciliation starts one goroutine per configured TV with no admission
-  bound ([`internal/sync/engine.go`](../../internal/sync/engine.go)).
+  bound (`internal/sync/engine.go`).
 - Collage creation is serial, but deliberately retains two decoded/rotated
   sources, two panel crops, a 4K canvas, and a sharpen destination during part
   of the operation ([`internal/optimize/collage_pipeline.go`](../../internal/optimize/collage_pipeline.go)).
 - The engine forces `runtime.GC` and `debug.FreeOSMemory` after every cycle.
   This can reduce idle RSS, but it should be retained only if target profiles
   show that its CPU/latency cost is justified; Go's normal pacer should own GC
-  frequency ([`internal/sync/engine.go`](../../internal/sync/engine.go)).
+  frequency (`internal/sync/engine.go`).
 
 `runtime.NumCPU` is not an admission-control policy. CPU count, scheduler
 parallelism, memory reservation, and per-operation live memory are distinct.

@@ -4,12 +4,13 @@ The Frame TV Art Manager team is committed to delivering a robust, production-gr
 
 ## Supported Versions
 
-We actively maintain and support the following versions of the Frame TV Art Manager:
+This project has not published a tagged release yet. The only supported version is the latest container image published from the `main` branch (`ghcr.io/mikeo7/frame-tv-art-manager:latest`). Once tagged releases exist, the latest tagged release is supported as well.
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| **v1.x** | ✅ Yes | Latest active development version. |
-| **v0.x** | ❌ No | Please upgrade to the latest v1.x release. |
+| Latest image from `main` | ✅ Yes | Fixes land here first. |
+| Latest tagged release | ✅ Yes | Applies once a release has been published. |
+| Anything older | ❌ No | Please update to the latest image. |
 
 ## Reporting a Vulnerability
 
@@ -17,8 +18,7 @@ We take the security of this application and your integration seriously. If you 
 
 ### How to Report
 
-1. **Private Vulnerability Reporting**: The preferred method is to use GitHub's private vulnerability reporting feature on our repository page. Go to **Security** -> **Advisories** and click **Report a vulnerability**. This keeps the details confidential until we publish a patch.
-2. **Email**: If you prefer, or if the private reporting tool is unavailable, you can email security reports directly to the maintainer's primary contact address.
+Use GitHub's private vulnerability reporting on the repository page: open the **Security** tab and click **Report a vulnerability**. This keeps the details confidential until a patch is published. Please do not open a public issue for a suspected vulnerability.
 
 Please include the following information in your report:
 - A detailed description of the vulnerability.

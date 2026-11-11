@@ -1,5 +1,9 @@
 # Fail-closed TV State semantics
 
+> Historical record: this document describes the code as it was when the
+> research was written. Files, line numbers, and identifiers it references
+> may have since moved or no longer exist.
+
 Research date: 2026-07-12
 
 ## Decision
@@ -22,18 +26,18 @@ name, firmware strings, an open socket, a timeout, or an absent response.
 
 The change is urgent. `IsInArtMode` currently converts any request error into
 `true`, explicitly treating an unknown state as safe
-([client_art.go](../../internal/samsung/client_art.go#L15-L39)). `Connect`
+(`internal/samsung/client_art.go`). `Connect`
 continues when device information cannot be fetched, leaving power and device
-identity unknown ([client.go](../../internal/samsung/client.go#L125-L165)). The
+identity unknown (`internal/samsung/client.go`). The
 reconciler then turns the Boolean into authority for inventory and mutation
-([session.go](../../internal/sync/session.go#L239-L262)). This directly violates
+(`internal/sync/session.go`). This directly violates
 the repository invariant that unknown TV State cannot authorize destructive or
 display-changing work.
 
 The existing REST gate is not an independent safety proof. Its helper erases
 request-construction and network errors into the same `false` result
-([client.go](../../internal/samsung/client.go#L277-L293)), and the gate can be
-disabled ([client.go](../../internal/samsung/client.go#L81-L95)). Treat it only
+(`internal/samsung/client.go`), and the gate can be
+disabled (`internal/samsung/client.go`). Treat it only
 as a quiet-connect hint: `200` may permit opening the art WebSocket, but the
 authoritative Art Mode query must still succeed before Reconciliation.
 
@@ -171,7 +175,7 @@ An empty successful list is known-empty. A missing field, empty payload that is
 not the protocol's explicit empty-list representation, malformed JSON,
 duplicate ID, blank ID, wrong category, or truncated response is unknown and an
 error. The current implementation treats an absent content list as an empty
-inventory ([client_art.go](../../internal/samsung/client_art.go#L42-L74)); the
+inventory (`internal/samsung/client_art.go`); the
 adapter must distinguish those wire cases before an empty inventory can
 authorize uploads or mapping cleanup.
 
@@ -190,7 +194,7 @@ Read and write capabilities are separate. For example, a failed slideshow read
 cannot authorize preserving or overwriting slideshow state. Brightness writes
 remain disabled until the adapter has a successful corresponding read or a
 real capability response; the current client exposes only `set_brightness`
-([client_art_slideshow.go](../../internal/samsung/client_art_slideshow.go#L105-L118)),
+(`internal/samsung/client_art_slideshow.go`),
 so support must not be invented.
 
 ## State and error matrix
@@ -253,14 +257,14 @@ not safety. The rules are:
    values and require the matching read/write capability. No failed read is
    interpreted as “needs update.” The current code does exactly that for
    slideshow by ignoring the read error and treating `nil` as a reason to write
-   ([execution.go](../../internal/sync/execution.go#L255-L276)); this must be
+   (`internal/sync/execution.go`); this must be
    removed.
 7. Power-off requires a fresh explicit `Power=On` and `ArtMode=On`, then a
    successful remote-control handshake under the operation lock. Wake requires
    a fresh explicit `Power=Off`, an enabled MAC policy, and its own command.
    Observation and dry-run never send Wake-on-LAN. The current `Connect`
    unconditionally wakes first when configured
-   ([client.go](../../internal/samsung/client.go#L114-L129)); connection setup
+   (`internal/samsung/client.go`); connection setup
    must become side-effect-free.
 8. A successful mutation invalidates the specific facts it can change. The
    adapter either updates them from a positive response or refreshes them before
@@ -301,7 +305,7 @@ with `%w`. Never classify unrelated Samsung codes as storage-full by folklore;
 retain the raw numeric code for diagnosis and classify only codes backed by
 captured protocol fixtures. The current client maps `403`, `507`, and `11001`
 to storage-full in one shared art-error function
-([client.go](../../internal/samsung/client.go#L179-L187)); implementation must
+(`internal/samsung/client.go`); implementation must
 verify the operation context before retaining that mapping.
 
 A request that definitely failed before any bytes were written is
@@ -311,7 +315,7 @@ reached the TV, timeout, disconnect, cancellation, malformed response, missing
 upload confirmation, D2D ambiguity, or a power press without confirmed release
 is `Unknown`. Unknown outcomes stop the TV's cycle and prohibit automatic
 retry. The current upload can complete D2D then time out waiting for
-`image_added` ([client_art.go](../../internal/samsung/client_art.go#L167-L229));
+`image_added` (`internal/samsung/client_art.go`);
 retrying that as an ordinary upload can create duplicates.
 
 Positive TV acknowledgement is not the end of Reconciliation. The resulting
@@ -368,8 +372,8 @@ incomplete projection with explicit unknown facts; do not assume an empty TV or
 `Apply` rejects it before I/O as defense in depth. This strengthens the current
 executor, which skips its planned writes but still reaches `Connect`, whose
 first action may be Wake-on-LAN
-([execution.go](../../internal/sync/execution.go#L41-L68),
-[client.go](../../internal/samsung/client.go#L125-L129)).
+(`internal/sync/execution.go`,
+`internal/samsung/client.go`).
 
 ## Health and lifecycle reporting
 
@@ -399,8 +403,8 @@ off or unreachable.
 
 Every currently ignored display/metadata failure must reach the cycle result.
 Selection, slideshow, brightness, and power errors are presently only warnings
-([execution.go](../../internal/sync/execution.go#L206-L307)), while metadata
-failure is debug-only ([session.go](../../internal/sync/session.go#L253-L255)).
+(`internal/sync/execution.go`), while metadata
+failure is debug-only (`internal/sync/session.go`).
 Optional telemetry may fail without blocking TV work only if it is purely
 ephemeral. Failure to durably persist authoritative mapping, journal, token, or
 capacity state always stops the cycle and degrades health.

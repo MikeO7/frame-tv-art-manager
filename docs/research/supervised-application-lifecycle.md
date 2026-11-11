@@ -1,5 +1,9 @@
 # Supervised application lifecycle
 
+> Historical record: this document describes the code as it was when the
+> research was written. Files, line numbers, and identifiers it references
+> may have since moved or no longer exist.
+
 Research date: 2026-07-12
 
 ## Decision
