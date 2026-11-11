@@ -53,6 +53,16 @@ type sourceState struct {
 	Version      int                         `json:"version"`
 	Resolutions  map[string]cachedResolution `json:"resolutions"`
 	Attributions map[string]attribution      `json:"attributions"`
+	// Downloads holds the retry schedule of images that could not be
+	// downloaded or imported, keyed by Source Origin.
+	Downloads map[string]downloadFailure `json:"download_failures,omitempty"`
+}
+
+// downloadFailure is the retry schedule of one image whose download or import
+// keeps failing, so it is not fetched in full again every cycle.
+type downloadFailure struct {
+	Failures    int       `json:"failures"`
+	NextAttempt time.Time `json:"next_attempt"`
 }
 
 // cachedResolution is the last-known-good resolution of one source line and
@@ -179,6 +189,9 @@ func (l *loader) removeStaleDownloads() {
 // resolve returns a source line's images, reusing a fresh cached resolution
 // and keeping the last-known-good resolution when the provider fails or is
 // backing off. Lines that need no network (direct URLs) are never cached.
+// Only provider, network, and rate-limit failures are scheduled for a later
+// retry: a configuration or source-format error is returned every time, so
+// correcting it takes effect on the next cycle.
 func (l *loader) resolve(ctx context.Context, provider sourceProvider, line string) ([]sourceImage, error) {
 	now := l.now()
 	expiry := resolutionExpiry(provider.Name(), line, now)
@@ -200,7 +213,7 @@ func (l *loader) resolve(ctx context.Context, provider sourceProvider, line stri
 
 	images, err := provider.Resolve(ctx, line)
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || !isProviderFailure(err) {
 			return nil, err
 		}
 		entry.Provider = provider.Name()
@@ -259,6 +272,42 @@ func failureRetryAt(err error, now time.Time, failures int) time.Time {
 	return retryAt
 }
 
+// downloadBackingOff reports whether an earlier failed download of the image
+// is not yet due for another attempt.
+func (l *loader) downloadBackingOff(originKey string) bool {
+	if l.state == nil {
+		return false
+	}
+	failure, failed := l.state.Downloads[originKey]
+	return failed && l.now().Before(failure.NextAttempt)
+}
+
+// recordDownloadFailure schedules the next attempt at an image whose download
+// or import failed, on the same backoff as a failed resolution.
+func (l *loader) recordDownloadFailure(originKey string, err error) {
+	if l.state == nil {
+		return
+	}
+	if l.state.Downloads == nil {
+		l.state.Downloads = make(map[string]downloadFailure)
+	}
+	failure := l.state.Downloads[originKey]
+	failure.Failures++
+	failure.NextAttempt = failureRetryAt(err, l.now(), failure.Failures)
+	l.state.Downloads[originKey] = failure
+	l.stateDirty = true
+}
+
+func (l *loader) clearDownloadFailure(originKey string) {
+	if l.state == nil {
+		return
+	}
+	if _, failed := l.state.Downloads[originKey]; failed {
+		delete(l.state.Downloads, originKey)
+		l.stateDirty = true
+	}
+}
+
 func sourceLineKey(line string) string {
 	digest := sha256.Sum256([]byte(line))
 	return hex.EncodeToString(digest[:])
@@ -295,6 +344,15 @@ func (l *loader) persistState(ctx context.Context, lines []string) error {
 	for key := range l.state.Attributions {
 		if _, ok := l.sourceOrigins[key]; !ok {
 			delete(l.state.Attributions, key)
+			l.stateDirty = true
+		}
+	}
+	// A failed image that is still offered is retried once it is due. One left
+	// long past due is no longer offered by any configured source.
+	for key, failure := range l.state.Downloads {
+		_, collected := l.sourceOrigins[key]
+		if collected || l.now().Sub(failure.NextAttempt) > sourceResolutionTTL {
+			delete(l.state.Downloads, key)
 			l.stateDirty = true
 		}
 	}

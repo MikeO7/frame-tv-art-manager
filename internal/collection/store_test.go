@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -313,7 +315,7 @@ func TestImportRejectsUnsafeOrInvalidInputWithoutPublishing(t *testing.T) {
 		{name: "unsupported bytes", hint: "photo.png", data: []byte("not an image")},
 		{name: "truncated", hint: "photo.png", data: encodeImage(t, "png", 8, 8)[:30]},
 		{name: "too many bytes", hint: "photo.png", data: encodeImage(t, "png", 2, 2), request: func(r *collection.ImportRequest) { r.MaxBytes = 4 }},
-		{name: "too many pixels", hint: "photo.png", data: encodeImage(t, "png", 2, 2), request: func(r *collection.ImportRequest) { r.Policy.MaxPixels = 3 }},
+		{name: "too many pixels", hint: "photo.png", data: oversizedPNGHeader(t)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -373,7 +375,7 @@ func (r *countingReader) Read(p []byte) (int, error) {
 
 func newStore(t *testing.T, root string) collection.Store {
 	t.Helper()
-	store, err := collection.New(collection.Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	store, err := collection.New(collection.Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -399,6 +401,17 @@ func encodeImage(t *testing.T, format string, width, height int) []byte {
 		t.Fatalf("encode image: %v", err)
 	}
 	return output.Bytes()
+}
+
+// oversizedPNGHeader returns a PNG whose header declares more pixels than the
+// collection accepts, with a valid header checksum.
+func oversizedPNGHeader(t *testing.T) []byte {
+	t.Helper()
+	data := encodeImage(t, "png", 1, 1)
+	binary.BigEndian.PutUint32(data[16:20], 7000)
+	binary.BigEndian.PutUint32(data[20:24], 7000)
+	binary.BigEndian.PutUint32(data[29:33], crc32.ChecksumIEEE(data[12:29]))
+	return data
 }
 
 func assertMode(t *testing.T, path string, want os.FileMode) {

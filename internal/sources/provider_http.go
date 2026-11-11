@@ -39,6 +39,27 @@ func (e *rateLimitError) Error() string {
 	return fmt.Sprintf("%s rate limit reached; retry after %s", e.Provider, e.RetryAt.UTC().Format(time.RFC3339))
 }
 
+// providerError marks a failure of a provider or of the network path to it:
+// an unreachable host, a non-success HTTP status, or a response that cannot be
+// decoded. Only these failures, and rate limits, are worth retrying on a
+// schedule; a source line or configuration the operator has to correct is not.
+type providerError struct {
+	message string
+	cause   error
+}
+
+func (e *providerError) Error() string { return e.message }
+
+func (e *providerError) Unwrap() error { return e.cause }
+
+// isProviderFailure reports whether err is a provider, network, or rate-limit
+// failure rather than a configuration or source-format error.
+func isProviderFailure(err error) bool {
+	var failure *providerError
+	var limited *rateLimitError
+	return errors.As(err, &failure) || errors.As(err, &limited)
+}
+
 // rateGate remembers a provider's rate-limit window across requests and
 // source lines so that an exhausted quota stops further requests. A gate with
 // an interval also spaces requests at least that far apart, for providers
@@ -195,12 +216,12 @@ func fetchProviderJSON(ctx context.Context, request providerJSONRequest, out any
 		if limited {
 			return &rateLimitError{Provider: request.provider, RetryAt: retryAt}
 		}
-		return fmt.Errorf("%s error: %d", request.statusLabel, resp.StatusCode)
+		return &providerError{message: fmt.Sprintf("%s error: %d", request.statusLabel, resp.StatusCode)}
 	}
 
 	reader := http.MaxBytesReader(nil, resp.Body, request.maxBytes)
 	if err := json.NewDecoder(reader).Decode(out); err != nil {
-		return fmt.Errorf("decode %s response: %w", request.decodeLabel, err)
+		return &providerError{message: fmt.Sprintf("decode %s response: %v", request.decodeLabel, err), cause: err}
 	}
 	return nil
 }
@@ -211,7 +232,7 @@ func providerRequestError(ctx context.Context, operation string, err error) erro
 	}
 	var networkErr net.Error
 	if errors.As(err, &networkErr) {
-		return fmt.Errorf("%s failed (network timeout=%t)", operation, networkErr.Timeout())
+		return &providerError{message: fmt.Sprintf("%s failed (network timeout=%t)", operation, networkErr.Timeout())}
 	}
-	return fmt.Errorf("%s failed", operation)
+	return &providerError{message: operation + " failed"}
 }

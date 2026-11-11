@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // ErrOutcomeUnknown marks an operation whose namespace mutation may be visible
@@ -154,6 +155,43 @@ func remove(ctx context.Context, path string, ops operations) error {
 	}
 	if err := syncDirectory(filepath.Dir(path), ops); err != nil {
 		return unknownOutcome(fmt.Sprintf("confirm removal of %s", path), err)
+	}
+	return nil
+}
+
+// RemoveStaleTemporaries deletes the temporary files a crash left behind in
+// directory: regular, non-symlink files this package named that were last
+// written at least minAge ago. The age keeps a write still in progress in the
+// same directory safe. A missing directory holds nothing to remove.
+func RemoveStaleTemporaries(ctx context.Context, directory string, minAge time.Duration) error {
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read directory %s: %w", directory, err)
+	}
+	cutoff := time.Now().Add(-minAge)
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("remove stale temporary files in %s: %w", directory, err)
+		}
+		if matched, _ := filepath.Match(".durable-*.tmp", entry.Name()); !matched || !entry.Type().IsRegular() {
+			continue
+		}
+		info, err := entry.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect temporary file %s: %w", entry.Name(), err)
+		}
+		if !info.Mode().IsRegular() || info.ModTime().After(cutoff) {
+			continue
+		}
+		if err := Remove(ctx, filepath.Join(directory, entry.Name())); err != nil {
+			return fmt.Errorf("remove stale temporary file %s: %w", entry.Name(), err)
+		}
 	}
 	return nil
 }

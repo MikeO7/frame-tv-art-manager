@@ -135,7 +135,8 @@ func (p *metProvider) searchCandidates(ctx context.Context, query string, limit 
 // inspected object failed or the provider asked for no more requests.
 func (p *metProvider) search(ctx context.Context, query string, filters url.Values, limit int) ([]Candidate, error) {
 	limit = searchLimit(limit)
-	params := url.Values{"hasImages": {"true"}, paramLimit: {strconv.Itoa(min(limit*metScanFactor, metMaxScan))}}
+	scan := min(limit*metScanFactor, metMaxScan)
+	params := url.Values{"hasImages": {"true"}, paramLimit: {strconv.Itoa(scan)}}
 	for name, values := range filters {
 		params[name] = values
 	}
@@ -150,12 +151,17 @@ func (p *metProvider) search(ctx context.Context, query string, filters url.Valu
 	if err := p.fetchJSON(ctx, p.BaseURL+"/v1.1/search?"+params.Encode(), &result); err != nil {
 		return nil, err
 	}
+	// The scan bound is enforced here as well: the API's page size is only a
+	// request, and every ID costs a further object request.
+	ids := result.ObjectIDs[:min(len(result.ObjectIDs), scan)]
 	candidates := make([]Candidate, 0, limit)
 	var failures []error
-	for _, id := range result.ObjectIDs {
+	inspected := 0
+	for _, id := range ids {
 		if len(candidates) == limit {
 			break
 		}
+		inspected++
 		object, err := p.object(ctx, id)
 		if err != nil {
 			var limited *rateLimitError
@@ -170,7 +176,7 @@ func (p *metProvider) search(ctx context.Context, query string, filters url.Valu
 			candidates = append(candidates, candidate)
 		}
 	}
-	if len(failures) > 0 && len(failures) == len(result.ObjectIDs) {
+	if len(failures) > 0 && len(failures) == inspected {
 		return nil, errors.Join(failures...)
 	}
 	return candidates, nil

@@ -88,7 +88,7 @@ func TestLoader_Sync_Direct(t *testing.T) {
 
 	l := newTestLoader(&config.Config{
 		SourcesFile: sourcesFile,
-		ArtworkDir:  artworkDir,
+		ArtworkDir:  artworkDir, MaxDownloadSizeMB: 20,
 	}, slog.Default())
 	downloaded, err := l.Sync(context.Background(), collection.Snapshot{})
 	if err != nil {
@@ -168,7 +168,7 @@ func TestLoaderSyncImportsResolvedImagesAsBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	importer := &countingImporter{Store: store}
-	loader := NewLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default(), importer)
+	loader := NewLoader(&config.Config{ArtworkDir: artworkDir, MaxDownloadSizeMB: 20}, slog.Default(), importer)
 	loader.providers = []sourceProvider{staticSourceProvider{images: []sourceImage{
 		{URL: server.URL + "/first", Identity: "first"},
 		{URL: server.URL + "/second", Identity: "second"},
@@ -194,7 +194,7 @@ func TestLoaderSyncStopsDownloadingImmediatelyWhenCanceled(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()
-	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default())
+	loader := newTestLoader(&config.Config{ArtworkDir: artworkDir, MaxDownloadSizeMB: 20}, slog.Default())
 	loader.providers = []sourceProvider{staticSourceProvider{images: []sourceImage{
 		{URL: server.URL + "/1", Identity: "one"},
 		{URL: server.URL + "/2", Identity: "two"},
@@ -229,7 +229,7 @@ func TestLoaderSyncFlushesAtBoundedBatchSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	importer := &countingImporter{Store: store}
-	loader := NewLoader(&config.Config{ArtworkDir: artworkDir}, slog.Default(), importer)
+	loader := NewLoader(&config.Config{ArtworkDir: artworkDir, MaxDownloadSizeMB: 20}, slog.Default(), importer)
 	images := make([]sourceImage, sourceImportBatchSize+1)
 	for index := range images {
 		images[index] = sourceImage{URL: server.URL, Identity: fmt.Sprintf("image-%02d", index)}
@@ -254,33 +254,33 @@ func TestImportSourceBatchErrorContracts(t *testing.T) {
 	}}}
 
 	t.Run("missing importer", func(t *testing.T) {
-		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default())
 		loader.importer = nil
 		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil {
 			t.Fatal("importSourceBatch() accepted a missing importer")
 		}
 	})
 	t.Run("missing prepared file", func(t *testing.T) {
-		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default())
 		missing := []pendingSourceDownload{{prepared: preparedDownload{path: path + ".missing"}}}
 		if _, err := loader.importSourceBatch(context.Background(), missing); err == nil {
 			t.Fatal("importSourceBatch() accepted a missing prepared file")
 		}
 	})
 	t.Run("import failure", func(t *testing.T) {
-		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{err: errors.New("commit failed")})
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default(), scriptedImporter{err: errors.New("commit failed")})
 		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil || !strings.Contains(err.Error(), "commit failed") {
 			t.Fatalf("importSourceBatch() error = %v", err)
 		}
 	})
 	t.Run("wrong change count", func(t *testing.T) {
-		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{})
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default(), scriptedImporter{})
 		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil || !strings.Contains(err.Error(), "1 downloads") {
 			t.Fatalf("importSourceBatch() error = %v", err)
 		}
 	})
 	t.Run("empty change name", func(t *testing.T) {
-		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{snapshot: collection.Snapshot{
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default(), scriptedImporter{snapshot: collection.Snapshot{
 			Changes: []collection.Change{{Kind: collection.ChangeAdded}},
 		}})
 		if _, err := loader.importSourceBatch(context.Background(), pending); err == nil || !strings.Contains(err.Error(), "empty") {
@@ -288,7 +288,7 @@ func TestImportSourceBatchErrorContracts(t *testing.T) {
 		}
 	})
 	t.Run("duplicate", func(t *testing.T) {
-		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default(), scriptedImporter{snapshot: collection.Snapshot{
+		loader := NewLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default(), scriptedImporter{snapshot: collection.Snapshot{
 			Changes: []collection.Change{{Kind: collection.ChangeDuplicate, Name: "existing.jpg"}},
 		}})
 		added, err := loader.importSourceBatch(context.Background(), pending)
@@ -300,14 +300,14 @@ func TestImportSourceBatchErrorContracts(t *testing.T) {
 
 func TestLoaderSyncLineLimitAndImportErrors(t *testing.T) {
 	t.Run("no provider", func(t *testing.T) {
-		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default())
 		loader.providers = nil
 		if _, err := loader.syncLine(context.Background(), "unknown:any"); err == nil {
 			t.Fatal("syncLine() accepted an unknown provider")
 		}
 	})
 	t.Run("collection limit", func(t *testing.T) {
-		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxArtworkImages: 1}, slog.Default())
+		loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20, MaxArtworkImages: 1}, slog.Default())
 		loader.collectionSize = 1
 		loader.providers = []sourceProvider{staticSourceProvider{images: []sourceImage{{
 			URL: "http://example.com/never-requested.jpg", Identity: "limited",
@@ -325,7 +325,7 @@ func TestLoaderSyncLineLimitAndImportErrors(t *testing.T) {
 		}))
 		defer server.Close()
 		loader := NewLoader(
-			&config.Config{ArtworkDir: t.TempDir()},
+			&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20},
 			slog.Default(),
 			scriptedImporter{err: errors.New("batch commit failed")},
 		)
@@ -350,7 +350,7 @@ func TestLoaderSyncUsesDurableSourceOriginInsteadOfFilename(t *testing.T) {
 		t.Fatalf("write sources: %v", err)
 	}
 
-	loader := newTestLoader(&config.Config{SourcesFile: sourcesFile, ArtworkDir: artworkDir}, slog.Default())
+	loader := newTestLoader(&config.Config{SourcesFile: sourcesFile, ArtworkDir: artworkDir, MaxDownloadSizeMB: 20}, slog.Default())
 	originKey := "source:" + sourceURLIdentity("direct", server.URL)
 	snapshot := collection.Snapshot{Items: []collection.Item{{
 		Name:   "arbitrary-operator-looking-name.jpg",
@@ -491,7 +491,7 @@ func TestLoader_Sync_Failures(t *testing.T) {
 
 	l := newTestLoader(&config.Config{
 		SourcesFile: sourcesFile,
-		ArtworkDir:  artworkDir,
+		ArtworkDir:  artworkDir, MaxDownloadSizeMB: 20,
 	}, slog.Default())
 	downloaded, err := l.Sync(context.Background(), collection.Snapshot{})
 	if err == nil {
@@ -557,7 +557,7 @@ func TestLoader_Sync_Providers(t *testing.T) {
 func TestLoader_syncLine_ArticSearch(t *testing.T) {
 	artworkDir := t.TempDir()
 	l := newTestLoader(&config.Config{
-		ArtworkDir: artworkDir,
+		ArtworkDir: artworkDir, MaxDownloadSizeMB: 20,
 	}, slog.Default())
 
 	imageData := testJPEGBytes(t)
@@ -593,7 +593,7 @@ func TestLoader_loadYamlSources_Invalid(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not: valid: yaml: ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	l := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+	l := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default())
 	l.sourcesFile = path
 	_, err := l.loadSources(context.Background())
 	if err == nil {
@@ -611,7 +611,7 @@ func TestLoaderLoadYAMLSourcesRejectsOversizedManifest(t *testing.T) {
 	if err := os.Truncate(path, maxSourcesManifestBytes+1); err != nil {
 		t.Fatal(err)
 	}
-	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default())
 	loader.sourcesFile = path
 	if _, err := loader.loadSources(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("loadYamlSources() error = %v, want bounded manifest rejection", err)
@@ -626,7 +626,7 @@ func TestLoaderLoadTXTSourcesRejectsUnsafeManifestReads(t *testing.T) {
 	if err := os.WriteFile(valid, []byte("https://example.com/art.jpg\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, slog.Default())
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, slog.Default())
 
 	t.Run("oversized", func(t *testing.T) {
 		path := filepath.Join(directory, "oversized.txt")

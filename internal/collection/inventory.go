@@ -21,8 +21,10 @@ type inventoryLimits struct {
 	maxPixels int64
 }
 
-// scan inventories the committed collection, failing on any unreadable or
-// invalid artwork.
+// scan inventories the committed collection. Artwork the manifest records
+// must be readable and valid. A file it does not record that cannot be read or
+// decoded is left out, as Prepare leaves it out with a warning, so one broken
+// file an operator dropped in the folder does not block every import.
 func scan(ctx context.Context, root string, limits inventoryLimits) ([]Item, error) {
 	records, err := readManifestRecords(ctx, root)
 	if err != nil {
@@ -41,9 +43,14 @@ func scan(ctx context.Context, root string, limits inventoryLimits) ([]Item, err
 		if !isArtworkName(entry.Name()) {
 			continue
 		}
-		item, err := inspectItem(ctx, root, entry, limits, records[entry.Name()])
+		record, recorded := records[entry.Name()]
+		item, err := inspectItem(ctx, root, entry, limits, record)
 		if err != nil {
-			return nil, err
+			if recorded || entry.Type()&os.ModeSymlink != 0 ||
+				errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			continue
 		}
 		items = append(items, withCommittedMetadata(item, records, renamed))
 	}

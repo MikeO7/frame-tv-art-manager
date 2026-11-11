@@ -23,7 +23,7 @@ func TestValidateSnapshotAcceptsAuthoritativeCollectionGeneration(t *testing.T) 
 
 	root := t.TempDir()
 	store, err := collection.New(collection.Config{
-		Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20,
+		Root: root, MaxImportBytes: 1 << 20,
 	})
 	if err != nil {
 		t.Fatal(err)

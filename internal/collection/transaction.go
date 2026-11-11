@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +39,7 @@ type journalEnvelope struct {
 	Checksum string          `json:"checksum"`
 }
 
-func recoverTransaction(ctx context.Context, root string) error {
+func recoverTransaction(ctx context.Context, root string, logger *slog.Logger) error {
 	tx, exists, err := readJournal(ctx, root)
 	if err != nil || !exists {
 		return err
@@ -47,7 +48,7 @@ func recoverTransaction(ctx context.Context, root string) error {
 		return recoverManifestTransaction(ctx, root, tx.Next)
 	}
 	if tx.Kind == transactionKindBatch {
-		return recoverBatchTransaction(ctx, root, tx)
+		return recoverBatchTransaction(ctx, root, tx, logger)
 	}
 	expected, err := hex.DecodeString(tx.Digest)
 	if err != nil || len(expected) != sha256.Size {

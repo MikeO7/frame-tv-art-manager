@@ -25,7 +25,6 @@ func TestNewRejectsInvalidConfiguration(t *testing.T) {
 		{Root: "relative"},
 		{Root: t.TempDir(), MaxItems: -1},
 		{Root: t.TempDir(), MaxImportBytes: -1},
-		{Root: t.TempDir(), MaxPixels: -1},
 	}
 	for _, cfg := range tests {
 		if store, err := collection.New(cfg); err == nil || store != nil {
@@ -85,18 +84,6 @@ func TestImportRejectsUnsafeCollectionState(t *testing.T) {
 				}
 				if err := os.Symlink(target, filepath.Join(root, "linked.png")); err != nil {
 					t.Fatalf("symlink artwork: %v", err)
-				}
-			},
-		},
-		{
-			name: "truncated existing artwork",
-			setup: func(t *testing.T, root string) {
-				t.Helper()
-				if err := os.Mkdir(root, 0o755); err != nil {
-					t.Fatalf("mkdir root: %v", err)
-				}
-				if err := os.WriteFile(filepath.Join(root, "broken.png"), []byte("not-png"), 0o644); err != nil {
-					t.Fatalf("write broken artwork: %v", err)
 				}
 			},
 		},
@@ -238,7 +225,7 @@ func TestImportSnapshotDoesNotAliasLaterResults(t *testing.T) {
 
 func TestImportEnforcesCollectionLimitWithoutPublishing(t *testing.T) {
 	root := t.TempDir()
-	store, err := collection.New(collection.Config{Root: root, MaxItems: 1, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	store, err := collection.New(collection.Config{Root: root, MaxItems: 1, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}

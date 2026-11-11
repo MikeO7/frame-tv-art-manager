@@ -27,7 +27,7 @@ type keptOriginalFixture struct {
 func newKeptOriginalFixture(t *testing.T) keptOriginalFixture {
 	t.Helper()
 	root := t.TempDir()
-	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestApplyKeepsOriginalBeforeRemovingItsSource(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	reopened, err := New(Config{Root: fixture.root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	reopened, err := New(Config{Root: fixture.root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestApplyKeepsOriginalBeforeRemovingItsSource(t *testing.T) {
 
 func TestApplyRefusesLineageWhoseOriginalIsUnavailable(t *testing.T) {
 	root := t.TempDir()
-	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
