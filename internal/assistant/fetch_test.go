@@ -83,6 +83,8 @@ func TestPublicAddress(t *testing.T) {
 		"::1": false, "::": false, "fe80::1": false, "fc00::1": false, "ff02::1": false,
 		"::ffff:10.0.0.1": false, "::ffff:8.8.8.8": true, "64:ff9b::a00:1": false, "2002:a00:1::1": false,
 		"2001:db8::1": false,
+		// IPv4-compatible and site-local IPv6 are not public either.
+		"::10.0.0.1": false, "::8.8.8.8": false, "::a9fe:a9fe": false, "fec0::1": false, "feff::1": false,
 	} {
 		if got := publicAddress(netip.MustParseAddr(address)); got != want {
 			t.Fatalf("PublicAddress(%s) = %t, want %t", address, got, want)

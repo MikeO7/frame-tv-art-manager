@@ -694,8 +694,16 @@ The full, annotated list is in [`.env.example`](.env.example).
 | `DRY_RUN` | `false` | Plan without changing anything |
 | `HEALTH_PORT` | `8080` | Port for status and uploads; `0` turns the server off |
 | `HEALTH_BIND_ADDRESS` | `0.0.0.0` | Address to listen on, e.g. `127.0.0.1` behind a local proxy |
+| `HEALTH_ALLOWED_HOSTS` | — | Comma-separated host names the web server answers to, e.g. `frame.example.com,frame.lan`; empty accepts any name |
 | `MCP_ENABLED` | `false` | Turn on the `/mcp` endpoint for AI assistants; needs `HEALTH_PORT` |
 | `MCP_TOKEN` | — | Bearer token for `/mcp`, at least 24 characters with no spaces |
+
+When `HEALTH_ALLOWED_HOSTS` is set, a request whose `Host` is any other name
+gets `421 Misdirected Request` (IP addresses and `localhost` always work),
+which stops a web page from reaching the server through DNS rebinding. A
+reverse proxy must either preserve the original `Host` header or have its
+public name listed here; otherwise browser uploads through it are refused as
+cross-origin.
 
 Invalid values such as an unknown log level, an unsupported slideshow
 interval, or a bad TV address stop the service at startup with a clear error.

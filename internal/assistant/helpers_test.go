@@ -35,6 +35,37 @@ type testArtwork struct {
 	requests   int
 	pending    bool
 	placements map[string][]string
+	// prepareErr, when set, fails every inventory read.
+	prepareErr error
+	// importResult, when set, rewrites the snapshot a committed import returns.
+	importResult func(collection.Snapshot) collection.Snapshot
+}
+
+func (artwork *testArtwork) failPrepare(err error) {
+	artwork.mu.Lock()
+	defer artwork.mu.Unlock()
+	artwork.prepareErr = err
+}
+
+func (artwork *testArtwork) Prepare(ctx context.Context, request collection.PrepareRequest) (collection.Snapshot, error) {
+	artwork.mu.Lock()
+	err := artwork.prepareErr
+	artwork.mu.Unlock()
+	if err != nil {
+		return collection.Snapshot{}, err
+	}
+	return artwork.Store.Prepare(ctx, request)
+}
+
+func (artwork *testArtwork) Import(ctx context.Context, request collection.ImportRequest) (collection.Snapshot, error) {
+	snapshot, err := artwork.Store.Import(ctx, request)
+	artwork.mu.Lock()
+	rewrite := artwork.importResult
+	artwork.mu.Unlock()
+	if err == nil && rewrite != nil {
+		snapshot = rewrite(snapshot)
+	}
+	return snapshot, err
 }
 
 func (artwork *testArtwork) RenderPreview(ctx context.Context, item collection.Item) (*image.RGBA, error) {

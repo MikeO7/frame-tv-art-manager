@@ -285,6 +285,12 @@ func validateAddresses(cfg *Config) error {
 	if net.ParseIP(cfg.HealthBindAddress) == nil {
 		return fmt.Errorf("HEALTH_BIND_ADDRESS must be an IP address")
 	}
+	for _, name := range cfg.HealthAllowedHosts {
+		if !plausibleHostName(name) {
+			return fmt.Errorf("HEALTH_ALLOWED_HOSTS contains %q, which is not a host name "+
+				"(use names such as frame.example.com, without a scheme, port, or path)", name)
+		}
+	}
 	seen := make(map[string]struct{}, len(cfg.TVIPs))
 	for index, address := range cfg.TVIPs {
 		parsed := net.ParseIP(address)
@@ -299,6 +305,27 @@ func validateAddresses(cfg *Config) error {
 		cfg.TVIPs[index] = canonical
 	}
 	return nil
+}
+
+// plausibleHostName reports whether name is a lower-case DNS host name:
+// dot-separated labels of letters, digits, and inner hyphens.
+func plausibleHostName(name string) bool {
+	if name == "" || len(name) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, character := range label {
+			letter := character >= 'a' && character <= 'z'
+			digit := character >= '0' && character <= '9'
+			if !letter && !digit && character != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateCoordinates(cfg *Config) error {

@@ -50,9 +50,10 @@ test('unauthorized and wrong-account uploads cannot mutate the collection', asyn
 
 test('invalid and oversized uploads are rejected without durable writes', async ({ app }) => {
   const before = await tree((await paths()).root);
-  for (const body of [Buffer.alloc(0), Buffer.from('not an image'), png().subarray(0, 40), Buffer.alloc(1024 * 1024 + 1)]) {
+  for (const body of [Buffer.alloc(0), Buffer.from('not an image'), png().subarray(0, 40)]) {
     expect((await upload(app.baseUrl, body)).status).toBe(400);
   }
+  expect((await upload(app.baseUrl, Buffer.alloc(1024 * 1024 + 1))).status).toBe(413);
   const missing = new FormData();
   missing.set('wrong-field', new Blob([png()]), 'image.png');
   expect((await fetch(new URL('/upload', app.baseUrl), { method: 'POST', headers: { Authorization: auth }, body: missing })).status).toBe(400);

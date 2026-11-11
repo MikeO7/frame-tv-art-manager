@@ -132,7 +132,10 @@ func (svc *service) addArtwork(
 	}
 	item, kind, err := committedItem(snapshot)
 	if err != nil {
-		return nil, addArtworkOutput{}, err
+		// The image is stored and its membership recorded, so this is a
+		// success whose details cannot be described.
+		svc.logger.Error("describe stored artwork failed", "collection", slug, "error", err)
+		return nil, svc.describeUnverified(snapshot, slug, member, reservation), nil
 	}
 	output := svc.describeAdded(item, kind, slug, reservation)
 	member.Key, member.Name = item.Key, item.Name
@@ -236,6 +239,24 @@ func committedItem(snapshot collection.Snapshot) (collection.Item, collection.Ch
 		return collection.Item{}, "", fmt.Errorf("the stored image %q is missing from the verified folder", change.Name)
 	}
 	return snapshot.Items[index], change.Kind, nil
+}
+
+// describeUnverified reports an import that was committed but whose stored
+// item could not be found in the returned snapshot.
+func (svc *service) describeUnverified(
+	snapshot collection.Snapshot, slug string, member themes.Member, reservation memberReservation,
+) addArtworkOutput {
+	output := addArtworkOutput{
+		Collection: slug, CollectionCreated: reservation.createdCollection, Digest: member.Digest,
+		AlreadyInCollection: !reservation.addedMember,
+		Warnings: []string{"the image was saved and added to the collection, but its details are unavailable; " +
+			"call list_artwork to see its filename, key, and fit"},
+	}
+	if len(snapshot.Changes) == 1 {
+		output.Filename = snapshot.Changes[0].Name
+		output.Duplicate = snapshot.Changes[0].Kind == collection.ChangeDuplicate
+	}
+	return output
 }
 
 func (svc *service) describeAdded(item collection.Item, kind collection.ChangeKind, slug string, reservation memberReservation) addArtworkOutput {
