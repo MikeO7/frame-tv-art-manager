@@ -79,7 +79,9 @@ type protocolTVFixture struct {
 	nextUpload      int
 	pairings        int
 	requests        []map[string]any
-	powerOffEffect  func(*protocolTVFixture)
+	// unsupported names the art requests this TV rejects.
+	unsupported    []string
+	powerOffEffect func(*protocolTVFixture)
 }
 
 func newProtocolTVFixture(t *testing.T) *protocolTVFixture {
@@ -313,6 +315,9 @@ func (f *protocolTVFixture) answer(request map[string]any) ([]map[string]any, bo
 	if f.powerState != stringOn && name != keyGetArtModeStatus {
 		return nil, false
 	}
+	if slices.Contains(f.unsupported, name) {
+		return fail(fixtureErrorUnsupported), false
+	}
 	switch name {
 	case keyGetArtModeStatus:
 		reply[keyValue] = f.artMode
@@ -505,6 +510,13 @@ func (f *protocolTVFixture) slideshowMutations() []SlideshowSetting {
 	f.stateMu.Lock()
 	defer f.stateMu.Unlock()
 	return slices.Clone(f.slideshowWrites)
+}
+
+// stopAnswering makes the running TV reject the named art requests.
+func (f *protocolTVFixture) stopAnswering(names ...string) {
+	f.stateMu.Lock()
+	defer f.stateMu.Unlock()
+	f.unsupported = append(f.unsupported, names...)
 }
 
 func (f *protocolTVFixture) requestsNamed(name string) []map[string]any {

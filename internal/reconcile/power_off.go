@@ -19,7 +19,7 @@ func (s *service) powerOffAfterFailure(
 	result Result,
 	runErr error,
 ) (Result, error) {
-	policy := s.effectivePolicy(request.Policy)
+	policy := normalizePolicy(request.Policy)
 	if policy.Power != PowerOff || request.DryRun || request.TV == nil ||
 		result.powerOffAttempted || slices.Contains(result.AppliedCommands, commandPowerOff) ||
 		result.State.Version == 0 || result.State.Pending != nil || errors.Is(runErr, ErrPersistenceUnknown) {

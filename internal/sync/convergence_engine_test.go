@@ -264,6 +264,8 @@ type recordingConvergenceAdapter struct {
 	closeErr     error
 }
 
+func (*recordingConvergenceAdapter) Address() string { return "192.0.2.10" }
+
 func (*recordingConvergenceAdapter) Observe(
 	context.Context,
 	samsung.ObserveRequest,

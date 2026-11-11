@@ -15,6 +15,9 @@ func validatePolicy(policy Policy) error {
 	if !policy.WakeBoundary.IsZero() && policy.Power != PowerOn {
 		return errors.New("a wake boundary requires the power-on policy")
 	}
+	if policy.Power == PowerOn && policy.WakeBoundary.IsZero() {
+		return errors.New("the power-on policy requires a wake boundary: a TV is only woken on schedule")
+	}
 	if err := validateSlideshowPolicy(policy.Slideshow); err != nil {
 		return err
 	}

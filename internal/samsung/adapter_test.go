@@ -6,9 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -435,4 +438,74 @@ func newTestAdapter(t *testing.T, clock clock, transport observationTransport) *
 // unauthorized reports whether an observation withheld mutation authority.
 func unauthorized(authorization Authorization) bool {
 	return authorization.adapter == nil
+}
+
+// Only a dark art channel proves a standby TV is off. A connect failure that
+// says nothing about the screen must reach the caller instead of being
+// reported as a TV that is switched off.
+func TestAdapterObserveStandbyConnectFailures(t *testing.T) {
+	persistence := &Error{Kind: errorKindPersistence, Operation: "persist authentication token", Cause: errors.New("disk full")}
+	tests := []struct {
+		name            string
+		connectErr      error
+		wantErrKind     ErrorKind
+		wantDisposition Disposition
+	}{
+		{
+			name:            "refused art channel is off",
+			connectErr:      fmt.Errorf("websocket dial: %w", &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}),
+			wantDisposition: DispositionBlockedPowerOff,
+		},
+		{
+			name:       "silent art channel is off",
+			connectErr: fmt.Errorf("read handshake: %w", context.DeadlineExceeded), wantDisposition: DispositionBlockedPowerOff,
+		},
+		{
+			name:        "unreadable token file is a failure",
+			connectErr:  fmt.Errorf("load authentication token: %w", errors.New("token must have mode 0600")),
+			wantErrKind: ErrorKindInvalidResponse, wantDisposition: DispositionUnsafeUnknown,
+		},
+		{
+			name:        "token that cannot be saved is a failure",
+			connectErr:  fmt.Errorf("pair on remote control channel: %w", persistence),
+			wantErrKind: errorKindPersistence, wantDisposition: DispositionUnsafeUnknown,
+		},
+		{
+			name:        "persistence failure caused by the network is still a failure",
+			connectErr:  &Error{Kind: errorKindPersistence, Cause: &net.OpError{Op: "write", Err: syscall.EIO}},
+			wantErrKind: errorKindPersistence, wantDisposition: DispositionUnsafeUnknown,
+		},
+		{name: "quiet gate blocks the cycle", connectErr: errGateFailed, wantDisposition: DispositionBlockedQuietGate},
+		{
+			name: "rejected pairing is a failure", connectErr: errUnauthorized,
+			wantErrKind: ErrorKindUnauthorized, wantDisposition: DispositionUnsafeUnknown,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := eligibleObservationTransport(json.RawMessage(`[]`))
+			transport.device.PowerState = stringStandby
+			transport.device.Model = "25_PTM_FTV"
+			transport.connectErr = test.connectErr
+			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+
+			observation, err := adapter.Observe(context.Background(), ObserveRequest{CycleID: "cycle", CollectionGeneration: "generation"})
+			if test.wantErrKind == errorKindNone {
+				if err != nil {
+					t.Fatalf("Observe() error = %v", err)
+				}
+			} else {
+				var typed *Error
+				if !errors.As(err, &typed) || typed.Kind != test.wantErrKind || !errors.Is(err, test.connectErr) {
+					t.Fatalf("Observe() error = %v, want kind %v wrapping the connect failure", err, test.wantErrKind)
+				}
+			}
+			if observation.Disposition != test.wantDisposition || !unauthorized(observation.Authorization) {
+				t.Fatalf("disposition/auth = %v/%+v", observation.Disposition, observation.Authorization)
+			}
+			if test.wantDisposition != DispositionBlockedPowerOff && observation.Power == PowerStateOff {
+				t.Fatal("a connect failure that proves nothing was reported as power off")
+			}
+		})
+	}
 }

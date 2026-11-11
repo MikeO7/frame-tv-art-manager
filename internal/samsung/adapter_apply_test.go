@@ -626,3 +626,43 @@ func newTestAdapterWithMAC(t *testing.T, transport observationTransport) *adapte
 	adapter.config.MAC = []byte{0, 1, 2, 3, 4, 5}
 	return adapter
 }
+
+// A TV lists a confirmed upload a moment after confirming it, so the
+// postcondition polls; a confirmed image that never appears is parked as
+// unknown, because calling it not applied would upload the artwork twice.
+func TestAdapterUploadPostconditionPollsInventory(t *testing.T) {
+	listed := json.RawMessage(`[{"content_id":"new-id","category_id":"MY-C0002"}]`)
+	tests := []struct {
+		name        string
+		afterUpload []json.RawMessage
+		want        Outcome
+		wantErr     bool
+	}{
+		{name: "listed on a later read", afterUpload: []json.RawMessage{json.RawMessage(`[]`), listed}, want: OutcomeApplied},
+		{name: "never listed", want: OutcomeUnknown, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, command := testUploadCommand(t)
+			transport := mutationTransportForInventory(`[]`)
+			transport.inventories = append([]json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`[]`)}, test.afterUpload...)
+			transport.uploadContentID = "new-id"
+			if test.want == OutcomeApplied {
+				transport.inventory = listed
+			}
+			adapter := newTestAdapter(t, &fakeClock{now: time.Unix(100, 0)}, transport)
+			observation := observeForCommand(t, adapter, CapabilityImageUpload)
+			if test.wantErr {
+				adapter.config.RequestTimeout = 50 * time.Millisecond
+			}
+
+			receipt, err := adapter.Apply(context.Background(), observation.Authorization, command)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("Apply(upload) error = %v", err)
+			}
+			if receipt.Outcome != test.want || receipt.ContentID != "new-id" || transport.uploadCalls != 1 {
+				t.Fatalf("receipt/calls = %+v/%d", receipt, transport.uploadCalls)
+			}
+		})
+	}
+}

@@ -66,7 +66,7 @@ func TestMutationPacingPersistsNextPendingBeforeWaitingAndNeverWaitsAfterLast(t 
 	}
 	waiter := newBlockingMutationWaiter()
 	service, err := New(Config{
-		StateDirectory: directory, Policy: Policy{RemoveUnknown: true},
+		StateDirectory: directory,
 	}, Dependencies{
 		Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler),
 	}, WithMutationPacing(time.Second), withMutationWaiter(waiter))
@@ -81,7 +81,7 @@ func TestMutationPacingPersistsNextPendingBeforeWaitingAndNeverWaitsAfterLast(t 
 	done := make(chan runResult, 1)
 	go func() {
 		result, runErr := service.Run(context.Background(), Request{
-			CycleID: "paced", TV: adapter, Snapshot: snapshot(),
+			CycleID: "paced", TV: adapter, Snapshot: snapshot(), Policy: Policy{RemoveUnknown: true},
 		})
 		done <- runResult{result: result, err: runErr}
 	}()
@@ -269,7 +269,7 @@ func TestMutationRetryReobservesAfterDefiniteTransientNotAttempted(t *testing.T)
 	waiter := newBlockingMutationWaiter()
 	waiter.release <- nil
 	service, err := New(Config{
-		StateDirectory: filepath.Join(t.TempDir(), "state"), Policy: Policy{RemoveUnknown: true},
+		StateDirectory: filepath.Join(t.TempDir(), "state"),
 	}, Dependencies{
 		Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler),
 	}, WithMutationAttempts(2), WithMutationPacing(time.Second), withMutationWaiter(waiter))
@@ -278,7 +278,7 @@ func TestMutationRetryReobservesAfterDefiniteTransientNotAttempted(t *testing.T)
 	}
 
 	result, err := service.Run(context.Background(), Request{
-		CycleID: "retry-not-attempted", TV: adapter, Snapshot: snapshot(),
+		CycleID: "retry-not-attempted", TV: adapter, Snapshot: snapshot(), Policy: Policy{RemoveUnknown: true},
 	})
 	if err != nil || result.Status != StatusComplete || result.Applied != 1 {
 		t.Fatalf("Run() = %+v, %v", result, err)
@@ -362,7 +362,7 @@ func TestMutationRetryRejectsUnsafeOutcomes(t *testing.T) {
 				applyErrs:    []error{test.applyError},
 			}
 			service, err := New(Config{
-				StateDirectory: filepath.Join(t.TempDir(), "state"), Policy: Policy{RemoveUnknown: true},
+				StateDirectory: filepath.Join(t.TempDir(), "state"),
 			}, Dependencies{
 				Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler),
 			}, WithMutationAttempts(3))
@@ -371,7 +371,7 @@ func TestMutationRetryRejectsUnsafeOutcomes(t *testing.T) {
 			}
 
 			result, runErr := service.Run(context.Background(), Request{
-				CycleID: "unsafe-retry", TV: adapter, Snapshot: snapshot(),
+				CycleID: "unsafe-retry", TV: adapter, Snapshot: snapshot(), Policy: Policy{RemoveUnknown: true},
 			})
 			if (runErr != nil) != test.wantError || result.Status != test.wantStatus {
 				t.Fatalf("Run() = %+v, %v; want status %q error=%v", result, runErr, test.wantStatus, test.wantError)
@@ -403,7 +403,7 @@ func TestMutationRetryStopsAtConfiguredAttemptLimit(t *testing.T) {
 		applyErrs: []error{transient("first transient"), transient("second transient")},
 	}
 	service, err := New(Config{
-		StateDirectory: filepath.Join(t.TempDir(), "state"), Policy: Policy{RemoveUnknown: true},
+		StateDirectory: filepath.Join(t.TempDir(), "state"),
 	}, Dependencies{
 		Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler),
 	}, WithMutationAttempts(2))
@@ -412,7 +412,7 @@ func TestMutationRetryStopsAtConfiguredAttemptLimit(t *testing.T) {
 	}
 
 	result, runErr := service.Run(context.Background(), Request{
-		CycleID: "retry-limit", TV: adapter, Snapshot: snapshot(),
+		CycleID: "retry-limit", TV: adapter, Snapshot: snapshot(), Policy: Policy{RemoveUnknown: true},
 	})
 	if runErr == nil || result.Status != StatusNotApplied || result.State.Pending != nil {
 		t.Fatalf("Run() = %+v, %v", result, runErr)
@@ -467,7 +467,7 @@ func TestMutationPacingDoesNotWaitForZeroDelayOrDryRun(t *testing.T) {
 			}
 			waiter := newBlockingMutationWaiter()
 			service, err := New(Config{
-				StateDirectory: filepath.Join(t.TempDir(), "state"), Policy: Policy{RemoveUnknown: true},
+				StateDirectory: filepath.Join(t.TempDir(), "state"),
 			}, Dependencies{
 				Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler),
 			}, WithMutationPacing(test.delay), withMutationWaiter(waiter))
@@ -476,6 +476,7 @@ func TestMutationPacingDoesNotWaitForZeroDelayOrDryRun(t *testing.T) {
 			}
 			result, err := service.Run(context.Background(), Request{
 				CycleID: "no-pacing", TV: adapter, Snapshot: snapshot(), DryRun: test.dryRun,
+				Policy: Policy{RemoveUnknown: true},
 			})
 			if err != nil || result.Status != test.wantRun {
 				t.Fatalf("Run() = %+v, %v", result, err)

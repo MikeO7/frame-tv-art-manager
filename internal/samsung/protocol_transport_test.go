@@ -390,3 +390,102 @@ func TestParseImageAddedCorrelation(t *testing.T) {
 		})
 	}
 }
+
+// A TV that answers neither slideshow request is asked once per connection;
+// asking again on every observation would cost both timeouts each cycle.
+func TestProtocolTransportRemembersUnansweredSlideshowUntilReconnect(t *testing.T) {
+	t.Parallel()
+	fixture := newConfiguredTVFixture(t, func(f *protocolTVFixture) {
+		f.unsupported = []string{testProtocolGetSlideshow, "get_auto_rotation_status"}
+	})
+	transport := connectFixtureTransport(t, fixture, filepath.Join(t.TempDir(), "auth", "token"))
+	ctx := context.Background()
+
+	for range 3 {
+		if _, err := transport.Slideshow(ctx); !errors.Is(err, ErrArtAPIError) {
+			t.Fatalf("Slideshow() error = %v, want the TV's rejection", err)
+		}
+	}
+	for _, name := range []string{testProtocolGetSlideshow, "get_auto_rotation_status", requestAPIVersion} {
+		if got := len(fixture.requestsNamed(name)); got != 1 {
+			t.Fatalf("%s sent %d times on one connection, want 1", name, got)
+		}
+	}
+
+	if err := transport.Close(ctx); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := transport.Connect(ctx, false); err != nil {
+		t.Fatalf("reconnect error = %v", err)
+	}
+	if _, err := transport.Slideshow(ctx); !errors.Is(err, ErrArtAPIError) {
+		t.Fatalf("Slideshow() after reconnect error = %v", err)
+	}
+	if got := len(fixture.requestsNamed(testProtocolGetSlideshow)); got != 2 {
+		t.Fatalf("slideshow probes after reconnect = %d, want 2", got)
+	}
+}
+
+// A TV that answers no brightness request is asked once per connection.
+func TestProtocolTransportRemembersUnansweredBrightnessUntilReconnect(t *testing.T) {
+	t.Parallel()
+	names := []string{requestAPIVersion, requestLegacyAPIVersion, requestArtModeSettings, requestGetBrightness}
+	fixture := newConfiguredTVFixture(t, func(f *protocolTVFixture) { f.unsupported = names })
+	transport := connectFixtureTransport(t, fixture, filepath.Join(t.TempDir(), "auth", "token"))
+	ctx := context.Background()
+
+	for range 3 {
+		if _, err := transport.Brightness(ctx); !errors.Is(err, ErrArtAPIError) {
+			t.Fatalf("Brightness() error = %v, want the TV's rejection", err)
+		}
+	}
+	for _, name := range names {
+		if got := len(fixture.requestsNamed(name)); got != 1 {
+			t.Fatalf("%s sent %d times on one connection, want 1", name, got)
+		}
+	}
+}
+
+// A setting the TV has answered on this connection is a managed setting: a
+// later failure is asked again instead of being remembered as unsupported.
+func TestProtocolTransportRetriesSettingThatAnsweredBefore(t *testing.T) {
+	t.Parallel()
+	fixture := newProtocolTVFixture(t)
+	transport := connectFixtureTransport(t, fixture, filepath.Join(t.TempDir(), "auth", "token"))
+	ctx := context.Background()
+	if _, err := transport.Slideshow(ctx); err != nil {
+		t.Fatalf("Slideshow() error = %v", err)
+	}
+
+	fixture.stopAnswering(testProtocolGetSlideshow, "get_auto_rotation_status")
+	for range 2 {
+		if _, err := transport.Slideshow(ctx); !errors.Is(err, ErrArtAPIError) {
+			t.Fatalf("Slideshow() error = %v, want the TV's rejection", err)
+		}
+	}
+	if got := len(fixture.requestsNamed(testProtocolGetSlideshow)); got != 3 {
+		t.Fatalf("slideshow reads = %d, want one per call", got)
+	}
+}
+
+// A TV that answers neither version request is unversioned for the life of the
+// connection: the version probes are not repeated on every brightness read.
+func TestProtocolTransportProbesArtAPIVersionOncePerConnection(t *testing.T) {
+	t.Parallel()
+	fixture := newConfiguredTVFixture(t, func(f *protocolTVFixture) {
+		f.unsupported = []string{requestAPIVersion, requestLegacyAPIVersion}
+	})
+	transport := connectFixtureTransport(t, fixture, filepath.Join(t.TempDir(), "auth", "token"))
+	ctx := context.Background()
+
+	for range 3 {
+		if reading, err := transport.Brightness(ctx); err != nil || reading.Value != 4 {
+			t.Fatalf("Brightness() = %+v, %v", reading, err)
+		}
+	}
+	for _, name := range []string{requestAPIVersion, requestLegacyAPIVersion} {
+		if got := len(fixture.requestsNamed(name)); got != 1 {
+			t.Fatalf("%s sent %d times on one connection, want 1", name, got)
+		}
+	}
+}

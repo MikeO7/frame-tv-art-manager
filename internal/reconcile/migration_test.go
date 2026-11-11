@@ -3,6 +3,7 @@ package reconcile
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -76,7 +77,7 @@ func TestPowerOnFirstRunWakesThenMigratesBeforeCollectionPlanning(t *testing.T) 
 		}},
 	}
 	service, err := New(Config{
-		StateDirectory: directory, LegacyMappingDirectory: directory, Policy: Policy{Power: PowerOn},
+		StateDirectory: directory, LegacyMappingDirectory: directory,
 	}, Dependencies{Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +85,7 @@ func TestPowerOnFirstRunWakesThenMigratesBeforeCollectionPlanning(t *testing.T) 
 
 	result, err := service.Run(context.Background(), Request{
 		CycleID: "wake-then-migrate", TV: adapter, Snapshot: snapshot(item),
+		Policy: Policy{Power: PowerOn, WakeBoundary: testTime},
 	})
 	if err != nil || result.Status != StatusComplete || result.Applied != 1 {
 		t.Fatalf("Run() = %+v, %v", result, err)
@@ -97,44 +99,48 @@ func TestPowerOnFirstRunWakesThenMigratesBeforeCollectionPlanning(t *testing.T) 
 	}
 }
 
-func TestPowerOnUnknownWakeRecoversThenMigratesBeforePlanning(t *testing.T) {
+// A release that recorded wakes as pending commands can leave a state file
+// holding a wake of unknown outcome and a deferred legacy migration. Both are
+// settled from the next observation before anything is planned.
+func TestPendingWakeFromEarlierReleaseRecoversThenMigratesBeforePlanning(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "state")
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	item := artworkItem("monet.jpg", "committed monet bytes")
 	writeLegacyMapping(t, directory, map[string]string{"monet.jpg": "content-1"})
-	firstAdapter := &fakeAdapter{
-		observations: []samsung.Observation{wakeObservation(samsung.SupportSupported)},
-		receipts: []samsung.Receipt{{
-			CommandID: "wake", Outcome: samsung.OutcomeUnknown, CompletedAt: testTime,
-		}},
-		applyErrs: []error{errors.New("wake acknowledgement lost")},
+	off := wakeObservation(samsung.SupportSupported)
+	identity, err := identityFromObservation(off)
+	if err != nil {
+		t.Fatal(err)
 	}
-	newService := func(adapterClock clock) Service {
-		service, newErr := New(Config{
-			StateDirectory: directory, LegacyMappingDirectory: directory, Policy: Policy{Power: PowerOn},
-		}, Dependencies{Clock: adapterClock, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler)})
-		if newErr != nil {
-			t.Fatal(newErr)
-		}
-		return service
+	left := initialState(identity)
+	left.LegacyMigrationPending = true
+	preparedAt := testTime
+	left.Pending = &pending{
+		OperationID: "operation", CycleID: "wake-before-migration-crash", CollectionGen: snapshot(item).Generation,
+		PolicyFingerprint: sha256.Sum256([]byte("policy")),
+		InventoryBefore:   inventoryFingerprint{Digest: off.Inventory.Fingerprint},
+		Command:           commandIntent{Kind: CommandWake}, Phase: phaseOutcomeUnknown,
+		Receipt:    &ReceiptSummary{CommandID: "wake", Outcome: samsung.OutcomeUnknown, CompletedAt: testTime},
+		PreparedAt: &preparedAt,
 	}
-	first := newService(fixedClock{testTime})
-	result, err := first.Run(context.Background(), Request{
-		CycleID: "wake-before-migration-crash", TV: firstAdapter, Snapshot: snapshot(item),
-	})
-	if !errors.Is(err, ErrRecoveryRequired) || result.State.Pending == nil ||
-		!result.State.LegacyMigrationPending {
-		t.Fatalf("first Run() = %+v, %v", result, err)
+	if err := newStateStore(directory).save(context.Background(), left); err != nil {
+		t.Fatal(err)
 	}
 
 	restartAdapter := &fakeAdapter{observations: []samsung.Observation{
-		knownObservation(samsung.PowerStateOn),
 		knownObservation(samsung.PowerStateOn, "content-1"),
 	}}
-	restarted := newService(fixedClock{testTime.Add(time.Minute)})
-	result, err = restarted.Run(context.Background(), Request{
+	restarted, err := New(Config{
+		StateDirectory: directory, LegacyMappingDirectory: directory,
+	}, Dependencies{
+		Clock: fixedClock{testTime.Add(time.Minute)}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := restarted.Run(context.Background(), Request{
 		CycleID: "recover-wake-then-migrate", TV: restartAdapter, Snapshot: snapshot(item),
 	})
 	if err != nil || result.Status != StatusComplete || result.Applied != 0 ||
@@ -159,15 +165,16 @@ func TestPowerOnLegacyMigrationDryRunDoesNotWriteState(t *testing.T) {
 	writeLegacyMapping(t, directory, map[string]string{"monet.jpg": "content-1"})
 	adapter := &fakeAdapter{observations: []samsung.Observation{wakeObservation(samsung.SupportSupported)}}
 	service, err := New(Config{
-		StateDirectory: directory, LegacyMappingDirectory: directory, Policy: Policy{Power: PowerOn},
+		StateDirectory: directory, LegacyMappingDirectory: directory,
 	}, Dependencies{Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	result, err := service.Run(context.Background(), Request{
 		CycleID: "dry-wake-before-migration", TV: adapter, Snapshot: snapshot(item), DryRun: true,
+		Policy: Policy{Power: PowerOn, WakeBoundary: testTime},
 	})
-	if err != nil || result.Status != StatusIncompleteDryRun || adapter.applyCalls != 0 {
+	if err != nil || result.Status != StatusKnownSkip || adapter.applyCalls != 0 {
 		t.Fatalf("Run() = %+v, %v; apply calls = %d", result, err, adapter.applyCalls)
 	}
 	identity, _ := identityFromObservation(adapter.observations[0])
