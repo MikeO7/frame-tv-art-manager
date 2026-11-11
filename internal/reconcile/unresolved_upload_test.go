@@ -38,39 +38,60 @@ func TestResolveUnresolvedUploadProvesOutcomeFromInventory(t *testing.T) {
 	t.Parallel()
 	before := knownObservation(samsung.PowerStateOn, "other")
 	recent, settled := testTime.Add(-time.Minute), testTime.Add(-uploadSettleTime)
+	unexplained := knownObservation(samsung.PowerStateOn, "other", "new")
 	unknownWithID := &ReceiptSummary{CommandID: "upload", Outcome: samsung.OutcomeUnknown, ContentID: "MY_F0009", CompletedAt: recent}
 	tests := []struct {
-		name        string
-		receipt     *ReceiptSummary
-		preparedAt  time.Time
-		observation samsung.Observation
-		wantSettled bool
-		wantBound   bool
+		name         string
+		receipt      *ReceiptSummary
+		preparedAt   time.Time
+		noPreparedAt bool
+		observation  samsung.Observation
+		want         uploadSettlement
+		wantBound    bool
 	}{
 		{
 			name: "receipt ID landed", receipt: unknownWithID, preparedAt: recent,
-			observation: knownObservation(samsung.PowerStateOn, "other", "MY_F0009"), wantSettled: true, wantBound: true,
+			observation: knownObservation(samsung.PowerStateOn, "other", "MY_F0009"), want: uploadSettled, wantBound: true,
 		},
 		{
 			name: "receipt ID absent", receipt: unknownWithID, preparedAt: recent,
-			observation: before, wantSettled: true,
+			observation: before, want: uploadSettled,
 		},
-		{name: "nothing new after settle time", preparedAt: settled, observation: before, wantSettled: true},
+		{name: "nothing new after settle time", preparedAt: settled, observation: before, want: uploadSettled},
 		{
 			name: "other art deleted after settle time", preparedAt: settled,
-			observation: knownObservation(samsung.PowerStateOn), wantSettled: true,
+			observation: knownObservation(samsung.PowerStateOn), want: uploadSettled,
 		},
 		{name: "nothing new but still settling", preparedAt: recent, observation: before},
-		{name: "unexplained new art", preparedAt: settled, observation: knownObservation(samsung.PowerStateOn, "other", "new")},
+		{name: "unexplained new art", preparedAt: settled, observation: unexplained},
+		{
+			name: "unexplained new art just inside the park limit", preparedAt: testTime.Add(-uploadParkLimit + time.Second),
+			observation: unexplained,
+		},
+		{
+			name: "unexplained new art at the park limit", preparedAt: testTime.Add(-uploadParkLimit),
+			observation: unexplained, want: uploadParkExpired,
+		},
+		{
+			name: "unexplained new art with no prepared time", noPreparedAt: true,
+			observation: unexplained, want: uploadParkExpired,
+		},
+		{
+			name: "park limit passed while the TV is off", preparedAt: testTime.Add(-uploadParkLimit),
+			observation: samsung.Observation{},
+		},
 		{name: "inventory unknown", preparedAt: settled, observation: samsung.Observation{}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			state := unresolvedUploadState(t, before, test.receipt, test.preparedAt)
-			got, settledNow := resolveUnresolvedUpload(state, test.observation, testTime)
-			if settledNow != test.wantSettled || (got.UnresolvedUpload == nil) != test.wantSettled {
-				t.Fatalf("settled = %t, parked = %+v; want settled %t", settledNow, got.UnresolvedUpload, test.wantSettled)
+			if test.noPreparedAt {
+				state.UnresolvedUpload.PreparedAt = nil
+			}
+			got, settlement := resolveUnresolvedUpload(state, test.observation, testTime)
+			if settlement != test.want || (got.UnresolvedUpload == nil) != (test.want != uploadStillParked) {
+				t.Fatalf("settlement = %d, parked = %+v; want %d", settlement, got.UnresolvedUpload, test.want)
 			}
 			binding, bound := got.Bindings[digestHex("art")]
 			if bound != test.wantBound || (bound && binding.ContentID != "MY_F0009") {
@@ -109,5 +130,49 @@ func TestRunWithUnresolvedUploadStillConvergesSettings(t *testing.T) {
 	}
 	if result.State.UnresolvedUpload == nil {
 		t.Fatal("unresolved upload was dropped without proof")
+	}
+}
+
+// An upload parked behind artwork that never becomes explained (the image
+// landed under an unreported ID, or the owner added a picture) must not end
+// every later cycle in recovery. After the park limit the upload is given up:
+// the unexplained artwork is left alone as unknown art and planning resumes.
+func TestRunExpiresUnprovableParkedUpload(t *testing.T) {
+	t.Parallel()
+	directory := filepath.Join(t.TempDir(), "state")
+	before := knownObservation(samsung.PowerStateOn, "other")
+	observation := knownObservation(samsung.PowerStateOn, "new", "other")
+	state := unresolvedUploadState(t, before, nil, testTime.Add(-uploadParkLimit))
+	if err := newStateStore(directory).save(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &fakeAdapter{
+		observations: []samsung.Observation{observation},
+		receipts: []samsung.Receipt{{
+			CommandID: "upload", Outcome: samsung.OutcomeApplied, ContentID: "uploaded", CompletedAt: testTime,
+		}},
+	}
+	item := artworkItem("art.jpg", "art")
+	service := newTestService(t, directory, Policy{})
+	result, err := service.Run(context.Background(), Request{
+		CycleID: "expired", TV: adapter, Snapshot: snapshot(item),
+	})
+	if err != nil || result.Status != StatusComplete {
+		t.Fatalf("Run() = %v, %v; want a complete cycle", result.Status, err)
+	}
+	if result.State.UnresolvedUpload != nil {
+		t.Fatal("expired upload is still parked")
+	}
+	if !slices.Equal(adapter.commands, []string{"samsung.Upload"}) {
+		t.Fatalf("commands = %v, want the artwork uploaded again and nothing deleted", adapter.commands)
+	}
+	for digest, binding := range result.State.Bindings {
+		if binding.ContentID == "new" {
+			t.Fatalf("unexplained artwork was bound to %s", digest)
+		}
+	}
+	stored, exists, err := newStateStore(directory).load(context.Background(), result.State.TV)
+	if err != nil || !exists || stored.UnresolvedUpload != nil {
+		t.Fatalf("stored state parked = %+v, exists %t, error %v", stored.UnresolvedUpload, exists, err)
 	}
 }

@@ -52,8 +52,8 @@ func validateState(state State, expected tvIdentity) error {
 	if state.Revision == 0 {
 		return errors.New("reconciliation state revision must be positive")
 	}
-	if state.Bindings == nil || state.Tombstones == nil {
-		return errors.New("reconciliation state maps must be present")
+	if state.Bindings == nil {
+		return errors.New("reconciliation state bindings must be present")
 	}
 	contentIDs := make(map[string]string, len(state.Bindings))
 	for key, binding := range state.Bindings {
@@ -64,17 +64,6 @@ func validateState(state State, expected tvIdentity) error {
 			return fmt.Errorf("content ID %q is bound to digests %s and %s", binding.ContentID, previous, key)
 		}
 		contentIDs[binding.ContentID] = key
-	}
-	for key, tombstone := range state.Tombstones {
-		if strings.TrimSpace(key) == "" || key != tombstone.ContentID || strings.TrimSpace(tombstone.ContentID) == "" {
-			return errors.New("tombstone key and content ID must be identical and nonblank")
-		}
-		if tombstone.Digest != "" && !validDigest(tombstone.Digest) {
-			return fmt.Errorf("tombstone %q has invalid digest", key)
-		}
-		if tombstone.RecordedAt.IsZero() {
-			return fmt.Errorf("tombstone %q has no recorded time", key)
-		}
 	}
 	if err := validateStateEvidence(state); err != nil {
 		return err

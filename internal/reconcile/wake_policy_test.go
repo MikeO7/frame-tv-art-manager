@@ -12,6 +12,10 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
+func scheduledPowerOn() Policy {
+	return Policy{Power: PowerOn, WakeBoundary: testTime}
+}
+
 func TestPowerOnPolicyProbesPowerThenConverges(t *testing.T) {
 	t.Parallel()
 
@@ -40,7 +44,7 @@ func TestPowerOnPolicyProbesPowerThenConverges(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			adapter := &fakeAdapter{observations: test.observations, receipts: test.receipts}
-			service := newTestService(t, filepath.Join(t.TempDir(), "state"), Policy{Power: PowerOn})
+			service := newTestService(t, filepath.Join(t.TempDir(), "state"), scheduledPowerOn())
 			result, err := service.Run(context.Background(), Request{
 				CycleID: "power-on", TV: adapter, Snapshot: snapshot(),
 			})
@@ -63,6 +67,31 @@ func TestPowerOnPolicyProbesPowerThenConverges(t *testing.T) {
 	}
 }
 
+// The manager wakes a TV only for a scheduled boundary. A power-on policy
+// without one is refused before the TV is contacted.
+func TestPowerOnPolicyWithoutWakeBoundaryIsRejected(t *testing.T) {
+	t.Parallel()
+
+	directory := filepath.Join(t.TempDir(), "state")
+	adapter := &fakeAdapter{
+		observations: []samsung.Observation{wakeObservation(samsung.SupportSupported)},
+		receipts:     []samsung.Receipt{{CommandID: "wake", Outcome: samsung.OutcomeApplied, CompletedAt: testTime}},
+	}
+	service := newTestService(t, directory, Policy{})
+	result, err := service.Run(context.Background(), Request{
+		CycleID: "unscheduled-wake", TV: adapter, Snapshot: snapshot(), Policy: Policy{Power: PowerOn},
+	})
+	if err == nil || result.Status != StatusNotApplied {
+		t.Fatalf("Run() result = %#v, error = %v; want a rejected policy", result, err)
+	}
+	if adapter.observeCalls != 0 || adapter.applyCalls != 0 {
+		t.Fatalf("Observe()/Apply() calls = %d/%d, want none", adapter.observeCalls, adapter.applyCalls)
+	}
+	if err := validatePolicy(scheduledPowerOn()); err != nil {
+		t.Fatalf("scheduled power-on policy rejected: %v", err)
+	}
+}
+
 func TestPowerOnPolicyRequiresKnownSupportedWake(t *testing.T) {
 	t.Parallel()
 
@@ -70,25 +99,29 @@ func TestPowerOnPolicyRequiresKnownSupportedWake(t *testing.T) {
 		name        string
 		observation samsung.Observation
 		wantStatus  Status
+		wantErr     error
 	}{
-		{name: "known off without MAC support", observation: wakeObservation(samsung.SupportUnknown), wantStatus: StatusUnsupported},
+		{
+			name: "known off without MAC support", observation: wakeObservation(samsung.SupportUnknown),
+			wantStatus: StatusUnsupported, wantErr: ErrUnsupportedIntent,
+		},
 		{name: "unknown power", observation: func() samsung.Observation {
 			observation := wakeObservation(samsung.SupportSupported)
 			observation.Power = samsung.PowerStateUnknown
 			observation.Disposition = samsung.DispositionUnsafeUnknown
 			return observation
-		}(), wantStatus: StatusNotApplied},
+		}(), wantStatus: StatusKnownSkip},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			directory := filepath.Join(t.TempDir(), "state")
 			adapter := &fakeAdapter{observations: []samsung.Observation{test.observation}}
-			service := newTestService(t, directory, Policy{Power: PowerOn})
+			service := newTestService(t, directory, scheduledPowerOn())
 			result, err := service.Run(context.Background(), Request{
 				CycleID: "unsafe-wake", TV: adapter, Snapshot: snapshot(),
 			})
-			if err == nil || result.Status != test.wantStatus {
+			if !errors.Is(err, test.wantErr) || result.Status != test.wantStatus {
 				t.Fatalf("Run() result = %#v, error = %v", result, err)
 			}
 			if adapter.applyCalls != 0 {
@@ -98,64 +131,6 @@ func TestPowerOnPolicyRequiresKnownSupportedWake(t *testing.T) {
 				t.Fatalf("unsafe wake created durable state: %v", statErr)
 			}
 		})
-	}
-}
-
-func TestPowerOnDryRunPlansWakeWithoutMutationOrDurableWrites(t *testing.T) {
-	t.Parallel()
-
-	directory := filepath.Join(t.TempDir(), "state")
-	adapter := &fakeAdapter{observations: []samsung.Observation{wakeObservation(samsung.SupportSupported)}}
-	service := newTestService(t, directory, Policy{Power: PowerOn})
-	result, err := service.Run(context.Background(), Request{
-		CycleID: "dry-wake", TV: adapter, Snapshot: snapshot(), DryRun: true,
-	})
-	if err != nil || result.Status != StatusIncompleteDryRun {
-		t.Fatalf("Run() result = %#v, error = %v", result, err)
-	}
-	if len(result.Plan.Commands) != 1 || result.Plan.Commands[0].Kind != CommandWake {
-		t.Fatalf("dry-run plan = %#v, want one wake", result.Plan)
-	}
-	if adapter.applyCalls != 0 {
-		t.Fatalf("Apply() calls = %d, want 0", adapter.applyCalls)
-	}
-	if _, statErr := os.Lstat(directory); !errors.Is(statErr, fs.ErrNotExist) {
-		t.Fatalf("dry-run wake created durable state: %v", statErr)
-	}
-}
-
-func TestPowerOnUnknownOutcomePersistsAndRecoversAcrossRestart(t *testing.T) {
-	t.Parallel()
-
-	directory := filepath.Join(t.TempDir(), "state")
-	firstAdapter := &fakeAdapter{
-		observations: []samsung.Observation{wakeObservation(samsung.SupportSupported)},
-		receipts: []samsung.Receipt{{
-			CommandID: "wake", Outcome: samsung.OutcomeUnknown, CompletedAt: testTime,
-		}},
-		applyErrs: []error{errors.New("wake acknowledgement lost")},
-	}
-	first := newTestService(t, directory, Policy{Power: PowerOn})
-	result, err := first.Run(context.Background(), Request{
-		CycleID: "wake-unknown", TV: firstAdapter, Snapshot: snapshot(),
-	})
-	if !errors.Is(err, ErrRecoveryRequired) || result.Status != StatusRecoveryRequired ||
-		result.State.Pending == nil || result.State.Pending.Command.Kind != CommandWake ||
-		result.State.Pending.Phase != phaseOutcomeUnknown {
-		t.Fatalf("first Run() result = %#v, error = %v", result, err)
-	}
-
-	on := knownObservation(samsung.PowerStateOn)
-	restartAdapter := &fakeAdapter{observations: []samsung.Observation{on, on}}
-	restarted := newTestService(t, directory, Policy{Power: PowerOn})
-	result, err = restarted.Run(context.Background(), Request{
-		CycleID: "wake-recovery", TV: restartAdapter, Snapshot: snapshot(),
-	})
-	if err != nil || result.Status != StatusComplete || result.State.Pending != nil {
-		t.Fatalf("restart Run() result = %#v, error = %v", result, err)
-	}
-	if restartAdapter.applyCalls != 0 {
-		t.Fatalf("restart blindly repeated wake; Apply() calls = %d", restartAdapter.applyCalls)
 	}
 }
 
@@ -171,7 +146,7 @@ func TestPowerOnWakeThenContinuesCollectionConvergence(t *testing.T) {
 			{CommandID: "upload", Outcome: samsung.OutcomeApplied, ContentID: "uploaded", CompletedAt: testTime},
 		},
 	}
-	service := newTestService(t, filepath.Join(t.TempDir(), "state"), Policy{Power: PowerOn})
+	service := newTestService(t, filepath.Join(t.TempDir(), "state"), scheduledPowerOn())
 	result, err := service.Run(context.Background(), Request{
 		CycleID: "wake-and-upload", TV: adapter, Snapshot: snapshot(artworkItem("new.jpg", "new")),
 	})

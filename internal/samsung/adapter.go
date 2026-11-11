@@ -128,6 +128,10 @@ func validateAdapterConfig(config Config) error {
 
 // Observe returns only facts obtained successfully during this call. It never
 // wakes the TV or sends any TV mutation.
+// Address returns the configured TV address, which every observation reports
+// as the TV identity's address.
+func (a *adapter) Address() string { return a.config.Address }
+
 func (a *adapter) Observe(ctx context.Context, request ObserveRequest) (Observation, error) {
 	a.operationMu.Lock()
 	defer a.operationMu.Unlock()

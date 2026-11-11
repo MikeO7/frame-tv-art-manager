@@ -14,6 +14,24 @@ import (
 // transfer, so an upload that has not appeared after this did not land.
 const uploadSettleTime = 5 * time.Minute
 
+// uploadParkLimit bounds how long an upload stays parked when inventory can
+// never prove it: the image landed under an ID the TV did not report, or the
+// owner added a picture of their own, so some artwork stays unexplained for
+// good. After this the park is given up and artwork changes resume.
+const uploadParkLimit = 24 * time.Hour
+
+// uploadSettlement is what a fresh inventory says about a parked upload.
+type uploadSettlement uint8
+
+const (
+	// uploadStillParked: the outcome is unproven and the park is kept.
+	uploadStillParked uploadSettlement = iota
+	// uploadSettled: inventory proved the upload landed or did not.
+	uploadSettled
+	// uploadParkExpired: nothing proved the outcome within uploadParkLimit.
+	uploadParkExpired
+)
+
 // parkableUpload reports whether recovery stopped on an upload outcome that a
 // later inventory can still prove.
 func parkableUpload(state State, err error) bool {
@@ -50,13 +68,19 @@ func (s *service) settleUnresolvedUpload(
 	observation samsung.Observation,
 	state State,
 ) (State, error) {
-	resolved, settled := resolveUnresolvedUpload(state, observation, s.clock.Now())
-	if !settled {
+	resolved, settlement := resolveUnresolvedUpload(state, observation, s.clock.Now())
+	switch settlement {
+	case uploadStillParked:
 		return state, nil
+	case uploadParkExpired:
+		s.logger.Warn("upload outcome was never proven; resuming artwork changes, the artwork may be uploaded again",
+			"cycle_id", cycleID, "operation_id", state.UnresolvedUpload.OperationID,
+			"artwork", state.UnresolvedUpload.Command.Name, "parked_for_at_least", uploadParkLimit.String())
+	case uploadSettled:
+		s.logger.Info("unresolved upload settled from inventory", "cycle_id", cycleID,
+			"operation_id", state.UnresolvedUpload.OperationID,
+			"bound", len(resolved.Bindings) > len(state.Bindings))
 	}
-	s.logger.Info("unresolved upload settled from inventory", "cycle_id", cycleID,
-		"operation_id", state.UnresolvedUpload.OperationID,
-		"bound", len(resolved.Bindings) > len(state.Bindings))
 	if dryRun {
 		return resolved, nil
 	}
@@ -72,11 +96,13 @@ func (s *service) settleUnresolvedUpload(
 // the upload is proven absent only when no unexplained artwork has appeared
 // since it was prepared and the settle time has passed. Any new, unbound
 // artwork keeps it parked: binding the wrong image could later delete
-// someone else's art.
-func resolveUnresolvedUpload(state State, observation samsung.Observation, now time.Time) (State, bool) {
+// someone else's art. Such artwork may never go away, so the park expires
+// after uploadParkLimit: the upload is dropped without a binding and the
+// unexplained artwork stays unknown art.
+func resolveUnresolvedUpload(state State, observation samsung.Observation, now time.Time) (State, uploadSettlement) {
 	parked := state.UnresolvedUpload
 	if parked == nil || !observation.Inventory.Known {
-		return state, false
+		return state, uploadStillParked
 	}
 	present := make(map[string]struct{}, len(observation.Inventory.ContentIDs))
 	for _, id := range observation.Inventory.ContentIDs {
@@ -91,16 +117,21 @@ func resolveUnresolvedUpload(state State, observation samsung.Observation, now t
 				proven.Receipt.ContentID = contentID
 				foldUploadBinding(&result, proven, observation, now)
 			}
-			return result, true
+			return result, uploadSettled
 		}
 	}
 	if settleAt := uploadSettleStart(parked); settleAt != nil && now.Sub(*settleAt) < uploadSettleTime {
-		return state, false
+		return state, uploadStillParked
 	}
-	if unexplainedArtwork(state, parked, observation) {
-		return state, false
+	if !unexplainedArtwork(state, parked, observation) {
+		return result, uploadSettled
 	}
-	return result, true
+	// A state file written before PreparedAt existed cannot say how long the
+	// upload has been parked, so it is treated as expired.
+	if parked.PreparedAt == nil || now.Sub(*parked.PreparedAt) >= uploadParkLimit {
+		return result, uploadParkExpired
+	}
+	return state, uploadStillParked
 }
 
 func uploadSettleStart(parked *pending) *time.Time {

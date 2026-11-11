@@ -123,6 +123,10 @@ func (s stateStore) validateDirectory(create bool) error {
 }
 
 func encodeState(state State) ([]byte, error) {
+	if state.Tombstones == nil {
+		// Earlier releases refuse a state file whose tombstones are absent.
+		state.Tombstones = map[string]tombstone{}
+	}
 	checksum, err := stateChecksum(state)
 	if err != nil {
 		return nil, fmt.Errorf("encode reconciliation state: %w", err)

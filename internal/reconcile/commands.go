@@ -29,13 +29,6 @@ func validateRequest(cycleID string, tv samsung.Adapter, snapshot collection.Sna
 	return validatePolicy(policy)
 }
 
-func (s *service) effectivePolicy(request Policy) Policy {
-	if request == (Policy{}) {
-		return s.policy
-	}
-	return normalizePolicy(request)
-}
-
 const baseCapabilities = samsung.CapabilityArtStateObservation | samsung.CapabilityUserArtInventory
 
 func initialObservationCapabilities(policy Policy) samsung.CapabilitySet {
@@ -73,8 +66,6 @@ func convergenceObservationCapabilities(policy Policy) samsung.CapabilitySet {
 func requiredCapabilities(command commandIntent) samsung.CapabilitySet {
 	required := baseCapabilities
 	switch command.Kind {
-	case CommandWake:
-		return samsung.CapabilityRemotePower
 	case CommandUpload:
 		required |= samsung.CapabilityImageUpload
 	case CommandDeleteOwned, CommandDeleteUnknown:
@@ -126,8 +117,6 @@ func samsungCommand(intent commandIntent) (samsung.Command, error) {
 		return samsung.ConfigureBrightness{PreviousValue: *intent.PreviousValue, Value: *intent.DesiredValue}, nil
 	case commandPowerOff:
 		return samsung.PowerOff{}, nil
-	case CommandWake:
-		return samsung.Wake{}, nil
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedIntent, intent.Kind)
 	}

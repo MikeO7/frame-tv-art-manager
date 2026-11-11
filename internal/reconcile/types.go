@@ -33,7 +33,6 @@ type Service interface {
 type Config struct {
 	StateDirectory         string
 	LegacyMappingDirectory string
-	Policy                 Policy
 }
 
 type Dependencies struct {
@@ -114,9 +113,9 @@ type Policy struct {
 	// Rotation is how long owned artwork stays on a full TV before it may be
 	// swapped for artwork that is waiting. Zero disables rotation.
 	Rotation time.Duration
-	// WakeBoundary ties PowerOn to one scheduled power-on time. The TV is
-	// woken at most once per boundary, recorded durably. Zero keeps the
-	// unscheduled PowerOn behavior.
+	// WakeBoundary is the scheduled power-on time PowerOn belongs to. The TV
+	// is woken at most once per boundary, recorded durably. PowerOn requires
+	// it: the manager never wakes a TV outside a scheduled boundary.
 	WakeBoundary time.Time
 }
 
@@ -155,8 +154,9 @@ type PowerPolicy uint8
 const (
 	PowerPreserve PowerPolicy = iota
 	PowerOff
-	// PowerOn wakes a TV only after it has been positively observed as off.
-	// Unknown power state never authorizes a wake attempt.
+	// PowerOn wakes a TV once for the policy's WakeBoundary, and only when it
+	// is observed off or dark on the network. Any other unknown power state
+	// never authorizes a wake attempt.
 	PowerOn
 )
 
@@ -239,6 +239,7 @@ type Binding struct {
 	ConfirmedAt          time.Time `json:"confirmed_at"`
 }
 
+// tombstone is the entry type of State.Tombstones, kept for file compatibility.
 type tombstone struct {
 	Digest     string    `json:"digest,omitempty"`
 	ContentID  string    `json:"content_id"`
@@ -283,10 +284,14 @@ type pending struct {
 }
 
 type State struct {
-	Version    int                  `json:"version"`
-	TV         tvIdentity           `json:"tv"`
-	Revision   uint64               `json:"revision"`
-	Bindings   map[string]Binding   `json:"bindings"`
+	Version  int                `json:"version"`
+	TV       tvIdentity         `json:"tv"`
+	Revision uint64             `json:"revision"`
+	Bindings map[string]Binding `json:"bindings"`
+	// Tombstones is retained only for file compatibility. Nothing reads or
+	// writes its entries, but state files carry the field inside their
+	// checksum and earlier releases refuse a file without it, so it is
+	// decoded, preserved and written back unchanged.
 	Tombstones map[string]tombstone `json:"tombstones"`
 	Capacity   capacityEvidence     `json:"capacity"`
 	// LastShown records when desired artwork last left the TV, keyed by digest.

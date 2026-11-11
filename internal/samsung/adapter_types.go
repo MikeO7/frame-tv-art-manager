@@ -236,6 +236,8 @@ type Receipt struct {
 
 // Adapter is the only Samsung surface intended for reconciliation code.
 type Adapter interface {
+	// Address returns the configured TV address without contacting the TV.
+	Address() string
 	Observe(context.Context, ObserveRequest) (Observation, error)
 	Apply(context.Context, Authorization, Command) (Receipt, error)
 	Close(context.Context) error
