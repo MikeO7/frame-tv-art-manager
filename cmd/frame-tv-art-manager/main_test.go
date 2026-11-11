@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -158,6 +160,114 @@ func TestBootstrapSources(t *testing.T) {
 			t.Fatal("bootstrapSources accepted an invalid parent path")
 		}
 	})
+}
+
+func TestBootstrapSourcesMatchesTheFormatTheLoaderReads(t *testing.T) {
+	// The loader reads .yaml and .yml as a "providers:" map and every other
+	// file as one source per line.
+	example := regexp.MustCompile(
+		`^(?:(?:nasa|art_institute_of_chicago|met|cleveland|smk|museum|commons|unsplash|pexels|pixabay):\S+|https://\S+)$`)
+	tests := []struct {
+		file     string
+		wantYAML bool
+	}{
+		{file: "sources.yaml", wantYAML: true},
+		{file: "sources.yml", wantYAML: true},
+		{file: "SOURCES.YAML", wantYAML: true},
+		{file: "sources.txt"},
+		{file: "sources.list"},
+		{file: "sources"},
+	}
+	for _, test := range tests {
+		t.Run(test.file, func(t *testing.T) {
+			sourcesFile := filepath.Join(t.TempDir(), test.file)
+			if err := bootstrapSources(context.Background(), &config.Config{SourcesFile: sourcesFile}, slog.Default()); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(sourcesFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hasProviders := strings.Contains(string(data), "providers:"); hasProviders != test.wantYAML {
+				t.Fatalf("template has a providers map = %v, want %v", hasProviders, test.wantYAML)
+			}
+			if test.wantYAML {
+				return
+			}
+			examples := 0
+			for line := range strings.Lines(string(data)) {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				if !strings.HasPrefix(line, "#") {
+					t.Fatalf("starter line %q is active; a new file must list no sources", line)
+				}
+				if strings.HasPrefix(line, "# ") || line == "#" {
+					continue
+				}
+				// An example: uncommenting it must leave one whole source,
+				// because the line format has no trailing comments.
+				examples++
+				if source := strings.TrimPrefix(line, "#"); !example.MatchString(source) {
+					t.Errorf("uncommented example %q is not a single source line", source)
+				}
+			}
+			if examples < 10 {
+				t.Fatalf("line template has %d examples, want one per provider command", examples)
+			}
+		})
+	}
+}
+
+func TestDirectoryOwnerLeavesTheUnsetHalfAlone(t *testing.T) {
+	tests := []struct {
+		name             string
+		puid, pgid       int
+		wantUID, wantGID int
+		wantChange       bool
+	}{
+		{name: "neither set", wantUID: -1, wantGID: -1},
+		{name: "only PUID", puid: 1000, wantUID: 1000, wantGID: -1, wantChange: true},
+		{name: "only PGID", pgid: 100, wantUID: -1, wantGID: 100, wantChange: true},
+		{name: "both", puid: 1000, pgid: 100, wantUID: 1000, wantGID: 100, wantChange: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			uid, gid, change := directoryOwner(test.puid, test.pgid)
+			if uid != test.wantUID || gid != test.wantGID || change != test.wantChange {
+				t.Fatalf("directoryOwner(%d, %d) = %d, %d, %v; want %d, %d, %v",
+					test.puid, test.pgid, uid, gid, change, test.wantUID, test.wantGID, test.wantChange)
+			}
+		})
+	}
+}
+
+func TestPrepareDirectoryWithOnlyPUIDKeepsTheGroup(t *testing.T) {
+	uid := os.Getuid()
+	if uid == 0 {
+		t.Skip("PUID=0 means unset, so this needs a non-root user")
+	}
+	path := filepath.Join(t.TempDir(), "artwork")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Forcing the group to root, as PUID alone used to, fails for a non-root
+	// user or changes the group.
+	if err := prepareDirectory(path, 0o755, uid, 0); err != nil {
+		t.Fatalf("prepareDirectory() with only PUID error = %v", err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := after.Sys().(*syscall.Stat_t).Gid, before.Sys().(*syscall.Stat_t).Gid; got != want {
+		t.Fatalf("group = %d, want it left at %d", got, want)
+	}
 }
 
 func TestValidateDryRunDirectoriesIsReadOnly(t *testing.T) {

@@ -180,8 +180,14 @@ func validateRanges(cfg *Config) error {
 		{between(cfg.SyncIntervalMin, 1, 43_200), "SYNC_INTERVAL_MINUTES must be between 1 and 43200"},
 		{cfg.ShutdownTimeout > 0 && cfg.ShutdownTimeout <= 10*time.Minute, "SHUTDOWN_TIMEOUT_SECONDS must be between 1 and 600"},
 		{between(cfg.SlideshowInterval, 1, 1440), "SLIDESHOW_INTERVAL must be between 1 and 1440"},
-		{cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours <= 168, "AUTO_OFF_GRACE_HOURS must be greater than 0 and at most 168"},
-		{cfg.AutoOnGraceHours > 0 && cfg.AutoOnGraceHours <= 24, "AUTO_ON_GRACE_HOURS must be greater than 0 and at most 24"},
+		{
+			cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours < 24,
+			"AUTO_OFF_GRACE_HOURS must be greater than 0 and less than 24; a window of 24 hours or more would keep the TV off all day",
+		},
+		{
+			cfg.AutoOnGraceHours > 0 && cfg.AutoOnGraceHours < 24,
+			"AUTO_ON_GRACE_HOURS must be greater than 0 and less than 24; a window of 24 hours or more would never close",
+		},
 		{len(cfg.MatteStyle) <= 128, "MATTE_STYLE must be at most 128 characters"},
 		{len(cfg.PortraitMatte) <= 128, "PORTRAIT_MATTE must be at most 128 characters"},
 		{between(cfg.RotationIntervalDays, 0, 365), "ROTATION_INTERVAL_DAYS must be between 0 and 365"},

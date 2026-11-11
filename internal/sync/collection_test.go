@@ -77,6 +77,7 @@ func TestLocalCollectionLogsInventoryBoundaryAndDuration(t *testing.T) {
 		release: make(chan struct{}),
 	}
 	collection := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg:    &config.Config{ArtworkDir: root},
 		logger: slog.New(slog.NewJSONHandler(&output, nil)),
 		store:  store,
@@ -127,6 +128,7 @@ func TestLocalCollectionLogsInventoryFailureDuration(t *testing.T) {
 		err:     wantErr,
 	}
 	collection := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg:    &config.Config{ArtworkDir: root},
 		logger: slog.New(slog.NewJSONHandler(&output, nil)),
 		store:  store,
@@ -230,6 +232,7 @@ func TestLocalCollectionOptimizationPreflightSkipsOrStages(t *testing.T) {
 			base := newTestCollectionStore(t, artworkDir)
 			recording := &countingCollectionStore{Store: base}
 			manager := &localCollection{
+				cycle: make(chan struct{}, 1), limits: newTransformGate(),
 				cfg: &config.Config{
 					ArtworkDir: artworkDir, OptimizeEnabled: true,
 					OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,
@@ -276,6 +279,7 @@ func TestLocalCollectionOptimizationPreservesUploadIdentityInManifest(t *testing
 		OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,
 	}
 	manager := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg: cfg, logger: slog.Default(), loader: fixedSourceLoader{}, store: store,
 	}
 	result, err := manager.prepareCycle(context.Background())
@@ -323,6 +327,7 @@ func TestLocalCollectionPrepareOwnsCompleteCycle(t *testing.T) {
 		OptimizeMaxWidth: 10, OptimizeMaxHeight: 6, OptimizeJPEGQuality: 90,
 	}
 	collection := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg: cfg, logger: slog.Default(), loader: fixedSourceLoader{downloaded: 1},
 		store: newTestCollectionStore(t, artworkDir),
 	}
@@ -348,6 +353,7 @@ func TestLocalCollectionPreservesSourceOriginAcrossOptimization(t *testing.T) {
 		t.Fatalf("seed source artwork: %v", err)
 	}
 	manager := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg: &config.Config{
 			ArtworkDir: artworkDir, OptimizeEnabled: true,
 			OptimizeMaxWidth: 10, OptimizeMaxHeight: 6, OptimizeJPEGQuality: 90,
@@ -409,6 +415,7 @@ func TestLocalCollectionPrepareKeepsLastKnownGoodArtWhenSourcesFail(t *testing.T
 				loaderErr = context.Canceled
 			}
 			collection := &localCollection{
+				cycle: make(chan struct{}, 1), limits: newTransformGate(),
 				cfg: &config.Config{ArtworkDir: artworkDir}, logger: slog.New(slog.DiscardHandler), health: status,
 				loader: fixedSourceLoader{err: loaderErr}, store: store,
 			}
@@ -448,6 +455,7 @@ func TestLocalCollectionPrepareDryRunIsReadOnly(t *testing.T) {
 	}
 
 	collection := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg:    &config.Config{ArtworkDir: artworkDir, DryRun: true, OptimizeEnabled: true},
 		logger: slog.Default(), loader: panicSourceLoader{},
 		store: newTestCollectionStore(t, artworkDir),
@@ -564,6 +572,7 @@ func TestLocalCollectionServesImportsWhileACycleDownloads(t *testing.T) {
 	}
 	loader := blockingSourceLoader{started: make(chan struct{}), release: make(chan struct{})}
 	manager := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg: &config.Config{
 			ArtworkDir: artworkDir, OptimizeEnabled: true,
 			OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,
@@ -617,6 +626,7 @@ func TestLocalCollectionOptimizesArtworkThatArrivesWhileRendering(t *testing.T) 
 	}
 	store := &applyHookStore{Store: inner}
 	manager := &localCollection{
+		cycle: make(chan struct{}, 1), limits: newTransformGate(),
 		cfg: &config.Config{
 			ArtworkDir: artworkDir, OptimizeEnabled: true,
 			OptimizeMaxWidth: 4, OptimizeMaxHeight: 4, OptimizeJPEGQuality: 90,

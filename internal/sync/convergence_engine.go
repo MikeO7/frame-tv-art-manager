@@ -42,8 +42,11 @@ type convergenceEngine struct {
 	// wake coalesces early Sync Cycle requests into one pending cycle.
 	wake chan struct{}
 
-	mu         sync.Mutex
-	cycleNum   int
+	mu       sync.Mutex
+	cycleNum int
+	// nextTick is when RunLoop's sync timer fires next; it is zero until the
+	// timer starts.
+	nextTick   time.Time
 	displayNum int
 	placements map[string][]string
 	closeOnce  sync.Once
@@ -94,24 +97,29 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 	// RunOnce records and logs its own failures; only cancellation stops the loop.
 	_ = engine.RunOnce(ctx)
 	if ctx.Err() == nil {
-		ticker := time.NewTicker(engineSyncInterval(engine.cfg))
+		interval := engineSyncInterval(engine.cfg)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		started := time.Now()
+		engine.setNextTick(started.Add(interval))
 		// Pictures change on their own schedule, so a lighter timer changes
 		// them between sync cycles.
 		var display <-chan time.Time
-		if interval := displayInterval(engine.cfg); interval > 0 {
-			displayTicker := time.NewTicker(interval)
+		if every := displayInterval(engine.cfg); every > 0 {
+			displayTicker := time.NewTicker(every)
 			defer displayTicker.Stop()
 			display = displayTicker.C
 		}
 		for ctx.Err() == nil {
 			select {
 			case <-ctx.Done():
-			case <-ticker.C:
+			case tick := <-ticker.C:
+				engine.setNextTick(tickAfter(started, interval, tick))
 				_ = engine.RunOnce(ctx)
 			case <-display:
 				_ = engine.RunDisplay(ctx)
 			case <-engine.wake:
+				// A requested cycle is extra: the timer keeps its schedule.
 				engine.logger.Info("starting requested sync cycle")
 				_ = engine.RunOnce(ctx)
 			}
@@ -119,6 +127,45 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 	}
 	engine.logger.Info("shutting down sync loop", "reason", ctx.Err())
 	return ctx.Err()
+}
+
+// tickAfter returns when a timer started at started and firing every interval
+// fires next after the tick it delivered at tick. A timer keeps its original
+// schedule however late a tick is received, so the answer stays on it.
+func tickAfter(started time.Time, interval time.Duration, tick time.Time) time.Time {
+	elapsed := max(tick.Sub(started), 0)
+	return started.Add((elapsed/interval + 1) * interval)
+}
+
+func (engine *convergenceEngine) setNextTick(next time.Time) {
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	engine.nextTick = next
+}
+
+// nextSyncAt reports when the next timed sync cycle starts, as seen at now.
+// Before the timer exists (the startup cycle) it starts one interval from
+// now; a tick that came due during a long cycle is served at once.
+func (engine *convergenceEngine) nextSyncAt(now time.Time) time.Time {
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	if engine.nextTick.IsZero() {
+		return now.Add(engineSyncInterval(engine.cfg))
+	}
+	if engine.nextTick.Before(now) {
+		return now
+	}
+	return engine.nextTick
+}
+
+// summaryLocation is the clock the cycle summary is written in.
+func (engine *convergenceEngine) summaryLocation(logger *slog.Logger) *time.Location {
+	location, err := time.LoadLocation(engine.cfg.Timezone)
+	if err != nil {
+		logger.Warn("cycle summary uses UTC; LOCATION_TIMEZONE could not be loaded", "error", err)
+		return time.UTC
+	}
+	return location
 }
 
 // displayInterval is how often RunLoop changes the picture on its own timer.
@@ -177,7 +224,8 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 		return ctx.Err()
 	}
 	logCycleSummary(engine.logger, cycleSummary{
-		CycleNum: cycleNum, StartTime: startedAt, SyncIntervalMin: engine.cfg.SyncIntervalMin,
+		CycleNum: cycleNum, StartTime: startedAt,
+		NextSync: engine.nextSyncAt(time.Now()), Location: engine.summaryLocation(cycleLog),
 		TotalLocal: len(prepared.snapshot.Items), FromSources: prepared.downloaded,
 		Optimized: prepared.optimized, FailedTVs: failedTVs, TVs: summaries, Warnings: prepared.warnings,
 	})

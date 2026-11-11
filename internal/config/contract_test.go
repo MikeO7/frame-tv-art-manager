@@ -112,7 +112,6 @@ func TestLoadLegacyEnvironmentPrecedenceContract(t *testing.T) {
 	clearEnvironmentForContract(t)
 	t.Setenv("TV_IPS", "192.0.2.10")
 	t.Setenv("VERIFY_TLS", contractTrue)
-	t.Setenv("SKIP_TLS_VERIFY", contractTrue)
 	t.Setenv("SLIDESHOW_ENABLED", "")
 	t.Setenv("SLIDESHOW_INTERVAL", "15")
 
@@ -120,8 +119,8 @@ func TestLoadLegacyEnvironmentPrecedenceContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadWithWarnings() error = %v", err)
 	}
-	if got.VerifyTLS {
-		t.Fatal("SKIP_TLS_VERIFY=true must override VERIFY_TLS=true")
+	if !got.VerifyTLS {
+		t.Fatal("VERIFY_TLS=true must turn certificate verification on")
 	}
 	if !got.SlideshowOverride {
 		t.Fatal("presence of a SLIDESHOW_* variable must enable override")
@@ -152,8 +151,8 @@ func TestLoadEveryEnvironmentValueContract(t *testing.T) {
 		"REMOVE_UNKNOWN_IMAGES": contractTrue, "ROTATION_INTERVAL_DAYS": "3.5", "AUTO_OFF_TIME": "23:15",
 		"AUTO_OFF_GRACE_HOURS": "1.5", "TV_MAC": "AA:BB:CC:DD:EE:FF", "AUTO_ON_TIME": "06:45", "AUTO_ON_GRACE_HOURS": "3",
 		"ENABLE_REST_GATE": contractTrue, "VERIFY_TLS": contractTrue,
-		"SKIP_TLS_VERIFY": contractFalse, "ARTWORK_SOURCES_FILE": "/srv/sources.yaml",
-		"UNSPLASH_APP_ID": "app", "UNSPLASH_ACCESS_KEY": "access",
+		"ARTWORK_SOURCES_FILE": "/srv/sources.yaml",
+		"UNSPLASH_APP_ID":      "app", "UNSPLASH_ACCESS_KEY": "access",
 		"UNSPLASH_SECRET_KEY": "secret", "NASA_API_KEY": "nasa",
 		"PEXELS_API_KEY": "pexels", "PIXABAY_API_KEY": "pixabay",
 		"IMAGE_OPTIMIZE_ENABLED": contractFalse, "SMART_CROP_ENABLED": contractTrue,

@@ -105,6 +105,78 @@ func TestManagedEngineLifecycleDelegatesThroughCanonicalBoundaries(t *testing.T)
 	}
 }
 
+func TestManagedEnginePrepareAppliesConfiguredDryRunToAPlainRequest(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "local.jpg"), createSmallJPEG(t), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := managedTestConfig(t, root)
+	cfg.DryRun = true
+	managed, err := NewManagedEngine(context.Background(), cfg, slog.Default(), nil)
+	if err != nil {
+		t.Fatalf("NewManagedEngine() error = %v", err)
+	}
+	// Startup prepares with an empty request and relies on the collection to
+	// apply DRY_RUN.
+	snapshot, err := managed.Prepare(context.Background(), collectionpkg.PrepareRequest{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if !snapshot.DryRun {
+		t.Fatal("Prepare() did not apply the configured dry-run policy")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "local.jpg" {
+		t.Fatalf("dry-run Prepare() changed the artwork folder: %v", entries)
+	}
+}
+
+func TestManagedEngineRefusesAPreviewWhileATransformRuns(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "local.jpg"), createSmallJPEG(t), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	managed, err := NewManagedEngine(context.Background(), managedTestConfig(t, root), slog.Default(), nil)
+	if err != nil {
+		t.Fatalf("NewManagedEngine() error = %v", err)
+	}
+	t.Cleanup(func() { _ = managed.Close(context.Background()) })
+	snapshot, err := managed.Prepare(context.Background(), collectionpkg.PrepareRequest{})
+	if err != nil || len(snapshot.Items) != 1 {
+		t.Fatalf("Prepare() = %d items, %v; want the one artwork", len(snapshot.Items), err)
+	}
+
+	// A collection optimization holds the running slot for minutes.
+	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		finished <- managed.limits.run(context.Background(), false, func(context.Context) error {
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	<-entered
+	rendered, err := managed.RenderPreview(context.Background(), snapshot.Items[0])
+	if rendered != nil || !errors.Is(err, errTransformsBusy) {
+		t.Fatalf("RenderPreview() beside a running transform = %v, %v; want errTransformsBusy", rendered, err)
+	}
+	if !strings.Contains(err.Error(), "try again shortly") || !strings.Contains(err.Error(), "local.jpg") {
+		t.Fatalf("RenderPreview() error = %q, want it to name the artwork and say to retry shortly", err)
+	}
+	close(release)
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	if rendered, err := managed.RenderPreview(context.Background(), snapshot.Items[0]); err != nil || rendered == nil {
+		t.Fatalf("RenderPreview() on an idle gate = %v, %v; want the preview", rendered, err)
+	}
+}
+
 func managedTestConfig(t *testing.T, artworkDir string) *config.Config {
 	t.Helper()
 	return &config.Config{

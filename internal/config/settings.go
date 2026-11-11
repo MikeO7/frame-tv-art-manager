@@ -47,9 +47,6 @@ func LoadEnviron(environ []string) (*Config, []warning, error) {
 
 //nolint:funlen // keeping the complete environment schema together makes defaults auditable
 func (env *environment) loadConfig() (*Config, error) {
-	// Parsed before the literal so a malformed value is reported even when
-	// VERIFY_TLS is false.
-	skipTLSVerify := env.boolean("SKIP_TLS_VERIFY", false)
 	cfg := &Config{
 		ArtworkDir:                     env.str("ARTWORK_DIR", "/data/artwork"),
 		MaxArtworkImages:               env.integer("MAX_ARTWORK_IMAGES", 0),
@@ -82,7 +79,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		AutoOnTime:                     env.str("AUTO_ON_TIME", ""),
 		AutoOnGraceHours:               env.decimal("AUTO_ON_GRACE_HOURS", 2),
 		EnableRESTGate:                 env.boolean("ENABLE_REST_GATE", false),
-		VerifyTLS:                      env.boolean("VERIFY_TLS", false) && !skipTLSVerify,
+		VerifyTLS:                      env.boolean("VERIFY_TLS", false),
 		SourcesFile:                    env.str("ARTWORK_SOURCES_FILE", ""),
 		UnsplashAccessKey:              env.str("UNSPLASH_ACCESS_KEY", ""),
 		NasaAPIKey:                     env.str("NASA_API_KEY", "DEMO_KEY"),
@@ -146,6 +143,9 @@ func (env *environment) loadConfig() (*Config, error) {
 			env.warn(deprecated, "ignored", deprecated+" is no longer used; only UNSPLASH_ACCESS_KEY is required")
 		}
 	}
+	if env.present("SKIP_TLS_VERIFY") {
+		env.warn("SKIP_TLS_VERIFY", "ignored", "SKIP_TLS_VERIFY is no longer used and is ignored; use VERIFY_TLS to control TV certificate verification")
+	}
 	mac := env.str("TV_MAC", "")
 	if len(cfg.TVIPs) > 1 && mac != "" {
 		env.warn("TV_MAC", "disabled", "TV_MAC is ambiguous for multiple TVs; automatic Wake is disabled")
@@ -161,6 +161,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		env.warn("AUTO_ON_TIME", "disabled", "AUTO_ON_TIME needs TV_MAC for a single TV; scheduled wake is disabled")
 		cfg.AutoOnTime = ""
 	}
+	env.warnScheduleWithoutTimezone(cfg)
 	return cfg, nil
 }
 
@@ -292,9 +293,28 @@ func (env *environment) optionalDecimal(key string) (float64, bool, error) {
 	return parsed, true, nil
 }
 
+// present reports whether key carries a value. An empty or blank value counts
+// as unset, exactly as it does for every typed accessor.
 func (env *environment) present(key string) bool {
-	_, ok := env.values[key]
-	return ok
+	return strings.TrimSpace(env.values[key]) != ""
+}
+
+// warnScheduleWithoutTimezone reports a power schedule that will be read as
+// UTC because no timezone was configured, which is rarely what a household
+// clock time means.
+func (env *environment) warnScheduleWithoutTimezone(cfg *Config) {
+	if env.present("LOCATION_TIMEZONE") {
+		return
+	}
+	for _, schedule := range []struct{ variable, value string }{
+		{"AUTO_OFF_TIME", cfg.AutoOffTime},
+		{"AUTO_ON_TIME", cfg.AutoOnTime},
+	} {
+		if schedule.value != "" {
+			env.warn(schedule.variable, "UTC",
+				schedule.variable+" is read as UTC because LOCATION_TIMEZONE is not set; set LOCATION_TIMEZONE to use local time")
+		}
+	}
 }
 
 // legacyMaxBrightness is the top of the 0-50 scale earlier releases

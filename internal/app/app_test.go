@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -520,6 +521,78 @@ func TestApplicationBoundsBlockingResourceCleanup(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Run() exceeded cleanup deadline")
 	}
+}
+
+func TestApplicationClosesResourcesAfterShutdownTimesOut(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		type closeCall struct {
+			err    error
+			budget time.Duration
+		}
+		calls := make(chan closeCall, 1)
+		application, err := app.New(app.Options{
+			// A cycle that ignores cancellation spends the whole budget.
+			RunCycle: func(context.Context) error { <-release; return nil },
+			Closers: []app.ResourceCloser{closerFunc(func(ctx context.Context) error {
+				deadline, _ := ctx.Deadline()
+				calls <- closeCall{err: ctx.Err(), budget: time.Until(deadline)}
+				return nil
+			})},
+			ShutdownTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("New() error = %v", err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err = application.Run(ctx)
+		close(release)
+
+		call := <-calls
+		if call.err != nil {
+			t.Fatalf("closer context error = %v, want a live context so resources are released", call.err)
+		}
+		if call.budget != 5*time.Second {
+			t.Fatalf("closer budget = %v, want 5s", call.budget)
+		}
+		if !errors.Is(err, app.ErrShutdownTimeout) {
+			t.Fatalf("Run() error = %v, want ErrShutdownTimeout", err)
+		}
+		if count := strings.Count(err.Error(), app.ErrShutdownTimeout.Error()); count != 1 {
+			t.Fatalf("Run() error = %q reports the timeout %d times, want once", err, count)
+		}
+	})
+}
+
+func TestApplicationReportsOneTimeoutWhenClosersAlsoRunOut(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		application, err := app.New(app.Options{
+			RunCycle: func(context.Context) error { <-release; return nil },
+			Closers: []app.ResourceCloser{closerFunc(func(ctx context.Context) error {
+				<-ctx.Done()
+				return ctx.Err()
+			})},
+			ShutdownTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("New() error = %v", err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		started := time.Now()
+		err = application.Run(ctx)
+		close(release)
+		if elapsed := time.Since(started); elapsed != 6*time.Second {
+			t.Fatalf("Run() took %v, want the 1s shutdown budget plus the 5s close budget", elapsed)
+		}
+		if count := strings.Count(err.Error(), app.ErrShutdownTimeout.Error()); count != 1 {
+			t.Fatalf("Run() error = %q reports the timeout %d times, want once", err, count)
+		}
+	})
 }
 
 type stateRecorder struct {
