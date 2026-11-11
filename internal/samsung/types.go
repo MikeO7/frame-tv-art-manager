@@ -117,7 +117,6 @@ type artResponse struct {
 	Type           protocolString  `json:"type,omitempty"`
 	ConnInfoRaw    json.RawMessage `json:"conn_info,omitempty"`
 	Status         string          `json:"status,omitempty"`
-	RequestData    string          `json:"request_data,omitempty"`
 	CategoryID     string          `json:"category_id,omitempty"`
 	Min            protocolString  `json:"min,omitempty"`
 	Max            protocolString  `json:"max,omitempty"`

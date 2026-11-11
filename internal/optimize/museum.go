@@ -34,12 +34,6 @@ func applyMuseumMode(src *image.RGBA, intensity int) *image.RGBA {
 	return galleryMasterPolish(src)
 }
 
-// calculateRMSContrast is the standard deviation of 8-bit luminance.
-func calculateRMSContrast(src *image.RGBA) float64 {
-	_, rms := lumaMeanAndRMS(src)
-	return rms
-}
-
 // lumaMeanAndRMS returns the mean and standard deviation of 8-bit luminance.
 func lumaMeanAndRMS(src *image.RGBA) (mean, rms float64) {
 	width, height := src.Bounds().Dx(), src.Bounds().Dy()

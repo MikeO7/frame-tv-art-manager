@@ -7,8 +7,6 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/optimize"
 )
 
-// RotationInterval returns how long each artwork stays on a full TV before
-// rotation may replace it. Zero disables rotation.
 // Slideshow modes: the manager changes the picture itself, or the TV's own
 // slideshow setting is managed.
 const (
@@ -26,6 +24,8 @@ func (c *Config) ShowInterval() time.Duration {
 	return time.Duration(c.SlideshowInterval) * time.Minute
 }
 
+// RotationInterval returns how long each artwork stays on a full TV before
+// rotation may replace it. Zero disables rotation.
 func (c *Config) RotationInterval() time.Duration {
 	return time.Duration(c.RotationIntervalDays * float64(24*time.Hour)).Round(time.Second)
 }

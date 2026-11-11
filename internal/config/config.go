@@ -86,7 +86,7 @@ type Config struct {
 
 	// --- Brightness ---
 
-	// ManualBrightness is a fixed brightness value (0–50). Nil if unset.
+	// ManualBrightness is a fixed brightness value (0–10). Nil if unset.
 	ManualBrightness *int
 
 	// SolarEnabled enables automatic brightness based on sun elevation.
@@ -160,8 +160,9 @@ type Config struct {
 
 	// --- Image Sources ---
 
-	// SourcesFile is the path to a text file containing image URLs to download.
-	// One URL per line. Lines starting with # are comments. Empty disables.
+	// SourcesFile is the path to the artwork sources file: providers in YAML
+	// (.yaml or .yml), or one source per line in any other file, where lines
+	// starting with # are comments. Empty disables sources.
 	SourcesFile string
 
 	// UnsplashAccessKey is the Access Key for Unsplash.

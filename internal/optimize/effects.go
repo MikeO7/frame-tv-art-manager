@@ -168,20 +168,11 @@ func casDelta(center, north, south, west, east, peak, minimumRange float32) floa
 	return float64(min(max(sharpened, low), high)-center) * 255
 }
 
-// scaleAwareSharpenAmount treats the configured amount as the 1:1 baseline.
-// Downscales receive a modest bounded lift to restore detail lost in
-// resampling. Mild upscales receive less, and upscales beyond 1.5x none:
-// they contain no new detail, so sharpening only exaggerates interpolation
-// and compression artifacts.
-func scaleAwareSharpenAmount(amount float64, sourceWidth, sourceHeight, targetWidth, targetHeight int) float64 {
-	if sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0 {
-		return 0
-	}
-	return sharpenAmountForScale(amount, fillScale(sourceWidth, sourceHeight, targetWidth, targetHeight))
-}
-
-// sharpenAmountForScale is scaleAwareSharpenAmount for a known resampling
-// scale.
+// sharpenAmountForScale treats the configured amount as the 1:1 baseline for
+// a known resampling scale. Downscales receive a modest bounded lift to
+// restore detail lost in resampling. Mild upscales receive less, and upscales
+// beyond 1.5x none: they contain no new detail, so sharpening only
+// exaggerates interpolation and compression artifacts.
 func sharpenAmountForScale(amount, scale float64) float64 {
 	if amount <= 0 || scale <= 0 {
 		return 0

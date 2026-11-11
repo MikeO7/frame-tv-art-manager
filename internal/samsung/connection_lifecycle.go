@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/coder/websocket"
@@ -63,13 +64,23 @@ func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, e
 		HTTPClient: client,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("websocket dial: %w", err)
+		return nil, fmt.Errorf("websocket dial: %w", withoutRequestURL(err))
 	}
 	if httpResp != nil && httpResp.Body != nil {
 		_ = httpResp.Body.Close()
 	}
 	conn.SetReadLimit(maxMessageSize)
 	return conn, nil
+}
+
+// withoutRequestURL drops the request URL from a failed dial. The URL's query
+// carries the authentication token, which must never reach logs or status.
+func withoutRequestURL(err error) error {
+	var requestErr *url.Error
+	if errors.As(err, &requestErr) {
+		return requestErr.Err
+	}
+	return err
 }
 
 // readEnvelope reads one handshake message within the connection timeout.

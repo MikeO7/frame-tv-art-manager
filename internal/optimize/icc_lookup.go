@@ -33,8 +33,9 @@ func parseICCTags(data []byte) (map[string][]byte, error) {
 	tags := make(map[string][]byte, count)
 	for index := range count {
 		entry := data[132+index*12 : 144+index*12]
-		offset, size := int(binary.BigEndian.Uint32(entry[4:8])), int(binary.BigEndian.Uint32(entry[8:12]))
-		if offset < 0 || size < 0 || offset+size > len(data) {
+		// Compared as 64-bit values: on 32-bit builds the sum would wrap.
+		offset, size := binary.BigEndian.Uint32(entry[4:8]), binary.BigEndian.Uint32(entry[8:12])
+		if uint64(offset)+uint64(size) > uint64(len(data)) {
 			return nil, errors.New("ICC tag range is invalid")
 		}
 		tags[string(entry[:4])] = data[offset : offset+size]

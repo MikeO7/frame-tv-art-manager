@@ -125,22 +125,16 @@ func solarBrightnessAt(location *solarLocation, minVal, maxVal int, now time.Tim
 		return nil, errSolarDisabled
 	}
 
-	loc, err := time.LoadLocation(location.Timezone)
-	if err != nil {
-		return nil, err
-	}
-
-	now = now.In(loc)
+	// The sun's position depends on the instant alone, so no timezone is needed.
 	elevation := sunElevation(*location.Latitude, *location.Longitude, now)
 	b := brightnessFromElevation(elevation, minVal, maxVal)
 	return &b, nil
 }
 
-// solarLocation represents the geographic and timezone parameters for solar calculation.
+// solarLocation is where the TV is, for the sun's elevation.
 type solarLocation struct {
 	Latitude  *float64
 	Longitude *float64
-	Timezone  string
 }
 
 // brightnessTarget contains deterministic brightness policy inputs.
@@ -176,9 +170,6 @@ func trySolarBrightnessAt(
 ) *int {
 	b, err := solarBrightnessAt(loc, minVal, maxVal, now)
 	if err != nil {
-		if !errors.Is(err, errSolarDisabled) && logger != nil {
-			logger.Warn("solar brightness calculation failed", "error", err)
-		}
 		return nil
 	}
 

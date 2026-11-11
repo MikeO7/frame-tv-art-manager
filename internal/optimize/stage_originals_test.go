@@ -89,3 +89,43 @@ func fileSHA256(t *testing.T, path string) [sha256.Size]byte {
 	}
 	return sha256.Sum256(data)
 }
+
+func TestStageCatalogRecordsADerivativeRenderedAgainToTheSameBytes(t *testing.T) {
+	directory := t.TempDir()
+	originalPath := filepath.Join(directory, "original.jpg")
+	writeTestImage(t, originalPath, 24, 16)
+	originalDigest := fileSHA256(t, originalPath)
+	cfg := DefaultConfig()
+	cfg.MaxWidth, cfg.MaxHeight = 10, 6
+	render := func(name, path string, digest [sha256.Size]byte) *Stage {
+		t.Helper()
+		stage, err := StageCatalog(context.Background(), StageRequest{
+			Inputs: []StageInput{{
+				Name: name, Key: "art.jpg", Path: path, Digest: digest,
+				Width: 10, Height: 6, TransformKey: "previous settings", Derivative: DerivativeOptimized,
+				Originals: []StageOriginal{{Digest: originalDigest, Path: originalPath}},
+			}},
+			Config: cfg,
+		})
+		if err != nil {
+			t.Fatalf("StageCatalog() error = %v", err)
+		}
+		t.Cleanup(func() { _ = stage.Close() })
+		if len(stage.Derivatives) != 1 {
+			t.Fatalf("derivatives = %+v, want one", stage.Derivatives)
+		}
+		return stage
+	}
+	stalePath := filepath.Join(directory, "art.jpg")
+	writeTestImage(t, stalePath, 10, 6)
+	first := render("art.jpg", stalePath, fileSHA256(t, stalePath))
+	name := first.Derivatives[0].Name
+	rendered := filepath.Join(first.Directory, name)
+
+	// The settings changed in a way that leaves this picture's bytes alone.
+	second := render(name, rendered, fileSHA256(t, rendered))
+	got := second.Derivatives[0]
+	if got.Name != name || got.TransformKey != TransformKey(cfg) {
+		t.Fatalf("derivative = %+v, want %s recorded with the current transform key", got, name)
+	}
+}

@@ -20,11 +20,14 @@ services:
       # LOG_LEVEL: "info"
       # REMOVE_UNKNOWN_IMAGES: "false"
       # IMAGE_OPTIMIZE_ENABLED: "true"
-      # SMART_CROP_ENABLED: "true"
+      # SMART_CROP_ENABLED: "false"
 
-      # --- Optional: Wake-on-LAN ---
+      # --- Optional: Daily wake (Wake-on-LAN) ---
+      # The TV is woken only at AUTO_ON_TIME; TV_MAC alone never wakes it.
       # TV_MAC: "AA:BB:CC:DD:EE:FF"
       # TV_WOL_BROADCAST: "192.168.1.255"
+      # AUTO_ON_TIME: "07:00"
+      # AUTO_ON_GRACE_HOURS: "2"
       # Wake-on-LAN needs host networking: see network_mode above.
 
       # --- Optional: REST Gate (art mode detection before connecting) ---
@@ -48,20 +51,18 @@ services:
       # SOLAR_BRIGHTNESS_ENABLED: "true"
       # LOCATION_LATITUDE: "42.3601"
       # LOCATION_LONGITUDE: "-71.0589"
-      # LOCATION_TIMEZONE: "America/New_York"
       # BRIGHTNESS_MIN: "2"
       # BRIGHTNESS_MAX: "10"
 
       # --- Optional: Auto-Off ---
       # Turn off TVs at a specific time (only when in art mode).
-      # Requires LOCATION_TIMEZONE to be set.
+      # Times are read in LOCATION_TIMEZONE, which defaults to UTC.
+      # LOCATION_TIMEZONE: "America/New_York"
       # AUTO_OFF_TIME: "22:00"
       # AUTO_OFF_GRACE_HOURS: "2"
-      # AUTO_ON_TIME: "07:00"
-      # AUTO_ON_GRACE_HOURS: "2"
 
-      # --- Optional: Image Sources (Unsplash & NASA) ---
-      # ARTWORK_SOURCES_FILE: "/data/sources.txt"
+      # --- Optional: Image Sources (museums, NASA, Unsplash and more) ---
+      # ARTWORK_SOURCES_FILE: "/data/sources.yaml"
       # UNSPLASH_ACCESS_KEY: "your_key_here"
       # NASA_API_KEY: "DEMO_KEY"  # Default is DEMO_KEY if unset
 
@@ -71,6 +72,6 @@ services:
       # UPLOAD_ENABLED: "false" # Set to true to enable HTTP POST /upload endpoint for photo sync
       # UPLOAD_TOKEN: "replace-with-a-long-random-secret" # Required when uploads are enabled
     volumes:
-      # Mount a single data directory. The app will automatically create
-      # frame-tv-art-manager/artwork and frame-tv-art-manager/tokens subfolders.
+      # Mount a single data directory. The app creates the artwork and tokens
+      # folders inside it.
       - ./data:/data

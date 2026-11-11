@@ -23,7 +23,6 @@ const (
 	commandUnknownName         = "command"
 	fileTypeJPEG               = "jpg"
 	fileTypePNG                = "png"
-	requestSetSlideshowStatus  = "set_slideshow_status"
 )
 
 type preparedCommand struct {

@@ -116,6 +116,12 @@ func (fetcher *fetcher) Fetch(ctx context.Context, rawURL string, maxBytes int64
 	request.Header.Set("User-Agent", "frame-tv-art-manager")
 	response, err := fetcher.client.Do(request)
 	if err != nil {
+		// The client's error quotes the whole link, and after a redirect the
+		// whole redirect target. Only the cause is safe to report.
+		var requestErr *url.Error
+		if errors.As(err, &requestErr) {
+			err = requestErr.Err
+		}
 		return nil, fmt.Errorf("download image from %s: %w", safeHost(parsed), err)
 	}
 	defer func() { _ = response.Body.Close() }()

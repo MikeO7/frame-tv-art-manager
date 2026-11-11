@@ -10,6 +10,7 @@ on:
     tags: ['v*']
     paths-ignore:
       - '**.md'
+      - 'docs/**'
       - '.gitignore'
       - 'LICENSE'
   # Pull requests always run so required checks report even for docs-only

@@ -183,6 +183,26 @@ func TestFetcherRejectsUnsafeLinks(t *testing.T) {
 	}
 }
 
+func TestFetchErrorOmitsTheRedirectTargetPathAndQuery(t *testing.T) {
+	t.Parallel()
+	server := newImageServer(t, map[string]http.HandlerFunc{
+		"/hop": func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "http://example.com/private/art.jpg?signature=signed-secret", http.StatusFound)
+		},
+	})
+	resolver := &mapResolver{answers: map[string][]string{"example.com": {"127.0.0.1"}}}
+	fetcher := newFetcher(fetcherOptions{Resolver: resolver, Allow: loopbackOrPublic, RootCAs: server.pool})
+	_, err := fetcher.Fetch(context.Background(), server.link("/hop"), 1<<20)
+	if !errors.Is(err, errUnsafeURL) {
+		t.Fatalf("Fetch() error = %v, want errUnsafeURL", err)
+	}
+	for _, secret := range []string{"signed-secret", "/private/", "/hop"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("Fetch() error exposes %q: %v", secret, err)
+		}
+	}
+}
+
 func TestFetcherChecksTheDialedAddressNotJustTheName(t *testing.T) {
 	t.Parallel()
 	server := newImageServer(t, map[string]http.HandlerFunc{

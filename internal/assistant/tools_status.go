@@ -11,15 +11,17 @@ import (
 )
 
 type syncStatus struct {
-	Lifecycle    string `json:"lifecycle"`
-	Stage        string `json:"stage"`
-	Uptime       string `json:"uptime"`
-	SyncCount    int    `json:"sync_count"`
-	LastSync     string `json:"last_sync,omitempty"`
-	LastSyncOK   bool   `json:"last_sync_ok"`
-	LastError    string `json:"last_error,omitempty"`
-	IntervalMins int    `json:"sync_interval_minutes"`
-	DryRun       bool   `json:"dry_run"`
+	Lifecycle  string `json:"lifecycle"`
+	Stage      string `json:"stage"`
+	Uptime     string `json:"uptime"`
+	SyncCount  int    `json:"sync_count"`
+	LastSync   string `json:"last_sync,omitempty"`
+	LastSyncOK bool   `json:"last_sync_ok"`
+	LastError  string `json:"last_error,omitempty"`
+	// SourceWarning is why the last artwork source sync failed.
+	SourceWarning string `json:"source_warning,omitempty"`
+	IntervalMins  int    `json:"sync_interval_minutes"`
+	DryRun        bool   `json:"dry_run"`
 }
 
 type themedStatus struct {
@@ -69,7 +71,8 @@ func (svc *service) getStatus(
 			Lifecycle: report.Lifecycle, Stage: report.CurrentStage,
 			Uptime:    svc.now().Sub(report.StartedAt).Round(time.Second).String(),
 			SyncCount: report.SyncCount, LastSyncOK: report.LastSyncOK, LastError: report.LastError,
-			IntervalMins: svc.cfg.SyncIntervalMin, DryRun: svc.cfg.DryRun,
+			SourceWarning: report.SourceWarning,
+			IntervalMins:  svc.cfg.SyncIntervalMin, DryRun: svc.cfg.DryRun,
 		},
 		TVs: report.TVs,
 	}

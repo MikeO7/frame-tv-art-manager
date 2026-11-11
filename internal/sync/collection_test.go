@@ -23,18 +23,18 @@ import (
 func TestArtworkCollectionBoundaryValidationAndCancellation(t *testing.T) {
 	t.Parallel()
 
-	if collection, err := newArtworkCollection(nil, nil, nil, nil); err == nil || collection != nil {
-		t.Fatalf("newArtworkCollection(nil) = %v, %v, want configuration error", collection, err)
+	if collection, err := newLocalCollection(nil, nil, nil, nil, newTransformGate()); err == nil || collection != nil {
+		t.Fatalf("newLocalCollection(nil) = %v, %v, want configuration error", collection, err)
 	}
-	if collection, err := newArtworkCollection(&config.Config{}, nil, nil, nil); err == nil || collection != nil {
-		t.Fatalf("newArtworkCollection(nil store) = %v, %v, want store error", collection, err)
+	if collection, err := newLocalCollection(&config.Config{}, nil, nil, nil, newTransformGate()); err == nil || collection != nil {
+		t.Fatalf("newLocalCollection(nil store) = %v, %v, want store error", collection, err)
 	}
 
 	root := t.TempDir()
 	store := &recordingCollectionStore{snapshot: collectionpkg.Snapshot{Generation: "stable", DryRun: true}}
-	boundary, err := newArtworkCollection(&config.Config{ArtworkDir: root, DryRun: true}, nil, nil, store)
+	boundary, err := newLocalCollection(&config.Config{ArtworkDir: root, DryRun: true}, nil, nil, store, newTransformGate())
 	if err != nil {
-		t.Fatalf("newArtworkCollection() error = %v", err)
+		t.Fatalf("newLocalCollection() error = %v", err)
 	}
 
 	prepared, err := boundary.Prepare(context.Background(), collectionpkg.PrepareRequest{})
@@ -58,7 +58,7 @@ func TestArtworkCollectionBoundaryValidationAndCancellation(t *testing.T) {
 	}
 
 	// A second cycle waits for the running one and gives up with its caller.
-	local := boundary.(*localCollection)
+	local := boundary
 	local.cycle <- struct{}{}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()

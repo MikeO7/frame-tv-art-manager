@@ -10,7 +10,7 @@ import (
 // summaryBoxWidth is the number of runes between the box's side borders.
 const summaryBoxWidth = 50
 
-// cycleSummary holds the per-cycle metrics rendered by LogCycleSummary,
+// cycleSummary holds the per-cycle metrics rendered by logCycleSummary,
 // bundling the many report inputs into a single cohesive value.
 type cycleSummary struct {
 	CycleNum        int

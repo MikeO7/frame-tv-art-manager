@@ -41,8 +41,8 @@ We strictly enforce the principle of least privilege for filesystem operations. 
 
 ### 2. Resource-Bounded HTTP Readers (DoS Prevention)
 To prevent Denial of Service (DoS) and memory exhaustion attacks (e.g., zip bombs or endless data streams from compromised or malicious external providers), the application restricts HTTP read bounds:
-- All external HTTP response bodies must be wrapped using `http.MaxBytesReader` configured with a strict upper limit (typically `5MB`) before passing the stream to `io.Copy`, `io.ReadAll`, or `json.NewDecoder`.
-- We avoid `io.LimitReader` for HTTP responses because it silently truncates data upon reaching the limit, which can lead to silent data corruption instead of raising a proper error.
+- Every external HTTP response body is read through a strict upper limit before it reaches `io.Copy`, `io.ReadAll`, or `json.NewDecoder`. Image downloads are limited by `MAX_DOWNLOAD_SIZE_MB` (default 20); API responses have smaller fixed limits.
+- A body that reaches its limit is an error, never a silently truncated result: readers use `http.MaxBytesReader`, or read one byte past the limit and reject the response when that byte arrives.
 
 ### 3. Server Timeout Hardening (Slowloris Mitigation)
 All Go `http.Server` instances running inside the application (such as health check and metadata endpoints) must explicitly configure request and response timeouts. Standard server initializations must define:
@@ -70,5 +70,5 @@ To maintain high code quality and secure operation, the following automated secu
 - **GoVulnCheck**: An automated vulnerability analyzer (`govulncheck`) that inspects Go package dependencies for known CVEs.
 - **Makefile Audits**: The validation suite can be run locally at any time using:
   ```bash
-  make check
+  make agent-fix
   ```

@@ -68,6 +68,8 @@ func receiptObservation(
 	intent commandIntent,
 	receipt samsung.Receipt,
 ) samsung.Observation {
+	// The caller keeps its observation, so the inventory is edited on a copy.
+	observation.Inventory.ContentIDs = slices.Clone(observation.Inventory.ContentIDs)
 	switch intent.Kind {
 	case CommandUpload:
 		if !slices.Contains(observation.Inventory.ContentIDs, receipt.ContentID) {

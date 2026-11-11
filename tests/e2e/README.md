@@ -4,7 +4,7 @@
 No model credentials are required. Each run records its revision, command,
 platform, fixture description, and runner versions in `.e2e/environment.json`.
 The runner writes `.e2e/report.json`, JUnit, Markdown, screenshots, and failure
-traces. GitHub Actions retains these artifacts for seven days.
+traces. When a run fails, GitHub Actions retains these artifacts for seven days.
 
 The app uses fresh temporary artwork and token directories. Configuration is
 constructed from an allowlist rather than the operator's environment. The TV

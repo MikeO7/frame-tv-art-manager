@@ -102,7 +102,10 @@ func (p *catalogPass) optimizeFile(ctx context.Context, filename string) {
 	}
 	if modified {
 		p.optimized++
-		if newFilename != filename {
+		// A derivative rendered again to the same bytes keeps its name, and
+		// is still recorded so the collection stores the new transform key.
+		// Otherwise it would be rendered again on every pass.
+		if newFilename != filename || input.Derivative != "" {
 			p.renames = append(p.renames, rename{OldName: filename, NewName: newFilename})
 			p.recordLineage(newFilename, lineage...)
 		}

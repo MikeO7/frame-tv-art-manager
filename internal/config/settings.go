@@ -57,7 +57,7 @@ func (env *environment) loadConfig() (*Config, error) {
 		TokenDir:                       env.str("TOKEN_DIR", "/data/tokens"),
 		SyncIntervalMin:                env.integer("SYNC_INTERVAL_MINUTES", 30),
 		ShutdownTimeout:                safeDuration(env.integer("SHUTDOWN_TIMEOUT_SECONDS", 30), time.Second),
-		MatteStyle:                     env.str("MATTE_STYLE", "none"),
+		MatteStyle:                     strings.TrimSpace(env.str("MATTE_STYLE", "none")),
 		PortraitMatte:                  strings.TrimSpace(env.str("PORTRAIT_MATTE", "")),
 		ClientName:                     env.str("CLIENT_NAME", "Frame Art Manager"),
 		DryRun:                         env.boolean("DRY_RUN", false),

@@ -182,6 +182,7 @@ func validateRanges(cfg *Config) error {
 		{between(cfg.SlideshowInterval, 1, 1440), "SLIDESHOW_INTERVAL must be between 1 and 1440"},
 		{cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours <= 168, "AUTO_OFF_GRACE_HOURS must be greater than 0 and at most 168"},
 		{cfg.AutoOnGraceHours > 0 && cfg.AutoOnGraceHours <= 24, "AUTO_ON_GRACE_HOURS must be greater than 0 and at most 24"},
+		{len(cfg.MatteStyle) <= 128, "MATTE_STYLE must be at most 128 characters"},
 		{len(cfg.PortraitMatte) <= 128, "PORTRAIT_MATTE must be at most 128 characters"},
 		{between(cfg.RotationIntervalDays, 0, 365), "ROTATION_INTERVAL_DAYS must be between 0 and 365"},
 		{between(cfg.OptimizeMaxWidth, 1, 16384), "IMAGE_MAX_WIDTH must be between 1 and 16384"},

@@ -41,9 +41,7 @@ func convergencePolicy(
 	policy.Show, policy.Slideshow = pictureChangePolicy(cfg)
 	location := (*solarLocation)(nil)
 	if cfg.SolarEnabled {
-		location = &solarLocation{
-			Latitude: cfg.Latitude, Longitude: cfg.Longitude, Timezone: cfg.Timezone,
-		}
+		location = &solarLocation{Latitude: cfg.Latitude, Longitude: cfg.Longitude}
 	}
 	if target := targetBrightnessAt(brightnessTarget{
 		Location: location, Min: cfg.BrightnessMin, Max: cfg.BrightnessMax,

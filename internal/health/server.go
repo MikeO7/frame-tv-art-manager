@@ -140,6 +140,8 @@ type Report struct {
 	SyncCount    int
 	CurrentStage string
 	Lifecycle    string
+	// SourceWarning is why the last source sync failed, or empty.
+	SourceWarning string
 	// TVs is ordered by TV address.
 	TVs []TVStatus
 }
@@ -151,7 +153,8 @@ func (s *Status) Report() Report {
 		StartedAt: snapshot.StartedAt, LastSyncAt: snapshot.LastSyncAt, LastSyncOK: snapshot.LastSyncOK,
 		LastError: snapshot.LastErrorMessage, SyncCount: snapshot.SyncCount,
 		CurrentStage: snapshot.CurrentStage, Lifecycle: snapshot.Lifecycle,
-		TVs: make([]TVStatus, 0, len(snapshot.TVStatuses)),
+		SourceWarning: snapshot.SourceWarning,
+		TVs:           make([]TVStatus, 0, len(snapshot.TVStatuses)),
 	}
 	for _, address := range slices.Sorted(maps.Keys(snapshot.TVStatuses)) {
 		report.TVs = append(report.TVs, snapshot.TVStatuses[address])

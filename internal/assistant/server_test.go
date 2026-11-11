@@ -132,9 +132,13 @@ func TestStatusAndSyncNow(t *testing.T) {
 	fixture.status.SetLifecycle("ready")
 	fixture.status.SetTVStatus("192.0.2.10", health.TVStatus{IP: "192.0.2.10", Status: "ok", ArtMode: true, ImageCount: 4})
 	fixture.status.RecordSync(false, errors.New("tv 192.0.2.10: unreachable"))
+	fixture.status.SetSourceWarning("artwork sources failed: provider offline")
 
 	var status statusOutput
 	fixture.call(t, "get_status", nil, &status)
+	if status.Sync.SourceWarning != "artwork sources failed: provider offline" {
+		t.Fatalf("get_status source warning = %q, want the recorded warning", status.Sync.SourceWarning)
+	}
 	if status.Sync.Lifecycle != "ready" || status.Sync.SyncCount != 1 || status.Sync.LastSyncOK ||
 		!strings.Contains(status.Sync.LastError, "unreachable") || len(status.TVs) != 1 || !status.TVs[0].ArtMode ||
 		!status.Themed.EverydayShown || status.Sync.IntervalMins != 30 {

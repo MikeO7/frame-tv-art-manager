@@ -104,7 +104,9 @@ func (transform *cmykTransform) setCurves(curves cmykLookupCurves) {
 	for channel := cmykChannels - 1; channel >= 0; channel-- {
 		last := curves.grid[channel] - 1
 		for value := range transform.nodes[channel] {
-			position := curves.input[channel].evaluate(float64(value)/255) * float64(last)
+			// A parametric curve may leave the unit range or be undefined;
+			// the grid position must stay on the grid.
+			position := finiteUnit(curves.input[channel].evaluate(float64(value)/255)) * float64(last)
 			lower := min(int(position), last-1)
 			transform.nodes[channel][value] = cmykNode{
 				lower: lower * stride, upper: (lower + 1) * stride, fraction: position - float64(lower),
@@ -118,7 +120,7 @@ func (transform *cmykTransform) setCurves(curves cmykLookupCurves) {
 		}
 		samples := make([]float64, iccCurveSamples)
 		for index := range samples {
-			samples[index] = clampUnit(curve.evaluate(float64(index) / (iccCurveSamples - 1)))
+			samples[index] = finiteUnit(curve.evaluate(float64(index) / (iccCurveSamples - 1)))
 		}
 		return samples
 	}
@@ -128,9 +130,18 @@ func (transform *cmykTransform) setCurves(curves cmykLookupCurves) {
 	}
 }
 
+// finiteUnit clamps value to [0, 1] and maps a value that is not a number to
+// zero, so it is always safe to scale into a table index.
+func finiteUnit(value float64) float64 {
+	if value != value { // not a number
+		return 0
+	}
+	return clampUnit(value)
+}
+
 // sampleCurve interpolates a tabulated curve; a nil curve is the identity.
 func sampleCurve(samples []float64, value float64) float64 {
-	value = clampUnit(value)
+	value = finiteUnit(value)
 	if samples == nil {
 		return value
 	}

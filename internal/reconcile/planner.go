@@ -11,17 +11,10 @@ import (
 	"github.com/MikeO7/frame-tv-art-manager/internal/samsung"
 )
 
-// buildPlan is a pure deterministic planner. It never reads files, observes a
-// TV, or mutates its inputs.
-func buildPlan(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
-	if err := validateSnapshot(snapshot); err != nil {
-		return Plan{}, err
-	}
-	return planSnapshot(snapshot, observation, state, policy)
-}
-
-// planSnapshot is BuildPlan for a snapshot that Run has already validated. The
-// fresh observation and in-memory state are still validated on every call.
+// planSnapshot is a pure deterministic planner for a snapshot that Run has
+// already validated. It never reads files, observes a TV, or mutates its
+// inputs. The fresh observation and in-memory state are still validated on
+// every call.
 //
 //nolint:funlen,gocognit // The linear phases deliberately mirror reconciliation ordering.
 func planSnapshot(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {

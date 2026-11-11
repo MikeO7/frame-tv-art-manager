@@ -1,8 +1,6 @@
 # Build stage
 FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS builder
 
-RUN apk add --no-cache tzdata
-
 WORKDIR /src
 
 # Step 1: Download dependencies.
@@ -38,7 +36,7 @@ FROM gcr.io/distroless/static-debian13:latest@sha256:448810357cc8e67b7208988abdb
 # Copy the binary.
 COPY --from=builder /frame-tv-art-manager /frame-tv-art-manager
 
-# Create default directories.
+# Artwork, tokens, and state live under /data.
 VOLUME ["/data"]
 
 # The entrypoint starts as root so it can create/chown bind-mounted data paths

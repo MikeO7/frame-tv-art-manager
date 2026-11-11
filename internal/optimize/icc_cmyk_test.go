@@ -279,3 +279,32 @@ func TestCMYKProfileRejectsWhatItCannotConvert(t *testing.T) {
 		t.Fatalf("profiled CMYK rendered %v, the same as the plain conversion", got)
 	}
 }
+
+func TestCMYKCurvesThatLeaveTheUnitRangeStayOnTheGrid(t *testing.T) {
+	t.Parallel()
+	// Parametric function 2 is (aX+b)^g + c; c = -1 makes every output
+	// negative, which once indexed the lookup table out of range.
+	negative := iccCurve{kind: iccCurveParametric, params: []float64{2, 1, 1, 0, -1}}
+	curves := cmykLookupCurves{}
+	for channel := range cmykChannels {
+		curves.grid[channel], curves.input[channel] = 9, negative
+	}
+	for channel := range pcsChannels {
+		curves.middle[channel], curves.output[channel] = negative, negative
+	}
+	var transform cmykTransform
+	transform.setCurves(curves)
+	stride := pcsChannels
+	for channel := cmykChannels - 1; channel >= 0; channel-- {
+		for value, node := range transform.nodes[channel] {
+			if node.lower < 0 || node.upper > 8*stride || node.fraction < 0 || node.fraction > 1 {
+				t.Fatalf("channel %d value %d node = %+v, want a position on the 9-point grid", channel, value, node)
+			}
+		}
+		stride *= 9
+	}
+	notANumber := math.NaN()
+	if got := sampleCurve(transform.output[0], notANumber); got != 0 {
+		t.Fatalf("sampleCurve(NaN) = %v, want 0", got)
+	}
+}
