@@ -33,8 +33,7 @@ func stageInputs(root string, snapshot collectionpkg.Snapshot) []optimize.StageI
 		}
 		inputs = append(inputs, optimize.StageInput{
 			Name: item.Name, Key: item.Key, Path: item.Path, Digest: item.Digest,
-			Width: item.Width, Height: item.Height,
-			SourceKeys: append([]string(nil), item.SourceKeys...), TransformKey: item.TransformKey,
+			Width: item.Width, Height: item.Height, TransformKey: item.TransformKey,
 			Derivative: optimize.DerivativeKind(item.Derivative), Originals: originals,
 		})
 	}

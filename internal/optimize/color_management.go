@@ -53,6 +53,10 @@ func readColorDataWithPolicy(
 	return metadata, nil
 }
 
+// errEmbeddedColorRejected marks artwork refused on purpose by the
+// reject-embedded color policy, as opposed to metadata that cannot be read.
+var errEmbeddedColorRejected = errors.New("unsupported embedded color metadata")
+
 // checkColorPolicy rejects embedded color metadata under reject-embedded and
 // warns when the configured policy leaves present metadata untransformed.
 func checkColorPolicy(metadata embeddedColorData, cfg Config, logger *slog.Logger, filename string) error {
@@ -61,7 +65,7 @@ func checkColorPolicy(metadata embeddedColorData, cfg Config, logger *slog.Logge
 	}
 	switch {
 	case cfg.ColorProfilePolicy == profileRejectEmbedded:
-		return fmt.Errorf("unsupported embedded color metadata %s", metadata.description)
+		return fmt.Errorf("%w %s", errEmbeddedColorRejected, metadata.description)
 	case cfg.ColorProfilePolicy == profileAssumeSRGB && metadata.hdr == nil:
 		logger.Warn(
 			"embedded color metadata is not transformed; treating decoded samples as sRGB",
@@ -99,25 +103,14 @@ func readJPEGColorData(reader io.Reader) (embeddedColorData, error) {
 	parts := make(map[int][]byte)
 	total, profileBytes := 0, 0
 	for {
-		marker, err := readJPEGMarker(reader)
+		marker, length, err := nextJPEGSegment(reader)
 		if err != nil {
 			return embeddedColorData{}, err
 		}
-		if marker == 0xd9 || marker == 0xda {
+		if marker == jpegMarkerEOI || marker == jpegMarkerSOS {
 			return assembleJPEGColorData(parts, total)
 		}
-		if marker == 0x01 || marker >= 0xd0 && marker <= 0xd7 {
-			continue
-		}
-		var lengthBytes [2]byte
-		if _, err := io.ReadFull(reader, lengthBytes[:]); err != nil {
-			return embeddedColorData{}, fmt.Errorf("read JPEG marker length: %w", err)
-		}
-		length := int(binary.BigEndian.Uint16(lengthBytes[:])) - 2
-		if length < 0 {
-			return embeddedColorData{}, errors.New("invalid JPEG marker length while reading embedded color data")
-		}
-		if marker != 0xe2 {
+		if marker != jpegMarkerAPP2 {
 			if _, err := io.CopyN(io.Discard, reader, int64(length)); err != nil {
 				return embeddedColorData{}, fmt.Errorf("skip JPEG marker: %w", err)
 			}
@@ -148,13 +141,52 @@ func readJPEGColorData(reader io.Reader) (embeddedColorData, error) {
 	}
 }
 
+const (
+	jpegMarkerTEM  = 0x01
+	jpegMarkerRST0 = 0xd0
+	jpegMarkerRST7 = 0xd7
+	jpegMarkerEOI  = 0xd9
+	jpegMarkerSOS  = 0xda
+	jpegMarkerAPP1 = 0xe1
+	jpegMarkerAPP2 = 0xe2
+)
+
+// nextJPEGSegment is the one marker walk every JPEG metadata reader shares.
+// It reads the next marker ahead of the scan data, passing fill bytes and the
+// standalone TEM and RST0-7 markers, which carry no length, and returns the
+// marker with the length of the payload that follows it. EOI and SOS end the
+// walk: they are returned with a zero length and nothing after them is read.
+func nextJPEGSegment(reader io.Reader) (byte, int, error) {
+	for {
+		marker, err := readJPEGMarker(reader)
+		if err != nil {
+			return 0, 0, err
+		}
+		if marker == jpegMarkerEOI || marker == jpegMarkerSOS {
+			return marker, 0, nil
+		}
+		if marker == jpegMarkerTEM || marker >= jpegMarkerRST0 && marker <= jpegMarkerRST7 {
+			continue
+		}
+		var lengthBytes [2]byte
+		if _, err := io.ReadFull(reader, lengthBytes[:]); err != nil {
+			return 0, 0, fmt.Errorf("read JPEG marker length: %w", err)
+		}
+		length := int(binary.BigEndian.Uint16(lengthBytes[:])) - 2
+		if length < 0 {
+			return 0, 0, errors.New("invalid JPEG marker length")
+		}
+		return marker, length, nil
+	}
+}
+
 func readJPEGMarker(reader io.Reader) (byte, error) {
 	var value [1]byte
 	if _, err := io.ReadFull(reader, value[:]); err != nil {
 		return 0, fmt.Errorf("read JPEG marker prefix: %w", err)
 	}
 	if value[0] != 0xff {
-		return 0, errors.New("invalid JPEG marker while reading embedded color data")
+		return 0, errors.New("invalid JPEG marker prefix")
 	}
 	for {
 		if _, err := io.ReadFull(reader, value[:]); err != nil {

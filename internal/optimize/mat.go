@@ -172,9 +172,8 @@ func renderMat(images []*image.RGBA, cfg Config) *image.RGBA {
 
 	sizes := make([]image.Point, count)
 	openingHeight := boxHeight
-	for index, src := range images {
-		w, h := containedSize(src.Bounds().Dx(), src.Bounds().Dy(), boxWidth, boxHeight, cfg.MaxUpscale)
-		sizes[index] = image.Pt(w, h)
+	for _, src := range images {
+		_, h := containedSize(src.Bounds().Dx(), src.Bounds().Dy(), boxWidth, boxHeight, cfg.MaxUpscale)
 		openingHeight = min(openingHeight, h)
 	}
 	groupWidth := (count - 1) * margin

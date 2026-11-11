@@ -2,12 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Forked from Go 1.27 src/image/jpeg/writer.go. Changes: 4:4:4 chroma
+// Forked from Go 1.27 src/image/jpeg/writer.go. Changes: only *image.RGBA
+// sources, the one kind this application encodes, always as Y, Cb, and Cr
+// with caller-supplied options; 4:4:4 chroma
 // sampling (the new default) alongside the original 4:2:0; a two-pass encode
 // that gathers symbol statistics and writes optimized Huffman tables (JPEG
 // Annex K.2) instead of the fixed Annex K.3 tables; package tables expressed
-// as constants; and quantization split from entropy coding so both passes
-// share one block walk. Output stays baseline sequential (SOF0).
+// as constants; and quantization split from entropy coding, with the
+// quantized coefficients kept between the passes so color conversion, the
+// FDCT, and quantization run once. Output stays baseline sequential (SOF0).
 
 // Package jpegenc encodes baseline JPEG images with optional full-resolution
 // chroma and per-image optimized Huffman tables.
@@ -22,8 +25,8 @@ import (
 	"math/bits"
 )
 
-// defaultQuality is the quality used when Encode receives nil options.
-const defaultQuality = 75
+// nComponent is the number of components in every frame: Y, Cb, and Cr.
+const nComponent = 3
 
 // Subsampling selects how chroma is sampled relative to luma.
 type Subsampling int
@@ -127,9 +130,8 @@ type encoder struct {
 	// is eight times quant to match the FDCT output scale.
 	quant   [nQuantIndex][blockSize]byte
 	divisor [nQuantIndex][blockSize]int32
-	// subsampling and nComponent describe the frame layout.
+	// subsampling describes the frame layout.
 	subsampling Subsampling
-	nComponent  int
 	// prevDC holds the last DC value of each component for delta coding.
 	prevDC [3]int32
 	// freq counts symbol use per table during the statistics pass.
@@ -141,20 +143,55 @@ type encoder struct {
 	code blockCode
 }
 
-// Encode writes m to w as a baseline JPEG. It reads m twice: once to collect
-// symbol statistics and once to write entropy-coded data with Huffman tables
-// built from them. Default parameters are used if o is nil.
-func Encode(w io.Writer, m image.Image, o *Options) error {
+// Encode writes m to w as a baseline three-component JPEG. It converts,
+// transforms, and quantizes m once, collecting symbol statistics as it goes,
+// and then entropy-codes the kept coefficients with Huffman tables built from
+// those statistics. WorkingBytes is what keeping them costs.
+func Encode(w io.Writer, m *image.RGBA, o Options) error {
 	e, err := newEncoder(w, m, o)
 	if err != nil {
 		return err
 	}
-	e.scan(m, e.countBlock)
+	coefficients := e.quantizeImage(m)
 	e.buildOptimalTables()
-	return e.writeImage(m)
+	return e.writeImage(m.Bounds().Size(), coefficients)
 }
 
-func newEncoder(w io.Writer, m image.Image, o *Options) (*encoder, error) {
+// quantizeImage converts, transforms, and quantizes m once. It counts the
+// symbols of every block for the Huffman tables and returns the quantized
+// coefficients of all blocks in scan order, 64 to a block in zig-zag order,
+// for writeImage to entropy-code.
+func (e *encoder) quantizeImage(m *image.RGBA) []int16 {
+	coefficients := make([]int16, blockCount(m.Bounds().Dx(), m.Bounds().Dy(), e.subsampling)*blockSize)
+	next := coefficients
+	e.scan(m, func(comp int, zz *block) {
+		e.countBlock(comp, zz)
+		stored := (*[blockSize]int16)(next)
+		for zig, coefficient := range zz {
+			stored[zig] = int16(coefficient) //nolint:gosec // baseline 8-bit coefficients fit 12 bits
+		}
+		next = next[blockSize:]
+	})
+	return coefficients
+}
+
+// blockCount is the number of blocks a scan of a width x height image passes
+// to its sink: six per 16x16 MCU with 4:2:0 chroma, otherwise three per 8x8.
+func blockCount(width, height int, subsampling Subsampling) int {
+	if subsampling == Subsampling420 {
+		return ((width + 15) / 16) * ((height + 15) / 16) * 6
+	}
+	return ((width + 7) / 8) * ((height + 7) / 8) * nComponent
+}
+
+// WorkingBytes is the memory Encode holds for a width x height image beyond
+// the image itself: the quantized coefficients of every block, kept between
+// the statistics pass and the output pass.
+func WorkingBytes(width, height int, subsampling Subsampling) int64 {
+	return int64(blockCount(width, height, subsampling)) * blockSize * 2
+}
+
+func newEncoder(w io.Writer, m *image.RGBA, o Options) (*encoder, error) {
 	b := m.Bounds()
 	if b.Dx() >= 1<<16 || b.Dy() >= 1<<16 {
 		return nil, errors.New("jpegenc: image is too large to encode")
@@ -162,19 +199,11 @@ func newEncoder(w io.Writer, m image.Image, o *Options) (*encoder, error) {
 	if b.Empty() {
 		return nil, errors.New("jpegenc: image is empty")
 	}
-	e := &encoder{nComponent: 3}
-	if _, ok := m.(*image.Gray); ok {
-		e.nComponent = 1
-	}
-	quality := defaultQuality
-	if o != nil {
-		quality = min(max(o.Quality, 1), 100)
-		e.subsampling = o.Subsampling
-	}
+	e := &encoder{subsampling: o.Subsampling}
 	if e.subsampling != Subsampling444 && e.subsampling != Subsampling420 {
 		return nil, fmt.Errorf("jpegenc: unsupported chroma subsampling %v", e.subsampling)
 	}
-	e.initQuant(quality)
+	e.initQuant(min(max(o.Quality, 1), 100))
 	if ww, ok := w.(writer); ok {
 		e.w = ww
 	} else {
@@ -208,15 +237,28 @@ func (e *encoder) buildOptimalTables() {
 	}
 }
 
-// writeImage writes the complete JPEG stream using the current tables.
-func (e *encoder) writeImage(m image.Image) error {
+// writeImage writes the complete JPEG stream for a frame of the given size,
+// entropy-coding coefficients, as quantizeImage returns them, with the
+// current tables.
+func (e *encoder) writeImage(size image.Point, coefficients []int16) error {
 	e.writeMarker(soiMarker)
 	e.writeDQT()
-	e.writeSOF0(m.Bounds().Size())
+	e.writeSOF0(size)
 	e.writeDHT()
 	e.writeSOSHeader()
 	e.prevDC = [3]int32{}
-	e.scan(m, e.emitBlock)
+	components := "\x00\x01\x02"
+	if e.subsampling == Subsampling420 {
+		components = "\x00\x00\x00\x00\x01\x02"
+	}
+	var zz block
+	for index := 0; len(coefficients) >= blockSize; index++ {
+		for zig, coefficient := range (*[blockSize]int16)(coefficients) {
+			zz[zig] = int32(coefficient)
+		}
+		coefficients = coefficients[blockSize:]
+		e.emitBlock(int(components[index%len(components)]), &zz)
+	}
 	// Pad the last byte with 1's.
 	e.emit(0x7f, 7)
 	e.writeMarker(eoiMarker)
@@ -279,15 +321,10 @@ func (e *encoder) writeMarkerHeader(marker uint8, markerlen int) {
 	e.write(e.buf[:4])
 }
 
-// writeDQT writes the Define Quantization Table marker. A grayscale image
-// only needs the luminance table.
+// writeDQT writes the Define Quantization Table marker.
 func (e *encoder) writeDQT() {
-	tables := int(nQuantIndex)
-	if e.nComponent == 1 {
-		tables = 1
-	}
-	e.writeMarkerHeader(dqtMarker, 2+tables*(1+blockSize))
-	for i := range tables {
+	e.writeMarkerHeader(dqtMarker, 2+int(nQuantIndex)*(1+blockSize))
+	for i := range int(nQuantIndex) {
 		e.writeByte(uint8(i))
 		e.write(e.quant[i][:])
 	}
@@ -297,25 +334,25 @@ func (e *encoder) writeDQT() {
 // component entry is its identifier, its horizontal and vertical sampling
 // factors packed into one byte, and its quantization table.
 func (e *encoder) writeSOF0(size image.Point) {
-	e.writeMarkerHeader(sof0Marker, 8+3*e.nComponent)
+	e.writeMarkerHeader(sof0Marker, 8+3*nComponent)
 	e.buf[0] = 8                  // 8-bit color.
 	e.buf[1] = uint8(size.Y >> 8) //nolint:gosec // dimensions are below 1<<16
 	e.buf[2] = uint8(size.Y & 0xff)
 	e.buf[3] = uint8(size.X >> 8) //nolint:gosec // dimensions are below 1<<16
 	e.buf[4] = uint8(size.X & 0xff)
-	e.buf[5] = uint8(e.nComponent) //nolint:gosec // one or three components
+	e.buf[5] = nComponent
 	lumaSampling := byte(0x11)
-	if e.nComponent == 3 && e.subsampling == Subsampling420 {
+	if e.subsampling == Subsampling420 {
 		lumaSampling = 0x22
 	}
-	for i := range e.nComponent {
+	for i := range nComponent {
 		e.buf[3*i+6] = uint8(i + 1)
 		e.buf[3*i+7] = 0x11
 		e.buf[3*i+8] = 0x01
 	}
 	e.buf[7] = lumaSampling
 	e.buf[8] = 0x00
-	e.write(e.buf[:6+3*e.nComponent])
+	e.write(e.buf[:6+3*nComponent])
 }
 
 // writeDHT writes one Define Huffman Table marker holding every table the
@@ -323,9 +360,6 @@ func (e *encoder) writeSOF0(size image.Point) {
 // 0x01 (chroma DC), and 0x11 (chroma AC).
 func (e *encoder) writeDHT() {
 	specs := e.spec[:]
-	if e.nComponent == 1 {
-		specs = specs[:2]
-	}
 	markerlen := 2
 	for i := range specs {
 		markerlen += 1 + maxCodeLength + len(specs[i].value)
@@ -342,10 +376,6 @@ func (e *encoder) writeDHT() {
 // DC and AC tables, followed by the spectral selection bytes 0x00, 0x3f, and
 // 0x00 that section B.2.3 requires for sequential DCT.
 func (e *encoder) writeSOSHeader() {
-	if e.nComponent == 1 {
-		e.write([]byte{0xff, sosMarker, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00})
-		return
-	}
 	e.write([]byte{
 		0xff, sosMarker, 0x00, 0x0c, 0x03, 0x01, 0x00, 0x02,
 		0x11, 0x03, 0x11, 0x00, 0x3f, 0x00,

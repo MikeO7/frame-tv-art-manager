@@ -4,6 +4,8 @@ import (
 	"image"
 	"image/color"
 	"testing"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
 func TestValidateInputDimensions(t *testing.T) {
@@ -109,8 +111,49 @@ func TestWorkingSetEstimateComponents(t *testing.T) {
 	if estimatedWorkingBytes(input, smart) <= estimatedWorkingBytes(input, linear) {
 		t.Fatal("smart-crop analysis was not charged")
 	}
-	if combined := input.plus(input); combined.pixels != 2*input.pixels || combined.sourceBytes != 2*input.sourceBytes {
+	// The encoder keeps six bytes of coefficients per pixel with full chroma,
+	// more than the four-byte validation decode that takes their place, and
+	// three with halved chroma, which is less.
+	fullChroma, halvedChroma := linear, linear
+	fullChroma.JPEGSubsampling, halvedChroma.JPEGSubsampling = jpegenc.Subsampling444, jpegenc.Subsampling420
+	if got, want := estimatedWorkingBytes(input, fullChroma)-estimatedWorkingBytes(input, halvedChroma), int64(3840*2160*2*5/4); got != want {
+		t.Fatalf("full-chroma encode adds %d bytes to the estimate, want %d for its kept coefficients", got, want)
+	}
+	if combined := input.plus(input); combined.pixels != 2*input.pixels || combined.sourceBytes != 2*input.sourceBytes ||
+		combined.extent != 2*(6000+4000) {
 		t.Fatalf("plus() = %+v", combined)
+	}
+}
+
+// A long, thin picture has few pixels and an enormous resample tap table:
+// four weights for every source pixel along the axis.
+func TestWorkingSetChargesResampleTapTables(t *testing.T) {
+	t.Parallel()
+	linear := DefaultConfig()
+	linear.SmartCropEnabled, linear.LinearLightResize = false, true
+	strip := workingInputFor(image.Config{Width: 30_000_000, Height: 1, ColorModel: color.GrayModel})
+	if err := validateWorkingSet(strip, linear); err == nil {
+		t.Error("a 30,000,000x1 strip was admitted; its tap table alone is close to the whole budget")
+	}
+	square := workingInputFor(image.Config{Width: 5477, Height: 5477, ColorModel: color.GrayModel})
+	if err := validateWorkingSet(square, linear); err != nil {
+		t.Errorf("the same pixels as a 5477x5477 square were rejected: %v", err)
+	}
+	gamma := linear
+	gamma.LinearLightResize = false
+	if resampleTableBytes(strip.extent, gamma) <= resampleTableBytes(strip.extent, linear) {
+		t.Error("the gamma-space resampler's wider taps were not charged")
+	}
+	for _, size := range [][2]int{{200_000, 3000}, {50, 3840}, {5000, 2160}, {3841, 3840}} {
+		axis := newResampleAxis(size[0], size[1])
+		tableBytes := int64(4*len(axis.weights) + 8*len(axis.start) + 8*len(axis.offset) + 4*len(axis.coreFirst) + 4*len(axis.coreEnd))
+		if estimate := resampleTableBytes(int64(size[0]), linear); tableBytes > estimate {
+			t.Errorf("tap table for %d -> %d holds %d bytes, over the %d-byte estimate", size[0], size[1], tableBytes, estimate)
+		}
+		// The weights are sized once, not grown by appending.
+		if spare := cap(axis.weights) - len(axis.weights); spare > 2*size[1] {
+			t.Errorf("tap table for %d -> %d has %d spare weights of %d", size[0], size[1], spare, len(axis.weights))
+		}
 	}
 }
 

@@ -3,7 +3,6 @@ package optimize
 import (
 	"context"
 	"image"
-	"log/slog"
 	"math"
 )
 
@@ -61,10 +60,10 @@ func fillScale(sourceWidth, sourceHeight, targetWidth, targetHeight int) float64
 
 // fitImage renders src into a cfg.MaxWidth x cfg.MaxHeight frame according to
 // the fit plan.
-func fitImage(ctx context.Context, src *image.RGBA, cfg Config, logger *slog.Logger) *image.RGBA {
+func fitImage(ctx context.Context, src *image.RGBA, env renderEnv) *image.RGBA {
+	cfg := env.cfg
 	if planFit(src.Bounds().Dx(), src.Bounds().Dy(), cfg) == fitCrop {
-		cropped := centerCropConfigured(ctx, src, cfg.MaxWidth, cfg.MaxHeight, cfg, logger)
-		return sharpenResampled(cropped, cfg, fillScale(src.Bounds().Dx(), src.Bounds().Dy(), cfg.MaxWidth, cfg.MaxHeight))
+		return cropAndSharpen(ctx, src, cfg.MaxWidth, cfg.MaxHeight, env)
 	}
 	if cfg.PadStyle == padStyleBlur {
 		return padOnBlur(src, cfg)

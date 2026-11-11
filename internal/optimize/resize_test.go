@@ -458,7 +458,7 @@ func TestRewriteImage_PortraitModePadsInsteadOfCrop(t *testing.T) {
 	cfg.MaxHeight = 10
 	cfg.PortraitMode = "pad"
 
-	if err := rewriteImage(context.Background(), f, src, 1, embeddedColorData{}, cfg, slog.Default()); err != nil {
+	if err := rewriteImage(context.Background(), f, src, 1, embeddedColorData{}, newRenderEnv(cfg, slog.Default())); err != nil {
 		t.Fatalf("rewriteImage() = %v", err)
 	}
 	if err := validateImageOutput(context.Background(), src, formatJPEG, cfg.MaxWidth, cfg.MaxHeight); err != nil {
@@ -512,7 +512,7 @@ func TestRewriteImageReportsEachIOFailure(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			source, path := test.prepare(t)
-			err := rewriteImage(context.Background(), source, path, 1, embeddedColorData{}, DefaultConfig(), discardLogger())
+			err := rewriteImage(context.Background(), source, path, 1, embeddedColorData{}, newRenderEnv(DefaultConfig(), discardLogger()))
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("rewriteImage() error = %v, want %q", err, test.want)
 			}
@@ -582,7 +582,7 @@ func TestOptimizeFileContextHonorsCancellationBeforeIO(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.jpg")
 
 	name, modified, err := optimizeFileWithPolicy(
-		ctx, fileTransform{source: path, path: path, label: filepath.Base(path)}, DefaultConfig(), discardLogger(),
+		ctx, fileTransform{source: path, path: path, label: filepath.Base(path)}, newRenderEnv(DefaultConfig(), discardLogger()),
 	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("OptimizeFileContext() error = %v, want context.Canceled", err)

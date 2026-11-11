@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -63,6 +64,14 @@ func preflightRawPortraits(ctx context.Context, inputs []StageInput, cfg Config)
 		if !isRawCollageCandidate(input, cfg) {
 			continue
 		}
+		// A portrait too large to transform is never paired by the stage.
+		skipped, err := transformSkipsForSize(ctx, input, cfg)
+		if err != nil {
+			return nil, false, err
+		}
+		if skipped {
+			continue
+		}
 		portrait, err := preflightPortrait(ctx, input)
 		if err != nil {
 			if isCancellation(err) {
@@ -81,11 +90,23 @@ func isCancellation(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-// inputRequiresStage reports whether one optimizable input can change. An
-// unreadable orientation conservatively requires the stage.
+// inputRequiresStage reports whether one optimizable input can change. A raw
+// input the transform would only skip cannot change, so it never requires the
+// stage: otherwise every sync would copy the whole collection to skip it
+// again. Unreadable orientation or color metadata conservatively requires the
+// stage, which owns the verdict on the file; only cancellation and the
+// deliberate reject-embedded color policy are errors.
 func inputRequiresStage(ctx context.Context, input StageInput, cfg Config, transformKey string, logger *slog.Logger) (bool, error) {
 	if input.Derivative != "" {
 		return input.TransformKey != transformKey || input.Width != cfg.MaxWidth || input.Height != cfg.MaxHeight, nil
+	}
+	skipped, err := transformSkipsForSize(ctx, input, cfg)
+	if err != nil || skipped {
+		if skipped {
+			logger.Debug("artwork is too large to transform within the limits; leaving it as it is",
+				"file", input.Name, "width", input.Width, "height", input.Height)
+		}
+		return false, err
 	}
 	if input.Width != cfg.MaxWidth || input.Height != cfg.MaxHeight || cfg.MuseumModeEnabled {
 		return true, nil
@@ -97,7 +118,10 @@ func inputRequiresStage(ctx context.Context, input StageInput, cfg Config, trans
 		err = checkColorPolicy(colorMetadata, cfg, logger, input.Name)
 	}
 	if err != nil {
-		return false, fmt.Errorf("preflight color metadata for %q: %w", input.Name, err)
+		if isCancellation(err) || errors.Is(err, errEmbeddedColorRejected) {
+			return false, fmt.Errorf("preflight color metadata for %q: %w", input.Name, err)
+		}
+		return true, nil
 	}
 	if (len(colorMetadata.icc) > 0 && cfg.ColorProfilePolicy == profileConvertSRGB) ||
 		(colorMetadata.hdr != nil && cfg.HDRToneMap) {
@@ -111,6 +135,40 @@ func inputRequiresStage(ctx context.Context, input StageInput, cfg Config, trans
 		return true, nil
 	}
 	return orientation != 1, nil
+}
+
+// transformSkipsForSize reports whether the transform would skip a raw input
+// for its size alone: more pixels than the decoder accepts, or an estimated
+// working set over the configured limit. It applies validateWorkingSet to the
+// recorded dimensions exactly as the stage applies it to the decoded header.
+// The estimate depends on the sample format only for sources deeper than
+// eight bits, so the dimensions settle every size but a narrow band, and only
+// there is the header read. A header that cannot be read is left for the
+// stage to judge.
+func transformSkipsForSize(ctx context.Context, input StageInput, cfg Config) (bool, error) {
+	if input.Width <= 0 || input.Height <= 0 {
+		return false, nil
+	}
+	overLimit := func(working workingInput) bool {
+		return errors.Is(validateWorkingSet(working, cfg), errWorkingSetLimit)
+	}
+	if int64(input.Width)*int64(input.Height) > maxInputPixels ||
+		overLimit(workingInputOfSize(input.Width, input.Height, smallestDecodedBytesPerPixel)) {
+		return true, nil
+	}
+	if !overLimit(workingInputOfSize(input.Width, input.Height, largestDecodedBytesPerPixel)) {
+		return false, nil
+	}
+	header, err := readPreflightMetadata(ctx, input, func(file *os.File, _ string) (image.Config, error) {
+		return decodeInputConfig(ctx, file)
+	})
+	if err != nil {
+		if isCancellation(err) {
+			return false, err
+		}
+		return false, nil
+	}
+	return overLimit(workingInputFor(header)), nil
 }
 
 func isRawCollageCandidate(input StageInput, cfg Config) bool {

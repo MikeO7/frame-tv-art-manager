@@ -4,7 +4,6 @@ import (
 	"context"
 	"image"
 	"image/color"
-	"log/slog"
 	"testing"
 )
 
@@ -54,7 +53,7 @@ func TestFitImageMatsPortraitWithoutCroppingIt(t *testing.T) {
 			src.SetRGBA(x, 299-y, color.RGBA{G: 200, A: 255})
 		}
 	}
-	out := fitImage(context.Background(), src, cfg, slog.New(slog.DiscardHandler))
+	out := fitImage(context.Background(), src, newRenderEnv(cfg, discardLogger()))
 	if out.Bounds() != image.Rect(0, 0, 1920, 1080) {
 		t.Fatalf("bounds = %v", out.Bounds())
 	}
