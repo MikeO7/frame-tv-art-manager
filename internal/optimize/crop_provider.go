@@ -9,7 +9,6 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
-	"log/slog"
 	"math"
 	"net"
 	"net/http"
@@ -28,11 +27,36 @@ type cropProposal struct {
 	Confidence float64 `json:"confidence"`
 }
 
-//nolint:revive // crop inputs are orthogonal; provider decision deliberately falls back in one block
-func cropRectWithPolicy(ctx context.Context, src *image.RGBA, targetW, targetH int, cfg Config, logger *slog.Logger) image.Rectangle {
+// newCropClient builds the HTTP client one pass calls the advanced crop
+// provider with. Sharing it across the pass keeps its connections alive
+// between pictures instead of paying a TCP and TLS handshake for each.
+func newCropClient(cfg Config) *http.Client {
+	dialTimeout := min(cropProviderTimeout(cfg), 10*time.Second)
+	return &http.Client{Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout: dialTimeout, KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          2,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   dialTimeout,
+		ExpectContinueTimeout: time.Second,
+	}}
+}
+
+func cropProviderTimeout(cfg Config) time.Duration {
+	if cfg.SmartCropProviderTimeout <= 0 {
+		return 8 * time.Second
+	}
+	return cfg.SmartCropProviderTimeout
+}
+
+func cropRectWithPolicy(ctx context.Context, src *image.RGBA, targetW, targetH int, env renderEnv) image.Rectangle {
+	cfg, logger := env.cfg, env.logger
 	targetAspect := float64(targetW) / float64(targetH)
 	if cfg.SmartCropEnabled && cfg.SmartCropProvider == smartCropProviderHTTP {
-		proposal, err := requestAdvancedCrop(ctx, src, targetW, targetH, cfg)
+		proposal, err := requestAdvancedCrop(ctx, src, targetW, targetH, env)
 		upscale := 0.0
 		if err == nil {
 			upscale = fillScale(proposal.Width, proposal.Height, targetW, targetH)
@@ -57,8 +81,11 @@ func cropRectWithPolicy(ctx context.Context, src *image.RGBA, targetW, targetH i
 	)
 }
 
-func requestAdvancedCrop(ctx context.Context, src *image.RGBA, targetW, targetH int, cfg Config) (cropProposal, error) {
-	endpoint, err := url.Parse(cfg.SmartCropProviderURL)
+func requestAdvancedCrop(ctx context.Context, src *image.RGBA, targetW, targetH int, env renderEnv) (cropProposal, error) {
+	if env.cropClient == nil {
+		return cropProposal{}, errors.New("advanced crop provider has no HTTP client")
+	}
+	endpoint, err := url.Parse(env.cfg.SmartCropProviderURL)
 	if err != nil || (endpoint.Scheme != smartCropProviderHTTP && endpoint.Scheme != "https") || endpoint.Host == "" {
 		return cropProposal{}, errors.New("advanced crop provider URL must be absolute HTTP(S)")
 	}
@@ -73,32 +100,14 @@ func requestAdvancedCrop(ctx context.Context, src *image.RGBA, targetW, targetH 
 	query.Set("target_width", strconv.Itoa(targetW))
 	query.Set("target_height", strconv.Itoa(targetH))
 	endpoint.RawQuery = query.Encode()
-	timeout := cfg.SmartCropProviderTimeout
-	if timeout <= 0 {
-		timeout = 8 * time.Second
-	}
-	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	requestCtx, cancel := context.WithTimeout(ctx, cropProviderTimeout(env.cfg))
 	defer cancel()
 	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint.String(), bytes.NewReader(previewData.Bytes()))
 	if err != nil {
 		return cropProposal{}, fmt.Errorf("construct advanced crop request: %w", err)
 	}
 	request.Header.Set("Content-Type", "image/jpeg")
-	dialTimeout := min(timeout, 10*time.Second)
-	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout: dialTimeout, KeepAlive: 30 * time.Second,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          2,
-		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   dialTimeout,
-		ExpectContinueTimeout: time.Second,
-	}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport}
-	response, err := client.Do(request)
+	response, err := env.cropClient.Do(request)
 	if err != nil {
 		return cropProposal{}, fmt.Errorf("call advanced crop provider: %w", err)
 	}

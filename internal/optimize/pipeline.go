@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,19 +24,26 @@ type catalogPass struct {
 	originalsDir string
 	cfg          Config
 	logger       *slog.Logger
-	inputs       map[string]StageInput
-	optimized    int
-	renames      []rename
+	// cropClient calls the advanced crop provider for every picture of the
+	// pass; run closes its idle connections when the pass ends.
+	cropClient *http.Client
+	inputs     map[string]StageInput
+	optimized  int
+	renames    []rename
 	// lineage records, by output name, the digests of the originals each
 	// output was rendered from, in render order.
 	lineage map[string][][sha256.Size]byte
 	staged  map[[sha256.Size]byte]string
+	// decoded holds, by path, portraits decoded to measure them for pairing,
+	// kept for the collage that renders them next. See keepDecoded.
+	decoded map[string]*image.RGBA
 }
 
 // run pairs portrait collages, then transforms every remaining file. It
 // returns collage failures and cancellation; individual files that cannot be
 // transformed are logged and left in place.
 func (p *catalogPass) run(ctx context.Context) error {
+	defer p.env().close()
 	localFiles := make(map[string]struct{}, len(p.inputs))
 	for name := range p.inputs {
 		// AppleDouble ("._") sidecars are never artwork.
@@ -60,6 +69,11 @@ func (p *catalogPass) run(ctx context.Context) error {
 		p.optimizeFile(ctx, filename)
 	}
 	return errors.Join(ctx.Err(), collageErr)
+}
+
+// env is what the pass renders every picture with.
+func (p *catalogPass) env() renderEnv {
+	return renderEnv{cfg: p.cfg, logger: p.logger, cropClient: p.cropClient}
 }
 
 // optimizeFile transforms one file in place, recording its rename. A
@@ -94,7 +108,7 @@ func (p *catalogPass) optimizeFile(ctx context.Context, filename string) {
 	} else {
 		newFilename, modified, err = optimizeFileWithPolicy(ctx, fileTransform{
 			source: sources[0], path: path, label: label, force: input.Derivative != "",
-		}, p.cfg, p.logger)
+		}, p.env())
 	}
 	if err != nil {
 		p.logger.Warn("skipping bad or unsupported image", "file", filename, "error", err)

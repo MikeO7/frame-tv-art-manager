@@ -3,7 +3,9 @@ package themes
 import (
 	"encoding/hex"
 	"slices"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
@@ -28,18 +30,65 @@ func IdentityOf(item collection.Item) Identity {
 
 // Memberships returns, for every item, the slugs of the collections that
 // include it, in file order. Items in no collection map to an empty list.
+// An item belongs to a collection when any member matches it, exactly as
+// Member.Matches decides.
 func (file File) Memberships(items []collection.Item) [][]string {
+	index := file.membershipIndex()
 	result := make([][]string, len(items))
-	for index, item := range items {
+	var found []int
+	for position, item := range items {
 		identity := IdentityOf(item)
-		result[index] = []string{}
-		for _, themed := range file.Collections {
-			if slices.ContainsFunc(themed.Members, func(member Member) bool { return member.Matches(identity) }) {
-				result[index] = append(result[index], themed.Slug)
-			}
+		found = append(found[:0], index.keys[foldKey(identity.Key)]...)
+		found = append(found, index.origins[identity.Origin]...)
+		found = append(found, index.digests[identity.Digest]...)
+		slices.Sort(found)
+		slugs := make([]string, 0, len(found))
+		for _, collectionIndex := range slices.Compact(found) {
+			slugs = append(slugs, file.Collections[collectionIndex].Slug)
 		}
+		result[position] = slugs
 	}
 	return result
+}
+
+// membershipIndex maps every identity a member can match on to the positions,
+// in file order, of the collections holding such a member. It is built once
+// per call so matching an item costs three lookups instead of a comparison
+// with every member of every collection.
+type membershipIndex struct {
+	keys, origins, digests map[string][]int
+}
+
+func (file File) membershipIndex() membershipIndex {
+	index := membershipIndex{keys: map[string][]int{}, origins: map[string][]int{}, digests: map[string][]int{}}
+	add := func(lookup map[string][]int, value string, collectionIndex int) {
+		// An empty field matches nothing, and one collection is listed once.
+		if value == "" || slices.Contains(lookup[value], collectionIndex) {
+			return
+		}
+		lookup[value] = append(lookup[value], collectionIndex)
+	}
+	for collectionIndex, themed := range file.Collections {
+		for _, member := range themed.Members {
+			add(index.keys, foldKey(member.Key), collectionIndex)
+			add(index.origins, member.Origin, collectionIndex)
+			add(index.digests, member.Digest, collectionIndex)
+		}
+	}
+	return index
+}
+
+// foldKey returns a string equal for exactly the strings strings.EqualFold
+// treats as equal: every rune is replaced by the smallest rune of its simple
+// case-folding orbit.
+func foldKey(value string) string {
+	return strings.Map(func(char rune) rune {
+		smallest := char
+		for folded := unicode.SimpleFold(char); folded != char; folded = unicode.SimpleFold(folded) {
+			smallest = min(smallest, folded)
+		}
+		return smallest
+	}, value)
 }
 
 // Select chooses the artwork to display on now's calendar day:

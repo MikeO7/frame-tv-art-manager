@@ -57,30 +57,16 @@ func TestEncodeDecodesWithStdlibAndMatchesItsPSNR(t *testing.T) {
 
 func TestEncodeImageKinds(t *testing.T) {
 	t.Parallel()
-	rgba := artwork(37, 21)
-	nrgba := image.NewNRGBA(rgba.Bounds())
-	draw.Draw(nrgba, nrgba.Bounds(), rgba, image.Point{}, draw.Src)
-	ycbcr := image.NewYCbCr(rgba.Bounds(), image.YCbCrSubsampleRatio422)
-	for y := range rgba.Bounds().Dy() {
-		for x := range rgba.Bounds().Dx() {
-			yy, cb, cr := toYCbCrColor(rgba.At(x, y))
-			ycbcr.Y[ycbcr.YOffset(x, y)] = yy
-			ycbcr.Cb[ycbcr.COffset(x, y)] = cb
-			ycbcr.Cr[ycbcr.COffset(x, y)] = cr
-		}
+	offset, isRGBA := artwork(64, 64).SubImage(image.Rect(5, 7, 40, 30)).(*image.RGBA)
+	if !isRGBA {
+		t.Fatal("sub-image of an RGBA image is not RGBA")
 	}
-	gray := image.NewGray(rgba.Bounds())
-	draw.Draw(gray, gray.Bounds(), rgba, image.Point{}, draw.Src)
-	offset := artwork(64, 64).SubImage(image.Rect(5, 7, 40, 30))
 	tests := []struct {
 		name   string
-		img    image.Image
+		img    *image.RGBA
 		wantYC bool
 	}{
-		{name: "rgba", img: rgba, wantYC: true},
-		{name: "nrgba generic path", img: nrgba, wantYC: true},
-		{name: "ycbcr fast path", img: ycbcr, wantYC: true},
-		{name: "gray single component", img: gray},
+		{name: "rgba", img: artwork(37, 21), wantYC: true},
 		{name: "rgba sub-image with offset origin", img: offset, wantYC: true},
 	}
 	for _, tt := range tests {
@@ -126,11 +112,9 @@ func TestSubsampling420MatchesStdlibPixelsWithSmallerFile(t *testing.T) {
 
 func TestOptimizedHuffmanTablesShrinkOutputLosslessly(t *testing.T) {
 	t.Parallel()
-	gray := image.NewGray(image.Rect(0, 0, 96, 80))
-	draw.Draw(gray, gray.Bounds(), artwork(96, 80), image.Point{}, draw.Src)
 	tests := []struct {
 		name string
-		img  image.Image
+		img  *image.RGBA
 		opts Options
 	}{
 		{name: "444 q95", img: artwork(160, 96), opts: Options{Quality: 95}},
@@ -138,7 +122,6 @@ func TestOptimizedHuffmanTablesShrinkOutputLosslessly(t *testing.T) {
 		{name: "444 q30", img: artwork(160, 96), opts: Options{Quality: 30}},
 		{name: "420 q95", img: artwork(160, 96), opts: Options{Quality: 95, Subsampling: Subsampling420}},
 		{name: "stripes 444 q95", img: stripes(64, 64), opts: Options{Quality: 95}},
-		{name: "gray q90", img: gray, opts: Options{Quality: 90}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -169,8 +152,8 @@ func TestSubsampling444KeepsRedBlueStripeChroma(t *testing.T) {
 func TestEncodeDefaults(t *testing.T) {
 	t.Parallel()
 	src := artwork(40, 24)
-	if !bytes.Equal(mustEncode(t, src, nil), mustEncode(t, src, &Options{Quality: defaultQuality})) {
-		t.Fatal("nil options differ from default quality with 4:4:4")
+	if !bytes.Equal(mustEncode(t, src, &Options{Quality: 60}), mustEncode(t, src, &Options{Quality: 60, Subsampling: Subsampling444})) {
+		t.Fatal("unset subsampling is not 4:4:4")
 	}
 	if !bytes.Equal(mustEncode(t, src, &Options{Quality: -3}), mustEncode(t, src, &Options{Quality: 1})) {
 		t.Fatal("quality below 1 is not clamped to 1")
@@ -199,15 +182,15 @@ func TestEncodeErrors(t *testing.T) {
 	tests := []struct {
 		name string
 		w    func() *failingWriter
-		img  image.Image
-		opts *Options
+		img  *image.RGBA
+		opts Options
 		want string
 	}{
-		{name: "too wide", img: image.NewGray(image.Rect(0, 0, 1<<16, 1)), want: "too large"},
+		{name: "too wide", img: image.NewRGBA(image.Rect(0, 0, 1<<16, 1)), want: "too large"},
 		{name: "empty", img: image.NewRGBA(image.Rect(0, 0, 0, 5)), want: "empty"},
-		{name: "unknown subsampling", img: artwork(8, 8), opts: &Options{Quality: 90, Subsampling: 7}, want: "unsupported chroma subsampling"},
+		{name: "unknown subsampling", img: artwork(8, 8), opts: Options{Quality: 90, Subsampling: 7}, want: "unsupported chroma subsampling"},
 		{name: "writer fails in header", w: func() *failingWriter { return &failingWriter{after: 10} }, img: artwork(64, 64)},
-		{name: "writer fails in entropy data", w: func() *failingWriter { return &failingWriter{after: 70000} }, img: artwork(512, 512)},
+		{name: "writer fails in entropy data", w: func() *failingWriter { return &failingWriter{after: 70000} }, img: artwork(512, 512), opts: Options{Quality: 75}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

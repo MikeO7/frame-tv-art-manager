@@ -102,7 +102,7 @@ func BenchmarkEncode4K(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				buf.Reset()
-				if err := Encode(&buf, src, &Options{Quality: 95, Subsampling: sub}); err != nil {
+				if err := Encode(&buf, src, Options{Quality: 95, Subsampling: sub}); err != nil {
 					b.Fatal(err)
 				}
 			}

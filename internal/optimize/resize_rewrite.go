@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image"
 	"image/png"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,8 +24,7 @@ func rewriteImage(
 	path string,
 	orientation int,
 	colorData embeddedColorData,
-	cfg Config,
-	logger *slog.Logger,
+	env renderEnv,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -43,8 +41,8 @@ func rewriteImage(
 	}
 
 	filename := filepath.Base(path)
-	logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", img.Bounds().Dx(), img.Bounds().Dy()))
-	rgba, err := transformDecoded(ctx, img, orientation, colorData, cfg, logger, filename)
+	env.logger.Info("optimizing image", "file", filename, "original_dims", fmt.Sprintf("%dx%d", img.Bounds().Dx(), img.Bounds().Dy()))
+	rgba, err := transformDecoded(ctx, img, orientation, colorData, filename, env)
 	if err != nil {
 		return err
 	}
@@ -57,7 +55,7 @@ func rewriteImage(
 		return fmt.Errorf("create optimized temporary file: %w", err)
 	}
 	defer func() { _ = os.Remove(out.Name()) }()
-	if err := writeValidatedOutput(ctx, out, filepath.Ext(path), rgba, cfg); err != nil {
+	if err := writeValidatedOutput(ctx, out, filepath.Ext(path), rgba, env.cfg); err != nil {
 		return fmt.Errorf("write optimized image: %w", err)
 	}
 	if err := durablefs.Rename(ctx, out.Name(), path); err != nil {
@@ -76,14 +74,14 @@ func transformDecoded(
 	img image.Image,
 	orientation int,
 	colorData embeddedColorData,
-	cfg Config,
-	logger *slog.Logger,
 	filename string,
+	env renderEnv,
 ) (*image.RGBA, error) {
-	rgba := toRGBA(rotateImage(normalizeColor(img, colorData, cfg, logger, filename), orientation))
+	cfg := env.cfg
+	rgba := toRGBA(rotateImage(normalizeColor(img, colorData, cfg, env.logger, filename), orientation))
 	sourceW, sourceH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
 	if sourceW != cfg.MaxWidth || sourceH != cfg.MaxHeight {
-		rgba = fitImage(ctx, rgba, cfg, logger)
+		rgba = fitImage(ctx, rgba, env)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -101,7 +99,7 @@ func transformDecoded(
 // JPEG otherwise, closes it, and verifies that it decodes to the configured
 // output format and dimensions. The 0o644 mode is intentional: artwork must
 // stay readable over SMB/NFS shares.
-func writeValidatedOutput(ctx context.Context, out *os.File, extension string, img image.Image, cfg Config) error {
+func writeValidatedOutput(ctx context.Context, out *os.File, extension string, img *image.RGBA, cfg Config) error {
 	writer := &contextWriter{ctx: ctx, writer: out}
 	format := formatJPEG
 	var err error
@@ -109,7 +107,7 @@ func writeValidatedOutput(ctx context.Context, out *os.File, extension string, i
 		format = formatPNG
 		err = png.Encode(writer, img)
 	} else {
-		err = jpegenc.Encode(writer, img, &jpegenc.Options{Quality: cfg.OptimizeJPEGQuality, Subsampling: cfg.JPEGSubsampling})
+		err = jpegenc.Encode(writer, img, jpegenc.Options{Quality: cfg.OptimizeJPEGQuality, Subsampling: cfg.JPEGSubsampling})
 	}
 	if err != nil {
 		_ = out.Close()

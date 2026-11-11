@@ -126,7 +126,9 @@ func RenderPreview(ctx context.Context, input PreviewInput, cfg Config, logger *
 	if err != nil {
 		return nil, fmt.Errorf("decode image: %w", err)
 	}
-	return transformDecoded(ctx, decoded, orientation, colorData, cfg, logger, filename)
+	env := newRenderEnv(cfg, logger)
+	defer env.close()
+	return transformDecoded(ctx, decoded, orientation, colorData, filename, env)
 }
 
 func decodeForPreview(ctx context.Context, file *os.File) (*image.RGBA, error) {

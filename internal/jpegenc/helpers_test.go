@@ -65,18 +65,19 @@ func standardSpecs() [nHuffIndex]huffmanSpec {
 
 // encodeWithStandardTables encodes m like Encode but with the Annex K.3
 // tables in place of optimized ones.
-func encodeWithStandardTables(t testing.TB, m image.Image, o *Options) []byte {
+func encodeWithStandardTables(t testing.TB, m *image.RGBA, o *Options) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	e, err := newEncoder(&buf, m, o)
+	e, err := newEncoder(&buf, m, *o)
 	if err != nil {
 		t.Fatalf("newEncoder: %v", err)
 	}
+	coefficients := e.quantizeImage(m)
 	e.spec = standardSpecs()
 	for i := range e.spec {
 		e.lut[i].init(&e.spec[i])
 	}
-	if err := e.writeImage(m); err != nil {
+	if err := e.writeImage(m.Bounds().Size(), coefficients); err != nil {
 		t.Fatalf("writeImage: %v", err)
 	}
 	return buf.Bytes()
@@ -181,10 +182,10 @@ func mustDecode(t testing.TB, data []byte) image.Image {
 	return m
 }
 
-func mustEncode(t testing.TB, m image.Image, o *Options) []byte {
+func mustEncode(t testing.TB, m *image.RGBA, o *Options) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := Encode(&buf, m, o); err != nil {
+	if err := Encode(&buf, m, *o); err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
 	return buf.Bytes()

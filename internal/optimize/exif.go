@@ -1,66 +1,92 @@
 package optimize
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
 
 var pngSignature = [8]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a} //nolint:gochecknoglobals // format constant
 
-const pngChunkEnd = "IEND"
+const (
+	pngChunkEnd   = "IEND"
+	pngChunkExif  = "eXIf"
+	exifSignature = "Exif\x00\x00"
+	// maxPNGExifBytes bounds how much of a PNG eXIf chunk is read. The
+	// orientation tag sits in the first directory, within the first few
+	// hundred bytes, and a JPEG cannot carry more than 64 KiB of EXIF at all.
+	maxPNGExifBytes = 64 << 10
+)
 
-// readOrientation reads the EXIF orientation tag from an image file if available.
-//
-//nolint:gocognit // custom EXIF marker scan with raw JPEG bounds checks
+// readOrientation reads the EXIF orientation of a JPEG, or 1 (upright) when
+// it carries none. It walks the markers exactly as readJPEGColorData does, so
+// the two never disagree about where a file's segments are. An EXIF block
+// that cannot be parsed says nothing about orientation and reads as upright:
+// the picture is still a valid image and is optimized as it is stored.
 func readOrientation(r io.Reader) (int, error) {
-	var buf [4]byte
-	if _, err := io.ReadFull(r, buf[:2]); err != nil {
+	var signature [2]byte
+	if _, err := io.ReadFull(r, signature[:]); err != nil {
 		return 1, err
 	}
-	if buf[0] != 0xFF || buf[1] != 0xD8 {
-		return 1, fmt.Errorf("not a JPEG (SOI missing)")
+	if signature != [2]byte{0xff, 0xd8} {
+		return 1, errors.New("not a JPEG (SOI missing)")
 	}
-
 	for {
-		if _, err := io.ReadFull(r, buf[:2]); err != nil {
-			return 1, err
-		}
-		for buf[0] == 0xFF && buf[1] == 0xFF {
-			if _, err := io.ReadFull(r, buf[1:2]); err != nil {
-				return 1, err
-			}
-		}
-		if buf[0] != 0xFF {
-			return 1, fmt.Errorf("invalid marker prefix")
-		}
-
-		marker := buf[1]
-		if marker == 0xD9 || marker == 0xDA { // EOI or SOS
-			break
-		}
-
-		orientation, err := processMarker(r, marker)
+		marker, length, err := nextJPEGSegment(r)
 		if err != nil {
 			return 1, err
 		}
-		if orientation > 0 {
-			return orientation, nil
+		if marker == jpegMarkerEOI || marker == jpegMarkerSOS {
+			return 1, nil
+		}
+		if marker != jpegMarkerAPP1 {
+			if _, err := io.CopyN(io.Discard, r, int64(length)); err != nil {
+				return 1, fmt.Errorf("skip JPEG marker: %w", err)
+			}
+			continue
+		}
+		payload := make([]byte, length)
+		if _, err := io.ReadFull(r, payload); err != nil {
+			return 1, fmt.Errorf("read JPEG APP1 marker: %w", err)
+		}
+		if tiff, isExif := bytes.CutPrefix(payload, []byte(exifSignature)); isExif {
+			return orientationOrUpright(tiff), nil
 		}
 	}
-	return 1, nil
+}
+
+// orientationOrUpright returns the orientation an EXIF block declares, or 1
+// when the block is malformed or declares none.
+func orientationOrUpright(tiff []byte) int {
+	orientation, err := parseExif(tiff)
+	if err != nil {
+		return 1
+	}
+	return orientation
 }
 
 // readPNGOrientation reads the standardized PNG eXIf chunk when present.
-//
-//nolint:gocognit // streaming chunk framing and optional Exif prefix are one bounds-checked parser
-func readPNGOrientation(r io.Reader) (int, error) {
+// Chunks other than eXIf are stepped over with seeker when it is not nil,
+// which must be the stream r reads from, so image data of any size costs one
+// seek instead of being read. Only the first maxPNGExifBytes of an eXIf chunk
+// are read.
+func readPNGOrientation(r io.Reader, seeker io.Seeker) (int, error) {
 	var signature [8]byte
 	if _, err := io.ReadFull(r, signature[:]); err != nil {
 		return 1, err
 	}
 	if signature != pngSignature {
-		return 1, fmt.Errorf("not a PNG (signature missing)")
+		return 1, errors.New("not a PNG (signature missing)")
+	}
+	skip := func(count int64) error {
+		if seeker == nil {
+			_, err := io.CopyN(io.Discard, r, count)
+			return err
+		}
+		_, err := seeker.Seek(count, io.SeekCurrent)
+		return err
 	}
 	for {
 		var header [8]byte
@@ -69,54 +95,23 @@ func readPNGOrientation(r io.Reader) (int, error) {
 		}
 		length := int64(binary.BigEndian.Uint32(header[:4]))
 		chunkType := string(header[4:])
-		if length > 64<<20 {
-			return 1, fmt.Errorf("PNG metadata chunk %s is too large", chunkType)
-		}
-		if chunkType == "eXIf" {
-			payload := make([]byte, length)
-			if _, err := io.ReadFull(r, payload); err != nil {
-				return 1, err
-			}
-			if _, err := io.CopyN(io.Discard, r, 4); err != nil {
-				return 1, err
-			}
-			if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
-				payload = payload[6:]
-			}
-			return parseExif(payload)
-		}
-		if _, err := io.CopyN(io.Discard, r, length+4); err != nil {
-			return 1, err
-		}
 		if chunkType == pngChunkEnd {
 			return 1, nil
 		}
+		if chunkType != pngChunkExif {
+			// The payload is followed by a four-byte checksum.
+			if err := skip(length + 4); err != nil {
+				return 1, fmt.Errorf("skip PNG %s chunk: %w", chunkType, err)
+			}
+			continue
+		}
+		payload := make([]byte, min(length, maxPNGExifBytes))
+		if _, err := io.ReadFull(r, payload); err != nil {
+			return 1, fmt.Errorf("read PNG eXIf chunk: %w", err)
+		}
+		payload, _ = bytes.CutPrefix(payload, []byte(exifSignature))
+		return orientationOrUpright(payload), nil
 	}
-}
-
-// processMarker consumes one JPEG marker segment. It returns the orientation
-// from an Exif APP1 segment, or zero when the segment carries none.
-func processMarker(r io.Reader, marker byte) (int, error) {
-	var buf [2]byte
-	if _, err := io.ReadFull(r, buf[:2]); err != nil {
-		return 0, err
-	}
-	length := int(buf[0])<<8 | int(buf[1])
-	if length < 2 {
-		return 0, fmt.Errorf("invalid marker length")
-	}
-	if marker != 0xE1 {
-		_, err := io.CopyN(io.Discard, r, int64(length-2))
-		return 0, err
-	}
-	payload := make([]byte, length-2)
-	if _, err := io.ReadFull(r, payload); err != nil {
-		return 0, err
-	}
-	if len(payload) >= 6 && string(payload[:6]) == "Exif\x00\x00" {
-		return parseExif(payload[6:])
-	}
-	return 0, nil
 }
 
 func parseExif(tiff []byte) (int, error) {

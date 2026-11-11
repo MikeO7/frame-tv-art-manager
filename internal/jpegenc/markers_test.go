@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
-	"image/draw"
 	"testing"
 )
 
@@ -157,11 +156,9 @@ func checkEntropyData(t *testing.T, scan []byte) {
 
 func TestMarkersAreWellFormedBaseline(t *testing.T) {
 	t.Parallel()
-	gray := image.NewGray(image.Rect(0, 0, 33, 17))
-	draw.Draw(gray, gray.Bounds(), artwork(33, 17), image.Point{}, draw.Src)
 	tests := []struct {
 		name         string
-		img          image.Image
+		img          *image.RGBA
 		opts         Options
 		wantSampling []byte
 		wantQuant    []byte
@@ -177,11 +174,6 @@ func TestMarkersAreWellFormedBaseline(t *testing.T) {
 			name: "420", img: artwork(33, 17), opts: Options{Quality: 95, Subsampling: Subsampling420},
 			wantSampling: []byte{0x22, 0x11, 0x11}, wantQuant: []byte{0, 1, 1},
 			wantTables: []byte{0x00, 0x10, 0x01, 0x11}, wantScan: []byte{0x00, 0x11, 0x11},
-		},
-		{
-			name: "gray", img: gray, opts: Options{Quality: 95},
-			wantSampling: []byte{0x11}, wantQuant: []byte{0},
-			wantTables: []byte{0x00, 0x10}, wantScan: []byte{0x00},
 		},
 	}
 	for _, tt := range tests {

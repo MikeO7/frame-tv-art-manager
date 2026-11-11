@@ -4,14 +4,33 @@ import (
 	"context"
 	"image"
 	std_draw "image/draw"
-	"log/slog"
 	"math"
 )
 
-//nolint:revive // rendering context, source, target, policy, and logger are orthogonal inputs
-func centerCropConfigured(ctx context.Context, src *image.RGBA, targetW, targetH int, cfg Config, logger *slog.Logger) *image.RGBA {
-	cropRect := cropRectWithPolicy(ctx, src, targetW, targetH, cfg, logger)
-	return resizeCrop(src, cropRect, targetW, targetH, cfg.LinearLightResize)
+// centerCropConfigured crops src to the target aspect under the crop policy
+// and resizes the crop to the target. It returns the crop rectangle so the
+// caller knows the scale the pixels were actually resampled by.
+func centerCropConfigured(ctx context.Context, src *image.RGBA, targetW, targetH int, env renderEnv) (*image.RGBA, image.Rectangle) {
+	cropRect := cropRectWithPolicy(ctx, src, targetW, targetH, env)
+	return resizeCrop(src, cropRect, targetW, targetH, env.cfg.LinearLightResize), cropRect
+}
+
+// cropAndSharpen fills a targetW x targetH frame from src and sharpens the
+// result for the scale its crop was resampled by.
+func cropAndSharpen(ctx context.Context, src *image.RGBA, targetW, targetH int, env renderEnv) *image.RGBA {
+	cropped, cropRect := centerCropConfigured(ctx, src, targetW, targetH, env)
+	return sharpenResampled(cropped, env.cfg, cropScale(src.Bounds(), cropRect, targetW, targetH))
+}
+
+// cropScale is the factor a crop of source is resampled by to fill the
+// target. A crop that spans the source on either axis is the plain fill crop.
+// A provider's box may be smaller than that, and then the box alone, not the
+// source it was cut from, decides the scale.
+func cropScale(source, crop image.Rectangle, targetW, targetH int) float64 {
+	if crop.Dx() == source.Dx() || crop.Dy() == source.Dy() {
+		return fillScale(source.Dx(), source.Dy(), targetW, targetH)
+	}
+	return fillScale(crop.Dx(), crop.Dy(), targetW, targetH)
 }
 
 // toRGBA converts decoded samples to a standard RGBA buffer. Go's standard

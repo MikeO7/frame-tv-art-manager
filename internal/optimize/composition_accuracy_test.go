@@ -93,7 +93,7 @@ func TestProviderCropIsSnappedToAspectAndBoundedByUpscale(t *testing.T) {
 			cfg.SmartCropProviderURL, cfg.SmartCropProviderTimeout = server.URL, 5*time.Second
 			cfg.SmartCropMinGain = math.Inf(1)
 			src := image.NewRGBA(image.Rect(0, 0, 4000, 3000))
-			got := cropRectWithPolicy(context.Background(), src, 3840, 2160, cfg, discardLogger())
+			got := cropRectWithPolicy(context.Background(), src, 3840, 2160, newRenderEnv(cfg, discardLogger()))
 			if got != test.want {
 				t.Fatalf("crop = %v, want %v", got, test.want)
 			}
@@ -120,9 +120,9 @@ func TestPaddedPictureIsSharpenedAtTheScaleItWasResizedBy(t *testing.T) {
 			if fill := fillScale(200, 300, cfg.MaxWidth, cfg.MaxHeight); fill <= 1.5 {
 				t.Fatalf("invalid case: fill scale %.2f would be sharpened anyway", fill)
 			}
-			sharpened := fitImage(t.Context(), portrait, cfg, discardLogger())
+			sharpened := fitImage(t.Context(), portrait, newRenderEnv(cfg, discardLogger()))
 			cfg.SharpenAmount = 0
-			plain := fitImage(t.Context(), portrait, cfg, discardLogger())
+			plain := fitImage(t.Context(), portrait, newRenderEnv(cfg, discardLogger()))
 			changed := 0
 			for index := range plain.Pix {
 				if plain.Pix[index] != sharpened.Pix[index] {

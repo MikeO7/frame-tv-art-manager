@@ -421,7 +421,9 @@ func TestAdvancedCropProviderRejectsBadResponses(t *testing.T) {
 			cfg := DefaultConfig()
 			cfg.SmartCropProviderURL = server.URL
 			cfg.SmartCropProviderTimeout = time.Second
-			if _, err := requestAdvancedCrop(context.Background(), image.NewRGBA(image.Rect(0, 0, 200, 100)), 100, 100, cfg); err == nil {
+			env := newRenderEnv(cfg, discardLogger())
+			defer env.close()
+			if _, err := requestAdvancedCrop(context.Background(), image.NewRGBA(image.Rect(0, 0, 200, 100)), 100, 100, env); err == nil {
 				t.Fatal("requestAdvancedCrop() error = nil")
 			}
 		})
@@ -540,7 +542,7 @@ func TestAdvancedCropFailureFallsBackToLocalPolicy(t *testing.T) {
 	cfg.SmartCropProvider = "http"
 	cfg.SmartCropProviderURL = "http://127.0.0.1:1"
 	cfg.SmartCropProviderTimeout = 100 * time.Millisecond
-	rect := cropRectWithPolicy(context.Background(), source, 100, 100, cfg, slog.New(slog.DiscardHandler))
+	rect := cropRectWithPolicy(context.Background(), source, 100, 100, newRenderEnv(cfg, discardLogger()))
 	if rect != image.Rect(50, 0, 150, 100) {
 		t.Fatalf("fallback crop = %v, want centered local crop", rect)
 	}

@@ -8,6 +8,8 @@ import (
 	"image/color"
 	"io"
 	"math"
+
+	"github.com/MikeO7/frame-tv-art-manager/internal/jpegenc"
 )
 
 const (
@@ -43,18 +45,36 @@ func validateOutputDimensions(width, height int, maxPixels int64) error {
 type workingInput struct {
 	pixels      int64
 	sourceBytes int64
+	// extent is the summed width and height of the sources: the most source
+	// pixels a resize can span along its two axes.
+	extent int64
 }
+
+// Decoded sample sizes at the two ends of what the standard decoders produce.
+const (
+	smallestDecodedBytesPerPixel = 1
+	largestDecodedBytesPerPixel  = 8
+)
 
 // workingInputFor accounts for the larger of two full-size phases: the
 // decoder's image alongside its RGBA working copy, or the working copy
 // alongside its oriented copy.
 func workingInputFor(config image.Config) workingInput {
-	pixels := int64(config.Width) * int64(config.Height)
-	return workingInput{pixels: pixels, sourceBytes: pixels * max(8, 4+decodedBytesPerPixel(config.ColorModel))}
+	return workingInputOfSize(config.Width, config.Height, decodedBytesPerPixel(config.ColorModel))
+}
+
+func workingInputOfSize(width, height int, decodedBytes int64) workingInput {
+	pixels := int64(width) * int64(height)
+	return workingInput{
+		pixels: pixels, sourceBytes: pixels * max(8, 4+decodedBytes), extent: int64(width) + int64(height),
+	}
 }
 
 func (input workingInput) plus(other workingInput) workingInput {
-	return workingInput{pixels: input.pixels + other.pixels, sourceBytes: input.sourceBytes + other.sourceBytes}
+	return workingInput{
+		pixels: input.pixels + other.pixels, sourceBytes: input.sourceBytes + other.sourceBytes,
+		extent: input.extent + other.extent,
+	}
 }
 
 // decodedBytesPerPixel is the standard decoders' in-memory sample size for a
@@ -80,12 +100,17 @@ func decodedBytesPerPixel(model color.Model) int64 {
 // transform within the configured memory budget.
 var errWorkingSetLimit = errors.New("image working set exceeds the memory limit")
 
+// workingByteLimit is the configured working-set budget, or its default.
+func workingByteLimit(cfg Config) int64 {
+	if cfg.MaxWorkingBytes <= 0 {
+		return 512 * 1024 * 1024
+	}
+	return cfg.MaxWorkingBytes
+}
+
 func validateWorkingSet(input workingInput, cfg Config) error {
 	estimatedBytes := estimatedWorkingBytes(input, cfg)
-	maxBytes := cfg.MaxWorkingBytes
-	if maxBytes <= 0 {
-		maxBytes = 512 * 1024 * 1024
-	}
+	maxBytes := workingByteLimit(cfg)
 	if estimatedBytes > maxBytes {
 		return fmt.Errorf(
 			"estimated image working set %d MiB exceeds %d MiB limit: %w",
@@ -96,13 +121,18 @@ func validateWorkingSet(input workingInput, cfg Config) error {
 }
 
 // estimatedWorkingBytes bounds the transform's peak heap: the source phase,
-// up to three target-sized RGBA buffers (crop or pad output, sharpen or
-// canvas copy, and the decoded output during validation), the resampler's
+// two target-sized RGBA buffers (crop or pad output and sharpen or canvas
+// copy), a third for the larger of the JPEG encoder's kept coefficients and
+// the decoded output during validation, the resampler's tap tables and
 // scratch, optional smart-crop analysis, and a quarter for codec and
 // allocator overhead.
 func estimatedWorkingBytes(input workingInput, cfg Config) int64 {
 	targetPixels := int64(cfg.MaxWidth) * int64(cfg.MaxHeight)
-	estimatedBytes := input.sourceBytes + targetPixels*12
+	// The encoder's coefficients are released before the output is decoded
+	// for validation, so the two share the third buffer's place and only the
+	// larger is charged.
+	outputBytes := max(targetPixels*4, jpegenc.WorkingBytes(cfg.MaxWidth, cfg.MaxHeight, cfg.JPEGSubsampling))
+	estimatedBytes := input.sourceBytes + targetPixels*8 + outputBytes + resampleTableBytes(input.extent, cfg)
 	if cfg.LinearLightResize {
 		estimatedBytes += int64(defaultPixelWorkers()) * linearResampleWorkerBytes(input.pixels, cfg)
 	} else {
@@ -114,6 +144,22 @@ func estimatedWorkingBytes(input workingInput, cfg Config) int64 {
 		estimatedBytes += smartCropAnalysisBytes(input.pixels, cfg)
 	}
 	return estimatedBytes * 5 / 4
+}
+
+// resampleTableBytes bounds the tap tables one resize builds for its two
+// axes. An output index reads at most 4*max(shrink, 1)+2 source pixels, so an
+// axis holds at most four taps per source pixel plus six per output pixel,
+// however the source is shaped: a very long, thin source is all table. A tap
+// is a float32 in the linear-light resampler and a 16-byte coordinate and
+// weight in golang.org/x/image/draw; both keep up to 24 bytes of bookkeeping
+// per output index.
+func resampleTableBytes(sourceExtent int64, cfg Config) int64 {
+	targetExtent := int64(cfg.MaxWidth) + int64(cfg.MaxHeight)
+	tapBytes := int64(16)
+	if cfg.LinearLightResize {
+		tapBytes = 4
+	}
+	return (4*sourceExtent+6*targetExtent)*tapBytes + 24*targetExtent
 }
 
 // linearResampleWorkerBytes bounds one resampler worker: a band of

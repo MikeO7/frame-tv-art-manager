@@ -275,12 +275,27 @@ func newResampleAxis(sourceSize, destinationSize int) resampleAxis {
 		halfWidth *= scale
 		argumentScale = 1 / scale
 	}
-	axis := resampleAxis{start: make([]int, destinationSize), offset: make([]int, destinationSize+1)}
+	// window is the source range under the kernel at one destination index.
+	window := func(index int) (center float64, first, end int) {
+		center = (float64(index)+0.5)*scale - 0.5
+		return center, max(int(math.Floor(center-halfWidth)), 0), min(int(math.Ceil(center+halfWidth)), sourceSize)
+	}
+	// The table holds one weight per source pixel under every window. Sizing
+	// it once avoids growing a slice that reaches hundreds of megabytes for a
+	// long, thin source, where each regrowth briefly holds two copies.
+	weightCount := 0
+	for index := range destinationSize {
+		_, first, end := window(index)
+		weightCount += end - first
+	}
+	axis := resampleAxis{
+		start: make([]int, destinationSize), offset: make([]int, destinationSize+1),
+		weights:   make([]float32, 0, weightCount),
+		coreFirst: make([]int32, 0, destinationSize), coreEnd: make([]int32, 0, destinationSize),
+	}
 	taps := make([]float64, 0, int(2*halfWidth)+3)
 	for index := range destinationSize {
-		center := (float64(index)+0.5)*scale - 0.5
-		first := max(int(math.Floor(center-halfWidth)), 0)
-		end := min(int(math.Ceil(center+halfWidth)), sourceSize)
+		center, first, end := window(index)
 		taps, first = catmullRomTaps(taps[:0], center, argumentScale, first, end)
 		total := 0.0
 		for _, weight := range taps {

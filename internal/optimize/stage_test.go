@@ -31,10 +31,10 @@ func TestStageCatalogIsolatesTransformAndCleansWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StageCatalog: %v", err)
 	}
-	if stage.Optimized != 1 || len(stage.Renames) != 1 {
-		t.Fatalf("stage effects = count %d, renames %v; want one of each", stage.Optimized, stage.Renames)
+	if stage.Optimized != 1 || len(stage.renames) != 1 {
+		t.Fatalf("stage effects = count %d, renames %v; want one of each", stage.Optimized, stage.renames)
 	}
-	rename := stage.Renames[0]
+	rename := stage.renames[0]
 	if rename.OldName != sourceName || rename.NewName == "" || rename.NewName == sourceName {
 		t.Fatalf("stage rename = %+v", rename)
 	}
