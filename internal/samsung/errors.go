@@ -110,8 +110,6 @@ func (outcome Outcome) String() string {
 type Error struct {
 	Kind                ErrorKind
 	Operation           string
-	RequestID           string
-	Code                int
 	Retryable           bool
 	Outcome             Outcome
 	RetryAt             time.Time

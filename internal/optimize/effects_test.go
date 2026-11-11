@@ -135,3 +135,11 @@ func TestSharpenStrengthFollowsAmount(t *testing.T) {
 		t.Fatalf("amount 0.1 changes %d levels, more than a quarter of full strength's %d", tenth, full)
 	}
 }
+
+// scaleAwareSharpenAmount is sharpenAmountForScale for source and target sizes.
+func scaleAwareSharpenAmount(amount float64, sourceWidth, sourceHeight, targetWidth, targetHeight int) float64 {
+	if sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0 {
+		return 0
+	}
+	return sharpenAmountForScale(amount, fillScale(sourceWidth, sourceHeight, targetWidth, targetHeight))
+}

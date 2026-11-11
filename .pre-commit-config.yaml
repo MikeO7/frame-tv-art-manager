@@ -23,7 +23,7 @@ repos:
         name: go mod tidy
         entry: go mod tidy
         language: system
-        files: \.go$
+        files: (\.go|^go\.(mod|sum))$
         pass_filenames: false
 
     -   id: anti-slop-hygiene

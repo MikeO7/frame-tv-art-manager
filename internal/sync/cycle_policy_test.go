@@ -235,3 +235,25 @@ func TestConvergencePolicyCarriesRotationInterval(t *testing.T) {
 		t.Fatalf("convergencePolicy() rotation = %s, error = %v; want two weeks", policy.Rotation, err)
 	}
 }
+
+func TestDisplayIntervalFollowsThePictureScheduleNotTheSyncInterval(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name          string
+		show, syncMin int
+		mode          string
+		want          time.Duration
+	}{
+		{name: "pictures change between syncs", show: 15, syncMin: 30, mode: config.SlideshowModeApp, want: 15 * time.Minute},
+		{name: "pictures change less often than syncs", show: 45, syncMin: 30, mode: config.SlideshowModeApp, want: 45 * time.Minute},
+		{name: "every sync already changes the picture", show: 30, syncMin: 30, mode: config.SlideshowModeApp},
+		{name: "the TV changes its own pictures", show: 15, syncMin: 30, mode: config.SlideshowModeTV},
+	} {
+		cfg := &config.Config{
+			SlideshowMode: test.mode, SlideshowInterval: test.show, SlideshowType: "shuffle", SyncIntervalMin: test.syncMin,
+		}
+		if got := displayInterval(cfg); got != test.want {
+			t.Errorf("%s: displayInterval() = %v, want %v", test.name, got, test.want)
+		}
+	}
+}

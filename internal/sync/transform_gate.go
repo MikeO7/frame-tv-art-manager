@@ -6,7 +6,7 @@ import (
 )
 
 // errTransformsBusy refuses interactive work while every transform place is
-// taken. Callers may report it as retryable.
+// taken.
 var errTransformsBusy = errors.New("image transforms are busy")
 
 // One image transform runs at a time and two more may wait for it, which
@@ -18,8 +18,9 @@ const (
 
 // transformGate admits image transforms process-wide. Background work waits
 // for a place until its context ends; interactive work is refused at once
-// with errTransformsBusy when no place is free, so a request never queues
-// behind a whole collection.
+// with errTransformsBusy when no place is free. An admitted transform then
+// waits its turn to run, so interactive work can still wait behind the
+// transform that is running.
 type transformGate struct {
 	places  chan struct{}
 	running chan struct{}
@@ -50,12 +51,8 @@ func (g *transformGate) run(ctx context.Context, interactive bool, transform fun
 	defer func() { <-g.places }()
 	select {
 	case g.running <- struct{}{}:
-	default:
-		select {
-		case g.running <- struct{}{}:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 	defer func() { <-g.running }()
 	return transform(ctx)

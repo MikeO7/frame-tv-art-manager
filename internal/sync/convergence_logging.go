@@ -84,12 +84,6 @@ func appendSamsungErrorAttrs(attrs []slog.Attr, err *samsung.Error) []slog.Attr 
 		slog.Bool("retryable", err.Retryable),
 		slog.String("outcome", err.Outcome.String()),
 	)
-	if err.RequestID != "" {
-		attrs = append(attrs, slog.String("request_id", err.RequestID))
-	}
-	if err.Code != 0 {
-		attrs = append(attrs, slog.Int("code", err.Code))
-	}
 	if !err.RetryAt.IsZero() {
 		attrs = append(attrs, slog.Time("retry_at", err.RetryAt))
 	}

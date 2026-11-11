@@ -204,6 +204,11 @@ func (p *catalogPass) portraitFeatures(ctx context.Context, names []string) []po
 	features := make([]portraitFeature, 0, len(names))
 	for _, name := range names {
 		feature := portraitFeature{name: name, color: oklab{l: 0.5}, aspect: 2.0 / 3.0}
+		if len(names) < 2 {
+			// A lone portrait has nothing to pair with, so it is not decoded.
+			features = append(features, feature)
+			continue
+		}
 		path := filepath.Join(p.artworkDir, name)
 		inputs, err := inspectCollageInputs(ctx, path)
 		if err == nil {

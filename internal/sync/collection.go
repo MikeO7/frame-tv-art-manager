@@ -54,22 +54,8 @@ type localCollection struct {
 	store    collectionpkg.Store
 }
 
-// newArtworkCollection constructs the single collection mutation authority.
-func newArtworkCollection(
-	cfg *config.Config,
-	logger *slog.Logger,
-	healthStatus *health.Status,
-	store collectionpkg.Store,
-) (artworkCollection, error) {
-	local, err := newLocalCollection(cfg, logger, healthStatus, store, newTransformGate())
-	if err != nil {
-		return nil, err
-	}
-	return local, nil
-}
-
-// newLocalCollection is newArtworkCollection with an explicit transform
-// admission controller, so callers can share it with other image work.
+// newLocalCollection constructs the single collection mutation authority. The
+// transform gate is passed in so callers can share it with other image work.
 func newLocalCollection(
 	cfg *config.Config,
 	logger *slog.Logger,

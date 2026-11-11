@@ -150,8 +150,6 @@ func matColors(stats paletteStats, tone string) (oklab, oklab) {
 	return preferred, bevel
 }
 
-// renderMat places one or two images, whole and at equal height, in openings
-// cut into a single gallery mat that fills the frame.
 // matMargin is the mat border width in pixels.
 func matMargin(cfg Config) int {
 	return max(1, int(math.Round(matMarginFraction*float64(min(cfg.MaxWidth, cfg.MaxHeight)))))
@@ -163,6 +161,8 @@ func matBox(cfg Config, count int) (int, int) {
 	return max(1, (cfg.MaxWidth-2*margin-(count-1)*margin)/count), max(1, cfg.MaxHeight-2*margin)
 }
 
+// renderMat places one or two images, whole and at equal height, in openings
+// cut into a single gallery mat that fills the frame.
 func renderMat(images []*image.RGBA, cfg Config) *image.RGBA {
 	width, height := cfg.MaxWidth, cfg.MaxHeight
 	margin := matMargin(cfg)

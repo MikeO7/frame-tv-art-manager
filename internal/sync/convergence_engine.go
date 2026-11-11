@@ -96,10 +96,10 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 	if ctx.Err() == nil {
 		ticker := time.NewTicker(engineSyncInterval(engine.cfg))
 		defer ticker.Stop()
-		// Pictures change more often than the collection syncs, so a lighter
-		// timer changes them in between.
+		// Pictures change on their own schedule, so a lighter timer changes
+		// them between sync cycles.
 		var display <-chan time.Time
-		if interval := engine.cfg.ShowInterval(); interval > 0 && interval < engineSyncInterval(engine.cfg) {
+		if interval := displayInterval(engine.cfg); interval > 0 {
 			displayTicker := time.NewTicker(interval)
 			defer displayTicker.Stop()
 			display = displayTicker.C
@@ -121,6 +121,17 @@ func (engine *convergenceEngine) RunLoop(ctx context.Context) error {
 	return ctx.Err()
 }
 
+// displayInterval is how often RunLoop changes the picture on its own timer.
+// It is zero when pictures do not change, or when they change exactly as often
+// as the collection syncs, because every sync cycle changes a due picture.
+func displayInterval(cfg *config.Config) time.Duration {
+	interval := cfg.ShowInterval()
+	if interval <= 0 || interval == engineSyncInterval(cfg) {
+		return 0
+	}
+	return interval
+}
+
 func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	if err := acquireGate(ctx, engine.cycleGate); err != nil {
 		return fmt.Errorf("wait for sync cycle: %w", err)
@@ -133,7 +144,7 @@ func (engine *convergenceEngine) RunOnce(ctx context.Context) (err error) {
 	var tvErrors []error
 	failedTVs := 0
 	defer func() {
-		engine.finalizeCycle(err, tvErrors)
+		engine.finalizeCycle(err)
 		engine.logFailedCycle(ctx, cycleLog, startedAt, err, failedTVs)
 	}()
 
@@ -283,15 +294,11 @@ func (engine *convergenceEngine) publishTVHealth(summary tvSyncResult) {
 	})
 }
 
-func (engine *convergenceEngine) finalizeCycle(cycleErr error, tvErrors []error) {
+func (engine *convergenceEngine) finalizeCycle(cycleErr error) {
 	if engine.health == nil {
 		return
 	}
-	finalErr := cycleErr
-	if finalErr == nil && len(tvErrors) > 0 {
-		finalErr = errors.Join(tvErrors...)
-	}
-	engine.health.RecordSync(finalErr == nil, finalErr)
+	engine.health.RecordSync(cycleErr == nil, cycleErr)
 	engine.health.SetStage("idle")
 }
 

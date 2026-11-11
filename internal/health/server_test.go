@@ -308,6 +308,16 @@ func TestHTTPStatusWireContract(t *testing.T) {
 	}
 }
 
+func TestStatusReportsNoLastSyncBeforeTheFirstCycle(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t, testConfig(0, false, ""), NewStatus())
+	response := httptest.NewRecorder()
+	server.handleStatus(response, httptest.NewRequest(http.MethodGet, "/status", nil))
+	if got := decodeJSONResponse(t, response)[fieldLastSync]; got != "" {
+		t.Fatalf("last_sync before the first cycle = %q, want empty", got)
+	}
+}
+
 func TestStatusReportsSourceWarningWithoutFailingReadiness(t *testing.T) {
 	t.Parallel()
 	const detail = "artwork sources failed: provider offline"

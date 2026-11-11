@@ -23,7 +23,7 @@ func TestTVFailureLogCarriesCompleteSamsungDiagnostics(t *testing.T) {
 	logTVOutcome(context.Background(), logger, tvSyncResult{
 		IP: "192.0.2.10", Model: "Frame", Status: statusBackoff, TotalImages: 4,
 	}, &samsung.Error{
-		Kind: samsung.ErrorKindBackoff, Operation: "observe", RequestID: "request-17", Code: 503,
+		Kind: samsung.ErrorKindBackoff, Operation: "observe",
 		Retryable: true, Outcome: samsung.OutcomeNotAttempted, RetryAt: retryAt,
 		ConsecutiveFailures: 3, Cause: cause,
 	})
@@ -33,8 +33,8 @@ func TestTVFailureLogCarriesCompleteSamsungDiagnostics(t *testing.T) {
 		"level": "WARN", "msg": "TV reconciliation deferred by backoff", "cycle": float64(7),
 		"tv": "192.0.2.10", "model": "Frame", "status": statusBackoff,
 		"total_images": float64(4), "error_kind": "backoff", "operation": "observe",
-		"retryable": true, "outcome": "not_attempted", "request_id": "request-17",
-		"code": float64(503), "retry_at": retryAt.Format(time.RFC3339),
+		"retryable": true, "outcome": "not_attempted",
+		"retry_at":             retryAt.Format(time.RFC3339),
 		"consecutive_failures": float64(3),
 	}
 	for key, expected := range want {

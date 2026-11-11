@@ -232,6 +232,9 @@ func TestPrepareExcludesCorruptArtworkWithoutDeletingIt(t *testing.T) {
 	if len(snapshot.Items) != 1 || snapshot.Items[0].Name != "good.png" || len(snapshot.Warnings) != 1 {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
+	if strings.Contains(snapshot.Warnings[0], "changed while reading") {
+		t.Fatalf("warning blames a file change for a file that never changed: %s", snapshot.Warnings[0])
+	}
 	assertContents(t, filepath.Join(root, "broken.jpg"), "not an image")
 }
 

@@ -336,12 +336,14 @@ func parseICCCurve(data []byte) (iccCurve, error) {
 	}
 	switch string(data[:4]) {
 	case "curv":
-		count := int(binary.BigEndian.Uint32(data[8:12]))
+		// Bounded as a 64-bit value: on 32-bit builds count*2 would wrap.
+		declared := binary.BigEndian.Uint32(data[8:12])
+		if int64(declared) > int64(len(data)-12)/2 {
+			return iccCurve{}, errors.New("curveType values are truncated")
+		}
+		count := int(declared)
 		if count == 0 {
 			return iccCurve{kind: iccCurveIdentity}, nil
-		}
-		if 12+count*2 > len(data) {
-			return iccCurve{}, errors.New("curveType values are truncated")
 		}
 		if count == 1 {
 			return iccCurve{kind: iccCurveGamma, params: []float64{float64(binary.BigEndian.Uint16(data[12:14])) / 256}}, nil

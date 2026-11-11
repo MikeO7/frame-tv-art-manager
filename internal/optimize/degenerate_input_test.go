@@ -87,7 +87,7 @@ func TestMuseumModeKeepsSolidColour(t *testing.T) {
 		for offset := 0; offset < len(src.Pix); offset += 4 {
 			src.Pix[offset], src.Pix[offset+1], src.Pix[offset+2], src.Pix[offset+3] = fill.R, fill.G, fill.B, fill.A
 		}
-		if rms := calculateRMSContrast(src); math.IsNaN(rms) || rms < 0 || rms > 1 {
+		if _, rms := lumaMeanAndRMS(src); math.IsNaN(rms) || rms < 0 || rms > 1 {
 			t.Fatalf("RMS contrast of solid %v = %v, want about zero", fill, rms)
 		}
 		got := applyMuseumMode(src, 0).RGBAAt(1920, 1080)

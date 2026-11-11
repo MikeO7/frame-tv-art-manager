@@ -120,7 +120,8 @@ docker compose logs -f frame-tv-art-manager
 
 The image runs on `amd64`, `arm64`, and `armv7`. If the container can't write to
 `./data`, create the folders yourself with `mkdir -p data/artwork data/tokens`.
-To set file ownership, use `PUID` and `PGID`. To run as a non-root user instead,
+To set the owner of the artwork and token folders, use `PUID` and `PGID`; the
+files inside are still written by the user the container runs as. To run as a non-root user instead,
 own both folders yourself, add `user: "<uid>:<gid>"` to the service, and leave
 `PUID`/`PGID` unset.
 
@@ -328,9 +329,9 @@ record decides what it is allowed to remove:
 
 - **Art you added yourself is never removed.** Only `REMOVE_UNKNOWN_IMAGES=true`
   changes this, and that setting deletes everything the manager didn't upload.
-- **The displayed artwork isn't changed.** The manager never selects a
-  different piece. If it removes the piece on screen, the TV moves on to
-  another one.
+- **Syncing doesn't change the displayed artwork.** Only the picture-change
+  schedule selects a different piece (`SLIDESHOW_ENABLED=false` turns that
+  off). If a sync removes the piece on screen, the TV moves on to another one.
 - **An empty folder doesn't empty the TV.** The last piece the manager uploaded
   stays up.
 - **When in doubt, it waits.** If the TV's state or the collection can't be read
@@ -698,7 +699,9 @@ The full, annotated list is in [`.env.example`](.env.example).
 
 Invalid values such as an unknown log level, an unsupported slideshow
 interval, or a bad TV address stop the service at startup with a clear error.
-A number that can't be read falls back to its default and logs a warning.
+A number that can't be read falls back to its default and logs a warning,
+except `BRIGHTNESS`, `LOCATION_LATITUDE`, and `LOCATION_LONGITUDE`, which stop
+the service.
 On/off settings accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`, or
 `y`/`n` in any case; anything else stops the service at startup, so a typo
 can't silently turn a setting such as `DRY_RUN` off.
@@ -740,7 +743,7 @@ them, the manager leaves the TV's own settings alone.
   on or off. The TV keeps playing the category it was already playing.
 - **Brightness.** `BRIGHTNESS` sets a fixed level on the Frame's Art Mode scale
   (0–10). Alternatively, `SOLAR_BRIGHTNESS_ENABLED=true` with
-  `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, and `LOCATION_TIMEZONE` follows the
+  `LOCATION_LATITUDE` and `LOCATION_LONGITUDE` follows the
   sun between `BRIGHTNESS_MIN` and `BRIGHTNESS_MAX` (also 0–10), reaching the
   maximum when the sun is highest. Values from 11 to 50, from the 0–50 scale
   earlier releases documented, are converted (30 becomes 6) and logged as a

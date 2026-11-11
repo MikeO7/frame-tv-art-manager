@@ -308,6 +308,29 @@ func TestConnectionPendingRequestsFailWhenUnansweredOrClosed(t *testing.T) {
 	}
 }
 
+func TestDialFailureDoesNotExposeTheToken(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+	connection := newConnection(connConfig{timeout: time.Second, logger: slog.New(slog.DiscardHandler)})
+	_, err = connection.dial(context.Background(), "ws://"+address+"/api/v2/channels/art?token=paired-secret")
+	if err == nil {
+		t.Fatal("dial to a closed port succeeded")
+	}
+	if strings.Contains(err.Error(), "paired-secret") || strings.Contains(err.Error(), "token=") {
+		t.Fatalf("dial error exposes the token: %v", err)
+	}
+	if !unreachableError(err) {
+		t.Fatalf("dial error = %v, want it still classified as unreachable", err)
+	}
+}
+
 func TestConnectionFormatURLBracketsIPv6Host(t *testing.T) {
 	t.Parallel()
 	connection := newConnection(connConfig{

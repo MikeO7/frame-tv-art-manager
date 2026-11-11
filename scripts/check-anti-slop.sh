@@ -48,27 +48,18 @@ for p in "${FORBIDDEN_PATTERNS[@]}"; do
     fi
 done
 
-# Find all code files and scan them
-find . -type f \( \
-    -name "*.go" -o \
-    -name "*.sh" -o \
-    -name "*.yml" -o \
-    -name "*.yaml" -o \
-    -name "Dockerfile" -o \
-    -name "*.json" \
-\) \
--not -path "*/.git/*" \
--not -path "*/.venv/*" \
--not -path "*/node_modules/*" \
--not -path "*/.e2e/*" \
--not -path "*/.agents/skills/*" \
--not -path "*/scripts/check-anti-slop.sh" \
--not -path "*/.pre-commit-config.yaml" \
--not -path "*/.golangci.yml" \
--not -name "package-lock.json" \
--not -name "pnpm-lock.yaml" \
--not -name "go.sum" \
--print0 | xargs -0 grep -inE "$REGEX_PATTERN" > "$GREP_OUT" || true
+# Scan this repository's own code files: tracked ones and new ones that are
+# not ignored. Other checkouts nested in the folder, such as worktrees, and
+# ignored build output are not this repository's code.
+git ls-files -z --cached --others --exclude-standard -- \
+    '*.go' '*.sh' '*.yml' '*.yaml' '*.json' 'Dockerfile' '*/Dockerfile' \
+    ':(exclude).agents/skills' \
+    ':(exclude)scripts/check-anti-slop.sh' \
+    ':(exclude).pre-commit-config.yaml' \
+    ':(exclude).golangci.yml' \
+    ':(exclude,glob)**/package-lock.json' \
+    ':(exclude,glob)**/pnpm-lock.yaml' \
+    | xargs -0 grep -inE "$REGEX_PATTERN" > "$GREP_OUT" 2>/dev/null || true
 
 if [ -s "$GREP_OUT" ]; then
     echo "❌ [ANTI-SLOP VIOLATION] Lazy code patterns, placeholders, or stubs were detected:"

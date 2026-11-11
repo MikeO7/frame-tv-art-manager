@@ -1653,3 +1653,11 @@ func TestRunKeepsBindingRenewedAfterContentLeftTV(t *testing.T) {
 		t.Fatalf("settled cycle sent %v, want no commands", settled.commands)
 	}
 }
+
+// buildPlan validates the snapshot as Run does, then plans it.
+func buildPlan(snapshot collection.Snapshot, observation samsung.Observation, state State, policy Policy) (Plan, error) {
+	if err := validateSnapshot(snapshot); err != nil {
+		return Plan{}, err
+	}
+	return planSnapshot(snapshot, observation, state, policy)
+}

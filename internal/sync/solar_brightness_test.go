@@ -128,19 +128,18 @@ func TestCalculateAtRequiresCompleteLocation(t *testing.T) {
 	tests := []struct {
 		name     string
 		location *solarLocation
-		disabled bool
 	}{
-		{name: "nil location", disabled: true},
-		{name: "missing coordinates", location: &solarLocation{Timezone: "UTC"}, disabled: true},
-		{name: "missing longitude", location: &solarLocation{Latitude: &lat, Timezone: "UTC"}, disabled: true},
-		{name: "invalid timezone", location: &solarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"}},
+		{name: "nil location"},
+		{name: "missing coordinates", location: &solarLocation{}},
+		{name: "missing longitude", location: &solarLocation{Latitude: &lat}},
+		{name: "missing latitude", location: &solarLocation{Longitude: &lon}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			result, err := solarBrightnessAt(test.location, 2, 10, time.Time{})
-			if err == nil || result != nil || errors.Is(err, errSolarDisabled) != test.disabled {
-				t.Fatalf("CalculateAt() = %v, %v; want nil result, disabled=%t", result, err, test.disabled)
+			if result != nil || !errors.Is(err, errSolarDisabled) {
+				t.Fatalf("solarBrightnessAt() = %v, %v; want nil result and errSolarDisabled", result, err)
 			}
 		})
 	}
@@ -151,28 +150,19 @@ func TestGetTargetValueAtPrefersSolarThenManual(t *testing.T) {
 	lat, lon := 40.7128, -74.0060
 	manual := 5
 	now := time.Date(2025, time.June, 21, 17, 0, 0, 0, time.UTC)
-	solar := &solarLocation{Latitude: &lat, Longitude: &lon, Timezone: "UTC"}
+	solar := &solarLocation{Latitude: &lat, Longitude: &lon}
 	solarWant, err := solarBrightnessAt(solar, 2, 10, now)
 	if err != nil {
 		t.Fatalf("CalculateAt() error = %v", err)
 	}
 	tests := []struct {
-		name     string
-		options  brightnessTarget
-		want     *int
-		wantLog  string
-		wantWarn bool
+		name    string
+		options brightnessTarget
+		want    *int
+		wantLog string
 	}{
 		{name: "solar wins over manual", options: brightnessTarget{Location: solar, Min: 2, Max: 10, Manual: &manual, Now: now}, want: solarWant, wantLog: "solar brightness"},
 		{name: "manual without location", options: brightnessTarget{Manual: &manual, Now: now}, want: &manual, wantLog: "manual brightness"},
-		{
-			name: "invalid timezone falls back to manual",
-			options: brightnessTarget{
-				Location: &solarLocation{Latitude: &lat, Longitude: &lon, Timezone: "Invalid/Zone"},
-				Min:      2, Max: 10, Manual: &manual, Now: now,
-			},
-			want: &manual, wantLog: "manual brightness", wantWarn: true,
-		},
 		{name: "incomplete location is silently disabled", options: brightnessTarget{Location: &solarLocation{Latitude: &lat}, Now: now}},
 		{name: "unset", options: brightnessTarget{Now: now}},
 	}
@@ -186,9 +176,6 @@ func TestGetTargetValueAtPrefersSolarThenManual(t *testing.T) {
 			}
 			if !strings.Contains(logs.String(), test.wantLog) {
 				t.Fatalf("logs = %q, want %q", logs.String(), test.wantLog)
-			}
-			if warned := strings.Contains(logs.String(), "level=WARN"); warned != test.wantWarn {
-				t.Fatalf("warning logged = %t, want %t: %s", warned, test.wantWarn, logs.String())
 			}
 			if nilLogger := targetBrightnessAt(test.options, nil); (nilLogger == nil) != (got == nil) {
 				t.Fatalf("nil logger changed the result: %v vs %v", nilLogger, got)

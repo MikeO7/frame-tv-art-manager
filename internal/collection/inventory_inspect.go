@@ -51,10 +51,12 @@ func inspectItem(
 	}
 	inspection := artworkInspection{file: file, path: path, before: opened}
 	item, bytesRead, readErr := inspection.read(ctx, entry.Name(), limits, record)
-	after, reinspectErr := inspection.validateStable(ctx, bytesRead)
 	if readErr != nil {
-		return Item{}, fmt.Errorf("validate artwork %s: %w", entry.Name(), errors.Join(readErr, reinspectErr))
+		// A failed read stops short of the file's end, so comparing the bytes
+		// read with its size would only add a false "changed" report.
+		return Item{}, fmt.Errorf("validate artwork %s: %w", entry.Name(), readErr)
 	}
+	after, reinspectErr := inspection.validateStable(ctx, bytesRead)
 	if reinspectErr != nil {
 		return Item{}, fmt.Errorf("reinspect artwork %s: %w", entry.Name(), reinspectErr)
 	}

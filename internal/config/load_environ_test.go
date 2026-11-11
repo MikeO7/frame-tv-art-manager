@@ -338,3 +338,15 @@ func TestLoadEnvironSlideshowIntervalDependsOnMode(t *testing.T) {
 		})
 	}
 }
+
+func TestMatteStyleIsTrimmedAndBoundedAtStartup(t *testing.T) {
+	t.Parallel()
+	cfg, _, err := LoadEnviron([]string{"TV_IPS=192.0.2.10", "MATTE_STYLE= shadowbox_polar "})
+	if err != nil || cfg.MatteStyle != "shadowbox_polar" {
+		t.Fatalf("LoadEnviron() matte = %q, %v; want the surrounding spaces removed", cfg.MatteStyle, err)
+	}
+	_, _, err = LoadEnviron([]string{"TV_IPS=192.0.2.10", "MATTE_STYLE=" + strings.Repeat("m", 129)})
+	if err == nil || !strings.Contains(err.Error(), "MATTE_STYLE") {
+		t.Fatalf("LoadEnviron() error = %v, want an overlong MATTE_STYLE rejected at startup", err)
+	}
+}

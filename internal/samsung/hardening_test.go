@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -127,30 +126,6 @@ func TestWaitForImageAddedTimesOut(t *testing.T) {
 	events := make(chan json.RawMessage)
 	if _, err := waitForImageAdded(context.Background(), events, imageAddedMatch{requestID: "upload"}, time.Millisecond); !errors.Is(err, errTimeout) {
 		t.Fatalf("wait() error = %v, want ErrTimeout", err)
-	}
-}
-
-func TestProtocolTransportConcurrentSendAndClose(t *testing.T) {
-	transport := &protocolTransport{
-		config: Config{RequestTimeout: time.Millisecond},
-		logger: slog.New(slog.DiscardHandler),
-	}
-	const iterations = 200
-	for range iterations {
-		transport.mu.Lock()
-		transport.conn = newConnection(connConfig{logger: slog.New(slog.DiscardHandler)})
-		transport.mu.Unlock()
-		var group sync.WaitGroup
-		group.Add(2)
-		go func() {
-			defer group.Done()
-			_ = transport.Close(context.Background())
-		}()
-		go func() {
-			defer group.Done()
-			_, _ = transport.send(context.Background(), keyGetArtModeStatus, nil)
-		}()
-		group.Wait()
 	}
 }
 

@@ -28,10 +28,15 @@ func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // syncFields returns the sync-state fields shared by /health and /status.
 // They reveal no error text, addresses, or file names.
 func (s *server) syncFields(snapshot statusSnapshot, status string) map[string]any {
+	// No cycle has finished yet, so there is no time to report.
+	lastSync := ""
+	if !snapshot.LastSyncAt.IsZero() {
+		lastSync = snapshot.LastSyncAt.Format(time.RFC3339)
+	}
 	return map[string]any{
 		fieldStatus:       status,
 		fieldUptime:       s.now().Sub(snapshot.StartedAt).Round(time.Second).String(),
-		fieldLastSync:     snapshot.LastSyncAt.Format(time.RFC3339),
+		fieldLastSync:     lastSync,
 		fieldLastSyncOK:   snapshot.LastSyncOK,
 		fieldCurrentStage: snapshot.CurrentStage,
 		fieldSyncCount:    snapshot.SyncCount,

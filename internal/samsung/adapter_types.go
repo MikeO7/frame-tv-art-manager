@@ -210,11 +210,6 @@ type brightnessReading struct {
 	Max   int
 }
 
-// Clamp limits value to the TV's reported range.
-func (reading brightnessReading) Clamp(value int) int {
-	return min(max(value, reading.Min), reading.Max)
-}
-
 // Command is sealed to the Samsung package so arbitrary wire messages cannot
 // cross the adapter's safety boundary.
 type Command interface {
