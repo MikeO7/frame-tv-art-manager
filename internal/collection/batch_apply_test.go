@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,7 +31,7 @@ func TestCollisionSafeNameBoundsSourceIdentity(t *testing.T) {
 
 func TestApplyPublishesWholeStagedCollection(t *testing.T) {
 	root := t.TempDir()
-	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -70,7 +71,7 @@ func TestApplyPublishesWholeStagedCollection(t *testing.T) {
 
 func TestApplyCarriesStableMetadataAcrossDerivativeRename(t *testing.T) {
 	root := t.TempDir()
-	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestApplyCarriesStableMetadataAcrossDerivativeRename(t *testing.T) {
 
 func TestApplyDryRunAndReplacementRejectionDoNotMutateCollection(t *testing.T) {
 	root := t.TempDir()
-	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -151,7 +152,7 @@ func TestApplyDryRunAndReplacementRejectionDoNotMutateCollection(t *testing.T) {
 
 func TestPrepareRecoversBatchTransaction(t *testing.T) {
 	root := t.TempDir()
-	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -192,7 +193,7 @@ func TestPrepareRecoversBatchTransaction(t *testing.T) {
 	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := recoverBatchTransaction(canceled, root, tx); !errors.Is(err, context.Canceled) {
+	if err := recoverBatchTransaction(canceled, root, tx, slog.Default()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled batch recovery error = %v", err)
 	}
 	if _, err := os.Stat(seed.Items[0].Path); err != nil {
@@ -218,7 +219,7 @@ func TestPrepareRecoversBatchTransaction(t *testing.T) {
 
 func TestApplyCommitsOriginOnlyChangesAndSkipsUnchangedManifest(t *testing.T) {
 	root := t.TempDir()
-	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -540,12 +541,21 @@ func TestPrepareRefusesChangedBatchDestinations(t *testing.T) {
 		if err := writeJournal(context.Background(), root, tx); err != nil {
 			t.Fatalf("write batch intent: %v", err)
 		}
-		if _, err := valueStore.Prepare(context.Background(), PrepareRequest{}); err == nil {
-			t.Fatal("recovery deleted changed artwork")
+		snapshot, err := valueStore.Prepare(context.Background(), PrepareRequest{})
+		if err != nil {
+			t.Fatalf("recovery blocked by a changed deletion target: %v", err)
 		}
 		assertBytesEqual(t, final, changed)
-		if _, err := os.Stat(journalPath(root)); err != nil {
-			t.Fatalf("refused recovery removed journal: %v", err)
+		if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("finished recovery left its journal: %v", err)
+		}
+		if len(snapshot.Items) != 1 || snapshot.Items[0].Name != "changed.png" ||
+			snapshot.Items[0].Digest != sha256.Sum256(changed) || snapshot.Items[0].Origin.Class != OriginOperator {
+			t.Fatalf("items after recovery = %+v; want the changed file adopted as operator artwork", snapshot.Items)
+		}
+		again, err := valueStore.Prepare(context.Background(), PrepareRequest{})
+		if err != nil || len(again.Items) != 1 || again.Items[0].Name != "changed.png" {
+			t.Fatalf("following Prepare = %+v, %v; want the changed file listed", again.Items, err)
 		}
 	})
 }
@@ -686,20 +696,105 @@ func TestApplyValidationFailuresLeaveCollectionUntouched(t *testing.T) {
 		})
 	}
 
-	t.Run("untrustworthy current inventory", func(t *testing.T) {
+	t.Run("recorded artwork that became invalid", func(t *testing.T) {
 		root := t.TempDir()
-		if err := os.WriteFile(filepath.Join(root, "broken.png"), []byte("not an image"), 0o644); err != nil {
-			t.Fatalf("write broken collection artwork: %v", err)
-		}
 		valueStore, err := New(Config{Root: root})
 		if err != nil {
 			t.Fatalf("new store: %v", err)
 		}
+		first, err := valueStore.Import(context.Background(), ImportRequest{
+			Reader: bytes.NewReader(encodeInternalImage(t, 1, 1)), Hint: "kept.png",
+		})
+		if err != nil {
+			t.Fatalf("import recorded artwork: %v", err)
+		}
+		if err := os.WriteFile(first.Items[0].Path, []byte("not an image"), 0o644); err != nil {
+			t.Fatalf("corrupt recorded artwork: %v", err)
+		}
 		if _, err := valueStore.Apply(context.Background(), ApplyRequest{Directory: t.TempDir()}); err == nil {
 			t.Fatal("Apply accepted an untrustworthy current inventory")
 		}
-		assertTestFile(t, filepath.Join(root, "broken.png"), "not an image")
+		assertTestFile(t, first.Items[0].Path, "not an image")
 	})
+}
+
+func TestApplyToleratesInvalidFilesTheManifestDoesNotRecord(t *testing.T) {
+	root := t.TempDir()
+	broken := filepath.Join(root, "broken.png")
+	if err := os.WriteFile(broken, []byte("not an image"), 0o644); err != nil {
+		t.Fatalf("write broken collection artwork: %v", err)
+	}
+	valueStore, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	stage := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stage, "new.png"), encodeInternalImage(t, 2, 2), 0o644); err != nil {
+		t.Fatalf("write staged artwork: %v", err)
+	}
+	snapshot, err := valueStore.Apply(context.Background(), ApplyRequest{Directory: stage})
+	if err != nil {
+		t.Fatalf("one invalid unrecorded file blocked Apply: %v", err)
+	}
+	if len(snapshot.Items) != 1 || snapshot.Items[0].Name != "new.png" {
+		t.Fatalf("items = %+v; want only the staged artwork", snapshot.Items)
+	}
+	assertTestFile(t, broken, "not an image")
+
+	// A staged name the invalid file already holds is refused before any
+	// intent is journaled, so the collection is not left needing recovery.
+	taken := t.TempDir()
+	for _, name := range []string{"new.png", "broken.png"} {
+		data := encodeInternalImage(t, 2, 2)
+		if name == "broken.png" {
+			data = encodeInternalImage(t, 3, 2)
+		}
+		if err := os.WriteFile(filepath.Join(taken, name), data, 0o644); err != nil {
+			t.Fatalf("write staged artwork: %v", err)
+		}
+	}
+	if _, err := valueStore.Apply(context.Background(), ApplyRequest{Directory: taken}); err == nil {
+		t.Fatal("Apply published over a file outside the inventory")
+	}
+	assertTestFile(t, broken, "not an image")
+	if _, err := os.Stat(journalPath(root)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("refused Apply left a journal: %v", err)
+	}
+	if _, err := valueStore.Prepare(context.Background(), PrepareRequest{}); err != nil {
+		t.Fatalf("Prepare after refused Apply: %v", err)
+	}
+}
+
+func TestStagedAdditionIsComparedByLengthAndDigest(t *testing.T) {
+	directory := t.TempDir()
+	data := encodeInternalImage(t, 2, 2)
+	path := filepath.Join(directory, "art.png")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	expected := Item{Name: "art.png", Digest: sha256.Sum256(data), Size: int64(len(data))}
+	read, err := readStableBatchSource(context.Background(), path, expected)
+	if err != nil || !bytes.Equal(read, data) {
+		t.Fatalf("readStableBatchSource() = %d bytes, %v; want the inventoried bytes", len(read), err)
+	}
+	tests := []struct {
+		name    string
+		content []byte
+	}{
+		{name: "same length, different bytes", content: append(append([]byte(nil), data[:len(data)-1]...), data[len(data)-1]^0xff)},
+		{name: "longer", content: append(append([]byte(nil), data...), 0)},
+		{name: "shorter", content: data[:len(data)-1]},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(path, tc.content, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := readStableBatchSource(context.Background(), path, expected); err == nil {
+				t.Fatal("staged artwork changed after inventory was accepted")
+			}
+		})
+	}
 }
 
 func TestApplyAcceptsIsolatedStageWhenCollectionDoesNotExist(t *testing.T) {
@@ -792,7 +887,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := recoverBatchTransaction(ctx, root, transaction{Next: newManifest(nil)}); !errors.Is(err, context.Canceled) {
+		if err := recoverBatchTransaction(ctx, root, transaction{Next: newManifest(nil)}, slog.Default()); !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled recovery error = %v", err)
 		}
 	})
@@ -815,7 +910,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 			Next:      newManifest(nil),
 			Deletions: []transactionEffect{{Final: link, Digest: hex.EncodeToString(digest[:])}},
 		}
-		if err := recoverBatchTransaction(context.Background(), root, tx); err == nil {
+		if err := recoverBatchTransaction(context.Background(), root, tx, slog.Default()); err == nil {
 			t.Fatal("recovery accepted a symlink deletion target")
 		}
 		assertTestFile(t, target, "preserve")
@@ -833,7 +928,7 @@ func TestBatchTransactionErrorPathsPreserveDurableEvidence(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(journal, "keep"), []byte("evidence"), 0o600); err != nil {
 			t.Fatalf("populate obstructing journal directory: %v", err)
 		}
-		if err := recoverBatchTransaction(context.Background(), root, transaction{Next: newManifest(nil)}); err == nil {
+		if err := recoverBatchTransaction(context.Background(), root, transaction{Next: newManifest(nil)}, slog.Default()); err == nil {
 			t.Fatal("recovery ignored failure to remove durable intent")
 		}
 		assertTestFile(t, filepath.Join(journal, "keep"), "evidence")
@@ -1016,7 +1111,7 @@ func assertBytesEqual(t *testing.T, path string, expected []byte) {
 
 func TestApplyKeepsArtworkAddedOrChangedAfterBaseline(t *testing.T) {
 	root := t.TempDir()
-	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	valueStore, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}

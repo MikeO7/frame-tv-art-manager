@@ -338,7 +338,7 @@ func TestLoaderRemovesOnlyStaleTemporaryDownloads(t *testing.T) {
 	if err := os.Chtimes(stale.Name(), old, old); err != nil {
 		t.Fatal(err)
 	}
-	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir()}, discardLogger())
+	loader := newTestLoader(&config.Config{ArtworkDir: t.TempDir(), MaxDownloadSizeMB: 20}, discardLogger())
 	loader.removeStaleDownloads()
 	if _, err := os.Stat(stale.Name()); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stale download still present: %v", err)

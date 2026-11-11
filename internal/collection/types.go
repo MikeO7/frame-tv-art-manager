@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"log/slog"
 )
 
 // ErrInvalidImport classifies bytes rejected before any Collection mutation.
@@ -45,25 +46,21 @@ type Config struct {
 	Root           string
 	MaxItems       int
 	MaxImportBytes int64
-	MaxPixels      int64
+	// Logger receives recovery warnings. Nil uses the default logger.
+	Logger *slog.Logger
 }
 
 type ImportRequest struct {
 	Reader   io.Reader
 	Hint     string
 	MaxBytes int64
-	Policy   policy
 	Origin   Origin
 	DryRun   bool
 }
 
 // PrepareRequest describes one recovery and inventory cycle.
 type PrepareRequest struct {
-	// Origins carries exact filename-to-origin associations across a staged
-	// namespace transformation. Unlisted files retain their committed origin or
-	// are conservatively adopted as operator-owned.
-	Origins map[string]Origin
-	DryRun  bool
+	DryRun bool
 }
 
 // ApplyRequest atomically replaces the committed collection view with the
@@ -92,11 +89,6 @@ type ItemMetadata struct {
 	// Originals are the kept untouched bytes a derivative is rendered from,
 	// in render order. Empty for untransformed artwork.
 	Originals []Original
-}
-
-// policy applies request-specific limits. Zero values retain store limits.
-type policy struct {
-	MaxPixels int64
 }
 
 type Snapshot struct {

@@ -55,6 +55,8 @@ type fakeAdapter struct {
 	commands     []string
 }
 
+func (f *fakeAdapter) Address() string { return "192.0.2.10" }
+
 func (f *fakeAdapter) Observe(_ context.Context, request samsung.ObserveRequest) (samsung.Observation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -122,7 +124,7 @@ func TestRunInitialObservationRequestsPolicyCapabilities(t *testing.T) {
 		},
 		{
 			name:   "power on",
-			policy: Policy{Power: PowerOn},
+			policy: Policy{Power: PowerOn, WakeBoundary: testTime},
 			want:   samsung.CapabilityRemotePower,
 		},
 	}
@@ -216,15 +218,37 @@ func artworkItem(name, body string) collection.Item {
 	}
 }
 
+// newTestService builds a service whose requests run under policy unless they
+// name their own.
 func newTestService(t *testing.T, directory string, policy Policy) Service {
 	t.Helper()
-	value, err := New(Config{StateDirectory: directory, Policy: policy}, Dependencies{
+	value, err := New(Config{StateDirectory: directory}, Dependencies{
 		Clock: fixedClock{testTime}, IDs: &sequenceIDs{}, Logger: slog.New(slog.DiscardHandler),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return value
+	if policy == (Policy{}) {
+		return value
+	}
+	return withPolicy(value, policy)
+}
+
+// policyService supplies a test's policy to every request that names none.
+type policyService struct {
+	Service
+	policy Policy
+}
+
+func withPolicy(service Service, policy Policy) Service {
+	return policyService{Service: service, policy: policy}
+}
+
+func (p policyService) Run(ctx context.Context, request Request) (Result, error) {
+	if request.Policy == (Policy{}) {
+		request.Policy = p.policy
+	}
+	return p.Service.Run(ctx, request)
 }
 
 func TestBuildPlanDeterministicAndDigestBased(t *testing.T) {
@@ -693,10 +717,12 @@ func TestIntentValidationAndCapabilityMapping(t *testing.T) {
 	if got != want {
 		t.Fatalf("capabilities = %b, want %b", got, want)
 	}
-	for _, intent := range valid[len(valid)-2:] {
-		if _, err := samsungCommand(intent); err != nil {
-			t.Errorf("map %s: %v", intent.Kind, err)
-		}
+	if _, err := samsungCommand(commandIntent{Kind: commandPowerOff}); err != nil {
+		t.Errorf("map power-off: %v", err)
+	}
+	// A wake is sent only by the scheduled wake step, never as a planned command.
+	if _, err := samsungCommand(commandIntent{Kind: CommandWake}); !errors.Is(err, ErrUnsupportedIntent) {
+		t.Errorf("map wake error = %v, want unsupported intent", err)
 	}
 	if command, err := samsungCommand(valid[0]); err != nil {
 		t.Fatalf("upload mapping error = %v", err)
@@ -737,10 +763,6 @@ func TestValidationStateBranches(t *testing.T) {
 			changed := binding
 			changed.ConfirmedAt = time.Time{}
 			state.Bindings[digest] = changed
-		}},
-		{"bad tombstone key", func(state *State) { state.Tombstones["wrong"] = tombstone{ContentID: "content", RecordedAt: testTime} }},
-		{"bad tombstone digest", func(state *State) {
-			state.Tombstones["content"] = tombstone{ContentID: "content", Digest: "bad", RecordedAt: testTime}
 		}},
 		{"bad capacity", func(state *State) { state.Capacity = capacityEvidence{Known: true, Maximum: -1} }},
 		{"bad last generation", func(state *State) { state.LastCollectionGen = "bad" }},
@@ -864,9 +886,6 @@ func TestRunAbsentBlockedAndDryRunProjection(t *testing.T) {
 func TestConstructionHelpersAndErrorStatus(t *testing.T) {
 	if _, err := New(Config{StateDirectory: "relative"}, Dependencies{}); err == nil {
 		t.Fatal("relative directory accepted")
-	}
-	if _, err := New(Config{StateDirectory: filepath.Join(t.TempDir(), "state"), Policy: Policy{Power: 99}}, Dependencies{}); err == nil {
-		t.Fatal("invalid default policy accepted")
 	}
 	service, err := New(Config{StateDirectory: filepath.Join(t.TempDir(), "state")}, Dependencies{})
 	if err != nil || service == nil {
@@ -1081,6 +1100,7 @@ func TestRunExistingNoPendingAndBlockedPending(t *testing.T) {
 		t.Fatalf("no-pending recovery = %#v, error = %v", recovery, err)
 	}
 
+	preparedAt := testTime.Add(-uploadSettleTime)
 	state.Pending = &pending{
 		OperationID: "operation", CycleID: "cycle", CollectionGen: digestHex("generation"),
 		PolicyFingerprint: sha256.Sum256([]byte("policy")),
@@ -1088,7 +1108,7 @@ func TestRunExistingNoPendingAndBlockedPending(t *testing.T) {
 		Command: commandIntent{
 			Kind: CommandUpload, Digest: digestHex("art"), Name: "art.jpg", Path: "/art/art.jpg", FileType: collection.FileTypeJPEG, Size: 3, Matte: defaultMatte,
 		},
-		Phase: phaseOutcomeUnknown,
+		Phase: phaseOutcomeUnknown, PreparedAt: &preparedAt,
 	}
 	state.Revision++
 	if err := store.save(context.Background(), state); err != nil {
@@ -1182,11 +1202,6 @@ func TestPlannerPendingAllowEmptyAndPolicyHelpers(t *testing.T) {
 	}
 	if _, err := buildPlan(snapshot(), observation, state, Policy{}); !errors.Is(err, ErrRecoveryRequired) {
 		t.Fatalf("pending plan error = %v", err)
-	}
-	concrete := newTestService(t, filepath.Join(t.TempDir(), "state"), Policy{Power: PowerOff}).(*service)
-	explicit := Policy{RemoveUnknown: true}
-	if got := concrete.effectivePolicy(explicit); got != normalizePolicy(explicit) {
-		t.Fatalf("effective explicit policy = %#v", got)
 	}
 	if _, err := fingerprintPolicy(Policy{Brightness: SettingPolicy{Mode: 99}}); err == nil {
 		t.Fatal("invalid policy fingerprint succeeded")
@@ -1590,10 +1605,6 @@ func TestReceiptObservationAndCommandMappingBranches(t *testing.T) {
 	if len(observation.Inventory.ContentIDs) != 0 {
 		t.Fatalf("delete projection = %v", observation.Inventory.ContentIDs)
 	}
-	observation = receiptObservation(observation, commandIntent{Kind: CommandWake}, samsung.Receipt{CompletedAt: testTime})
-	if observation.Power != samsung.PowerStateOn {
-		t.Fatal("wake receipt did not project power on")
-	}
 	if _, err := samsungCommand(commandIntent{Kind: CommandUpload, Digest: "bad"}); err == nil {
 		t.Fatal("invalid upload digest mapped to Samsung command")
 	}
@@ -1605,7 +1616,6 @@ func TestReceiptObservationAndCommandMappingBranches(t *testing.T) {
 		{Kind: commandSelect, ContentID: "content"},
 		{Kind: commandSlideshow, PreviousSlideshow: &previousSlideshow, DesiredSlideshow: &desiredSlideshow},
 		{Kind: CommandBrightness, PreviousValue: &previous, DesiredValue: &desired},
-		{Kind: CommandWake},
 	}
 	for _, intent := range intents {
 		if _, err := samsungCommand(intent); err != nil {

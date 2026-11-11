@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"sync/atomic"
 
 	collectionpkg "github.com/MikeO7/frame-tv-art-manager/internal/collection"
@@ -41,8 +40,7 @@ const maxArrivalPasses = 3
 // an assistant request must not wait that long. A cycle publishes against the
 // snapshot it rendered from, which keeps artwork imported meanwhile.
 type localCollection struct {
-	cycle    chan struct{}
-	gateOnce sync.Once
+	cycle chan struct{}
 	// arrivals counts imports committed from outside the cycle, so a cycle
 	// can tell that artwork it has not rendered joined the collection.
 	arrivals atomic.Uint64
@@ -150,11 +148,6 @@ func (c *localCollection) prepareCycle(ctx context.Context) (preparedCollection,
 }
 
 func (c *localCollection) acquire(ctx context.Context) error {
-	c.gateOnce.Do(func() {
-		if c.cycle == nil {
-			c.cycle = make(chan struct{}, 1)
-		}
-	})
 	if err := acquireGate(ctx, c.cycle); err != nil {
 		return fmt.Errorf("wait for artwork collection cycle: %w", err)
 	}

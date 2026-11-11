@@ -104,15 +104,62 @@ func TestTransformGateFreesTheWaitingPlaceOfACanceledTransform(t *testing.T) {
 			t.Fatalf("canceled waiting run = %v, want context.Canceled", err)
 		}
 
-		interactive := make(chan error, 1)
+		// The freed place admits one more background transform; a gate that
+		// leaked the canceled place would hold it out until its context ended.
+		admitted := make(chan error, 1)
 		go func() {
-			interactive <- gate.run(context.Background(), true, func(context.Context) error { return nil })
+			admitted <- gate.run(context.Background(), false, func(context.Context) error { return nil })
 		}()
 		synctest.Wait()
+		if len(gate.places) != transformsRunning+transformsWaiting {
+			t.Fatalf("occupied places = %d, want the freed place to be taken again", len(gate.places))
+		}
 		close(release)
-		if err := <-interactive; err != nil {
-			t.Fatalf("interactive run after a canceled wait = %v, want admission", err)
+		if err := <-admitted; err != nil {
+			t.Fatalf("background run after a canceled wait = %v, want admission", err)
 		}
 		drain(t, results, transformsRunning+transformsWaiting-1)
+	})
+}
+
+func TestTransformGateRefusesInteractiveWorkWhileATransformRuns(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		gate := newTransformGate()
+		release := make(chan struct{})
+		// One long background transform, such as a whole-collection
+		// optimization, with waiting places still free.
+		results := fillGate(gate, transformsRunning, release, nil)
+		synctest.Wait()
+
+		refused := make(chan error, 1)
+		go func() {
+			refused <- gate.run(context.Background(), true, func(context.Context) error {
+				t.Error("interactive transform ran beside a running transform")
+				return nil
+			})
+		}()
+		synctest.Wait()
+		select {
+		case err := <-refused:
+			if !errors.Is(err, errTransformsBusy) {
+				t.Fatalf("interactive run beside a running transform = %v, want errTransformsBusy", err)
+			}
+		default:
+			t.Fatal("interactive transform waited behind the running transform instead of being refused")
+		}
+		if len(gate.places) != transformsRunning {
+			t.Fatalf("occupied places = %d, want the refused transform to give its place back", len(gate.places))
+		}
+
+		close(release)
+		drain(t, results, transformsRunning)
+		ran := false
+		if err := gate.run(context.Background(), true, func(context.Context) error {
+			ran = true
+			return nil
+		}); err != nil || !ran {
+			t.Fatalf("interactive run on an idle gate = %v, ran = %v; want it to run", err, ran)
+		}
 	})
 }

@@ -207,9 +207,10 @@ func TestCreateCollageSharpensEachPanelAtItsOwnScale(t *testing.T) {
 	// The left source is shown 1:1 and is sharpened; the right is enlarged
 	// twice, which is past the point where sharpening adds anything.
 	native, enlarged := columns(60, 62, 70, 100, 150, 172, 180, 180), columns(60, 100, 150, 180)
-	output := renderCollage(native, enlarged, collageRenderRequest{ctx: context.Background(), cfg: cfg, logger: logger})
-	plainLeft := centerCropConfigured(context.Background(), native, 8, 8, cfg, logger)
-	plainRight := centerCropConfigured(context.Background(), enlarged, 8, 8, cfg, logger)
+	env := newRenderEnv(cfg, logger)
+	output := renderCollage(context.Background(), native, enlarged, env)
+	plainLeft, _ := centerCropConfigured(context.Background(), native, 8, 8, env)
+	plainRight, _ := centerCropConfigured(context.Background(), enlarged, 8, 8, env)
 	sharpened := false
 	for y := 1; y < 7; y++ {
 		for x := 2; x < 6; x++ {
@@ -578,7 +579,8 @@ func TestProcessCollagesLeavesAnOversizedPairAndKeepsGoing(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.PortraitMode = portraitModeCollage
 	cfg.MaxWidth, cfg.MaxHeight = smallCollageWidth, smallCollageHeight
-	cfg.MaxWorkingBytes = 1
+	// Each portrait fits the budget alone; the two together do not.
+	cfg.MaxWorkingBytes = estimatedWorkingBytes(workingInputOfSize(8, 12, 4), cfg)
 	pass := testPass(dir, cfg)
 	// A pair too large to render together is not a failed pass: it would
 	// otherwise stop every other file from being optimized, every cycle.

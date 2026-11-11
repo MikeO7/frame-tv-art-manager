@@ -30,12 +30,37 @@ const (
 	probeTimeout = 5 * time.Second
 )
 
-// artSession caches facts learned on one art-channel connection.
+// artSession caches facts learned on one art-channel connection, including
+// the settings this TV did not answer, so a setting the TV lacks costs its
+// probe timeouts once per connection instead of on every observation.
 type artSession struct {
-	conn          *connection
-	apiVersion    string
-	slideshowName string
-	mattes        *matteCatalog
+	conn             *connection
+	apiVersion       string
+	apiVersionProbed bool
+	slideshowName    string
+	slideshow        settingProbe
+	brightness       settingProbe
+	mattes           *matteCatalog
+}
+
+// settingProbe remembers whether this connection's TV answers one optional
+// setting. A setting that was rejected or ignored before it was ever read is
+// unsupported until the next connection; one that has been read is asked
+// again, because a later failure is a passing fault and not a missing feature.
+type settingProbe struct {
+	answered    bool
+	unsupported error
+}
+
+// record notes the result of one read and returns it unchanged.
+func (p *settingProbe) record(ctx context.Context, err error) error {
+	switch {
+	case err == nil:
+		p.answered = true
+	case !p.answered && ctx.Err() == nil && (errors.Is(err, ErrArtAPIError) || errors.Is(err, errTimeout)):
+		p.unsupported = err
+	}
+	return err
 }
 
 func (t *protocolTransport) sessionFor(conn *connection) *artSession {
@@ -52,10 +77,12 @@ func (t *protocolTransport) probeTimeout() time.Duration {
 }
 
 // artAPIMajor returns the art API major version, probing it once per
-// connection. It returns 0 when the TV answers neither version request.
+// connection: a TV that answers neither version request is remembered as
+// unversioned until the next connection. It returns 0 for such a TV. A probe
+// the caller canceled is not an answer and is repeated.
 func (t *protocolTransport) artAPIMajor(ctx context.Context, conn *connection) int {
 	session := t.sessionFor(conn)
-	if session.apiVersion == "" {
+	if !session.apiVersionProbed {
 		for _, name := range []string{requestAPIVersion, requestLegacyAPIVersion} {
 			response, err := t.sendWithTimeout(ctx, conn, name, nil, t.probeTimeout())
 			if err == nil && strings.TrimSpace(response.Version) != "" {
@@ -66,6 +93,7 @@ func (t *protocolTransport) artAPIMajor(ctx context.Context, conn *connection) i
 				return 0
 			}
 		}
+		session.apiVersionProbed = true
 	}
 	major, err := strconv.Atoi(strings.SplitN(session.apiVersion, ".", 2)[0])
 	if err != nil {
@@ -80,20 +108,35 @@ func (t *protocolTransport) Brightness(ctx context.Context) (brightnessReading, 
 	if err != nil {
 		return brightnessReading{}, err
 	}
+	probe := &t.sessionFor(conn).brightness
+	if probe.unsupported != nil {
+		return brightnessReading{}, probe.unsupported
+	}
+	response, modern, err := t.brightnessResponse(ctx, conn)
+	if probe.record(ctx, err) != nil {
+		return brightnessReading{}, err
+	}
+	if modern {
+		return parseArtModeBrightness(response.DataRaw)
+	}
+	return newBrightnessReading(string(response.Value), string(response.Min), string(response.Max))
+}
+
+// brightnessResponse asks for the brightness under the request this TV's art
+// API generation answers, and reports whether the reply is the modern
+// get_artmode_settings list.
+func (t *protocolTransport) brightnessResponse(ctx context.Context, conn *connection) (*artResponse, bool, error) {
 	if major := t.artAPIMajor(ctx, conn); major == 0 || major >= 4 {
 		response, settingsErr := t.sendWithTimeout(ctx, conn, requestArtModeSettings, nil, t.probeTimeout())
 		if settingsErr == nil {
-			return parseArtModeBrightness(response.DataRaw)
+			return response, true, nil
 		}
 		if major >= 4 && !errors.Is(settingsErr, ErrArtAPIError) {
-			return brightnessReading{}, settingsErr
+			return nil, false, settingsErr
 		}
 	}
 	response, err := t.sendOnConnection(ctx, conn, requestGetBrightness, newRequestID(), nil)
-	if err != nil {
-		return brightnessReading{}, err
-	}
-	return newBrightnessReading(string(response.Value), string(response.Min), string(response.Max))
+	return response, false, err
 }
 
 // parseArtModeBrightness extracts the brightness item from the
@@ -157,8 +200,14 @@ func (t *protocolTransport) Slideshow(ctx context.Context) (SlideshowSetting, er
 	if err != nil {
 		return SlideshowSetting{}, err
 	}
+	probe := &t.sessionFor(conn).slideshow
+	if probe.unsupported != nil {
+		return SlideshowSetting{}, probe.unsupported
+	}
+	// A read fails with a rejection or a timeout only after neither request
+	// name answered.
 	response, err := t.slideshowRequest(ctx, conn, "get", nil, false)
-	if err != nil {
+	if probe.record(ctx, err) != nil {
 		return SlideshowSetting{}, err
 	}
 	return parseSlideshowSetting(string(response.Value), string(response.Type), response.CategoryID)

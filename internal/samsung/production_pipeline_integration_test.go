@@ -52,7 +52,6 @@ func TestProductionPipelineDeletesUnknownArtworkIdempotently(t *testing.T) {
 	stateDirectory := filepath.Join(t.TempDir(), "reconciliation")
 	service, err := reconcile.New(reconcile.Config{
 		StateDirectory: stateDirectory,
-		Policy:         reconcile.Policy{RemoveUnknown: true},
 	}, reconcile.Dependencies{Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatalf("reconcile.New() error = %v", err)
@@ -60,6 +59,7 @@ func TestProductionPipelineDeletesUnknownArtworkIdempotently(t *testing.T) {
 
 	first, err := service.Run(ctx, reconcile.Request{
 		CycleID: "production-tracer-1", TV: adapter, Snapshot: snapshot,
+		Policy: reconcile.Policy{RemoveUnknown: true},
 	})
 	if err != nil {
 		t.Fatalf("first Service.Run() error = %v", err)
@@ -78,6 +78,7 @@ func TestProductionPipelineDeletesUnknownArtworkIdempotently(t *testing.T) {
 	}
 	second, err := service.Run(ctx, reconcile.Request{
 		CycleID: "production-tracer-2", TV: adapter, Snapshot: snapshot,
+		Policy: reconcile.Policy{RemoveUnknown: true},
 	})
 	if err != nil {
 		t.Fatalf("second Service.Run() error = %v", err)
@@ -140,16 +141,14 @@ func TestProductionPipelinePreservesTypedSlideshowKind(t *testing.T) {
 	desired := samsung.SlideshowSetting{Interval: 15, Kind: samsung.SlideshowSequential}
 	service, err := reconcile.New(reconcile.Config{
 		StateDirectory: filepath.Join(t.TempDir(), "reconciliation"),
-		Policy: reconcile.Policy{Slideshow: reconcile.SlideshowPolicy{
-			Mode: reconcile.PolicySet, Setting: desired,
-		}},
 	}, reconcile.Dependencies{Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatalf("reconcile.New() error = %v", err)
 	}
 
+	policy := reconcile.Policy{Slideshow: reconcile.SlideshowPolicy{Mode: reconcile.PolicySet, Setting: desired}}
 	first, err := service.Run(ctx, reconcile.Request{
-		CycleID: "typed-slideshow-1", TV: adapter, Snapshot: snapshot,
+		CycleID: "typed-slideshow-1", TV: adapter, Snapshot: snapshot, Policy: policy,
 	})
 	if err != nil || first.Status != reconcile.StatusComplete || first.Applied != 1 {
 		t.Fatalf("first typed slideshow reconciliation = %+v, %v", first, err)
@@ -164,7 +163,7 @@ func TestProductionPipelinePreservesTypedSlideshowKind(t *testing.T) {
 	}
 
 	second, err := service.Run(ctx, reconcile.Request{
-		CycleID: "typed-slideshow-2", TV: adapter, Snapshot: snapshot,
+		CycleID: "typed-slideshow-2", TV: adapter, Snapshot: snapshot, Policy: policy,
 	})
 	if err != nil || second.Status != reconcile.StatusComplete || second.Applied != 0 {
 		t.Fatalf("second typed slideshow reconciliation = %+v, %v", second, err)

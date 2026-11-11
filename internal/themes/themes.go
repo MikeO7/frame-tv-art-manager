@@ -217,7 +217,9 @@ func (member Member) sameArtwork(other Member) bool {
 	return member.Matches(Identity{Key: other.Key, Origin: other.Origin, Digest: other.Digest})
 }
 
-// merge fills identity and attribution gaps in member from update.
+// merge updates member from update. Every non-empty field of update replaces
+// member's, except Origin and Digest: those identify the bytes member was
+// added with, so they are kept and only filled in when member has none.
 func (member Member) merge(update Member) Member {
 	member.Key = firstNonEmpty(update.Key, member.Key)
 	member.Origin = firstNonEmpty(member.Origin, update.Origin)

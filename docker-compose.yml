@@ -27,7 +27,7 @@ services:
       # TV_MAC: "AA:BB:CC:DD:EE:FF"
       # TV_WOL_BROADCAST: "192.168.1.255"
       # AUTO_ON_TIME: "07:00"
-      # AUTO_ON_GRACE_HOURS: "2"
+      # AUTO_ON_GRACE_HOURS: "2"   # more than 0, less than 24
       # Wake-on-LAN needs host networking: see network_mode above.
 
       # --- Optional: REST Gate (art mode detection before connecting) ---
@@ -56,10 +56,11 @@ services:
 
       # --- Optional: Auto-Off ---
       # Turn off TVs at a specific time (only when in art mode).
-      # Times are read in LOCATION_TIMEZONE, which defaults to UTC.
+      # Times are read in LOCATION_TIMEZONE. Without it they are read as UTC
+      # and a warning is logged at startup.
       # LOCATION_TIMEZONE: "America/New_York"
       # AUTO_OFF_TIME: "22:00"
-      # AUTO_OFF_GRACE_HOURS: "2"
+      # AUTO_OFF_GRACE_HOURS: "2"  # more than 0, less than 24
 
       # --- Optional: Image Sources (museums, NASA, Unsplash and more) ---
       # ARTWORK_SOURCES_FILE: "/data/sources.yaml"

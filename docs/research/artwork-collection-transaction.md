@@ -1,5 +1,9 @@
 # Transactional Artwork Collection ownership
 
+> Historical record: this document describes the code as it was when the
+> research was written. Files, line numbers, and identifiers it references
+> may have since moved or no longer exist.
+
 Research date: 2026-07-12
 
 ## Decision
@@ -19,11 +23,11 @@ This ownership boundary closes the present split-brain design:
   ([collection.go](../../internal/sync/collection.go#L47-L92)).
 - Catalog rebuild is not read-only: it renames non-canonical files and silently
   deletes duplicates while constructing an in-memory index
-  ([catalog_index.go](../../internal/sources/catalog_index.go#L83-L139)).
+  (`internal/sources/catalog_index.go`).
 - Source pruning directly removes filenames selected by a numeric-prefix
   heuristic after provider work completes
   ([loader_sync.go](../../internal/sources/loader_sync.go#L25-L105),
-  [catalog.go](../../internal/sources/catalog.go#L221-L247)).
+  `internal/sources/catalog.go`).
 - Optimization replaces bytes, then separately renames the path
   ([resize.go](../../internal/optimize/resize.go#L54-L112),
   [resize.go](../../internal/optimize/resize.go#L137-L164),
@@ -38,8 +42,8 @@ This ownership boundary closes the present split-brain design:
 The current in-memory catalog is not a trustworthy transaction boundary. Its
 directory-modification-time cache can only report what a scan happened to see,
 and its mutation methods update several maps independently of durable state
-([catalog.go](../../internal/sources/catalog.go#L26-L75),
-[catalog_index.go](../../internal/sources/catalog_index.go#L26-L47)). A snapshot
+(`internal/sources/catalog.go`,
+`internal/sources/catalog_index.go`). A snapshot
 must instead be derived from a recovered, fully validated committed generation.
 
 ## Recommended interface
@@ -123,8 +127,8 @@ inspection rather than assumed rollback
 Filename parsing is useful presentation logic, but it is not sufficient
 authority for ownership or equality. The current code sometimes trusts a hash
 suffix without reading bytes and classifies source-managed files solely by a
-three-digit prefix ([catalog_index.go](../../internal/sources/catalog_index.go#L142-L159),
-[catalog.go](../../internal/sources/catalog.go#L18-L24)). The collection module
+three-digit prefix (`internal/sources/catalog_index.go`,
+`internal/sources/catalog.go`). The collection module
 must use three separate identities:
 
 | Identity | Meaning | Authority |
@@ -268,8 +272,7 @@ digests, sort by name then digest, and return a value Snapshot. The engine passe
 this same immutable snapshot to every TV; individual capacity filters derive
 new values rather than mutate it. This replaces the mutable map currently
 shared with concurrent TV goroutines
-([engine.go](../../internal/sync/engine.go#L109-L139),
-[engine.go](../../internal/sync/engine.go#L181-L238)).
+(`internal/sync/engine.go`).
 
 ## Snapshot effects for Reconciliation
 
@@ -278,10 +281,10 @@ Snapshot and Changes expose the committed digest facts from which
 Reconciliation updates each TV mapping. The mapping contract must identify the
 committed local **digest**, not merely a filename. Current mappings are
 `filename -> content_id`
-([mapping.go](../../internal/sync/mapping.go#L13-L18)), and every optimization
+(`internal/sync/mapping.go`), and every optimization
 rename currently carries that content ID to the new name
 ([collection.go](../../internal/sync/collection.go#L79-L91),
-[mapping.go](../../internal/sync/mapping.go#L205-L221)). That is only correct
+`internal/sync/mapping.go`). That is only correct
 when the bytes are unchanged.
 
 This is a correctness bug for optimization and collage: both create different
@@ -309,7 +312,7 @@ today's mapping before planning would lose the content ID, causing the old TV
 image to become “unknown” and potentially remain forever when unknown-image
 deletion is disabled. The existing executor deliberately keeps tracked mapping
 entries until TV deletion succeeds
-([execution.go](../../internal/sync/execution.go#L134-L160)); tombstones retain
+(`internal/sync/execution.go`); tombstones retain
 that useful property while allowing a changed local digest to upload.
 
 ## Dry-run contract
@@ -328,8 +331,8 @@ must not recover it, and it returns an error that prevents TV reconciliation.
 This makes the repository's “no durable local mutation and no TV mutation”
 invariant true for the entire cycle, not only the current TV executor, whose
 dry-run checks begin after source download and optimization have already run
-([engine.go](../../internal/sync/engine.go#L94-L123),
-[execution.go](../../internal/sync/execution.go#L41-L60)).
+(`internal/sync/engine.go`,
+`internal/sync/execution.go`).
 
 ## Exact crash-point invariants
 

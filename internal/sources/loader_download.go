@@ -95,6 +95,10 @@ func validateSourceContentType(value string) error {
 	return nil
 }
 
+// validateDownloadedImage checks the header of a download: its format must
+// match its filename and its dimensions must be within the pixel limit. The
+// Collection Store decodes every pixel before it publishes the artwork, so the
+// pixels are not decoded here as well.
 func validateDownloadedImage(path, extension string) error {
 	file, err := os.Open(filepath.Clean(path))
 	if err != nil {
@@ -116,22 +120,13 @@ func validateDownloadedImage(path, extension string) error {
 	if format != wantFormat {
 		return fmt.Errorf("%s content does not match %s filename", format, extension)
 	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("rewind: %w", err)
-	}
-	decoded, decodedFormat, err := image.Decode(file)
-	if err != nil {
-		return fmt.Errorf("decode pixels: %w", err)
-	}
-	if decodedFormat != format || decoded.Bounds().Dx() != configuration.Width || decoded.Bounds().Dy() != configuration.Height {
-		return errors.New("decoded image facts are inconsistent")
-	}
 	return nil
 }
 
 // fetch performs a validated HTTP GET, rejecting non-HTTP(S) schemes, non-200
 // responses, and oversized Content-Length up front. On success it returns an
-// open response whose body the caller must close; on error the body is closed.
+// open response whose body is limited to the download size and which the
+// caller must close; on error the body is closed.
 func (l *loader) fetch(ctx context.Context, url string) (*http.Response, error) {
 	parsedURL, err := neturl.Parse(url)
 	if err != nil {
@@ -157,14 +152,12 @@ func (l *loader) fetch(ctx context.Context, url string) (*http.Response, error) 
 		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, truncateURL(url))
 	}
 
-	if l.maxSizeMB > 0 {
-		maxBytes := int64(l.maxSizeMB) * bytesPerMB
-		if size := resp.ContentLength; size > maxBytes {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("file too large: %d bytes (limit %d MB)", size, l.maxSizeMB)
-		}
-		resp.Body = http.MaxBytesReader(nil, resp.Body, maxBytes)
+	maxBytes := int64(l.maxSizeMB) * bytesPerMB
+	if size := resp.ContentLength; size > maxBytes {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("file too large: %d bytes (limit %d MB)", size, l.maxSizeMB)
 	}
+	resp.Body = http.MaxBytesReader(nil, resp.Body, maxBytes)
 
 	return resp, nil
 }
@@ -189,13 +182,7 @@ func (l *loader) downloadToTemp(resp *http.Response) (string, int64, error) {
 	}
 	tmpPath := out.Name()
 
-	maxBytes := int64(defaultDownloadCapBytes)
-	if l.maxSizeMB > 0 {
-		maxBytes = int64(l.maxSizeMB) * bytesPerMB
-	}
-	reader := http.MaxBytesReader(nil, resp.Body, maxBytes)
-
-	written, copyErr := io.Copy(out, reader)
+	written, copyErr := io.Copy(out, resp.Body)
 	chmodErr := out.Chmod(0o600)
 	syncErr := out.Sync()
 	closeErr := out.Close()

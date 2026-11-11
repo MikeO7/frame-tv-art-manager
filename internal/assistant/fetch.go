@@ -246,12 +246,18 @@ var reservedPrefixes = []netip.Prefix{ //nolint:gochecknoglobals // immutable ad
 	netip.MustParsePrefix("198.51.100.0/24"),
 	netip.MustParsePrefix("203.0.113.0/24"),
 	netip.MustParsePrefix("240.0.0.0/4"),
+	// IPv4-compatible IPv6 (deprecated): an embedded IPv4 address, including
+	// private ones. IPv4-mapped ::ffff:a.b.c.d is outside this range and is
+	// judged as its IPv4 address after Unmap.
+	netip.MustParsePrefix("::/96"),
 	netip.MustParsePrefix("64:ff9b::/96"),
 	netip.MustParsePrefix("64:ff9b:1::/48"),
 	netip.MustParsePrefix("100::/64"),
 	netip.MustParsePrefix("2001::/32"),
 	netip.MustParsePrefix("2001:db8::/32"),
 	netip.MustParsePrefix("2002::/16"),
+	// Site-local (deprecated), still routed inside some networks.
+	netip.MustParsePrefix("fec0::/10"),
 }
 
 // publicAddress reports whether addr is a globally routable unicast address,

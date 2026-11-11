@@ -33,7 +33,6 @@ type StageInput struct {
 	Digest       [sha256.Size]byte
 	Width        int
 	Height       int
-	SourceKeys   []string
 	TransformKey string
 	Derivative   DerivativeKind
 	// Originals are the kept untouched bytes a derivative is re-rendered from,
@@ -67,9 +66,9 @@ type rename struct {
 type Stage struct {
 	Directory   string
 	Optimized   int
-	Renames     []rename
 	Derivatives []Derivative
 
+	renames   []rename
 	workspace string
 	closeOnce sync.Once
 	closeErr  error
@@ -138,13 +137,14 @@ func StageCatalog(ctx context.Context, request StageRequest) (*Stage, error) {
 		logger = slog.New(slog.DiscardHandler)
 	}
 	pass := &catalogPass{
-		artworkDir: directory, originalsDir: originals, cfg: request.Config, logger: logger, inputs: metadata,
+		artworkDir: directory, originalsDir: originals, cfg: request.Config, logger: logger,
+		cropClient: newCropClient(request.Config), inputs: metadata,
 	}
 	if err := pass.run(ctx); err != nil {
 		return cleanupFailure(fmt.Errorf("optimize staged collection: %w", err))
 	}
-	stage.Optimized, stage.Renames = pass.optimized, pass.renames
-	stage.Derivatives = derivativesFromRenames(stage.Renames, TransformKey(request.Config), metadata)
+	stage.Optimized, stage.renames = pass.optimized, pass.renames
+	stage.Derivatives = derivativesFromRenames(stage.renames, TransformKey(request.Config), metadata)
 	for index := range stage.Derivatives {
 		stage.Derivatives[index].Originals = pass.lineage[stage.Derivatives[index].Name]
 	}

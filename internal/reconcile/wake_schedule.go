@@ -59,12 +59,34 @@ func (s stateStore) saveWake(ctx context.Context, address string, boundary time.
 	return nil
 }
 
-// scheduledWake handles a power-on policy tied to a wake boundary. The TV is
-// woken at most once per boundary: the boundary is recorded when the TV is
-// already on, and when a wake packet is sent. The wake runs before identity
-// and state are loaded because a TV in deep standby answers nothing but
-// Wake-on-LAN. The returned policy no longer asks for power, so the rest of
-// the run converges a TV that is on and skips one that stays off.
+// withoutHandledWake drops the power-on request from a policy whose wake
+// boundary was already handled. It runs before the TV is contacted, so that
+// for the rest of the auto-on window a cycle observes the TV once, with the
+// capabilities convergence needs and subject to the adapter's backoff.
+func (s *service) withoutHandledWake(address string, policy Policy) (Policy, error) {
+	if policy.Power != PowerOn {
+		return policy, nil
+	}
+	if address == "" {
+		return policy, errors.New("scheduled wake requires the TV address")
+	}
+	handled, err := s.store.loadWake(address)
+	if err != nil {
+		return policy, err
+	}
+	if !handled.Before(policy.WakeBoundary) {
+		policy.Power, policy.WakeBoundary = PowerPreserve, time.Time{}
+	}
+	return policy, nil
+}
+
+// scheduledWake handles a power-on policy whose wake boundary has not been
+// handled yet. The TV is woken at most once per boundary: the boundary is
+// recorded when the TV is already on, and when a wake packet is sent. The
+// wake runs before identity and state are loaded because a TV in deep standby
+// answers nothing but Wake-on-LAN. The returned policy no longer asks for
+// power, so the rest of the run converges a TV that is on and skips one that
+// stays off.
 func (s *service) scheduledWake(
 	ctx context.Context,
 	request Request,
@@ -74,17 +96,7 @@ func (s *service) scheduledWake(
 	boundary := policy.WakeBoundary
 	policy.Power, policy.WakeBoundary = PowerPreserve, time.Time{}
 	step := wakeStep{policy: policy, observation: observation}
-	address := observation.TV.Address
-	if address == "" {
-		return step, errors.New("scheduled wake requires the TV address")
-	}
-	handled, err := s.store.loadWake(address)
-	if err != nil {
-		return step, err
-	}
-	if !handled.Before(boundary) {
-		return s.reobserve(ctx, request, step, nil)
-	}
+	address := request.TV.Address()
 	switch {
 	case observation.Power == samsung.PowerStateOn:
 		if request.DryRun {

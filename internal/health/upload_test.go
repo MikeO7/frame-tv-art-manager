@@ -108,7 +108,28 @@ func TestUploadRejectsUnsafeRequestsWithoutPublishing(t *testing.T) {
 			request: func(*testing.T) (io.Reader, string) {
 				return strings.NewReader("not multipart"), "multipart/form-data; boundary=bad"
 			},
-			wantCode: http.StatusBadRequest, wantError: "file too large or invalid request",
+			wantCode: http.StatusBadRequest, wantError: "no file was sent",
+		},
+		{
+			name: "multipart without boundary", method: http.MethodPost,
+			request: func(*testing.T) (io.Reader, string) {
+				return strings.NewReader("anything"), "multipart/form-data"
+			},
+			wantCode: http.StatusBadRequest, wantError: "invalid multipart request",
+		},
+		{
+			name: "empty multipart body", method: http.MethodPost,
+			request: func(*testing.T) (io.Reader, string) {
+				return http.NoBody, "multipart/form-data; boundary=empty"
+			},
+			wantCode: http.StatusBadRequest, wantError: "no file was sent",
+		},
+		{
+			name: "empty raw body", method: http.MethodPost,
+			request: func(*testing.T) (io.Reader, string) {
+				return http.NoBody, "image/jpeg"
+			},
+			wantCode: http.StatusBadRequest, wantError: "no file was sent",
 		},
 		{
 			name: "multipart without file field", method: http.MethodPost,
@@ -143,14 +164,14 @@ func TestUploadRejectsUnsafeRequestsWithoutPublishing(t *testing.T) {
 			request: func(*testing.T) (io.Reader, string) {
 				return bytes.NewReader(oversizedJPEG()), "image/jpeg"
 			},
-			wantCode: http.StatusBadRequest, wantError: "too large",
+			wantCode: http.StatusRequestEntityTooLarge, wantError: "too large",
 		},
 		{
 			name: "multipart file above limit", configure: func(cfg *config.Config) { cfg.MaxDownloadSizeMB = 1 }, method: http.MethodPost,
 			request: func(t *testing.T) (io.Reader, string) {
 				return multipartBody(t, "file", "large.jpg", oversizedJPEG())
 			},
-			wantCode: http.StatusBadRequest, wantError: "too large",
+			wantCode: http.StatusRequestEntityTooLarge, wantError: "too large",
 		},
 	}
 	for _, test := range tests {
@@ -166,7 +187,7 @@ func TestUploadRejectsUnsafeRequestsWithoutPublishing(t *testing.T) {
 			if test.request != nil {
 				body, contentType = test.request(t)
 			}
-			request := httptest.NewRequest(test.method, "http://frame.local/upload", body)
+			request := authedUpload(test.method, "http://frame.local/upload", body)
 			if contentType != "" {
 				request.Header.Set("Content-Type", contentType)
 			}
@@ -203,7 +224,7 @@ func TestUploadRejectsMalformedOriginsBeforeImport(t *testing.T) {
 		t.Run(origin, func(t *testing.T) {
 			t.Parallel()
 			server := NewServer(testConfig(0, true, t.TempDir()), NewStatus(), silentLogger(), nil)
-			request := httptest.NewRequest(http.MethodPost, "http://frame.local/upload", bytes.NewReader(encodedTestImage(t, "png")))
+			request := authedUpload(http.MethodPost, "http://frame.local/upload", bytes.NewReader(encodedTestImage(t, "png")))
 			request.Header.Set("Origin", origin)
 			response := httptest.NewRecorder()
 			server.HandleUpload(response, request)
@@ -212,10 +233,10 @@ func TestUploadRejectsMalformedOriginsBeforeImport(t *testing.T) {
 			}
 		})
 	}
-	request := httptest.NewRequest(http.MethodPost, "http://frame.local/upload", nil)
+	request := authedUpload(http.MethodPost, "http://frame.local/upload", nil)
 	request.Header.Add("Origin", "http://frame.local")
 	request.Header.Add("Origin", "http://frame.local")
-	if validUploadOrigin(request) {
+	if validUploadOrigin(request, nil) {
 		t.Fatal("duplicate Origin headers must be rejected")
 	}
 }
@@ -257,7 +278,7 @@ func TestUploadEndpointRequiresConfiguredCredentials(t *testing.T) {
 func TestUploadPageIsServedAsHTML(t *testing.T) {
 	t.Parallel()
 	response := httptest.NewRecorder()
-	newTestServer(t, testConfig(0, true, ""), NewStatus()).HandleUpload(response, httptest.NewRequest(http.MethodGet, "/upload", nil))
+	newTestServer(t, testConfig(0, true, ""), NewStatus()).HandleUpload(response, authedUpload(http.MethodGet, "/upload", nil))
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("upload page status/content type = %d/%q", response.Code, response.Header().Get("Content-Type"))
 	}
@@ -294,7 +315,7 @@ func TestUploadImportsThroughCollectionAndDeduplicates(t *testing.T) {
 				if test.multipart {
 					body, contentType = multipartBody(t, "file", "shortcut."+test.format, payload)
 				}
-				request := httptest.NewRequest(http.MethodPost, "/upload", body)
+				request := authedUpload(http.MethodPost, "/upload", body)
 				request.Header.Set("Content-Type", contentType)
 				response := httptest.NewRecorder()
 				server.HandleUpload(response, request)
@@ -337,38 +358,149 @@ func TestUploadReportsCollectionFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := newTestServer(t, testConfig(0, true, notDirectory), NewStatus())
-	request := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(encodedTestImage(t, "jpeg")))
+	request := authedUpload(http.MethodPost, "/upload", bytes.NewReader(encodedTestImage(t, "jpeg")))
 	request.Header.Set("Content-Type", "image/jpeg")
 	response := httptest.NewRecorder()
 	server.HandleUpload(response, request)
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("upload to invalid artwork directory returned %d, want 500: %s", response.Code, response.Body.String())
 	}
+}
 
-	unavailable := NewServer(testConfig(0, true, parent), NewStatus(), silentLogger(), nil)
-	request = httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(encodedTestImage(t, "jpeg")))
-	request.Header.Set("Content-Type", "image/jpeg")
-	response = httptest.NewRecorder()
-	unavailable.HandleUpload(response, request)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("upload without collection returned %d, want 503", response.Code)
+func TestUploadIsRefusedWithoutAToken(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	cfg := testConfig(0, true, directory)
+	cfg.UploadToken = ""
+	server := newTestServer(t, cfg, NewStatus())
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		for _, credentials := range []bool{false, true} {
+			request := httptest.NewRequest(method, "http://frame.local/upload", bytes.NewReader(encodedTestImage(t, "png")))
+			if credentials {
+				request.SetBasicAuth(uploadUsername, "")
+			}
+			response := httptest.NewRecorder()
+			server.HandleUpload(response, request)
+			if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "UPLOAD_TOKEN") {
+				t.Fatalf("%s without a configured token (credentials %t) = %d %s, want 403 naming UPLOAD_TOKEN",
+					method, credentials, response.Code, response.Body.String())
+			}
+		}
+	}
+	assertArtworkDirectoryEmpty(t, directory)
+}
+
+func TestUploadOriginBehindReverseProxy(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		allowed []string
+		host    string
+		origin  string
+		want    int
+	}{
+		{name: "proxy preserves host", host: "frame.example.com", origin: "https://frame.example.com", want: http.StatusOK},
+		{name: "proxy rewrites host, name not listed", host: "127.0.0.1:8080", origin: "https://frame.example.com", want: http.StatusForbidden},
+		{
+			name: "proxy rewrites host, name listed", allowed: []string{"frame.example.com"},
+			host: "127.0.0.1:8080", origin: "https://frame.example.com", want: http.StatusOK,
+		},
+		{
+			name: "listed name with port and other case", allowed: []string{"frame.example.com"},
+			host: "127.0.0.1:8080", origin: "https://Frame.Example.com:8443", want: http.StatusOK,
+		},
+		{
+			name: "another site stays refused", allowed: []string{"frame.example.com"},
+			host: "127.0.0.1:8080", origin: "https://attacker.example", want: http.StatusForbidden,
+		},
+		{
+			name: "listed name as a subdomain of another site", allowed: []string{"frame.example.com"},
+			host: "127.0.0.1:8080", origin: "https://frame.example.com.attacker.example", want: http.StatusForbidden,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := testConfig(0, true, t.TempDir())
+			cfg.HealthAllowedHosts = test.allowed
+			request := authedUpload(http.MethodPost, "http://unset.invalid/upload", bytes.NewReader(encodedTestImage(t, "png")))
+			request.Host = test.host
+			request.Header.Set("Origin", test.origin)
+			response := httptest.NewRecorder()
+			newTestServer(t, cfg, NewStatus()).HandleUpload(response, request)
+			if response.Code != test.want {
+				t.Fatalf("upload status = %d, want %d: %s", response.Code, test.want, response.Body.String())
+			}
+		})
 	}
 }
 
-func TestMaxUploadBytesFallsBackToSafeDefault(t *testing.T) {
-	t.Parallel()
-	for _, test := range []struct {
-		configured int
-		want       int64
-	}{
-		{configured: 0, want: defaultMaxUploadBytes},
-		{configured: -1, want: defaultMaxUploadBytes},
-		{configured: 3, want: 3 << 20},
-	} {
-		cfg := testConfig(0, false, "")
-		cfg.MaxDownloadSizeMB = test.configured
-		if got := NewServer(cfg, NewStatus(), silentLogger(), nil).maxUploadBytes(); got != test.want {
-			t.Errorf("maxUploadBytes(%d MB) = %d, want %d", test.configured, got, test.want)
+// slowUpload starts an upload whose body has begun to arrive and stays open
+// until finish is called. It returns once the server is receiving the body.
+func slowUpload(t *testing.T, server *server, image []byte) (finish func() *httptest.ResponseRecorder) {
+	t.Helper()
+	reader, writer := io.Pipe()
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		server.HandleUpload(response, authedUpload(http.MethodPost, "http://frame.local/upload", reader))
+	}()
+	// A pipe write returns only after the handler has read the bytes.
+	if _, err := writer.Write(image[:len(image)/2]); err != nil {
+		t.Fatalf("send first half of slow upload: %v", err)
+	}
+	return func() *httptest.ResponseRecorder {
+		t.Helper()
+		if _, err := writer.Write(image[len(image)/2:]); err != nil {
+			t.Fatalf("send second half of slow upload: %v", err)
 		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		<-done
+		return response
+	}
+}
+
+func TestSlowUploadDoesNotBlockOtherUploads(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t, testConfig(0, true, t.TempDir()), NewStatus())
+	finishSlow := slowUpload(t, server, encodedTestImage(t, "png"))
+
+	quick := httptest.NewRecorder()
+	server.HandleUpload(quick, authedUpload(http.MethodPost, "http://frame.local/upload", bytes.NewReader(encodedTestImage(t, "jpeg"))))
+	if quick.Code != http.StatusOK {
+		t.Fatalf("upload while a slow client is still sending = %d %s, want 200", quick.Code, quick.Body.String())
+	}
+	if slow := finishSlow(); slow.Code != http.StatusOK {
+		t.Fatalf("slow upload = %d %s, want 200 once its body arrived", slow.Code, slow.Body.String())
+	}
+}
+
+func TestConcurrentUploadSpoolsAreBounded(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t, testConfig(0, true, t.TempDir()), NewStatus())
+	image := encodedTestImage(t, "png")
+	finishers := make([]func() *httptest.ResponseRecorder, 0, maxConcurrentSpools)
+	for range maxConcurrentSpools {
+		finishers = append(finishers, slowUpload(t, server, image))
+	}
+
+	refused := httptest.NewRecorder()
+	server.HandleUpload(refused, authedUpload(http.MethodPost, "http://frame.local/upload", bytes.NewReader(image)))
+	if refused.Code != http.StatusTooManyRequests || refused.Header().Get("Retry-After") == "" {
+		t.Fatalf("upload beyond the spool limit = %d (Retry-After %q), want 429 with Retry-After",
+			refused.Code, refused.Header().Get("Retry-After"))
+	}
+	for index, finish := range finishers {
+		if response := finish(); response.Code != http.StatusOK {
+			t.Fatalf("slow upload %d = %d %s, want 200", index, response.Code, response.Body.String())
+		}
+	}
+	accepted := httptest.NewRecorder()
+	server.HandleUpload(accepted, authedUpload(http.MethodPost, "http://frame.local/upload", bytes.NewReader(image)))
+	if accepted.Code != http.StatusOK {
+		t.Fatalf("upload after the spools drained = %d %s, want 200", accepted.Code, accepted.Body.String())
 	}
 }

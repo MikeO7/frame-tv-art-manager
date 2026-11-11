@@ -22,8 +22,8 @@ func TestLoadEnvironIsPresenceAwareAndPure(t *testing.T) {
 	if len(cfg.TVIPs) != 2 || cfg.TVIPs[0] != "192.0.2.10" {
 		t.Fatalf("TV addresses = %v", cfg.TVIPs)
 	}
-	if !cfg.SlideshowOverride {
-		t.Fatal("an explicitly empty slideshow variable must opt into override")
+	if cfg.SlideshowOverride || cfg.SlideshowEnabledSet {
+		t.Fatal("an empty slideshow variable must count as unset, like every other variable")
 	}
 	if cfg.MaxDownloadSizeMB != 20 {
 		t.Fatalf("MaxDownloadSizeMB = %d, want 20", cfg.MaxDownloadSizeMB)
@@ -166,7 +166,6 @@ func TestLoadEnvironRejectsMalformedBooleans(t *testing.T) {
 		want    []string
 	}{
 		{name: "dry run", environ: []string{"DRY_RUN=perhaps"}, want: []string{"DRY_RUN"}},
-		{name: "skip tls even when verification is off", environ: []string{"SKIP_TLS_VERIFY=sure"}, want: []string{"SKIP_TLS_VERIFY"}},
 		{name: "every malformed switch is reported", environ: []string{"UPLOAD_ENABLED=enable", "SLIDESHOW_ENABLED=2"}, want: []string{"UPLOAD_ENABLED", "SLIDESHOW_ENABLED"}},
 	}
 	for _, test := range tests {
@@ -205,6 +204,10 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "invalid profile policy", value: "IMAGE_COLOR_PROFILE_POLICY=convert", want: "IMAGE_COLOR_PROFILE_POLICY"},
 		{name: "invalid port", value: "HEALTH_PORT=70000", want: "HEALTH_PORT"},
 		{name: "invalid bind address", value: "HEALTH_BIND_ADDRESS=all", want: "HEALTH_BIND_ADDRESS"},
+		{name: "allowed host with scheme", value: "HEALTH_ALLOWED_HOSTS=https://frame.example.com", want: "HEALTH_ALLOWED_HOSTS"},
+		{name: "allowed host with port", value: "HEALTH_ALLOWED_HOSTS=frame.lan,frame.example.com:8443", want: "HEALTH_ALLOWED_HOSTS"},
+		{name: "allowed host with bad label", value: "HEALTH_ALLOWED_HOSTS=-frame.example.com", want: "HEALTH_ALLOWED_HOSTS"},
+		{name: "allowed host with empty label", value: "HEALTH_ALLOWED_HOSTS=frame..example.com", want: "HEALTH_ALLOWED_HOSTS"},
 		{name: "invalid timeout", value: "API_TIMEOUT_SECONDS=0", want: "API_TIMEOUT_SECONDS"},
 		{name: "invalid latitude", value: "LOCATION_LATITUDE=91", want: "LOCATION_LATITUDE"},
 		{name: "NaN latitude", value: "LOCATION_LATITUDE=NaN", want: "LOCATION_LATITUDE"},
@@ -212,6 +215,11 @@ func TestLoadEnvironRejectsUnsafeValues(t *testing.T) {
 		{name: "invalid auto off", value: "AUTO_OFF_TIME=25:00", want: "AUTO_OFF_TIME"},
 		{name: "invalid auto on", value: "AUTO_ON_TIME=7am", want: "AUTO_ON_TIME"},
 		{name: "oversized auto on grace", value: "AUTO_ON_GRACE_HOURS=25", want: "AUTO_ON_GRACE_HOURS"},
+		{name: "whole-day auto on grace", value: "AUTO_ON_GRACE_HOURS=24", want: "AUTO_ON_GRACE_HOURS must be greater than 0 and less than 24"},
+		{name: "zero auto on grace", value: "AUTO_ON_GRACE_HOURS=0", want: "AUTO_ON_GRACE_HOURS"},
+		{name: "whole-day auto off grace", value: "AUTO_OFF_GRACE_HOURS=24", want: "AUTO_OFF_GRACE_HOURS must be greater than 0 and less than 24"},
+		{name: "multi-day auto off grace", value: "AUTO_OFF_GRACE_HOURS=168", want: "AUTO_OFF_GRACE_HOURS"},
+		{name: "zero auto off grace", value: "AUTO_OFF_GRACE_HOURS=0", want: "AUTO_OFF_GRACE_HOURS"},
 		{name: "invalid MAC", value: "TV_MAC=not-a-mac", want: "TV_MAC"},
 		{name: "non-six-byte MAC", value: "TV_MAC=00:00:00:00:fe:80:00:00", want: "TV_MAC"},
 		{name: "IPv6 wake broadcast", value: "TV_WOL_BROADCAST=ff02::1", want: "TV_WOL_BROADCAST"},
@@ -349,4 +357,102 @@ func TestMatteStyleIsTrimmedAndBoundedAtStartup(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "MATTE_STYLE") {
 		t.Fatalf("LoadEnviron() error = %v, want an overlong MATTE_STYLE rejected at startup", err)
 	}
+}
+
+func TestLoadEnvironAcceptsGraceWindowsShorterThanADay(t *testing.T) {
+	cfg, _, err := LoadEnviron([]string{"TV_IPS=192.0.2.10", "AUTO_OFF_GRACE_HOURS=23.5", "AUTO_ON_GRACE_HOURS=23.5"})
+	if err != nil {
+		t.Fatalf("LoadEnviron() error = %v", err)
+	}
+	if cfg.AutoOffGraceHours != 23.5 || cfg.AutoOnGraceHours != 23.5 {
+		t.Fatalf("grace hours = %v / %v, want 23.5", cfg.AutoOffGraceHours, cfg.AutoOnGraceHours)
+	}
+}
+
+func TestLoadEnvironTreatsEmptySlideshowVariablesAsUnset(t *testing.T) {
+	tests := []struct {
+		name         string
+		environ      []string
+		wantOverride bool
+		wantEnabled  bool
+	}{
+		{name: "empty switch", environ: []string{"SLIDESHOW_ENABLED="}},
+		{name: "blank switch", environ: []string{"SLIDESHOW_ENABLED=  "}},
+		{name: "every variable empty", environ: []string{"SLIDESHOW_ENABLED=", "SLIDESHOW_INTERVAL=", "SLIDESHOW_TYPE="}},
+		{name: "explicit off", environ: []string{"SLIDESHOW_ENABLED=false"}, wantOverride: true, wantEnabled: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg, _, err := LoadEnviron(append([]string{"TV_IPS=192.0.2.10"}, test.environ...))
+			if err != nil {
+				t.Fatalf("LoadEnviron() error = %v", err)
+			}
+			if cfg.SlideshowOverride != test.wantOverride || cfg.SlideshowEnabledSet != test.wantEnabled {
+				t.Fatalf("override = %v, enabled set = %v; want %v, %v",
+					cfg.SlideshowOverride, cfg.SlideshowEnabledSet, test.wantOverride, test.wantEnabled)
+			}
+			if cfg.SlideshowIntervalSet || cfg.SlideshowTypeSet {
+				t.Fatal("empty interval and type must count as unset")
+			}
+		})
+	}
+}
+
+func TestLoadEnvironWarnsWhenPowerScheduleHasNoTimezone(t *testing.T) {
+	tests := []struct {
+		name    string
+		environ []string
+		want    []string
+	}{
+		{name: "auto off without timezone", environ: []string{"AUTO_OFF_TIME=23:00"}, want: []string{"AUTO_OFF_TIME"}},
+		{
+			name:    "both times without timezone",
+			environ: []string{"AUTO_OFF_TIME=23:00", "AUTO_ON_TIME=07:00", "TV_MAC=AA:BB:CC:DD:EE:FF"},
+			want:    []string{"AUTO_OFF_TIME", "AUTO_ON_TIME"},
+		},
+		{name: "empty timezone counts as unset", environ: []string{"AUTO_OFF_TIME=23:00", "LOCATION_TIMEZONE="}, want: []string{"AUTO_OFF_TIME"}},
+		{name: "timezone set", environ: []string{"AUTO_OFF_TIME=23:00", "LOCATION_TIMEZONE=America/Denver"}},
+		{name: "explicit UTC is a choice", environ: []string{"AUTO_OFF_TIME=23:00", "LOCATION_TIMEZONE=UTC"}},
+		{name: "no schedule", environ: nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg, warnings, err := LoadEnviron(append([]string{"TV_IPS=192.0.2.10"}, test.environ...))
+			if err != nil {
+				t.Fatalf("LoadEnviron() error = %v, a missing timezone must not fail startup", err)
+			}
+			if cfg.Timezone == "" {
+				t.Fatal("Timezone must keep its default")
+			}
+			assertWarningVariables(t, warnings, test.want...)
+			for _, item := range warnings {
+				if !strings.Contains(item.Message, "UTC") || !strings.Contains(item.Message, "LOCATION_TIMEZONE") {
+					t.Fatalf("warning = %+v, want it to name UTC and LOCATION_TIMEZONE", item)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadEnvironWarnsThatSkipTLSVerifyIsIgnored(t *testing.T) {
+	for _, value := range []string{"true", "false", "sure"} {
+		t.Run(value, func(t *testing.T) {
+			cfg, warnings, err := LoadEnviron([]string{"TV_IPS=192.0.2.10", "VERIFY_TLS=true", "SKIP_TLS_VERIFY=" + value})
+			if err != nil {
+				t.Fatalf("LoadEnviron() error = %v, a retired variable must not fail startup", err)
+			}
+			if !cfg.VerifyTLS {
+				t.Fatal("SKIP_TLS_VERIFY must no longer change VERIFY_TLS")
+			}
+			assertWarningVariables(t, warnings, "SKIP_TLS_VERIFY")
+			if !strings.Contains(warnings[0].Message, "VERIFY_TLS") || !strings.Contains(warnings[0].Message, "ignored") {
+				t.Fatalf("warning = %+v, want it to say the variable is ignored and name VERIFY_TLS", warnings[0])
+			}
+		})
+	}
+	_, warnings, err := LoadEnviron([]string{"TV_IPS=192.0.2.10", "SKIP_TLS_VERIFY="})
+	if err != nil {
+		t.Fatalf("LoadEnviron() error = %v", err)
+	}
+	assertWarningVariables(t, warnings)
 }

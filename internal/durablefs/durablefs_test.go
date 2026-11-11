@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReplacePublishesCompleteFileWithExactMode(t *testing.T) {
@@ -535,5 +536,62 @@ func assertNoTemporaryFiles(t *testing.T, dir string) {
 		if strings.HasPrefix(entry.Name(), ".durable-") {
 			t.Fatalf("temporary file leaked: %s", entry.Name())
 		}
+	}
+}
+
+func TestRemoveStaleTemporariesRemovesOnlyOldRegularTemporaryFiles(t *testing.T) {
+	directory := t.TempDir()
+	old := time.Now().Add(-2 * time.Hour)
+	write := func(name string, modified time.Time) string {
+		t.Helper()
+		path := filepath.Join(directory, name)
+		if err := os.WriteFile(path, []byte("partial"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, modified, modified); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	stale := []string{write(".durable-1.tmp", old), write(".durable-exclusive-2.tmp", old)}
+	target := write("target", old)
+	link := filepath.Join(directory, ".durable-link.tmp")
+	nested := filepath.Join(directory, ".durable-dir.tmp")
+	kept := []string{
+		write(".durable-3.tmp", time.Now()),
+		write("state.json", old),
+		write(".durable-4.tmp.bak", old),
+		target, link, nested,
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := RemoveStaleTemporaries(canceled, directory, time.Hour); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled removal error = %v", err)
+	}
+	if err := RemoveStaleTemporaries(context.Background(), directory, time.Hour); err != nil {
+		t.Fatalf("RemoveStaleTemporaries() error = %v", err)
+	}
+	for _, path := range stale {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("stale temporary file %s survived: %v", path, err)
+		}
+	}
+	for _, path := range kept {
+		if _, err := os.Lstat(path); err != nil {
+			t.Fatalf("removed %s: %v", path, err)
+		}
+	}
+	if err := RemoveStaleTemporaries(context.Background(), filepath.Join(directory, "missing"), time.Hour); err != nil {
+		t.Fatalf("missing directory error = %v", err)
+	}
+	if err := RemoveStaleTemporaries(context.Background(), target, time.Hour); err == nil {
+		t.Fatal("a regular file was accepted as a directory")
 	}
 }

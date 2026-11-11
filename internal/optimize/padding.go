@@ -12,7 +12,12 @@ import (
 func padOnBlur(src *image.RGBA, cfg Config) *image.RGBA {
 	targetW, targetH := cfg.MaxWidth, cfg.MaxHeight
 	backgroundCrop := cropRectForAspectWithProtection(src, float64(targetW)/float64(targetH), false, 0, false, 0)
-	bg := blurImage(resizeCrop(src, backgroundCrop, targetW, targetH, cfg.LinearLightResize), 8)
+	// The blur works on a background an eighth of the frame, so the crop is
+	// resized straight to that size instead of to the whole frame first.
+	reduced := resizeCrop(
+		src, backgroundCrop, max(targetW/blurReduction, 1), max(targetH/blurReduction, 1), cfg.LinearLightResize,
+	)
+	bg := blurImage(reduced, 8, targetW, targetH)
 	muteBackground(bg)
 
 	srcBounds := src.Bounds()
@@ -37,13 +42,14 @@ func muteBackground(img *image.RGBA) {
 	}
 }
 
-// blurImage applies a heavy blur by downscaling 8x, running three box-blur
-// passes, and upscaling back to the original resolution.
-func blurImage(src *image.RGBA, radius int) *image.RGBA {
-	bounds := src.Bounds()
-	small := image.NewRGBA(image.Rect(0, 0, max(bounds.Dx()/8, 1), max(bounds.Dy()/8, 1)))
-	draw.BiLinear.Scale(small, small.Bounds(), src, src.Bounds(), draw.Src, nil)
+// blurReduction is how much smaller than the frame the blurred background is
+// computed: a heavy blur keeps no detail a full-size pass would add.
+const blurReduction = 8
 
+// blurImage applies a heavy blur to small, a background already reduced by
+// blurReduction, with three box-blur passes and enlarges the result to
+// width x height.
+func blurImage(small *image.RGBA, radius, width, height int) *image.RGBA {
 	tmp := image.NewRGBA(small.Bounds())
 	dst := image.NewRGBA(small.Bounds())
 	currentSrc := small
@@ -53,7 +59,7 @@ func blurImage(src *image.RGBA, radius int) *image.RGBA {
 		currentSrc = dst
 	}
 
-	blurred := image.NewRGBA(bounds)
+	blurred := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.CatmullRom.Scale(blurred, blurred.Bounds(), dst, dst.Bounds(), draw.Src, nil)
 	return blurred
 }

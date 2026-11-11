@@ -180,8 +180,14 @@ func validateRanges(cfg *Config) error {
 		{between(cfg.SyncIntervalMin, 1, 43_200), "SYNC_INTERVAL_MINUTES must be between 1 and 43200"},
 		{cfg.ShutdownTimeout > 0 && cfg.ShutdownTimeout <= 10*time.Minute, "SHUTDOWN_TIMEOUT_SECONDS must be between 1 and 600"},
 		{between(cfg.SlideshowInterval, 1, 1440), "SLIDESHOW_INTERVAL must be between 1 and 1440"},
-		{cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours <= 168, "AUTO_OFF_GRACE_HOURS must be greater than 0 and at most 168"},
-		{cfg.AutoOnGraceHours > 0 && cfg.AutoOnGraceHours <= 24, "AUTO_ON_GRACE_HOURS must be greater than 0 and at most 24"},
+		{
+			cfg.AutoOffGraceHours > 0 && cfg.AutoOffGraceHours < 24,
+			"AUTO_OFF_GRACE_HOURS must be greater than 0 and less than 24; a window of 24 hours or more would keep the TV off all day",
+		},
+		{
+			cfg.AutoOnGraceHours > 0 && cfg.AutoOnGraceHours < 24,
+			"AUTO_ON_GRACE_HOURS must be greater than 0 and less than 24; a window of 24 hours or more would never close",
+		},
 		{len(cfg.MatteStyle) <= 128, "MATTE_STYLE must be at most 128 characters"},
 		{len(cfg.PortraitMatte) <= 128, "PORTRAIT_MATTE must be at most 128 characters"},
 		{between(cfg.RotationIntervalDays, 0, 365), "ROTATION_INTERVAL_DAYS must be between 0 and 365"},
@@ -285,6 +291,12 @@ func validateAddresses(cfg *Config) error {
 	if net.ParseIP(cfg.HealthBindAddress) == nil {
 		return fmt.Errorf("HEALTH_BIND_ADDRESS must be an IP address")
 	}
+	for _, name := range cfg.HealthAllowedHosts {
+		if !plausibleHostName(name) {
+			return fmt.Errorf("HEALTH_ALLOWED_HOSTS contains %q, which is not a host name "+
+				"(use names such as frame.example.com, without a scheme, port, or path)", name)
+		}
+	}
 	seen := make(map[string]struct{}, len(cfg.TVIPs))
 	for index, address := range cfg.TVIPs {
 		parsed := net.ParseIP(address)
@@ -299,6 +311,27 @@ func validateAddresses(cfg *Config) error {
 		cfg.TVIPs[index] = canonical
 	}
 	return nil
+}
+
+// plausibleHostName reports whether name is a lower-case DNS host name:
+// dot-separated labels of letters, digits, and inner hyphens.
+func plausibleHostName(name string) bool {
+	if name == "" || len(name) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, character := range label {
+			letter := character >= 'a' && character <= 'z'
+			digit := character >= '0' && character <= '9'
+			if !letter && !digit && character != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateCoordinates(cfg *Config) error {

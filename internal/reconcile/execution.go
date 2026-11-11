@@ -89,8 +89,6 @@ func receiptObservation(
 	case commandPowerOff:
 		observation.Power = samsung.PowerStateOff
 		observation.Disposition = samsung.DispositionBlockedPowerOff
-	case CommandWake:
-		observation.Power = samsung.PowerStateOn
 	}
 	canonical, err := json.Marshal(observation.Inventory.ContentIDs)
 	if err == nil {
@@ -135,8 +133,9 @@ func resolvePending(state State, observation samsung.Observation, now time.Time)
 			delete(result.Bindings, pending.Command.Digest)
 			recordShown(&result, pending.Command.Digest, now)
 		}
-		delete(result.Tombstones, pending.Command.ContentID)
 	case commandPowerOff, CommandWake:
+		// A wake is pending only in a state file left by a release that
+		// recorded wakes as pending commands.
 		// Either known power state settles the command: the target state proves
 		// it applied and the opposite state proves it did not.
 		if pending.Phase != phaseApplied &&
@@ -173,10 +172,9 @@ func resolveAppliedReceipt(state State, observation samsung.Observation, now tim
 		foldUploadBinding(&state, pending, observation, now)
 	case CommandDeleteOwned:
 		delete(state.Bindings, pending.Command.Digest)
-		delete(state.Tombstones, pending.Command.ContentID)
 		recordShown(&state, pending.Command.Digest, now)
 	case CommandDeleteUnknown:
-		delete(state.Tombstones, pending.Command.ContentID)
+		// Nothing is recorded for artwork the manager never owned.
 	case commandSelect:
 		// The applied receipt is issued only after get_current_artwork
 		// confirmed the picture.

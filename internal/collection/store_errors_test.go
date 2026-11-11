@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 )
@@ -71,26 +72,36 @@ func TestImportWithNoFilenameUsesSafeDefault(t *testing.T) {
 	}
 }
 
-func TestImportRejectsInvalidExistingEntries(t *testing.T) {
+func TestImportToleratesInvalidFilesTheManifestDoesNotRecord(t *testing.T) {
 	tests := []struct {
 		name  string
+		entry string
 		setup func(*testing.T, string)
 	}{
 		{
-			name: "artwork-shaped directory",
-			setup: func(t *testing.T, root string) {
+			name: "artwork-shaped directory", entry: "directory.png",
+			setup: func(t *testing.T, path string) {
 				t.Helper()
-				if err := os.Mkdir(filepath.Join(root, "directory.png"), 0o755); err != nil {
+				if err := os.Mkdir(path, 0o755); err != nil {
 					t.Fatalf("mkdir fake artwork: %v", err)
 				}
 			},
 		},
 		{
-			name: "oversize artwork",
-			setup: func(t *testing.T, root string) {
+			name: "oversize artwork", entry: "large.jpg",
+			setup: func(t *testing.T, path string) {
 				t.Helper()
-				if err := os.WriteFile(filepath.Join(root, "large.jpg"), bytes.Repeat([]byte("x"), (1<<20)+1), 0o644); err != nil {
+				if err := os.WriteFile(path, bytes.Repeat([]byte("x"), (1<<20)+1), 0o644); err != nil {
 					t.Fatalf("write oversized artwork: %v", err)
+				}
+			},
+		},
+		{
+			name: "undecodable artwork", entry: "broken.png",
+			setup: func(t *testing.T, path string) {
+				t.Helper()
+				if err := os.WriteFile(path, []byte("not-png"), 0o644); err != nil {
+					t.Fatalf("write broken artwork: %v", err)
 				}
 			},
 		},
@@ -98,15 +109,146 @@ func TestImportRejectsInvalidExistingEntries(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			tc.setup(t, root)
+			tc.setup(t, filepath.Join(root, tc.entry))
+			before, err := os.Lstat(filepath.Join(root, tc.entry))
+			if err != nil {
+				t.Fatal(err)
+			}
 			store := newStore(t, root)
 			snapshot, err := store.Import(context.Background(), collection.ImportRequest{
 				Reader: bytes.NewReader(encodeImage(t, "png", 1, 1)), Hint: "new.png",
 			})
-			if err == nil || !reflect.DeepEqual(snapshot, collection.Snapshot{}) {
-				t.Fatalf("snapshot=%+v err=%v", snapshot, err)
+			if err != nil {
+				t.Fatalf("one invalid unrecorded file blocked the import: %v", err)
+			}
+			if len(snapshot.Items) != 1 || !stringsHasPrefix(snapshot.Items[0].Name, "new--") {
+				t.Fatalf("items = %+v; want only the imported artwork", snapshot.Items)
+			}
+			after, err := os.Lstat(filepath.Join(root, tc.entry))
+			if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() {
+				t.Fatalf("invalid file was touched: %v", err)
 			}
 		})
+	}
+}
+
+func TestImportStillFailsWhenRecordedArtworkIsInvalid(t *testing.T) {
+	root := t.TempDir()
+	store := newStore(t, root)
+	first, err := store.Import(context.Background(), collection.ImportRequest{
+		Reader: bytes.NewReader(encodeImage(t, "png", 1, 1)), Hint: "kept.png",
+	})
+	if err != nil {
+		t.Fatalf("import recorded artwork: %v", err)
+	}
+	if err := os.WriteFile(first.Items[0].Path, []byte("not-png"), 0o644); err != nil {
+		t.Fatalf("corrupt recorded artwork: %v", err)
+	}
+	snapshot, err := store.Import(context.Background(), collection.ImportRequest{
+		Reader: bytes.NewReader(encodeImage(t, "png", 2, 2)), Hint: "new.png",
+	})
+	if err == nil || !reflect.DeepEqual(snapshot, collection.Snapshot{}) {
+		t.Fatalf("snapshot=%+v err=%v; want recorded artwork that became invalid to fail the import", snapshot, err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("entries = %v, %v; want only the recorded artwork and the control directory", entries, err)
+	}
+}
+
+func TestRepeatedImportDoesNotRewriteTheManifest(t *testing.T) {
+	root := t.TempDir()
+	store := newStore(t, root)
+	data := encodeImage(t, "png", 2, 2)
+	first, err := store.Import(context.Background(), collection.ImportRequest{Reader: bytes.NewReader(data), Hint: "art.png"})
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	manifestPath := filepath.Join(root, ".frame-tv-art-manager", "manifest.json")
+	before, err := os.Stat(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Import(context.Background(), collection.ImportRequest{Reader: bytes.NewReader(data), Hint: "art.png"})
+	if err != nil {
+		t.Fatalf("repeated import: %v", err)
+	}
+	after, err := os.Stat(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) {
+		t.Fatal("repeated import of committed artwork rewrote the manifest")
+	}
+	if second.Generation != first.Generation || !reflect.DeepEqual(second.Items, first.Items) || second.DryRun ||
+		len(second.Changes) != 1 || second.Changes[0].Kind != collection.ChangeDuplicate {
+		t.Fatalf("repeated import snapshot = %+v; want the committed view and one duplicate change", second)
+	}
+}
+
+func TestRecoveryRemovesTemporaryFilesAnInterruptedWriteLeft(t *testing.T) {
+	root := t.TempDir()
+	store := newStore(t, root)
+	if _, err := store.Import(context.Background(), collection.ImportRequest{
+		Reader: bytes.NewReader(encodeImage(t, "png", 1, 1)), Hint: "art.png",
+	}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	control := filepath.Join(root, ".frame-tv-art-manager")
+	staging := filepath.Join(control, "staging")
+	old := time.Now().Add(-2 * time.Hour)
+	orphans := []string{
+		filepath.Join(control, ".durable-123.tmp"),
+		filepath.Join(control, ".durable-exclusive-456.tmp"),
+		filepath.Join(staging, ".durable-789.tmp"),
+	}
+	for _, path := range orphans {
+		if err := os.WriteFile(path, []byte("partial"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inProgress := filepath.Join(control, ".durable-live.tmp")
+	unrelated := filepath.Join(control, "themes.json")
+	for _, path := range []string{inProgress, unrelated} {
+		if err := os.WriteFile(path, []byte("keep"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(unrelated, old, old); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(target, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(staging, ".durable-link.tmp")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Prepare(context.Background(), collection.PrepareRequest{DryRun: true}); err != nil {
+		t.Fatalf("dry-run prepare: %v", err)
+	}
+	for _, path := range orphans {
+		if _, err := os.Lstat(path); err != nil {
+			t.Fatalf("dry run removed %s: %v", path, err)
+		}
+	}
+	if _, err := store.Prepare(context.Background(), collection.PrepareRequest{}); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	for _, path := range orphans {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("orphaned temporary file %s survived recovery: %v", path, err)
+		}
+	}
+	for _, path := range []string{inProgress, unrelated, link, target} {
+		if _, err := os.Lstat(path); err != nil {
+			t.Fatalf("recovery removed %s: %v", path, err)
+		}
 	}
 }
 

@@ -7,9 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"image"
-	_ "image/png" // Needed for decoding PNG images
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,9 +86,9 @@ type fileTransform struct {
 func optimizeFileWithPolicy(
 	ctx context.Context,
 	request fileTransform,
-	cfg Config,
-	logger *slog.Logger,
+	env renderEnv,
 ) (string, bool, error) {
+	cfg, logger := env.cfg, env.logger
 	path := request.path
 	filename := filepath.Base(path)
 	if err := ctx.Err(); err != nil {
@@ -144,7 +142,7 @@ func optimizeFileWithPolicy(
 		return filename, false, validateOptimizedPixels(ctx, f, cfg.MaxWidth, cfg.MaxHeight)
 	}
 
-	if err := rewriteImage(ctx, f, path, orientation, colorMetadata, cfg, logger); err != nil {
+	if err := rewriteImage(ctx, f, path, orientation, colorMetadata, env); err != nil {
 		return filename, false, err
 	}
 	newFilename, err := moveToContentName(ctx, path, contentNameRequest{
@@ -170,7 +168,9 @@ func isOptimizableImage(extension string, cfg Config) bool {
 func readOrientationForExtension(ctx context.Context, reader io.Reader, extension string) (int, error) {
 	contextual := &contextReader{ctx: ctx, reader: reader}
 	if extension == extPNG {
-		return readPNGOrientation(contextual)
+		// A file steps over image data instead of reading it.
+		seeker, _ := reader.(io.Seeker)
+		return readPNGOrientation(contextual, seeker)
 	}
 	return readOrientation(contextual)
 }

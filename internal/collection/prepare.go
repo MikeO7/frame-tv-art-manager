@@ -19,7 +19,7 @@ func (s *store) prepare(ctx context.Context, request PrepareRequest) (Snapshot, 
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read committed manifest: %w", err)
 	}
-	items, warnings, err := scanPrepare(ctx, s.root, s.limits(), request.Origins)
+	items, warnings, err := scanPrepare(ctx, s.root, s.limits())
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("inventory collection: %w", err)
 	}
@@ -89,7 +89,7 @@ func (s *store) commitPrepared(ctx context.Context, items []Item, next manifest,
 	if err := commitManifest(ctx, s.root, next); err != nil {
 		return Snapshot{}, fmt.Errorf("commit collection inventory: %w", err)
 	}
-	committed, committedWarnings, err := scanPrepare(ctx, s.root, s.limits(), nil)
+	committed, committedWarnings, err := scanPrepare(ctx, s.root, s.limits())
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("verify committed collection: %w", err)
 	}
@@ -104,13 +104,8 @@ func (s *store) commitPrepared(ctx context.Context, items []Item, next manifest,
 }
 
 // scanPrepare inventories the collection like scan, but excludes unreadable
-// artwork with a warning instead of failing, and applies origin overrides.
-func scanPrepare(
-	ctx context.Context,
-	root string,
-	limits inventoryLimits,
-	overrides map[string]Origin,
-) ([]Item, []string, error) {
+// artwork with a warning instead of failing.
+func scanPrepare(ctx context.Context, root string, limits inventoryLimits) ([]Item, []string, error) {
 	records, err := readManifestRecords(ctx, root)
 	if err != nil {
 		return nil, nil, err
@@ -134,31 +129,12 @@ func scanPrepare(
 			warnings = append(warnings, warning)
 		}
 		if item.Name != "" {
-			item, err := prepareItemOrigin(withCommittedMetadata(item, records, renamed), overrides)
-			if err != nil {
-				return nil, nil, err
-			}
-			items = append(items, item)
+			items = append(items, withCommittedMetadata(item, records, renamed))
 		}
 	}
 	sortItems(items)
 	sort.Strings(warnings)
 	return items, warnings, nil
-}
-
-func prepareItemOrigin(item Item, overrides map[string]Origin) (Item, error) {
-	origin, overridden := overrides[item.Name]
-	if !overridden {
-		return item, nil
-	}
-	item.Origin = origin
-	if origin.Class == OriginSource {
-		item.SourceKeys = appendSourceKey(item.SourceKeys, origin.Key)
-	}
-	if err := validateSnapshotOrigin(item); err != nil {
-		return Item{}, fmt.Errorf("override artwork %s origin: %w", item.Name, err)
-	}
-	return item, nil
 }
 
 // scanPrepareEntry returns an included item, an exclusion warning, or a hard

@@ -11,8 +11,8 @@ import (
 
 const (
 	// authFailureLimit is how many wrong credentials one client address may
-	// present per authFailureWindow before every authenticated route answers
-	// 429. It bounds online guessing of UPLOAD_TOKEN.
+	// present per authFailureWindow before further wrong credentials are
+	// answered 429. It bounds online guessing of UPLOAD_TOKEN and MCP_TOKEN.
 	authFailureLimit  = 10
 	authFailureWindow = time.Minute
 	// authTrackedClients bounds limiter memory; expired windows are pruned
@@ -49,26 +49,11 @@ func newAuthLimiter(now func() time.Time) *authLimiter {
 	return &authLimiter{now: now, failures: make(map[string]failureWindow)}
 }
 
-// retryAfter reports how long client must wait, or zero when it may try.
-func (l *authLimiter) retryAfter(client string) time.Duration {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	window, ok := l.failures[client]
-	if !ok {
-		return 0
-	}
-	elapsed := l.now().Sub(window.start)
-	if elapsed >= authFailureWindow {
-		delete(l.failures, client)
-		return 0
-	}
-	if window.count < authFailureLimit {
-		return 0
-	}
-	return authFailureWindow - elapsed
-}
-
-func (l *authLimiter) recordFailure(client string) {
+// failure charges one wrong credential to client in a single locked step, so
+// parallel guesses cannot all slip under the budget. It returns zero when the
+// failure fit in the budget, or how long the client must wait when the budget
+// for this window is already spent; a refused guess is not counted again.
+func (l *authLimiter) failure(client string) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -79,8 +64,12 @@ func (l *authLimiter) recordFailure(client string) {
 		}
 		window = failureWindow{start: now}
 	}
+	if window.count >= authFailureLimit {
+		return authFailureWindow - now.Sub(window.start)
+	}
 	window.count++
 	l.failures[client] = window
+	return 0
 }
 
 func (l *authLimiter) pruneLocked(now time.Time) {
@@ -100,23 +89,24 @@ func (l *authLimiter) pruneLocked(now time.Time) {
 }
 
 // authenticate checks the request's Basic credentials against UPLOAD_TOKEN.
-// A client over its failure budget is refused before the token is compared,
-// so a correct guess cannot be confirmed while rate limited.
+// The credentials are compared first: correct ones are always accepted, so
+// wrong guesses from the same address (a shared proxy or NAT) cannot lock the
+// operator out. Only wrong credentials are counted, and a client that has
+// spent its failure budget gets authLimited for further wrong guesses.
 func (s *server) authenticate(request *http.Request) (authResult, time.Duration) {
-	client := clientAddress(request)
-	if wait := s.authFailures.retryAfter(client); wait > 0 {
-		return authLimited, wait
-	}
 	username, password, ok := request.BasicAuth()
 	if !ok {
 		return authAbsent, 0
 	}
 	userMatch := subtle.ConstantTimeCompare([]byte(username), []byte(uploadUsername))
 	tokenMatch := subtle.ConstantTimeCompare([]byte(password), []byte(s.cfg.UploadToken))
-	if userMatch&tokenMatch == 1 {
+	if s.cfg.UploadToken != "" && userMatch&tokenMatch == 1 {
 		return authValid, 0
 	}
-	s.authFailures.recordFailure(client)
+	client := clientAddress(request)
+	if wait := s.authFailures.failure(client); wait > 0 {
+		return authLimited, wait
+	}
 	s.logger.Warn("rejected HTTP credentials", "client", client, "path", request.URL.Path)
 	return authInvalid, 0
 }

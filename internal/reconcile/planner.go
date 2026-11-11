@@ -200,8 +200,7 @@ func cloneState(state State) State {
 	clone := state
 	clone.Bindings = make(map[string]Binding, len(state.Bindings))
 	maps.Copy(clone.Bindings, state.Bindings)
-	clone.Tombstones = make(map[string]tombstone, len(state.Tombstones))
-	maps.Copy(clone.Tombstones, state.Tombstones)
+	clone.Tombstones = maps.Clone(state.Tombstones)
 	clone.LastShown = maps.Clone(state.LastShown)
 	clone.Pending = clonePending(state.Pending)
 	clone.UnresolvedUpload = clonePending(state.UnresolvedUpload)

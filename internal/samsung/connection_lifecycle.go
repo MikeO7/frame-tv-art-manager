@@ -63,11 +63,16 @@ func (c *connection) dial(ctx context.Context, wsURL string) (*websocket.Conn, e
 	conn, httpResp, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
 		HTTPClient: client,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("websocket dial: %w", withoutRequestURL(err))
-	}
 	if httpResp != nil && httpResp.Body != nil {
 		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		if httpResp != nil {
+			// The TV answered HTTP and declined the upgrade: a refused channel.
+			return nil, fmt.Errorf("websocket dial refused with status %d: %w",
+				httpResp.StatusCode, errors.Join(errConnectionFailure, withoutRequestURL(err)))
+		}
+		return nil, fmt.Errorf("websocket dial: %w", withoutRequestURL(err))
 	}
 	conn.SetReadLimit(maxMessageSize)
 	return conn, nil

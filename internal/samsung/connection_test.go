@@ -477,3 +477,31 @@ func TestRouteD2DEventKeepsEventsQueuedBeforeTheWaiterReads(t *testing.T) {
 		}
 	}
 }
+
+// A TV that answers the art port over HTTP but declines the WebSocket upgrade
+// has refused the channel, which callers must be able to tell from a failure
+// to read the token.
+func TestConnectionOpenReportsDeclinedUpgradeAsConnectionFailure(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "art mode unavailable", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	port, err := strconv.Atoi(parsed.Port())
+	if err != nil {
+		t.Fatalf("parse server port: %v", err)
+	}
+	conn := newTestConnection(t, parsed.Hostname(), port, endpointArtApp)
+
+	err = conn.Open(context.Background())
+	if !errors.Is(err, errConnectionFailure) {
+		t.Fatalf("Open() error = %v, want errConnectionFailure", err)
+	}
+	if strings.Contains(err.Error(), "token=") {
+		t.Fatalf("Open() error leaks the request URL: %v", err)
+	}
+}

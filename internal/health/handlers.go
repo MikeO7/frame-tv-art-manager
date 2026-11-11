@@ -1,13 +1,17 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
 	"net/http"
+	"os"
 	"slices"
+	"sync"
 	"time"
 
+	"github.com/MikeO7/frame-tv-art-manager/internal/collection"
 	"github.com/MikeO7/frame-tv-art-manager/internal/sources"
 )
 
@@ -17,12 +21,21 @@ import (
 func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	snapshot := s.status.snapshot()
 
-	healthy := snapshot.Lifecycle == lifecycleReady && snapshot.SyncCount > 0 && snapshot.LastSyncOK
-	statusStr, code := statusOK, http.StatusOK
-	if !healthy {
-		statusStr, code = statusError, http.StatusServiceUnavailable
+	state, code := healthState(snapshot), http.StatusOK
+	if state != statusOK {
+		code = http.StatusServiceUnavailable
 	}
-	writeJSON(w, code, s.syncFields(snapshot, statusStr))
+	writeJSON(w, code, s.syncFields(snapshot, state))
+}
+
+// healthState is the one status string /health, /ready, and /status report
+// for a snapshot: ok only while the supervisor is ready and the most recent
+// Sync Cycle succeeded.
+func healthState(snapshot statusSnapshot) string {
+	if snapshot.Lifecycle == lifecycleReady && snapshot.SyncCount > 0 && snapshot.LastSyncOK {
+		return statusOK
+	}
+	return statusError
 }
 
 // syncFields returns the sync-state fields shared by /health and /status.
@@ -58,12 +71,13 @@ func (s *server) handleLive(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleStatus returns detailed per-TV status information and the credits
-// that provider terms require for downloaded artwork. When UPLOAD_TOKEN is
-// set, the error text and TV addresses are shown only to a request with valid
-// credentials; anonymous callers get the same fields with TVs numbered and
-// errors withheld. Credits are public and appear in both views. Without a
-// token the endpoint stays fully open, matching the unauthenticated upload
-// endpoint.
+// that provider terms require for downloaded artwork. The response is always
+// 200; its status field is the same value /health reports. When UPLOAD_TOKEN
+// is set, the error text and TV addresses are shown only to a request with
+// valid credentials; anonymous callers get the same fields with TVs numbered
+// and errors withheld. Credits are public and appear in both views. Without a
+// token /status stays fully open; uploads, by contrast, are refused until a
+// token is configured.
 func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	redact := false
 	if s.cfg != nil && s.cfg.UploadToken != "" {
@@ -78,7 +92,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	snapshot := s.status.snapshot()
-	fields := s.syncFields(snapshot, statusOK)
+	fields := s.syncFields(snapshot, healthState(snapshot))
 	fields["started_at"] = snapshot.StartedAt.Format(time.RFC3339)
 	if redact {
 		fields[fieldRedacted] = true
@@ -96,7 +110,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s.cfg != nil && s.cfg.SourcesFile != "" {
-		attributions, err := sources.ReadAttributions(r.Context(), s.cfg.ArtworkDir)
+		attributions, err := s.attributions.load(r.Context(), s.cfg.ArtworkDir)
 		if err != nil {
 			s.logger.Warn("read source attributions failed", "error", err)
 		} else {
@@ -104,6 +118,54 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, fields)
+}
+
+// sourceStateName is the control file sources.ReadAttributions parses. It is
+// used only to notice changes: if the file cannot be inspected the cache is
+// bypassed, so a mismatch costs speed, never correctness.
+const sourceStateName = "source-state.json"
+
+// attributionCache keeps the parsed source credits between /status requests.
+// The state file can be tens of megabytes, so it is re-read only when its
+// modification time, size, or mode changes.
+type attributionCache struct {
+	mu      sync.Mutex
+	read    func(ctx context.Context, artworkDir string) (any, error)
+	valid   bool
+	modTime time.Time
+	size    int64
+	mode    os.FileMode
+	value   any
+}
+
+func newAttributionCache() *attributionCache {
+	return &attributionCache{read: func(ctx context.Context, artworkDir string) (any, error) {
+		return sources.ReadAttributions(ctx, artworkDir)
+	}}
+}
+
+// load returns the credits recorded for artworkDir. A failed read is returned
+// and never cached.
+func (c *attributionCache) load(ctx context.Context, artworkDir string) (any, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	info, err := os.Lstat(collection.ControlPath(artworkDir, sourceStateName))
+	if err != nil {
+		c.valid, c.value = false, nil
+		return c.read(ctx, artworkDir)
+	}
+	// The mode is part of the key because an unsafe mode or a symlink makes
+	// the file unacceptable to the strict reader without changing its bytes.
+	if c.valid && info.ModTime().Equal(c.modTime) && info.Size() == c.size && info.Mode() == c.mode {
+		return c.value, nil
+	}
+	value, err := c.read(ctx, artworkDir)
+	if err != nil {
+		c.valid, c.value = false, nil
+		return nil, err
+	}
+	c.valid, c.modTime, c.size, c.mode, c.value = true, info.ModTime(), info.Size(), info.Mode(), value
+	return value, nil
 }
 
 // redactedTVs keys TVs as tv-1, tv-2, ... in address order and drops the

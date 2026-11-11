@@ -44,7 +44,6 @@ func newSMKProvider(logger *slog.Logger) *smkProvider {
 type smkArtwork struct {
 	ObjectNumber string `json:"object_number"`
 	PublicDomain bool   `json:"public_domain"`
-	HasImage     bool   `json:"has_image"`
 	IIIFID       string `json:"image_iiif_id"`
 	Native       string `json:"image_native"`
 	Width        int    `json:"image_width"`
@@ -81,7 +80,7 @@ func (p *smkProvider) fetchJSON(ctx context.Context, apiURL string, out any) err
 func (p *smkProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 3 || parts[2] == "" {
-		return nil, errors.New("invalid smk format; use smk:search:<query> or smk:object:<object number>")
+		return nil, configError("invalid smk format; use smk:search:<query> or smk:object:<object number>")
 	}
 	switch parts[1] {
 	case cmdSearch:
@@ -109,7 +108,7 @@ func (p *smkProvider) Resolve(ctx context.Context, line string) ([]sourceImage, 
 		}
 		return []sourceImage{candidate.image}, nil
 	default:
-		return nil, errors.New("unknown smk type")
+		return nil, configError("unknown smk type")
 	}
 }
 

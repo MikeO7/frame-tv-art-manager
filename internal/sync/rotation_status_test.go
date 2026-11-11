@@ -37,12 +37,12 @@ func TestRotationStatusReachesSummaryLogsAndHealth(t *testing.T) {
 
 	var rendered bytes.Buffer
 	logCycleSummary(slog.New(slog.NewTextHandler(&rendered, nil)), cycleSummary{
-		CycleNum: 1, StartTime: time.Now(), SyncIntervalMin: 30, TVs: []tvSyncResult{summary},
+		CycleNum: 1, StartTime: time.Now(), NextSync: time.Now(), Location: time.UTC, TVs: []tvSyncResult{summary},
 	})
 	if !strings.Contains(rendered.String(), "Rotation:   40 waiting") {
 		t.Fatalf("cycle summary = %q, want rotation line", rendered.String())
 	}
-	if lines := tvSummaryLines(tvSyncResult{Status: "ok", Rotating: true, ArtworkWaiting: 3}); lines[4] != "    Rotation:   3 waiting" {
+	if lines := tvSummaryLines(tvSyncResult{Status: "ok", Rotating: true, ArtworkWaiting: 3}, time.UTC); lines[4] != "    Rotation:   3 waiting" {
 		t.Fatalf("tvSummaryLines() = %q, want rotation line without next time", lines)
 	}
 

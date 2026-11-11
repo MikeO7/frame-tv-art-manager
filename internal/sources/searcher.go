@@ -193,7 +193,7 @@ func (s *artSearcher) selected(names []string) ([]candidateSearcher, error) {
 	}
 	for _, name := range names {
 		if !slices.Contains(s.Providers(), name) {
-			return nil, fmt.Errorf("unknown search provider %q; use one of %s", name, strings.Join(s.Providers(), ", "))
+			return nil, configError("unknown search provider %q; use one of %s", name, strings.Join(s.Providers(), ", "))
 		}
 	}
 	return selected, nil
@@ -260,10 +260,10 @@ func (p *museumProvider) CanHandle(line string) bool {
 func (p *museumProvider) Resolve(ctx context.Context, line string) ([]sourceImage, error) {
 	parts := strings.SplitN(line, ":", 3)
 	if len(parts) < 2 || parts[1] != cmdSearch {
-		return nil, errors.New("unknown museum type; use museum:search:<query>")
+		return nil, configError("unknown museum type; use museum:search:<query>")
 	}
 	if len(parts) < 3 || strings.TrimSpace(parts[2]) == "" {
-		return nil, errors.New("museum search requires a query: museum:search:query")
+		return nil, configError("museum search requires a query: museum:search:query")
 	}
 	result, err := p.searcher.Search(ctx, SearchQuery{Text: parts[2], Limit: defaultSearchLimit})
 	if err != nil {

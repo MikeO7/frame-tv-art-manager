@@ -251,7 +251,16 @@ func (a *adapter) verifyPostcondition(
 ) (Outcome, error) {
 	switch value := command.command.(type) {
 	case Upload:
-		return a.verifyInventoryMembership(ctx, transport, contentID, true)
+		// TVs list a confirmed upload asynchronously, so the inventory is
+		// polled. A confirmed content ID that never appears is unknown, not
+		// absent: reporting it as not applied would upload the artwork twice.
+		outcome, err := a.pollPostcondition(ctx, func(ctx context.Context) (Outcome, error) {
+			return a.verifyInventoryMembership(ctx, transport, contentID, true)
+		})
+		if outcome == OutcomeNotApplied {
+			return OutcomeUnknown, err
+		}
+		return outcome, err
 	case Delete:
 		// TVs remove artwork asynchronously after acknowledging, or without
 		// acknowledging at all, so the inventory is polled until it settles.
@@ -351,7 +360,8 @@ type operationalState struct {
 // as on or in standby, the art channel. REST "standby" covers both network
 // standby (the art channel refuses connections) and 2025+ Frames, which report
 // standby while showing art, so the art channel decides; a standby TV whose
-// art channel does not answer is known off. Earlier Frames report standby
+// art channel is unreachable, refused, or silent is known off, and any other
+// connect failure is returned. Earlier Frames report standby
 // once the screen is dark, including when the motion or light sensor put Art
 // Mode to sleep, so they are off without asking: selecting a picture would
 // light the screen again.
@@ -369,7 +379,7 @@ func (a *adapter) readPowerState(ctx context.Context, device deviceInfo, dryRun 
 		return operationalState{Power: PowerStateOff}, nil
 	}
 	if err := a.transport.Connect(ctx, dryRun); err != nil {
-		if standby && !errors.Is(err, errUnauthorized) && ctx.Err() == nil {
+		if standby && artChannelDark(ctx, err) {
 			return operationalState{Power: PowerStateOff}, nil
 		}
 		return operationalState{}, err

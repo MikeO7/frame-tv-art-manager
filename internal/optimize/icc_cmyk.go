@@ -11,9 +11,13 @@ const (
 	pcsChannels  = 3
 	// iccCurveSamples is the resolution post-lookup curves are tabulated at.
 	iccCurveSamples = 4096
+)
 
-	pcsEncodingLegacyLab = iota
-	pcsEncodingLab
+// How a profile encodes its connection-space values. The current Lab
+// encoding is the zero value.
+const (
+	pcsEncodingLab = iota
+	pcsEncodingLegacyLab
 	pcsEncodingXYZ
 )
 

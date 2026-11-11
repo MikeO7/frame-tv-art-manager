@@ -228,16 +228,17 @@ func (svc *service) updateCollection(
 	if err != nil {
 		return nil, collectionChangeOutput{}, err
 	}
-	snapshot, err := svc.inventory(ctx)
-	if err != nil {
-		return nil, collectionChangeOutput{}, err
-	}
 	svc.logger.Info("themed collection updated", "collection", updated.Slug,
 		"activation", updated.Activation.Mode, "exclusive", updated.Exclusive)
-	return nil, collectionChangeOutput{
-		Collection: svc.summarizeCollection(updated, snapshot.Items),
-		Message:    fmt.Sprintf("Updated %q: %s. Call sync_now to apply it to the TV.", updated.Name, updated.Activation.Describe()),
-	}, nil
+	message := fmt.Sprintf("Updated %q: %s. Call sync_now to apply it to the TV.", updated.Name, updated.Activation.Describe())
+	// The change is already saved, so a failure to count the pictures in the
+	// folder must not be reported as a failed update.
+	snapshot, err := svc.inventory(ctx)
+	if err != nil {
+		svc.logger.Error("summarize updated themed collection failed", "collection", updated.Slug, "error", err)
+		message += " The change was saved, but the artwork folder could not be read, so present_members is unavailable."
+	}
+	return nil, collectionChangeOutput{Collection: svc.summarizeCollection(updated, snapshot.Items), Message: message}, nil
 }
 
 func (svc *service) removeFromCollection(

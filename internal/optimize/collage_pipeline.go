@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"maps"
 	"math"
 	"math/bits"
 	"os"
@@ -63,6 +64,8 @@ func (p *catalogPass) renderCollageFile(ctx context.Context, first, second, labe
 	if err := validateOutputDimensions(cfg.MaxWidth, cfg.MaxHeight, cfg.MaxOutputPixels); err != nil {
 		return "", err
 	}
+	// Whatever happens, this pair's decoded portraits are finished with.
+	defer p.dropDecoded(first, second)
 	inputs, err := inspectCollageInputs(ctx, first, second)
 	if err != nil {
 		return "", err
@@ -70,17 +73,20 @@ func (p *catalogPass) renderCollageFile(ctx context.Context, first, second, labe
 	if err := validateWorkingSet(inputs, cfg); err != nil {
 		return "", err
 	}
+	// The estimate covers this pair, decoded or not. Portraits kept for later
+	// pairs are on top of it.
+	p.releaseDecoded(estimatedWorkingBytes(inputs, cfg), first, second)
 
-	img1, err := loadAndRotateImageWithConfig(ctx, first, cfg, p.logger)
+	img1, err := p.decodedPortrait(ctx, first)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", filepath.Base(first), err)
 	}
-	img2, err := loadAndRotateImageWithConfig(ctx, second, cfg, p.logger)
+	img2, err := p.decodedPortrait(ctx, second)
 	if err != nil {
 		return "", fmt.Errorf("load/rotate %s: %w", filepath.Base(second), err)
 	}
 
-	collage := renderCollage(img1, img2, collageRenderRequest{ctx: ctx, cfg: cfg, logger: p.logger})
+	collage := renderCollage(ctx, img1, img2, p.env())
 	if cfg.MuseumModeEnabled {
 		collage = applyMuseumMode(collage, cfg.MuseumModeIntensity)
 	}
@@ -100,6 +106,62 @@ func (p *catalogPass) renderCollageFile(ctx context.Context, first, second, labe
 		return "", fmt.Errorf("commit collage: %w", err)
 	}
 	return collageName, nil
+}
+
+// decodedPortrait returns the portrait at path decoded, color-converted and
+// upright, taking the copy kept from measuring it when there is one so the
+// file is not decoded a second time.
+func (p *catalogPass) decodedPortrait(ctx context.Context, path string) (*image.RGBA, error) {
+	if img, kept := p.decoded[path]; kept {
+		delete(p.decoded, path)
+		return img, nil
+	}
+	return loadAndRotateImageWithConfig(ctx, path, p.cfg, p.logger)
+}
+
+// keepDecoded keeps a measured portrait for the collage that will render it.
+// Kept portraits count against the working-set limit: releaseDecoded makes
+// room before every decode and render, so what is kept plus the work at hand
+// never exceeds it.
+func (p *catalogPass) keepDecoded(path string, img *image.RGBA) {
+	if p.decoded == nil {
+		p.decoded = make(map[string]*image.RGBA)
+	}
+	p.decoded[path] = img
+}
+
+// decodedBytes is the memory held by kept portraits other than those at the
+// excepted paths.
+func (p *catalogPass) decodedBytes(except ...string) int64 {
+	var held int64
+	for path, img := range p.decoded {
+		if !slices.Contains(except, path) {
+			held += int64(len(img.Pix))
+		}
+	}
+	return held
+}
+
+// releaseDecoded drops kept portraits, in path order, until those left and
+// needed more bytes of work fit the working-set limit together. The portraits
+// at the keep paths are part of that work and stay. A dropped portrait is
+// simply decoded again when its collage is rendered.
+func (p *catalogPass) releaseDecoded(needed int64, keep ...string) {
+	limit := workingByteLimit(p.cfg)
+	for _, path := range slices.Sorted(maps.Keys(p.decoded)) {
+		if p.decodedBytes(keep...)+needed <= limit {
+			return
+		}
+		if !slices.Contains(keep, path) {
+			delete(p.decoded, path)
+		}
+	}
+}
+
+func (p *catalogPass) dropDecoded(paths ...string) {
+	for _, path := range paths {
+		delete(p.decoded, path)
+	}
 }
 
 func inspectCollageInputs(ctx context.Context, paths ...string) (workingInput, error) {
@@ -140,9 +202,22 @@ func (p *catalogPass) collectRawPortraits(ctx context.Context, localFiles map[st
 		if p.inputs[filename].Derivative != "" {
 			continue
 		}
-		if isPortrait, err := isPortraitFile(ctx, filepath.Join(p.artworkDir, filename)); err == nil && isPortrait {
-			rawPortraits = append(rawPortraits, filename)
+		path := filepath.Join(p.artworkDir, filename)
+		if isPortrait, err := isPortraitFile(ctx, path); err != nil || !isPortrait {
+			continue
 		}
+		// A portrait too large to transform alone cannot be rendered into any
+		// collage. Leaving it out keeps it from taking a partner that another
+		// portrait could use, and matches what RequiresStage expects.
+		input, err := inspectCollageInputs(ctx, path)
+		if err == nil {
+			err = validateWorkingSet(input, p.cfg)
+		}
+		if err != nil {
+			p.logger.Debug("portrait cannot be collaged; leaving it as it is", "file", filename, "error", err)
+			continue
+		}
+		rawPortraits = append(rawPortraits, filename)
 	}
 	// Sorting makes pairing deterministic despite random map iteration order.
 	slices.Sort(rawPortraits)
@@ -154,6 +229,12 @@ func (p *catalogPass) collectRawPortraits(ctx context.Context, localFiles map[st
 func (p *catalogPass) processCollages(ctx context.Context, localFiles map[string]struct{}) error {
 	rawPortraits := p.collectRawPortraits(ctx, localFiles)
 	pairs, leftover := pairPortraits(p.portraitFeatures(ctx, rawPortraits))
+	// Every portrait still decoded is released when pairing ends, rendered
+	// or not.
+	defer clear(p.decoded)
+	if leftover != "" {
+		p.dropDecoded(filepath.Join(p.artworkDir, leftover))
+	}
 	var collageErrors []error
 	for _, pair := range pairs {
 		f1, f2 := pair[0], pair[1]
@@ -197,9 +278,11 @@ type portraitFeature struct {
 	aspect float64
 }
 
-// portraitFeatures measures each portrait one decode at a time. A portrait
-// that cannot be measured within the working-set budget gets neutral features
-// so it still pairs and its error surfaces when the collage is rendered.
+// portraitFeatures measures each portrait one decode at a time and keeps the
+// decoded pictures, within the working-set limit, for the collages rendered
+// next, so a paired portrait is not decoded twice. A portrait that cannot be
+// measured within the working-set budget gets neutral features so it still
+// pairs and its error surfaces when the collage is rendered.
 func (p *catalogPass) portraitFeatures(ctx context.Context, names []string) []portraitFeature {
 	features := make([]portraitFeature, 0, len(names))
 	for _, name := range names {
@@ -216,11 +299,14 @@ func (p *catalogPass) portraitFeatures(ctx context.Context, names []string) []po
 		}
 		var img *image.RGBA
 		if err == nil {
+			// The estimate bounds this decode and the picture it leaves.
+			p.releaseDecoded(estimatedWorkingBytes(inputs, p.cfg))
 			img, err = loadAndRotateImageWithConfig(ctx, path, p.cfg, p.logger)
 		}
 		if err == nil {
 			feature.color = measurePalette([]*image.RGBA{img}).mean
 			feature.aspect = float64(img.Bounds().Dx()) / float64(img.Bounds().Dy())
+			p.keepDecoded(path, img)
 		} else {
 			p.logger.Debug("portrait colors unavailable for pairing", "file", name, "error", err)
 		}

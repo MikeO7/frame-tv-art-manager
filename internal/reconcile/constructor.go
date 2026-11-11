@@ -8,13 +8,9 @@ import (
 )
 
 func New(config Config, dependencies Dependencies, options ...option) (Service, error) {
-	config.Policy = normalizePolicy(config.Policy)
 	directory := filepath.Clean(strings.TrimSpace(config.StateDirectory))
 	if directory == "." || !filepath.IsAbs(directory) {
 		return nil, errors.New("reconciliation state directory must be absolute")
-	}
-	if err := validatePolicy(config.Policy); err != nil {
-		return nil, err
 	}
 	runtime, err := newRuntimeConfiguration(options)
 	if err != nil {
@@ -34,7 +30,7 @@ func New(config Config, dependencies Dependencies, options ...option) (Service, 
 		dependencies.Logger = slog.Default()
 	}
 	return &service{
-		store: newStateStore(directory), legacy: legacy, policy: config.Policy,
+		store: newStateStore(directory), legacy: legacy,
 		clock: dependencies.Clock, ids: dependencies.IDs,
 		logger: dependencies.Logger.With("component", "reconcile"), mutations: runtime.mutations,
 		capacityTTL: runtime.capacityTTL,

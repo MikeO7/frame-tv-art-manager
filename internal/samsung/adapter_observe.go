@@ -130,6 +130,22 @@ func unreachableError(err error) bool {
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
+// artChannelDark reports whether a failed connect means the art channel of a
+// TV in REST standby is not there: unreachable, refused, or silent until the
+// deadline. Every other failure says nothing about the screen and must reach
+// the caller: a token that cannot be read or saved, a rejected pairing, and
+// the quiet gate, which the observation reports as its own disposition.
+func artChannelDark(ctx context.Context, err error) bool {
+	if ctx.Err() != nil || errors.Is(err, errUnauthorized) || errors.Is(err, errGateFailed) {
+		return false
+	}
+	var classified *Error
+	if errors.As(err, &classified) {
+		return false
+	}
+	return errors.Is(err, errConnectionFailure) || unreachableError(err) || timedOutWaitingForTV(ctx, err)
+}
+
 // capabilityProbe reads one setting during observation. Each optional probe
 // is independent: a TV that rejects one setting request still reconciles
 // artwork and the settings it does answer.

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -116,7 +118,7 @@ func buildApplication(
 	healthServer := health.NewServer(cfg, healthStatus, logger, engine, serverOptions...)
 	applicationOptions := app.Options{
 		Prepare: func(ctx context.Context) error {
-			_, err := engine.Prepare(ctx, collection.PrepareRequest{DryRun: cfg.DryRun})
+			_, err := engine.Prepare(ctx, collection.PrepareRequest{})
 			return err
 		},
 		RunCycle:        engine.RunLoop,
@@ -205,7 +207,7 @@ func prepareDirectory(path string, mode os.FileMode, uid, gid int) error {
 	if err := os.Chmod(path, mode); err != nil {
 		return fmt.Errorf("set directory mode %04o: %w", mode, err)
 	}
-	if uid != 0 || gid != 0 {
+	if uid, gid, change := directoryOwner(uid, gid); change {
 		if err := os.Chown(path, uid, gid); err != nil {
 			return fmt.Errorf("set directory ownership: %w", err)
 		}
@@ -228,6 +230,23 @@ func prepareDirectory(path string, mode os.FileMode, uid, gid int) error {
 		return fmt.Errorf("verify directory writes: %w", err)
 	}
 	return nil
+}
+
+// directoryOwner turns PUID and PGID into os.Chown arguments. Zero means
+// unset, so an unset half becomes -1 and that half of the ownership is left
+// as it is; change is false when neither is set.
+func directoryOwner(puid, pgid int) (uid, gid int, change bool) {
+	if puid == 0 && pgid == 0 {
+		return -1, -1, false
+	}
+	uid, gid = -1, -1
+	if puid != 0 {
+		uid = puid
+	}
+	if pgid != 0 {
+		gid = pgid
+	}
+	return uid, gid, true
 }
 
 func validateDryRunDirectories(cfg *config.Config) error {
@@ -257,63 +276,10 @@ func bootstrapSources(ctx context.Context, cfg *config.Config, logger *slog.Logg
 	if cfg.SourcesFile == "" {
 		return nil
 	}
-	template := "# ==========================================\n" +
-		"# Frame TV Art Manager - Source List\n" +
-		"# ==========================================\n" +
-		"# Uncomment the lines below to enable them.\n\n" +
-		"# providers:\n" +
-		"  # --- 🚀 NASA (The Universe) ---\n" +
-		"  # nasa:\n" +
-		"  #   - apod             # Today's Picture of the Day (skipped on video days)\n" +
-		"  #   - search:nebula     # The first 10 nebula results from the NASA image library\n\n" +
-		"  # --- 🎨 Art Institute of Chicago (Fine Art) ---\n" +
-		"  # art_institute_of_chicago:\n" +
-		"  #   - search:monet      # The first 10 public-domain works matching \"monet\"\n" +
-		"  #   - photo:12345       # A specific public-domain artwork by ID\n\n" +
-		"  # --- 🏛️ The Met, Cleveland Museum of Art, SMK (Fine Art, no API key) ---\n" +
-		"  # met:\n" +
-		"  #   - search:sunflowers # The first 10 public-domain works matching \"sunflowers\"\n" +
-		"  #   - search:?isHighlight=true&departmentId=11 # Highlights of European Paintings\n" +
-		"  #   - object:436524     # A specific public-domain object by ID\n" +
-		"  # cleveland:\n" +
-		"  #   - search:snow?type=Painting # The first 10 CC0 paintings matching \"snow\"\n" +
-		"  # smk:\n" +
-		"  #   - search:hammershøi # The first 10 public-domain works from SMK\n\n" +
-		"  # --- 🖼️ Every museum at once (no API key) ---\n" +
-		"  # museum:\n" +
-		"  #   - search:christmas  # Up to 20 public-domain works across all four museums\n\n" +
-		"  # --- 🌍 Wikimedia Commons (credit and license shown in /status) ---\n" +
-		"  # commons:\n" +
-		"  #   - potd              # Today's Picture of the Day\n" +
-		"  #   - featured          # The 10 newest Featured Pictures\n" +
-		"  #   - search:aurora     # 10 Featured Pictures matching \"aurora\"\n\n" +
-		"  # --- 📸 Unsplash (Photography) ---\n" +
-		"  # unsplash:\n" +
-		"  #   - collection:225444 # Up to 990 photos from a collection\n" +
-		"  #   - photo:L9W_5q57_V8 # A specific photo\n\n" +
-		"  # --- 🌿 Pexels (Nature & Architecture) ---\n" +
-		"  # pexels:\n" +
-		"  #   - search:nature     # The first 10 search results from Pexels\n" +
-		"  #   - curated           # The latest 10 curated photos from Pexels\n" +
-		"  #   - collection:abc123 # Up to 800 photos from a collection\n\n" +
-		"  # --- 🍃 Pixabay (Free Art) ---\n" +
-		"  # pixabay:\n" +
-		"  #   - search:nature     # Up to 500 photos at least 3840 pixels wide\n" +
-		"  #   - editors_choice    # Up to 500 Editor's Choice photos at least 3840 pixels wide\n" +
-		"  #   - photo:12345       # A specific photo by ID\n\n" +
-		"  # --- 🔗 Direct URLs (Any JPEG/PNG) ---\n" +
-		"  # direct:\n" +
-		"  #   - https://example.com/artwork.jpg\n\n" +
-		"# Provider results are cached for 24 hours (APOD and commons:potd until the next day).\n" +
-		"# 🔍 How to find IDs:\n" +
-		"# - Unsplash Photo: unsplash.com/photos/abc123 -> abc123\n" +
-		"# - Pexels Photo: pexels.com/photo/123 -> 123\n" +
-		"# - Pixabay Photo: pixabay.com/photos/name-123 -> 123\n" +
-		"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n" +
-		"# - The Met: metmuseum.org/art/collection/search/436524 -> 436524\n" +
-		"# - Cleveland: clevelandart.org/art/1997.111 -> 1997.111\n" +
-		"# - SMK: open.smk.dk/artwork/image/KMS1 -> KMS1\n"
-
+	template := lineSourcesTemplate
+	if extension := strings.ToLower(filepath.Ext(cfg.SourcesFile)); extension == ".yaml" || extension == ".yml" {
+		template = yamlSourcesTemplate
+	}
 	if err := durablefs.CreateExclusive(ctx, cfg.SourcesFile, 0o600, func(writer io.Writer) error {
 		_, err := io.WriteString(writer, template)
 		return err
@@ -325,3 +291,144 @@ func bootstrapSources(ctx context.Context, cfg *config.Config, logger *slog.Logg
 	logger.Info("created example sources file (all commented out)", "path", cfg.SourcesFile)
 	return nil
 }
+
+// yamlSourcesTemplate is the starter for a .yaml or .yml sources file, which
+// the loader reads as a "providers:" map.
+const yamlSourcesTemplate = "# ==========================================\n" +
+	"# Frame TV Art Manager - Source List\n" +
+	"# ==========================================\n" +
+	"# Uncomment the lines below to enable them.\n\n" +
+	"# providers:\n" +
+	"  # --- 🚀 NASA (The Universe) ---\n" +
+	"  # nasa:\n" +
+	"  #   - apod             # Today's Picture of the Day (skipped on video days)\n" +
+	"  #   - search:nebula     # The first 10 nebula results from the NASA image library\n\n" +
+	"  # --- 🎨 Art Institute of Chicago (Fine Art) ---\n" +
+	"  # art_institute_of_chicago:\n" +
+	"  #   - search:monet      # The first 10 public-domain works matching \"monet\"\n" +
+	"  #   - photo:12345       # A specific public-domain artwork by ID\n\n" +
+	"  # --- 🏛️ The Met, Cleveland Museum of Art, SMK (Fine Art, no API key) ---\n" +
+	"  # met:\n" +
+	"  #   - search:sunflowers # The first 10 public-domain works matching \"sunflowers\"\n" +
+	"  #   - search:?isHighlight=true&departmentId=11 # Highlights of European Paintings\n" +
+	"  #   - object:436524     # A specific public-domain object by ID\n" +
+	"  # cleveland:\n" +
+	"  #   - search:snow?type=Painting # The first 10 CC0 paintings matching \"snow\"\n" +
+	"  # smk:\n" +
+	"  #   - search:hammershøi # The first 10 public-domain works from SMK\n\n" +
+	"  # --- 🖼️ Every museum at once (no API key) ---\n" +
+	"  # museum:\n" +
+	"  #   - search:christmas  # Up to 20 public-domain works across all four museums\n\n" +
+	"  # --- 🌍 Wikimedia Commons (credit and license shown in /status) ---\n" +
+	"  # commons:\n" +
+	"  #   - potd              # Today's Picture of the Day\n" +
+	"  #   - featured          # The 10 newest Featured Pictures\n" +
+	"  #   - search:aurora     # 10 Featured Pictures matching \"aurora\"\n\n" +
+	"  # --- 📸 Unsplash (Photography) ---\n" +
+	"  # unsplash:\n" +
+	"  #   - collection:225444 # Up to 990 photos from a collection\n" +
+	"  #   - photo:L9W_5q57_V8 # A specific photo\n\n" +
+	"  # --- 🌿 Pexels (Nature & Architecture) ---\n" +
+	"  # pexels:\n" +
+	"  #   - search:nature     # The first 10 search results from Pexels\n" +
+	"  #   - curated           # The latest 10 curated photos from Pexels\n" +
+	"  #   - collection:abc123 # Up to 800 photos from a collection\n\n" +
+	"  # --- 🍃 Pixabay (Free Art) ---\n" +
+	"  # pixabay:\n" +
+	"  #   - search:nature     # Up to 500 photos at least 3840 pixels wide\n" +
+	"  #   - editors_choice    # Up to 500 Editor's Choice photos at least 3840 pixels wide\n" +
+	"  #   - photo:12345       # A specific photo by ID\n\n" +
+	"  # --- 🔗 Direct URLs (Any JPEG/PNG) ---\n" +
+	"  # direct:\n" +
+	"  #   - https://example.com/artwork.jpg\n\n" +
+	"# Provider results are cached for 24 hours (APOD and commons:potd until the next day).\n" +
+	"# 🔍 How to find IDs:\n" +
+	"# - Unsplash Photo: unsplash.com/photos/abc123 -> abc123\n" +
+	"# - Pexels Photo: pexels.com/photo/123 -> 123\n" +
+	"# - Pixabay Photo: pixabay.com/photos/name-123 -> 123\n" +
+	"# - Art Institute: artic.edu/artworks/12345/monet -> 12345\n" +
+	"# - The Met: metmuseum.org/art/collection/search/436524 -> 436524\n" +
+	"# - Cleveland: clevelandart.org/art/1997.111 -> 1997.111\n" +
+	"# - SMK: open.smk.dk/artwork/image/KMS1 -> KMS1\n"
+
+// lineSourcesTemplate is the starter for any other sources file, which the
+// loader reads as one source per line. A comment there must have a line to
+// itself, so every example sits alone on a line that starts with "#".
+const lineSourcesTemplate = `# ==========================================
+# Frame TV Art Manager - Source List
+# ==========================================
+# One source per line. Lines that start with # are ignored, and a comment
+# cannot share a line with a source.
+# To use an example, remove the # in front of it.
+
+# --- NASA (The Universe) ---
+# Today's Picture of the Day (skipped on video days):
+#nasa:apod
+# The first 10 nebula results from the NASA image library:
+#nasa:search:nebula
+
+# --- Art Institute of Chicago (Fine Art) ---
+# The first 10 public-domain works matching "monet":
+#art_institute_of_chicago:search:monet
+# A specific public-domain artwork by ID:
+#art_institute_of_chicago:photo:12345
+
+# --- The Met, Cleveland Museum of Art, SMK (Fine Art, no API key) ---
+# The first 10 public-domain works matching "sunflowers":
+#met:search:sunflowers
+# Highlights of European Paintings:
+#met:search:?isHighlight=true&departmentId=11
+# A specific public-domain object by ID:
+#met:object:436524
+# The first 10 CC0 paintings matching "snow":
+#cleveland:search:snow?type=Painting
+# The first 10 public-domain works from SMK:
+#smk:search:hammershøi
+
+# --- Every museum at once (no API key) ---
+# Up to 20 public-domain works across all four museums:
+#museum:search:christmas
+
+# --- Wikimedia Commons (credit and license shown in /status) ---
+# Today's Picture of the Day:
+#commons:potd
+# The 10 newest Featured Pictures:
+#commons:featured
+# 10 Featured Pictures matching "aurora":
+#commons:search:aurora
+
+# --- Unsplash (Photography) ---
+# Up to 990 photos from a collection:
+#unsplash:collection:225444
+# A specific photo:
+#unsplash:photo:L9W_5q57_V8
+
+# --- Pexels (Nature & Architecture) ---
+# The first 10 search results from Pexels:
+#pexels:search:nature
+# The latest 10 curated photos from Pexels:
+#pexels:curated
+# Up to 800 photos from a collection:
+#pexels:collection:abc123
+
+# --- Pixabay (Free Art) ---
+# Up to 500 photos at least 3840 pixels wide:
+#pixabay:search:nature
+# Up to 500 Editor's Choice photos at least 3840 pixels wide:
+#pixabay:editors_choice
+# A specific photo by ID:
+#pixabay:photo:12345
+
+# --- Direct URLs (Any JPEG/PNG) ---
+#https://example.com/artwork.jpg
+
+# Provider results are cached for 24 hours (APOD and commons:potd until the next day).
+# How to find IDs:
+# - Unsplash Photo: unsplash.com/photos/abc123 -> abc123
+# - Pexels Photo: pexels.com/photo/123 -> 123
+# - Pixabay Photo: pixabay.com/photos/name-123 -> 123
+# - Art Institute: artic.edu/artworks/12345/monet -> 12345
+# - The Met: metmuseum.org/art/collection/search/436524 -> 436524
+# - Cleveland: clevelandart.org/art/1997.111 -> 1997.111
+# - SMK: open.smk.dk/artwork/image/KMS1 -> KMS1
+`

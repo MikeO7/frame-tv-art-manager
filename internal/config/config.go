@@ -245,6 +245,11 @@ type Config struct {
 	HealthPort int
 	// HealthBindAddress is the local IP address used by the HTTP listener.
 	HealthBindAddress string
+	// HealthAllowedHosts lists the host names the HTTP server answers to, in
+	// lower case. Empty accepts any Host header. When set, requests for other
+	// names are refused (IP addresses and localhost always pass), and an
+	// upload whose Origin is a listed name is accepted behind a reverse proxy.
+	HealthAllowedHosts []string
 
 	// UploadEnabled enables the HTTP upload endpoint on the health server when true.
 	UploadEnabled bool

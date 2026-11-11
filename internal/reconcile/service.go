@@ -12,8 +12,12 @@ import (
 
 //nolint:funlen,gocognit // The linear sequence is the durable reconciliation protocol.
 func (s *service) run(ctx context.Context, request Request) (Result, error) {
-	policy := s.effectivePolicy(request.Policy)
+	policy := normalizePolicy(request.Policy)
 	if err := validateRequest(request.CycleID, request.TV, request.Snapshot, policy, request.DryRun); err != nil {
+		return Result{}, err
+	}
+	policy, err := s.withoutHandledWake(request.TV.Address(), policy)
+	if err != nil {
 		return Result{}, err
 	}
 	observation, err := request.TV.Observe(ctx, samsung.ObserveRequest{
@@ -25,7 +29,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		return Result{Observation: observation}, err
 	}
 	var scheduledWake []CommandKind
-	if policy.Power == PowerOn && !policy.WakeBoundary.IsZero() {
+	if policy.Power == PowerOn {
 		step, wakeErr := s.scheduledWake(ctx, request, policy, observation)
 		policy, observation, scheduledWake, err = step.policy, step.observation, step.applied, wakeErr
 		if err != nil {
@@ -44,7 +48,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		return Result{Observation: observation}, err
 	}
 	state, err = s.prepareInitialState(ctx, initialStateInput{
-		request: request, policy: policy, observation: observation, identity: identity,
+		request: request, observation: observation, identity: identity,
 		state: state, exists: exists,
 	})
 	if err != nil {
@@ -55,20 +59,7 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 		return Result{Status: statusForError(err), State: state, Observation: observation}, err
 	}
 	uploadUnresolved := state.UnresolvedUpload != nil
-	wake := wakePreparation{
-		state: state, observation: observation, applied: len(scheduledWake), appliedCommands: scheduledWake,
-	}
-	if policy.Power == PowerOn {
-		wake, err = s.preparePowerOn(ctx, request, policy, state, observation)
-		if wake.terminal != nil {
-			return *wake.terminal, err
-		}
-		if err != nil {
-			return wake.result(statusForError(err), wake.state, wake.observation), err
-		}
-		state = wake.state
-		observation = wake.observation
-	}
+	wake := wakeApplied(scheduledWake)
 	if state.LegacyMigrationPending && observation.Disposition == samsung.DispositionEligible {
 		state, err = s.completeDeferredLegacyMigration(ctx, state, request.Snapshot, observation, request.DryRun)
 		if err != nil {
@@ -105,12 +96,8 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	if !request.DryRun {
 		state = plannedState
 	}
-	resultPlan := plan
-	if len(wake.plan.Commands) > 0 {
-		resultPlan.Commands = append(slices.Clone(wake.plan.Commands), resultPlan.Commands...)
-	}
 	result := wake.result(StatusComplete, state, observation)
-	result.Plan, result.Rotation = resultPlan, plan.Rotation
+	result.Plan, result.Rotation = plan, plan.Rotation
 	if request.DryRun {
 		result.Status = StatusIncompleteDryRun
 		return result, nil
@@ -241,6 +228,17 @@ func (s *service) run(ctx context.Context, request Request) (Result, error) {
 	result.Status = StatusComplete
 	result.State = cloneState(state)
 	return result, nil
+}
+
+// wakeApplied is the scheduled wake a run already sent, if any. Every result
+// of the run reports it.
+type wakeApplied []CommandKind
+
+func (w wakeApplied) result(status Status, state State, observation samsung.Observation) Result {
+	return Result{
+		Status: status, State: cloneState(state), Observation: observation,
+		Applied: len(w), AppliedCommands: slices.Clone(w),
+	}
 }
 
 func (s *service) logMutationRetry(

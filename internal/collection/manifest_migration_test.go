@@ -13,7 +13,7 @@ import (
 func TestPrepareMigratesVersionOneManifestToDurableMetadata(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestPrepareMigratesVersionOneManifestToDurableMetadata(t *testing.T) {
 func TestPrepareRemovesLegacyVisualHashFromManifest(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20, MaxPixels: 1 << 20})
+	value, err := New(Config{Root: root, MaxImportBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
